@@ -811,6 +811,7 @@ bool Lowerer::type_may_emit_runtime_drop(const sema::TypeHandle type, const Clea
             case sema::TypeKind::generic_param:
             case sema::TypeKind::associated_projection:
             case sema::TypeKind::opaque_struct:
+            case sema::TypeKind::trait_object:
                 break;
         }
     }
@@ -847,6 +848,7 @@ CleanupAbiPolicy Lowerer::cleanup_abi_policy(const sema::TypeHandle type, const 
         case sema::TypeKind::reference:
         case sema::TypeKind::slice:
         case sema::TypeKind::function:
+        case sema::TypeKind::trait_object:
             return CleanupAbiPolicy::unknown_marker_only;
     }
     return CleanupAbiPolicy::unknown_marker_only;
@@ -1007,6 +1009,7 @@ bool Lowerer::append_runtime_drop_glue(
             case sema::TypeKind::generic_param:
             case sema::TypeKind::associated_projection:
             case sema::TypeKind::opaque_struct:
+            case sema::TypeKind::trait_object:
                 break;
         }
     }

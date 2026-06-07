@@ -37,6 +37,7 @@ enum class TokenKind {
     kw_type,
     kw_impl,
     kw_trait,
+    kw_dyn,
     kw_where,
     kw_match,
     kw_let,

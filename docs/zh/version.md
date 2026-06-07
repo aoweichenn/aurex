@@ -2,10 +2,10 @@
 
 ## M8 Dyn Trait、Erased View 与动态派发设计基线
 
-M8 主线已从最新 M7 基线开出，M8a 已完成 dyn trait / erased view 调研设计和 query 地基修正。M8 不把 dyn
-trait 当成“照抄 Rust trait object”或“补一个 parser 分支”；新的设计基线选择 Aurex 自己的
-origin-bound erased view：第一版只做 borrowed dyn view，复用 M7 origin / loan / lifetime facts，以 checked
-vtable witness 做动态派发。
+M8 主线已从最新 M7 基线开出，M8a-M8c 已完成 dyn trait / erased view 调研设计、query 地基修正、frontend
+syntax/sema、borrowed dyn coercion 和 checked vtable facts。M8 不把 dyn trait 当成“照抄 Rust trait object”或
+“补一个 parser 分支”；新的设计基线选择 Aurex 自己的 origin-bound erased view：第一版只做 borrowed dyn view，
+复用 M7 origin / loan / lifetime facts，以 checked vtable witness 描述动态派发。
 
 当前新增实现包括：
 
@@ -20,12 +20,19 @@ vtable witness 做动态派发。
 - 更新 stable key decoder 与 query tests：当前 canonical type key 只承认可由现有语言/语义实际产生的类型形状。
   M8a decoder 还会验证 trait object / vtable / coercion key 的 schema、policy、principal trait、associated
   type member 和嵌套 canonical type 形状，并拒绝三类 key 布局混用。
+- 新增 M8b frontend surface：`dyn Trait`、qualified dyn trait、trait args 和 associated equality 可 parse、
+  AST dump 和 sema resolve；bare `dyn Trait` 仍不能作为普通 storage type，只允许经 `&dyn Trait` /
+  `&mut dyn Trait` 等 reference pointee 使用。object-callability 会诊断缺少 self receiver、非法 receiver、
+  缺失/未知/重复 associated equality 和 unconstrained `Self`。
+- 新增 M8c borrowed dyn coercion：`&T -> &dyn Trait`、`&mut T -> &mut dyn Trait` 会检查可见 nominal impl 与
+  associated equality，成功时记录 checked vtable layout、method slot、callability 和 coercion facts；dyn receiver
+  method call 绑定为 `TraitMethodDispatchKind::vtable_slot`。
 - 更新 `next-steps` 与中文文档入口，把 M8a-M8e 路线明确为：query 地基、syntax/sema、borrowed dyn coercion、
   IR/backend dispatch、hardening/后续扩展评估。
 
-当前仍保守的边界：M8a 不开放 `dyn Trait` surface，不实现 `&dyn Trait` coercion，不生成 vtable，不做
-IR/backend dynamic dispatch，也不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、
-supertrait upcasting 或多 trait object composition。
+当前仍保守的边界：M8c 只完成 frontend/query checked facts，不生成运行时 vtable object，不做 IR/backend dynamic
+dispatch，也不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting
+或多 trait object composition。
 
 ## M7d-K Array Repeat Resource Safety Closure
 

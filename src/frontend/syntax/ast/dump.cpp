@@ -80,6 +80,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "kw_impl";
         case TokenKind::kw_trait:
             return "kw_trait";
+        case TokenKind::kw_dyn:
+            return "kw_dyn";
         case TokenKind::kw_where:
             return "kw_where";
         case TokenKind::kw_match:
@@ -545,6 +547,36 @@ std::string type_label(const AstModule& module, const TypeId id)
                         out << ", ";
                     }
                     out << type_label(module, type.type_args[i]);
+                }
+                out << "]";
+            }
+            break;
+        case TypeKind::dyn_trait:
+            out << "dyn ";
+            if (!type.scope_parts.empty()) {
+                for (const std::string_view part : type.scope_parts) {
+                    out << part << ".";
+                }
+            } else if (!type.scope_name.empty()) {
+                out << type.scope_name << ".";
+            }
+            out << type.name;
+            if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
+                out << "[";
+                bool first = true;
+                for (const TypeId arg : type.type_args) {
+                    if (!first) {
+                        out << ", ";
+                    }
+                    first = false;
+                    out << type_label(module, arg);
+                }
+                for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
+                    if (!first) {
+                        out << ", ";
+                    }
+                    first = false;
+                    out << constraint.name << " = " << type_label(module, constraint.value_type);
                 }
                 out << "]";
             }

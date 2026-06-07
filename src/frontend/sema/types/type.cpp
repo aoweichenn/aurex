@@ -43,9 +43,12 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR = ".";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX = "dyn ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_EQUALITY_SEPARATOR = " = ";
 constexpr std::string_view SEMA_TYPE_ORIGIN_KEY_SEPARATOR = " | ";
 constexpr base::usize SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE = 16;
 constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
+constexpr std::size_t SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT = 17U;
 
 enum class TypeDisplayTaskKind {
     type,
@@ -136,6 +139,7 @@ struct TypeDisplayTask {
         case TypeKind::opaque_struct:
         case TypeKind::generic_param:
         case TypeKind::associated_projection:
+        case TypeKind::trait_object:
             return true;
     }
     return false;
@@ -206,7 +210,9 @@ TypeTable::TypeTable()
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
           *this->arena_, GenericParamIdentityHash{})),
       associated_projection_types_(make_sema_map<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash>(
-          *this->arena_, AssociatedProjectionKeyHash{}))
+          *this->arena_, AssociatedProjectionKeyHash{})),
+      trait_object_types_(make_sema_map<TraitObjectKey, TypeHandle, TraitObjectKeyHash>(
+          *this->arena_, TraitObjectKeyHash{}))
 {
     this->initialize_builtins();
 }
@@ -222,7 +228,9 @@ TypeTable::TypeTable(const TypeTable& other)
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
           *this->arena_, GenericParamIdentityHash{})),
       associated_projection_types_(make_sema_map<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash>(
-          *this->arena_, AssociatedProjectionKeyHash{}))
+          *this->arena_, AssociatedProjectionKeyHash{})),
+      trait_object_types_(make_sema_map<TraitObjectKey, TypeHandle, TraitObjectKeyHash>(
+          *this->arena_, TraitObjectKeyHash{}))
 {
     this->copy_from(other);
 }
@@ -243,7 +251,8 @@ TypeTable::TypeTable(TypeTable&& other) noexcept
       slice_types_(std::move(other.slice_types_)), tuple_types_(std::move(other.tuple_types_)),
       function_types_(std::move(other.function_types_)), texts_(std::move(other.texts_)),
       generic_param_types_(std::move(other.generic_param_types_)),
-      associated_projection_types_(std::move(other.associated_projection_types_))
+      associated_projection_types_(std::move(other.associated_projection_types_)),
+      trait_object_types_(std::move(other.trait_object_types_))
 {
     this->rebind_interned_texts();
 }
@@ -281,6 +290,7 @@ void TypeTable::swap(TypeTable& other) noexcept
     swap(this->texts_, other.texts_);
     this->generic_param_types_.swap(other.generic_param_types_);
     this->associated_projection_types_.swap(other.associated_projection_types_);
+    this->trait_object_types_.swap(other.trait_object_types_);
     swap(this->arena_, other.arena_);
     this->rebind_interned_texts();
     other.rebind_interned_texts();
@@ -309,6 +319,7 @@ void TypeTable::copy_from(const TypeTable& other)
     }
     this->generic_param_types_.clear();
     this->associated_projection_types_.clear();
+    this->trait_object_types_.clear();
     for (base::u32 index = 0; index < this->types_.size(); ++index) {
         const TypeInfo& info = this->types_[index];
         if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity)) {
@@ -317,6 +328,8 @@ void TypeTable::copy_from(const TypeTable& other)
             this->associated_projection_types_.emplace(
                 AssociatedProjectionKey{info.associated_base.value, info.associated_member.global_id},
                 TypeHandle{index});
+        } else if (info.kind == TypeKind::trait_object && info.trait_object_key.global_id != 0) {
+            this->trait_object_types_.emplace(TraitObjectKey{info.trait_object_key.global_id}, TypeHandle{index});
         }
     }
 }
@@ -324,10 +337,14 @@ void TypeTable::copy_from(const TypeTable& other)
 void TypeTable::rebind_interned_texts() noexcept
 {
     for (TypeInfo& info : this->types_) {
+        rebind_interned_text(info.trait_object_name, this->texts_);
         rebind_interned_text(info.name, this->texts_);
         rebind_interned_text(info.c_name, this->texts_);
         rebind_interned_text(info.reference_origin_key, this->texts_);
         rebind_interned_text(info.generic_origin_key, this->texts_);
+        for (TraitObjectAssociatedTypeEquality& equality : info.trait_object_associated_equalities) {
+            rebind_interned_text(equality.name, this->texts_);
+        }
     }
 }
 
@@ -372,6 +389,9 @@ TypeInfo TypeTable::make_type_info() const
     TypeInfo info;
     info.tuple_elements = this->make_type_handle_list();
     info.function_params = this->make_type_handle_list();
+    info.trait_object_args = this->make_type_handle_list();
+    info.trait_object_associated_equalities =
+        make_sema_vector<TraitObjectAssociatedTypeEquality>(*this->arena_);
     info.generic_args = this->make_type_handle_list();
     return info;
 }
@@ -406,11 +426,34 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other)
     copy.generic_identity = other.generic_identity;
     copy.associated_base = other.associated_base;
     copy.associated_member = other.associated_member;
+    copy.trait_object_key = other.trait_object_key;
+    copy.trait_object_name = this->intern_text(other.trait_object_name);
+    copy.trait_object_module = other.trait_object_module;
+    copy.trait_object_name_id = other.trait_object_name_id;
+    copy.trait_object_args = this->copy_type_handles(other.trait_object_args);
+    copy.trait_object_associated_equalities =
+        this->copy_trait_object_associated_equalities(other.trait_object_associated_equalities);
     copy.name = this->intern_text(other.name);
     copy.c_name = this->intern_text(other.c_name);
     copy.generic_origin_key = this->intern_text(other.generic_origin_key);
     copy.generic_args = this->copy_type_handles(other.generic_args);
     copy.contains_array = other.contains_array;
+    return copy;
+}
+
+TraitObjectAssociatedTypeEqualityList TypeTable::copy_trait_object_associated_equalities(
+    const std::span<const TraitObjectAssociatedTypeEquality> values)
+{
+    TraitObjectAssociatedTypeEqualityList copy =
+        make_sema_vector<TraitObjectAssociatedTypeEquality>(*this->arena_);
+    copy.reserve(values.size());
+    for (const TraitObjectAssociatedTypeEquality& value : values) {
+        TraitObjectAssociatedTypeEquality equality;
+        equality.associated_member = value.associated_member;
+        equality.name = this->intern_text(value.name);
+        equality.value_type = value.value_type;
+        copy.push_back(equality);
+    }
     return copy;
 }
 
@@ -678,6 +721,31 @@ TypeHandle TypeTable::associated_projection(
     return handle;
 }
 
+TypeHandle TypeTable::trait_object(const query::TraitObjectTypeKey key, const std::string_view trait_name,
+    const syntax::ModuleId trait_module, const IdentId trait_name_id, const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitObjectAssociatedTypeEquality> associated_equalities)
+{
+    if (!query::is_valid(key)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const TraitObjectKey table_key{key.global_id};
+    if (const auto found = this->trait_object_types_.find(table_key); found != this->trait_object_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info = this->make_type_info();
+    info.kind = TypeKind::trait_object;
+    info.trait_object_key = key;
+    info.trait_object_name = this->intern_text(trait_name);
+    info.trait_object_module = trait_module;
+    info.trait_object_name_id = trait_name_id;
+    info.trait_object_args = this->copy_type_handles(trait_args);
+    info.trait_object_associated_equalities = this->copy_trait_object_associated_equalities(associated_equalities);
+    const TypeHandle handle = this->push(std::move(info));
+    this->trait_object_types_.emplace(table_key, handle);
+    return handle;
+}
+
 void TypeTable::set_record_contains_array(const TypeHandle handle, const bool contains_array) noexcept
 {
     assert(handle.value < this->types_.size());
@@ -794,6 +862,12 @@ bool TypeTable::is_tuple(const TypeHandle type) const noexcept
 bool TypeTable::is_function(const TypeHandle type) const noexcept
 {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::function;
+}
+
+bool TypeTable::is_trait_object(const TypeHandle type) const noexcept
+{
+    return is_valid(type) && type.value < this->types_.size()
+        && this->types_[type.value].kind == TypeKind::trait_object;
 }
 
 bool TypeTable::contains_array(const TypeHandle type) const noexcept
@@ -956,6 +1030,58 @@ std::string TypeTable::display_name(const TypeHandle type) const
                 });
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.associated_base, {}});
                 break;
+            case TypeKind::trait_object:
+                name.append(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX);
+                name.append(info.trait_object_name.view());
+                if (!info.trait_object_args.empty() || !info.trait_object_associated_equalities.empty()) {
+                    name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+                    pending.push_back(TypeDisplayTask{
+                        TypeDisplayTaskKind::text,
+                        INVALID_TYPE_HANDLE,
+                        std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE),
+                    });
+                    for (base::usize index = info.trait_object_associated_equalities.size(); index > 0; --index) {
+                        const TraitObjectAssociatedTypeEquality& equality =
+                            info.trait_object_associated_equalities[index - 1];
+                        pending.push_back(TypeDisplayTask{
+                            TypeDisplayTaskKind::type,
+                            equality.value_type,
+                            {},
+                        });
+                        pending.push_back(TypeDisplayTask{
+                            TypeDisplayTaskKind::text,
+                            INVALID_TYPE_HANDLE,
+                            std::string(SEMA_TYPE_DISPLAY_ASSOCIATED_EQUALITY_SEPARATOR),
+                        });
+                        pending.push_back(TypeDisplayTask{
+                            TypeDisplayTaskKind::text,
+                            INVALID_TYPE_HANDLE,
+                            std::string(equality.name.view()),
+                        });
+                        if (index > 1 || !info.trait_object_args.empty()) {
+                            pending.push_back(TypeDisplayTask{
+                                TypeDisplayTaskKind::text,
+                                INVALID_TYPE_HANDLE,
+                                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+                            });
+                        }
+                    }
+                    for (base::usize index = info.trait_object_args.size(); index > 0; --index) {
+                        pending.push_back(TypeDisplayTask{
+                            TypeDisplayTaskKind::type,
+                            info.trait_object_args[index - 1],
+                            {},
+                        });
+                        if (index > 1) {
+                            pending.push_back(TypeDisplayTask{
+                                TypeDisplayTaskKind::text,
+                                INVALID_TYPE_HANDLE,
+                                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+                            });
+                        }
+                    }
+                }
+                break;
         }
     }
     return name;
@@ -1065,6 +1191,13 @@ std::size_t TypeTable::TupleKeyHash::operator()(const TupleKey& key) const noexc
 std::size_t TypeTable::AssociatedProjectionKeyHash::operator()(const AssociatedProjectionKey& key) const noexcept
 {
     return static_cast<std::size_t>(key.base) ^ (static_cast<std::size_t>(key.member) * SEMA_TYPE_HASH_MULTIPLIER);
+}
+
+std::size_t TypeTable::TraitObjectKeyHash::operator()(const TraitObjectKey& key) const noexcept
+{
+    return static_cast<std::size_t>(key.global_id)
+        ^ (static_cast<std::size_t>(key.global_id >> SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT)
+            * SEMA_TYPE_HASH_MULTIPLIER);
 }
 
 } // namespace aurex::sema

@@ -12,6 +12,11 @@ public:
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_named_type(
         syntax::TypeId type_id, const syntax::TypeNode& type, bool opaque_allowed_as_pointee);
+    [[nodiscard]] TypeHandle resolve_dyn_trait_type(
+        syntax::TypeId type_id,
+        const syntax::TypeNode& type,
+        std::span<const TypeHandle> resolved_args,
+        std::span<const TypeHandle> associated_value_types);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
 
 private:

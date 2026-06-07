@@ -395,6 +395,8 @@ inline constexpr std::string_view SEMA_MUTABLE_REFERENCE_PLACE =
     "mutable reference requires a writable place expression";
 
 inline constexpr std::string_view SEMA_REFERENCE_STORAGE = "reference requires a valid storage type";
+inline constexpr std::string_view SEMA_DYN_TRAIT_STORAGE =
+    "bare dyn trait type is not valid storage; use &dyn Trait or &mut dyn Trait";
 
 inline constexpr std::string_view SEMA_BINARY_OPERANDS_SAME_TYPE = "binary operands must have the same type";
 
@@ -1377,6 +1379,41 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
 {
     return "type " + std::string(type_name) + " has no visible impl for trait method `" + std::string(method_name)
         + "`";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_missing_associated_type_message(
+    const std::string_view trait_name, const std::string_view associated_type)
+{
+    return "dyn trait `" + std::string(trait_name) + "` requires associated type equality `"
+        + std::string(associated_type) + " = ...`";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_method_requires_self_message(
+    const std::string_view trait_name, const std::string_view method_name)
+{
+    return "dyn trait `" + std::string(trait_name) + "` method `" + std::string(method_name)
+        + "` must have a self receiver";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_receiver_message(
+    const std::string_view trait_name, const std::string_view method_name)
+{
+    return "dyn trait `" + std::string(trait_name) + "` method `" + std::string(method_name)
+        + "` receiver must be &Self or &mut Self";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_self_usage_message(
+    const std::string_view trait_name, const std::string_view method_name)
+{
+    return "dyn trait `" + std::string(trait_name) + "` method `" + std::string(method_name)
+        + "` can only use Self in the receiver";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_impl_missing_message(
+    const std::string_view type_name, const std::string_view trait_name)
+{
+    return "type " + std::string(type_name) + " cannot be coerced to dyn trait `" + std::string(trait_name)
+        + "` because no matching trait impl is visible";
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(

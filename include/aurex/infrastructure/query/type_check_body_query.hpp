@@ -19,11 +19,16 @@ struct TypeCheckBodyAuthority {
     StableFingerprint128 place_state_fingerprint;
     StableFingerprint128 body_loan_fingerprint;
     StableFingerprint128 destructor_fingerprint;
+    StableFingerprint128 trait_object_fingerprint;
     base::u64 expr_side_table_count = 0;
     base::u64 pattern_side_table_count = 0;
     base::u64 type_side_table_count = 0;
     base::u64 stmt_side_table_count = 0;
     base::u64 coercion_count = 0;
+    base::u64 trait_object_method_slot_count = 0;
+    base::u64 trait_object_callability_count = 0;
+    base::u64 vtable_layout_count = 0;
+    base::u64 trait_object_coercion_count = 0;
     base::u64 borrow_summary_origin_count = 0;
     base::u64 borrow_summary_dependency_count = 0;
     base::u64 borrow_summary_storage_escape_count = 0;
@@ -69,6 +74,7 @@ struct TypeCheckBodyAuthority {
     bool has_place_state_facts = false;
     bool has_body_loan_check = false;
     bool has_destructor_facts = false;
+    bool has_trait_object_facts = false;
     bool borrow_summary_has_unknown_return_origin = false;
     bool borrow_summary_has_local_return_escape = false;
     bool borrow_summary_has_storage_escape = false;

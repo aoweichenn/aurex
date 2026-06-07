@@ -104,6 +104,7 @@ enum class TypeKind {
     slice,
     tuple,
     function,
+    dyn_trait,
 };
 
 enum class GenericParamKind {
@@ -170,6 +171,7 @@ struct TypeNode {
     bool function_is_variadic = false;
     std::vector<TypeId> function_params;
     TypeId function_return = INVALID_TYPE_ID;
+    std::vector<AssociatedTypeConstraintDecl> associated_type_constraints;
 };
 
 enum class ExprKind {

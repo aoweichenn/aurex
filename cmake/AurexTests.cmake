@@ -70,6 +70,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
         tests/gtest/frontend/sema/sema_whitebox_tests.cpp
         tests/gtest/frontend/sema/statement_tests.cpp
+        tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
         tests/gtest/application/tooling/ide_tooling_tests.cpp
         tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
     )
@@ -145,6 +146,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
             tests/gtest/frontend/sema/sema_whitebox_tests.cpp
             tests/gtest/frontend/sema/statement_tests.cpp
+            tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
             tests/gtest/frontend/sema/trait_tests.cpp
             tests/gtest/frontend/sema/type_alias_tests.cpp
             tests/gtest/application/tooling/ide_tooling_tests.cpp

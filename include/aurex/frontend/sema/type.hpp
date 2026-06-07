@@ -2,8 +2,10 @@
 
 #include <aurex/frontend/sema/identifier.hpp>
 #include <aurex/frontend/sema/storage.hpp>
+#include <aurex/frontend/syntax/core/ast_ids.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
 #include <aurex/infrastructure/query/query_key.hpp>
+#include <aurex/infrastructure/query/trait_object_key.hpp>
 
 #include <initializer_list>
 #include <limits>
@@ -65,7 +67,16 @@ enum class TypeKind {
     opaque_struct,
     generic_param,
     associated_projection,
+    trait_object,
 };
+
+struct TraitObjectAssociatedTypeEquality {
+    query::MemberKey associated_member;
+    InternedText name;
+    TypeHandle value_type = INVALID_TYPE_HANDLE;
+};
+
+using TraitObjectAssociatedTypeEqualityList = SemaVector<TraitObjectAssociatedTypeEquality>;
 
 enum class PointerMutability {
     mut,
@@ -100,6 +111,12 @@ struct TypeInfo {
     GenericParamIdentity generic_identity = INVALID_GENERIC_PARAM_IDENTITY;
     TypeHandle associated_base = INVALID_TYPE_HANDLE;
     query::MemberKey associated_member;
+    query::TraitObjectTypeKey trait_object_key;
+    InternedText trait_object_name;
+    syntax::ModuleId trait_object_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_object_name_id = INVALID_IDENT_ID;
+    TypeHandleList trait_object_args;
+    TraitObjectAssociatedTypeEqualityList trait_object_associated_equalities;
     InternedText name;
     InternedText c_name;
     InternedText generic_origin_key;
@@ -149,6 +166,12 @@ public:
     [[nodiscard]] TypeHandle generic_param(GenericParamIdentity identity, std::string_view display_name);
     [[nodiscard]] TypeHandle associated_projection(
         TypeHandle base, query::MemberKey associated_member, std::string_view associated_name);
+    [[nodiscard]] TypeHandle trait_object(query::TraitObjectTypeKey key,
+        std::string_view trait_name,
+        syntax::ModuleId trait_module,
+        IdentId trait_name_id,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitObjectAssociatedTypeEquality> associated_equalities);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
@@ -171,6 +194,7 @@ public:
     [[nodiscard]] bool is_slice(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_tuple(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_function(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_trait_object(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
     [[nodiscard]] std::string display_name(std::string_view base_name, std::span<const TypeHandle> generic_args) const;
@@ -253,6 +277,15 @@ private:
         }
     };
 
+    struct TraitObjectKey {
+        base::u64 global_id = 0;
+
+        [[nodiscard]] bool operator==(const TraitObjectKey& other) const noexcept
+        {
+            return global_id == other.global_id;
+        }
+    };
+
     struct PointerKeyHash {
         [[nodiscard]] std::size_t operator()(const PointerKey& key) const noexcept;
     };
@@ -281,6 +314,10 @@ private:
         [[nodiscard]] std::size_t operator()(const AssociatedProjectionKey& key) const noexcept;
     };
 
+    struct TraitObjectKeyHash {
+        [[nodiscard]] std::size_t operator()(const TraitObjectKey& key) const noexcept;
+    };
+
     void initialize_builtins();
     void swap(TypeTable& other) noexcept;
     void copy_from(const TypeTable& other);
@@ -293,6 +330,8 @@ private:
     [[nodiscard]] TypeInfo make_type_info() const;
     [[nodiscard]] InternedText intern_text(std::string_view text);
     [[nodiscard]] TypeInfo clone_type_info(const TypeInfo& other);
+    [[nodiscard]] TraitObjectAssociatedTypeEqualityList copy_trait_object_associated_equalities(
+        std::span<const TraitObjectAssociatedTypeEquality> values);
     [[nodiscard]] FunctionKey clone_function_key(const FunctionKey& other) const;
     [[nodiscard]] TupleKey clone_tuple_key(const TupleKey& other) const;
     [[nodiscard]] TypeHandle push(TypeInfo info);
@@ -308,6 +347,7 @@ private:
     IdentifierInterner texts_;
     SemaMap<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> generic_param_types_;
     SemaMap<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash> associated_projection_types_;
+    SemaMap<TraitObjectKey, TypeHandle, TraitObjectKeyHash> trait_object_types_;
 };
 
 } // namespace aurex::sema

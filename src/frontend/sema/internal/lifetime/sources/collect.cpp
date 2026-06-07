@@ -720,6 +720,7 @@ SemanticAnalyzerCore::LifetimeAnalyzer::origin_names_for_type(const TypeHandle t
             case TypeKind::opaque_struct:
             case TypeKind::generic_param:
             case TypeKind::associated_projection:
+            case TypeKind::trait_object:
                 break;
         }
     }
@@ -792,6 +793,7 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
             }
             case TypeKind::pointer:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 break;
         }
     }
@@ -866,6 +868,7 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_has_concrete_borrow_surface(co
             case TypeKind::associated_projection:
             case TypeKind::pointer:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 break;
         }
     }

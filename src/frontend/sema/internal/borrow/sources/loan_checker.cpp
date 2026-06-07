@@ -1456,6 +1456,7 @@ private:
             case TypeKind::pointer:
             case TypeKind::function:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 return false;
         }
         return false;
@@ -2036,6 +2037,7 @@ private:
                 case TypeKind::pointer:
                 case TypeKind::function:
                 case TypeKind::opaque_struct:
+                case TypeKind::trait_object:
                     break;
             }
         }
@@ -2320,6 +2322,7 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
             case TypeKind::pointer:
             case TypeKind::function:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 break;
         }
     }

@@ -14,6 +14,7 @@ constexpr std::string_view SEMA_CANONICAL_TYPE_UNKNOWN_HANDLE = "unknown type ha
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_NOMINAL = "unresolved nominal type key";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_GENERIC_PARAM = "unresolved generic parameter key";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_ASSOCIATED_MEMBER = "unresolved associated type member key";
+constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_TRAIT_OBJECT = "unresolved trait object key";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_KIND = "unsupported type kind";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_BUILTIN = "unsupported builtin type";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_MUTABILITY = "unsupported pointer mutability";
@@ -260,6 +261,18 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
+[[nodiscard]] base::Result<void> lower_trait_object_type(const TypeInfo& info, query::CanonicalTypeKey& target)
+{
+    if (!query::is_valid(info.trait_object_key)) {
+        return base::Result<void>::fail({
+            base::ErrorCode::internal_error,
+            std::string(SEMA_CANONICAL_TYPE_UNRESOLVED_TRAIT_OBJECT),
+        });
+    }
+    target = query::canonical_trait_object_view(query::stable_key_fingerprint(info.trait_object_key));
+    return base::Result<void>::ok();
+}
+
 [[nodiscard]] base::Result<void> lower_type_frame(std::vector<TypeBuildFrame>& pending, const TypeTable& types,
     const CanonicalTypeKeyResolver& resolver, const TypeBuildFrame frame)
 {
@@ -300,6 +313,8 @@ void push_children_reverse(
             return lower_generic_param_type(resolver, frame.source, info, *frame.target);
         case TypeKind::associated_projection:
             return lower_associated_projection_type(pending, info, *frame.target);
+        case TypeKind::trait_object:
+            return lower_trait_object_type(info, *frame.target);
     }
     return base::Result<void>::fail({
         base::ErrorCode::internal_error,

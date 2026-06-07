@@ -40,6 +40,7 @@ enum class CanonicalTypeKind : base::u8 {
     generic_param,
     const_arg,
     associated_type_projection,
+    trait_object_view,
 };
 
 enum class PointerMutabilityKey : base::u8 {
@@ -65,6 +66,7 @@ struct CanonicalTypeKey {
     GenericParamKey generic_param;
     MemberKey associated_member;
     StableFingerprint128 const_value;
+    StableFingerprint128 trait_object_identity;
     std::vector<CanonicalTypeKey> children;
 };
 
@@ -94,6 +96,7 @@ struct DropGlueKey {
 [[nodiscard]] CanonicalTypeKey canonical_const_arg(StableFingerprint128 value);
 [[nodiscard]] CanonicalTypeKey canonical_associated_type_projection(
     CanonicalTypeKey base_type, MemberKey associated_member);
+[[nodiscard]] CanonicalTypeKey canonical_trait_object_view(StableFingerprint128 identity);
 [[nodiscard]] DropGlueKey drop_glue_key(CanonicalTypeKey type, StableFingerprint128 resource);
 
 void append_stable_key(StableKeyWriter& writer, const CanonicalTypeKey& key);

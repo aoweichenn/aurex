@@ -76,6 +76,15 @@ constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
                     pending.push_back(arg);
                 }
                 break;
+            case sema::TypeKind::trait_object:
+                for (const sema::TypeHandle arg : info.trait_object_args) {
+                    pending.push_back(arg);
+                }
+                for (const sema::TraitObjectAssociatedTypeEquality& equality :
+                    info.trait_object_associated_equalities) {
+                    pending.push_back(equality.value_type);
+                }
+                break;
             case sema::TypeKind::builtin:
             case sema::TypeKind::enum_:
             case sema::TypeKind::opaque_struct:

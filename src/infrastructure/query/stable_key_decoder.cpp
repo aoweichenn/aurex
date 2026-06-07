@@ -454,7 +454,7 @@ template <typename Enum>
 {
     base::u8 value = 0;
     if (!reader.read_u8(value) || value <= enum_byte(CanonicalTypeKind::invalid)
-        || value > enum_byte(CanonicalTypeKind::associated_type_projection)) {
+        || value > enum_byte(CanonicalTypeKind::trait_object_view)) {
         kind = CanonicalTypeKind::invalid;
         return false;
     }
@@ -469,6 +469,7 @@ template <typename Enum>
         case CanonicalTypeKind::builtin:
         case CanonicalTypeKind::generic_param:
         case CanonicalTypeKind::const_arg:
+        case CanonicalTypeKind::trait_object_view:
             return child_count == 0;
         case CanonicalTypeKind::pointer:
         case CanonicalTypeKind::reference:
@@ -539,6 +540,11 @@ template <typename Enum>
             break;
         case CanonicalTypeKind::associated_type_projection:
             if (!skip_member_key(reader)) {
+                return false;
+            }
+            break;
+        case CanonicalTypeKind::trait_object_view:
+            if (!read_nonempty_fingerprint(reader)) {
                 return false;
             }
             break;

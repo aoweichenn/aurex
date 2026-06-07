@@ -25,6 +25,9 @@ public:
     [[nodiscard]] TypeHandle analyze_builtin_expr(syntax::ExprId expr_id, const ExprView& expr);
 
 private:
+    [[nodiscard]] bool report_failed_borrowed_dyn_trait_coercion(
+        TypeHandle expected_type, TypeHandle analyzed_type, const base::SourceRange& range);
+
     SemanticAnalyzerCore& core_;
 };
 

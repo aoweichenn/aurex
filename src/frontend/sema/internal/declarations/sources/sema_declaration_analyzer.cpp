@@ -1013,6 +1013,27 @@ SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_ty
                     pending.push_back(arg);
                 }
                 break;
+            case TypeKind::trait_object:
+                if (const auto found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+                        info.trait_object_module.value,
+                        info.trait_object_name_id,
+                    });
+                    found != this->core_.state_.checked.traits.end()
+                    && !policy.can_expose_type(surface_visibility, found->second.visibility)) {
+                    return ExportSurfaceRestrictedType{
+                        this->core_.state_.checked.types.display_name(current),
+                        found->second.range,
+                        found->second.visibility,
+                    };
+                }
+                for (const TypeHandle arg : info.trait_object_args) {
+                    pending.push_back(arg);
+                }
+                for (const TraitObjectAssociatedTypeEquality& equality :
+                    info.trait_object_associated_equalities) {
+                    pending.push_back(equality.value_type);
+                }
+                break;
             case TypeKind::enum_: {
                 if (const auto found = this->core_.state_.names.enum_cases_by_type.find(current.value);
                     found != this->core_.state_.names.enum_cases_by_type.end() && !found->second.empty()

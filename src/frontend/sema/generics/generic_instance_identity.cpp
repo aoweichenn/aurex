@@ -96,6 +96,34 @@ private:
     query::DefKey owner_key_;
 };
 
+class CheckedCanonicalTypeResolver final : public CanonicalTypeKeyResolver {
+public:
+    explicit CheckedCanonicalTypeResolver(const SemanticAnalyzerCore& analyzer) noexcept : analyzer_(analyzer)
+    {
+    }
+
+    [[nodiscard]] std::optional<query::DefKey> nominal_type_key(
+        const TypeHandle handle, const TypeInfo& info) const override
+    {
+        return this->analyzer_.canonical_nominal_type_query_key(handle, info);
+    }
+
+    [[nodiscard]] std::optional<query::GenericParamKey> generic_param_key(
+        const TypeHandle, const TypeInfo& info) const override
+    {
+        if (!is_valid(info.generic_identity)) {
+            return std::nullopt;
+        }
+        const auto found = this->analyzer_.state_.generics.param_query_keys.find(info.generic_identity);
+        return found == this->analyzer_.state_.generics.param_query_keys.end()
+            ? std::nullopt
+            : std::optional<query::GenericParamKey>{found->second};
+    }
+
+private:
+    const SemanticAnalyzerCore& analyzer_;
+};
+
 query::ModuleKey SemanticAnalyzerCore::query_module_key(const syntax::ModuleId module) const noexcept
 {
     const query::PackageKey package = this->query_package_key(module);
@@ -221,6 +249,12 @@ std::optional<query::GenericParamKey> SemanticAnalyzerCore::canonical_generic_pa
         return found->second;
     }
     return std::nullopt;
+}
+
+base::Result<query::CanonicalTypeKey> SemanticAnalyzerCore::checked_canonical_type_key(const TypeHandle type) const
+{
+    CheckedCanonicalTypeResolver resolver(*this);
+    return build_canonical_type_key(this->state_.checked.types, type, resolver);
 }
 
 query::ParamEnvKey SemanticAnalyzerCore::generic_param_env_key(const GenericTemplateInfo& info) const

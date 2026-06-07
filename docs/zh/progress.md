@@ -15,12 +15,25 @@ M8a 新增 `TraitObjectTypeKey`、`VTableLayoutKey` 和 `TraitObjectCoercionKey`
 policy、principal trait、associated type member、嵌套 canonical type 和 key layout；query tests 覆盖稳定
 serialization/hash/debug、identity decode、associated equality 归一化和 malformed layout rejection。
 
+M8b/M8c frontend closure 已完成：lexer/parser/AST 接受 `dyn Trait`、qualified dyn trait、trait args 和
+associated equality；sema 产生 `TypeKind::trait_object`，并只允许 bare `dyn Trait` 作为 reference pointee 等
+显式 allowed context。object-callability 现在会诊断缺少 self receiver、非 `&Self` / `&mut Self` receiver、
+未约束 associated type、未知/重复 associated equality，以及不允许出现在可调用签名中的 unconstrained `Self`。
+显式约束的 `Self.Assoc` 会被 `dyn Trait[Assoc = Type]` 替换进 slot 签名。
+
+M8c 同步完成 borrowed dyn coercion 和 checked facts：`&T -> &dyn Trait`、`&mut T -> &mut dyn Trait` 会检查可见
+nominal impl 与 associated equality，一致时记录 `TraitObjectCoercionFact`、`VTableLayoutFact`、
+`TraitObjectMethodSlotFact` 和 `TraitObjectCallabilityFact`；dyn receiver method call 绑定为
+`TraitMethodDispatchKind::vtable_slot`，checked dump 会展示 slot ordinal、receiver access、vtable layout 和
+coercion fingerprint。CheckedModule copy/move/swap、stable fingerprint、TypeCheckBodyAuthority 和 query key
+路径均已纳入新 facts。
+
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 当前选择 **origin-bound erased view**：
-第一版只做 borrowed dyn view，目标 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /
-lifetime facts，以 checked vtable witness 做动态派发。本阶段继续不实现标准库，不实现 `Box<dyn Trait>`、
+第一版只做 borrowed dyn view，当前可用 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /
+lifetime facts，以 checked vtable witness 描述动态派发。本阶段继续不实现标准库，不实现 `Box<dyn Trait>`、
 allocator、owning existential container、dynamic Drop dispatch、supertrait upcasting 或多 trait object
-composition。M8a 当前只固定设计和 query 地基，不开放语言 surface；后续按 M8b syntax/sema、M8c
-borrowed dyn coercion、M8d IR/backend dispatch、M8e hardening 的顺序推进。
+composition。M8 当前已完成 M8a-M8c frontend/query 闭环；剩余按 M8d IR/backend dispatch、M8e hardening
+推进。
 
 2026-06-05：M7d-F tuple / index place-state closure 已完成 compiler-only 子集。本阶段继续不实现任何标准库。
 parser 现在接受匿名 tuple 数字字段访问：`pair.0` 和 `pair . 0` 都会进入普通 field expression；`pair.0f32`

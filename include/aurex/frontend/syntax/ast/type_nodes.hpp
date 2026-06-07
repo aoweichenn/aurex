@@ -62,6 +62,18 @@ struct FunctionTypePayload {
     TypeId return_type = INVALID_TYPE_ID;
 };
 
+struct DynTraitTypePayload {
+    std::string_view scope_name;
+    base::SourceRange scope_range{};
+    AstArenaVector<std::string_view> scope_parts;
+    std::string_view name;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    AstArenaVector<IdentId> scope_part_ids;
+    IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<TypeId> type_args;
+    AstArenaVector<AssociatedTypeConstraintDecl> associated_type_constraints;
+};
+
 struct TypeNodePayloadArena {
     TypeNodePayloadArena() = default;
 
@@ -73,7 +85,8 @@ struct TypeNodePayloadArena {
           arrays(base::BumpAllocatorAdapter<ArrayTypePayload>{arena}),
           slices(base::BumpAllocatorAdapter<SliceTypePayload>{arena}),
           tuples(base::BumpAllocatorAdapter<AstArenaVector<TypeId>>{arena}),
-          functions(base::BumpAllocatorAdapter<FunctionTypePayload>{arena})
+          functions(base::BumpAllocatorAdapter<FunctionTypePayload>{arena}),
+          dyn_traits(base::BumpAllocatorAdapter<DynTraitTypePayload>{arena})
     {
     }
 
@@ -87,6 +100,7 @@ struct TypeNodePayloadArena {
         this->slices.swap(other.slices);
         this->tuples.swap(other.tuples);
         this->functions.swap(other.functions);
+        this->dyn_traits.swap(other.dyn_traits);
     }
 
     AstArenaVector<PrimitiveTypeKind> primitives;
@@ -97,6 +111,7 @@ struct TypeNodePayloadArena {
     AstArenaVector<SliceTypePayload> slices;
     AstArenaVector<AstArenaVector<TypeId>> tuples;
     AstArenaVector<FunctionTypePayload> functions;
+    AstArenaVector<DynTraitTypePayload> dyn_traits;
 };
 
 class TypeNodeList final {

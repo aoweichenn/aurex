@@ -1436,6 +1436,74 @@ TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
+{
+    constexpr std::string_view source =
+        "module parser.dyn_traits;\n"
+        "type DrawRef = &dyn Draw;\n"
+        "type DrawMutRef = &mut dyn Draw;\n"
+        "type IterRef = &dyn core.iter.Iterator[i32, Item = i32, Error = bool];\n"
+        "fn render(drawable: &dyn Draw) -> i32 { return 0; }\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const draw_ref = find_item(module, "DrawRef");
+    ASSERT_NE(draw_ref, nullptr);
+    ASSERT_TRUE(syntax::is_valid(draw_ref->alias_type));
+    const syntax::TypeNode& draw_ref_type = module.types[draw_ref->alias_type.value];
+    ASSERT_EQ(draw_ref_type.kind, syntax::TypeKind::reference);
+    EXPECT_EQ(draw_ref_type.pointer_mutability, syntax::PointerMutability::const_);
+    ASSERT_TRUE(syntax::is_valid(draw_ref_type.pointee));
+    const syntax::TypeNode& draw_object = module.types[draw_ref_type.pointee.value];
+    ASSERT_EQ(draw_object.kind, syntax::TypeKind::dyn_trait);
+    EXPECT_EQ(draw_object.name, "Draw");
+    EXPECT_TRUE(draw_object.type_args.empty());
+    EXPECT_TRUE(draw_object.associated_type_constraints.empty());
+
+    const syntax::ItemNode* const draw_mut_ref = find_item(module, "DrawMutRef");
+    ASSERT_NE(draw_mut_ref, nullptr);
+    ASSERT_TRUE(syntax::is_valid(draw_mut_ref->alias_type));
+    const syntax::TypeNode& draw_mut_ref_type = module.types[draw_mut_ref->alias_type.value];
+    ASSERT_EQ(draw_mut_ref_type.kind, syntax::TypeKind::reference);
+    EXPECT_EQ(draw_mut_ref_type.pointer_mutability, syntax::PointerMutability::mut);
+    ASSERT_TRUE(syntax::is_valid(draw_mut_ref_type.pointee));
+    EXPECT_EQ(module.types[draw_mut_ref_type.pointee.value].kind, syntax::TypeKind::dyn_trait);
+
+    const syntax::ItemNode* const iter_ref = find_item(module, "IterRef");
+    ASSERT_NE(iter_ref, nullptr);
+    ASSERT_TRUE(syntax::is_valid(iter_ref->alias_type));
+    const syntax::TypeNode& iter_ref_type = module.types[iter_ref->alias_type.value];
+    ASSERT_EQ(iter_ref_type.kind, syntax::TypeKind::reference);
+    ASSERT_TRUE(syntax::is_valid(iter_ref_type.pointee));
+    const syntax::TypeNode& iter_object = module.types[iter_ref_type.pointee.value];
+    ASSERT_EQ(iter_object.kind, syntax::TypeKind::dyn_trait);
+    EXPECT_EQ(iter_object.name, "Iterator");
+    ASSERT_EQ(iter_object.scope_parts.size(), 2U);
+    EXPECT_EQ(iter_object.scope_parts[0], "core");
+    EXPECT_EQ(iter_object.scope_parts[1], "iter");
+    ASSERT_EQ(iter_object.type_args.size(), 1U);
+    EXPECT_EQ(module.types[iter_object.type_args.front().value].kind, syntax::TypeKind::primitive);
+    ASSERT_EQ(iter_object.associated_type_constraints.size(), 2U);
+    EXPECT_EQ(iter_object.associated_type_constraints[0].name, "Item");
+    EXPECT_EQ(iter_object.associated_type_constraints[1].name, "Error");
+
+    const syntax::ItemNode* const render = find_item(module, "render");
+    ASSERT_NE(render, nullptr);
+    ASSERT_EQ(render->params.size(), 1U);
+    const syntax::TypeNode& param_ref = module.types[render->params.front().type.value];
+    ASSERT_EQ(param_ref.kind, syntax::TypeKind::reference);
+    ASSERT_TRUE(syntax::is_valid(param_ref.pointee));
+    EXPECT_EQ(module.types[param_ref.pointee.value].kind, syntax::TypeKind::dyn_trait);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "alias &dyn Draw",
+            "alias &mut dyn Draw",
+            "alias &dyn core.iter.Iterator[i32, Item = i32, Error = bool]",
+            "param drawable : &dyn Draw",
+        });
+}
+
 TEST(CoreUnit, ParserRejectsEmptyTupleForms)
 {
     expect_parse_error("module parser.empty_tuple_type;\n"
@@ -2503,6 +2571,12 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators)
         "expected ',' or ']' after generic parameter");
     expect_parse_error("module parser.generic_type_arg_recovery;\n"
                        "type Bad = Pair[i32 bool];\n",
+        "expected ',' or ']' after generic type argument");
+    expect_parse_error("module parser.dyn_trait_empty_arg_recovery;\n"
+                       "type Bad = &dyn Draw[];\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.dyn_trait_arg_recovery;\n"
+                       "type Bad = &dyn Draw[i32 Item = i32];\n",
         "expected ',' or ']' after generic type argument");
     expect_parse_error("module parser.generic_expr_arg_recovery;\n"
                        "fn main() -> i32 { return id[i32 bool](1); }\n",
@@ -4099,6 +4173,9 @@ TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax)
     expect_parse_error("module parser.legacy_angle_type_args;\n"
                        "struct Pair[A, B] { first: A; second: B; }\n"
                        "type Bad = Pair<i32, bool>;\n",
+        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
+    expect_parse_error("module parser.legacy_angle_dyn_trait_args;\n"
+                       "type Bad = &dyn Draw<i32>;\n",
         "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
 }
 

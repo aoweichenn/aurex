@@ -461,6 +461,83 @@ bool SemanticAnalyzerCore::can_assign(
     return this->type_validator().can_assign(dst, src, value);
 }
 
+bool SemanticAnalyzerCore::can_borrowed_dyn_trait_coerce(const TypeHandle dst, const TypeHandle src) const noexcept
+{
+    if (!this->state_.checked.types.is_reference(dst) || !this->state_.checked.types.is_reference(src)) {
+        return false;
+    }
+    const TypeInfo& dst_ref = this->state_.checked.types.get(dst);
+    const TypeInfo& src_ref = this->state_.checked.types.get(src);
+    if (dst_ref.pointer_mutability == PointerMutability::mut
+        && src_ref.pointer_mutability != PointerMutability::mut) {
+        return false;
+    }
+    if (!is_valid(dst_ref.pointee) || dst_ref.pointee.value >= this->state_.checked.types.size()
+        || !is_valid(src_ref.pointee) || src_ref.pointee.value >= this->state_.checked.types.size()) {
+        return false;
+    }
+    const TypeInfo& object_info = this->state_.checked.types.get(dst_ref.pointee);
+    const TypeInfo& source_info = this->state_.checked.types.get(src_ref.pointee);
+    if (object_info.kind != TypeKind::trait_object || source_info.kind == TypeKind::trait_object) {
+        return false;
+    }
+    SemanticAnalyzerCore& mutable_core = const_cast<SemanticAnalyzerCore&>(*this);
+    return mutable_core.find_trait_object_impl(src_ref.pointee, object_info, {}, false) != nullptr;
+}
+
+void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const syntax::ExprId expr,
+    const TypeHandle from_type,
+    const TypeHandle to_type,
+    const base::SourceRange& range)
+{
+    if (!syntax::is_valid(expr) || !this->can_borrowed_dyn_trait_coerce(to_type, from_type)) {
+        return;
+    }
+    const TypeInfo& source_ref = this->state_.checked.types.get(from_type);
+    const TypeInfo& target_ref = this->state_.checked.types.get(to_type);
+    const TypeHandle concrete_type = source_ref.pointee;
+    const TypeHandle object_type = target_ref.pointee;
+    const TypeInfo& object_info = this->state_.checked.types.get(object_type);
+    const query::VTableLayoutKey layout = this->record_vtable_layout(concrete_type, object_type, range);
+    if (!query::is_valid(layout)) {
+        return;
+    }
+    base::Result<query::CanonicalTypeKey> source_key = this->checked_canonical_type_key(concrete_type);
+    if (!source_key) {
+        this->report_internal_contract(range, source_key.error().message);
+        return;
+    }
+    const query::TraitObjectBorrowKindKey borrow_kind = target_ref.pointer_mutability == PointerMutability::mut
+        ? query::TraitObjectBorrowKindKey::mut
+        : query::TraitObjectBorrowKindKey::shared;
+    const query::TraitObjectCoercionKey coercion_key = query::trait_object_coercion_key(source_key.take_value(),
+        object_info.trait_object_key.object_origin, object_info.trait_object_key, layout, borrow_kind);
+    if (!query::is_valid(coercion_key)) {
+        this->report_internal_contract(range, "failed to create borrowed dyn trait coercion key");
+        return;
+    }
+    this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
+    for (const TraitObjectCoercionFact& existing : this->state_.checked.trait_object_coercions) {
+        if (existing.expr.value == expr.value && existing.coercion_key == coercion_key) {
+            return;
+        }
+    }
+    TraitObjectCoercionFact fact = this->state_.checked.make_trait_object_coercion_fact();
+    fact.coercion_key = coercion_key;
+    fact.expr = expr;
+    fact.source_reference_type = from_type;
+    fact.target_reference_type = to_type;
+    fact.source_type = concrete_type;
+    fact.object_type = object_type;
+    fact.vtable_layout = layout;
+    fact.borrow_kind = borrow_kind;
+    fact.range = range;
+    fact.part_index = syntax::is_valid(this->state_.flow.current_item)
+        ? this->item_part_index(this->state_.flow.current_item)
+        : 0U;
+    this->state_.checked.trait_object_coercions.push_back(fact);
+}
+
 bool SemanticAnalyzerCore::is_valid_storage_type(const TypeHandle type) const
 {
     return this->type_validator().is_valid_storage_type(type);

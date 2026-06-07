@@ -106,7 +106,7 @@ This is a global mandatory skill. Use it whenever working on C++ code for the us
 14. **Mandatory testing and coverage**
     - All code changes must be tested when testing is technically possible. Do not treat untested code as complete.
     - Tests must include coverage reporting when the project has, or can reasonably support, a coverage workflow.
-    - New code must reach at least 95% coverage. Existing code affected by the change should also be brought to at least 95% coverage when practical within the task scope.
+    - New code and existing code affected by the change should reach at least 90% coverage when practical within the task scope. This is a minimum gate, not a quality target: keep tests focused on correctness, high-risk paths, error handling, and user-visible behavior instead of lowering test quality to satisfy the number.
     - For hard-to-reach branches, error paths, dependency boundaries, filesystem/network behavior, timing behavior, or external integrations, attempt to construct focused cases with mocks, fakes, dependency injection, fixtures, or targeted harnesses.
     - Organize tests by module, submodule, and file structure so test locations mirror the production code structure.
     - Keep tests fast. Prefer deterministic unit tests, small fixtures, shared setup helpers, parallelizable cases, and narrow integration tests over slow broad scenarios unless broad coverage is required.

@@ -386,6 +386,9 @@ syntax::TypeId TypeParser::parse_type_atom()
     if (this->check(TokenKind::l_paren)) {
         return this->parse_tuple_or_parenthesized_type();
     }
+    if (this->check(TokenKind::kw_dyn)) {
+        return this->parse_dyn_trait_type();
+    }
     if (is_primitive_type_token(this->peek().kind)) {
         return this->parse_primitive_type();
     }
@@ -435,6 +438,88 @@ syntax::TypeId TypeParser::parse_named_type()
         this->reject_legacy_angle_type_args();
     }
     return this->session_.module.push_type(type);
+}
+
+syntax::TypeId TypeParser::parse_dyn_trait_type()
+{
+    const syntax::Token& begin = this->expect(TokenKind::kw_dyn, std::string(PARSER_EXPECT_TYPE));
+    std::vector<syntax::Token> parts;
+    parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE)));
+    while (this->match(TokenKind::dot)) {
+        parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE)));
+    }
+
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::dyn_trait;
+    type.range = this->merge(begin.range, parts.back().range);
+    type.name = parts.back().text();
+    if (parts.size() > 1) {
+        type.scope_range = this->merge(parts.front().range, parts[parts.size() - 2].range);
+        type.scope_parts.reserve(parts.size() - 1);
+        for (base::usize i = 0; i + 1 < parts.size(); ++i) {
+            type.scope_parts.push_back(parts[i].text());
+        }
+        type.scope_name = type.scope_parts.front();
+    }
+
+    if (this->match(TokenKind::l_bracket)) {
+        const syntax::Token& args_begin = this->previous();
+        if (this->check(TokenKind::r_bracket)) {
+            this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
+        }
+        this->parse_dyn_trait_args(type);
+        const syntax::Token& end = this->expect_recovered_after(TokenKind::r_bracket,
+            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, args_begin);
+        type.range = this->merge(type.range, end.range);
+    } else if (this->check(TokenKind::less)) {
+        this->reject_legacy_angle_type_args();
+    }
+    return this->session_.module.push_type(std::move(type));
+}
+
+void TypeParser::parse_dyn_trait_args(syntax::TypeNode& type)
+{
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        if (this->check(TokenKind::identifier) && this->check_next(TokenKind::equal)) {
+            const syntax::Token& name = this->advance();
+            this->expect(TokenKind::equal, std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_EQUAL));
+            const syntax::TypeId value_type = this->parse_type();
+            syntax::AssociatedTypeConstraintDecl constraint;
+            constraint.name = name.text();
+            constraint.name_range = name.range;
+            constraint.value_type = value_type;
+            constraint.range = this->merge(name.range, this->type_range_or(value_type, name.range));
+            type.associated_type_constraints.push_back(std::move(constraint));
+        } else {
+            type.type_args.push_back(this->parse_type());
+        }
+        this->reset_panic();
+        if (!this->recover_dyn_trait_arg_separator()) {
+            break;
+        }
+    }
+}
+
+bool TypeParser::recover_dyn_trait_arg_separator() const
+{
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
+        this->synchronize(RecoveryContext::generic_type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type()

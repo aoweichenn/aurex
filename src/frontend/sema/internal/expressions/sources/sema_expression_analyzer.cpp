@@ -118,6 +118,20 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(
         return cached_type;
     }
     const TypeHandle analyzed = this->analyze_expr(expr_id, this->core_.expr_view(expr_id), expected_type);
+    if (is_valid(expected_type) && is_valid(analyzed)
+        && !this->core_.state_.checked.types.same(expected_type, analyzed)) {
+        const base::SourceRange range = this->core_.ctx_.module.exprs.range(expr_id.value);
+        if (this->core_.can_borrowed_dyn_trait_coerce(expected_type, analyzed)) {
+            const TypeHandle intrinsic =
+                is_valid(this->core_.cached_expr_intrinsic_type(expr_id))
+                ? this->core_.cached_expr_intrinsic_type(expr_id)
+                : analyzed;
+            this->core_.record_borrowed_dyn_trait_coercion_if_needed(expr_id, analyzed, expected_type, range);
+            this->core_.record_expr_expected_type(expr_id, expected_type);
+            return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
+        }
+        static_cast<void>(this->report_failed_borrowed_dyn_trait_coercion(expected_type, analyzed, range));
+    }
     if (!is_valid(this->core_.cached_expr_intrinsic_type(expr_id))) {
         const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(expr_id.value);
         if (!is_valid(expected_type) || !expr_kind_has_contextual_final_type(kind)) {
@@ -126,6 +140,33 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(
     }
     this->core_.record_expr_expected_type(expr_id, expected_type);
     return analyzed;
+}
+
+bool SemanticAnalyzerCore::ExpressionAnalyzer::report_failed_borrowed_dyn_trait_coercion(
+    const TypeHandle expected_type,
+    const TypeHandle analyzed_type,
+    const base::SourceRange& range)
+{
+    const TypeTable& types = this->core_.state_.checked.types;
+    if (!types.is_reference(expected_type) || !types.is_reference(analyzed_type)) {
+        return false;
+    }
+    const TypeInfo& expected_ref = types.get(expected_type);
+    const TypeInfo& analyzed_ref = types.get(analyzed_type);
+    if (expected_ref.pointer_mutability == PointerMutability::mut
+        && analyzed_ref.pointer_mutability != PointerMutability::mut) {
+        return false;
+    }
+    if (!is_valid(expected_ref.pointee) || expected_ref.pointee.value >= types.size()
+        || !is_valid(analyzed_ref.pointee) || analyzed_ref.pointee.value >= types.size()) {
+        return false;
+    }
+    const TypeInfo& object_info = types.get(expected_ref.pointee);
+    const TypeInfo& source_info = types.get(analyzed_ref.pointee);
+    if (object_info.kind != TypeKind::trait_object || source_info.kind == TypeKind::trait_object) {
+        return false;
+    }
+    return this->core_.find_trait_object_impl(analyzed_ref.pointee, object_info, range, true) == nullptr;
 }
 
 TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(

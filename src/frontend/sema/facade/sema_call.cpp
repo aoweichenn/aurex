@@ -719,6 +719,8 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         if (resolution.signature != nullptr) {
             binding.function_key = resolution.signature->semantic_key;
         }
+        binding.vtable_layout = resolution.vtable_layout;
+        binding.vtable_slot = resolution.vtable_slot;
         if (resolution.trait != nullptr) {
             binding.trait_module = resolution.trait->module;
             binding.trait_name_id = resolution.trait->name_id;
@@ -783,6 +785,31 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         TypeHandle owner_type = receiver_type;
         if (this->state_.checked.types.is_pointer(owner_type) || this->state_.checked.types.is_reference(owner_type)) {
             owner_type = this->state_.checked.types.get(owner_type).pointee;
+        }
+        if (is_valid(owner_type) && owner_type.value < this->state_.checked.types.size()
+            && this->state_.checked.types.get(owner_type).kind == TypeKind::trait_object) {
+            TraitMethodCallResolution dyn_resolution =
+                this->resolve_dyn_trait_method_call(owner_type, callee.field_name_id, callee.field_name, callee.range,
+                    false);
+            if (dyn_resolution.found) {
+                for (const TraitObjectCoercionFact& fact : this->state_.checked.trait_object_coercions) {
+                    if (fact.target_reference_type.value == receiver_type.value
+                        && fact.object_type.value == owner_type.value) {
+                        dyn_resolution.vtable_layout = fact.vtable_layout;
+                        break;
+                    }
+                }
+                return finish_trait_method_call(dyn_resolution, owner_type);
+            }
+            const TraitMethodCallResolution reported_dyn_resolution =
+                this->resolve_dyn_trait_method_call(owner_type, callee.field_name_id, callee.field_name, callee.range,
+                    true);
+            if (reported_dyn_resolution.found) {
+                return finish_trait_method_call(reported_dyn_resolution, owner_type);
+            }
+            if (reported_dyn_resolution.reported_failure) {
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
         }
         signature = this->find_method_in_visible_modules(
             owner_type, callee.field_name_id, callee.field_name, callee.range, true, false);

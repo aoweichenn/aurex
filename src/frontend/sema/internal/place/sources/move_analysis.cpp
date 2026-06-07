@@ -350,6 +350,7 @@ private:
                 case TypeKind::pointer:
                 case TypeKind::function:
                 case TypeKind::opaque_struct:
+                case TypeKind::trait_object:
                     break;
             }
         }

@@ -592,6 +592,7 @@ bool SemanticAnalyzerCore::DropCheckAnalyzer::type_can_contain_borrow(const Type
                 break;
             case TypeKind::pointer:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 break;
         }
     }

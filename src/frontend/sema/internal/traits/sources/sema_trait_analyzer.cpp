@@ -29,6 +29,8 @@ constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
 constexpr std::string_view SEMA_TRAIT_PREDICATE_ID_CONTEXT = "semantic trait predicate id";
 constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
 constexpr base::u64 SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER = 0x53454d4154525346ULL;
+constexpr std::string_view SEMA_DYN_TRAIT_SLOT_SCHEMA_TAG = "dyn-trait-slot-schema:v1";
+constexpr base::u32 SEMA_DYN_TRAIT_RECEIVER_PARAM_COUNT = 1;
 
 enum class TraitTypeSubstitutionActionKind {
     visit,
@@ -253,6 +255,7 @@ struct TraitTypeSubstitutionAction {
             case TypeKind::struct_:
             case TypeKind::enum_:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 values.push_back(action.type);
                 break;
         }
@@ -277,6 +280,176 @@ struct TraitTypeSubstitutionAction {
     }
     query::append_stable_key(writer, key.value());
     return base::Result<void>::ok();
+}
+
+void append_checked_canonical_type_or_display(SemanticAnalyzerCore& core,
+    query::StableKeyWriter& writer,
+    const TypeHandle type)
+{
+    base::Result<query::CanonicalTypeKey> key = core.checked_canonical_type_key(type);
+    writer.write_bool(static_cast<bool>(key));
+    if (key) {
+        query::append_stable_key(writer, key.value());
+    } else {
+        writer.write_string(core.state_.checked.types.display_name(type));
+    }
+}
+
+[[nodiscard]] bool dyn_trait_type_is_self_param(const TypeTable& types, const TypeHandle type) noexcept
+{
+    if (!is_valid(type) || type.value >= types.size()) {
+        return false;
+    }
+    const TypeInfo& info = types.get(type);
+    return info.kind == TypeKind::generic_param
+        && info.generic_identity == generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME);
+}
+
+[[nodiscard]] bool dyn_trait_receiver_access(
+    const TypeTable& types, const TypeHandle type, ReceiverAccessKind& access) noexcept
+{
+    if (!is_valid(type) || type.value >= types.size()) {
+        return false;
+    }
+    const TypeInfo& info = types.get(type);
+    if (info.kind != TypeKind::reference || !dyn_trait_type_is_self_param(types, info.pointee)) {
+        return false;
+    }
+    access =
+        info.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_ : ReceiverAccessKind::shared;
+    return true;
+}
+
+[[nodiscard]] bool dyn_trait_associated_projection_is_constrained_self(
+    const TypeTable& types,
+    const TypeInfo& info,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities)
+{
+    return dyn_trait_type_is_self_param(types, info.associated_base)
+        && std::ranges::any_of(associated_equalities, [&](const TraitImplAssociatedTypeInfo& equality) {
+               return equality.member_key == info.associated_member;
+           });
+}
+
+[[nodiscard]] bool dyn_trait_type_has_unconstrained_self(
+    const TypeTable& types,
+    const TypeHandle type,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities)
+{
+    std::vector<TypeHandle> pending;
+    std::unordered_set<base::u32> visited;
+    pending.push_back(type);
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || current.value >= types.size() || !visited.insert(current.value).second) {
+            continue;
+        }
+        const TypeInfo& info = types.get(current);
+        switch (info.kind) {
+            case TypeKind::generic_param:
+                if (info.generic_identity == generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME)) {
+                    return true;
+                }
+                break;
+            case TypeKind::pointer:
+            case TypeKind::reference:
+                pending.push_back(info.pointee);
+                break;
+            case TypeKind::slice:
+                pending.push_back(info.slice_element);
+                break;
+            case TypeKind::array:
+                pending.push_back(info.array_element);
+                break;
+            case TypeKind::tuple:
+                for (const TypeHandle element : info.tuple_elements) {
+                    pending.push_back(element);
+                }
+                break;
+            case TypeKind::function:
+                pending.push_back(info.function_return);
+                for (const TypeHandle param : info.function_params) {
+                    pending.push_back(param);
+                }
+                break;
+            case TypeKind::associated_projection:
+                if (dyn_trait_associated_projection_is_constrained_self(types, info, associated_equalities)) {
+                    break;
+                }
+                pending.push_back(info.associated_base);
+                break;
+            case TypeKind::struct_:
+            case TypeKind::enum_:
+            case TypeKind::opaque_struct:
+                for (const TypeHandle arg : info.generic_args) {
+                    pending.push_back(arg);
+                }
+                break;
+            case TypeKind::trait_object:
+                for (const TypeHandle arg : info.trait_object_args) {
+                    pending.push_back(arg);
+                }
+                for (const TraitObjectAssociatedTypeEquality& equality :
+                    info.trait_object_associated_equalities) {
+                    pending.push_back(equality.value_type);
+                }
+                break;
+            case TypeKind::builtin:
+                break;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] const TraitImplAssociatedTypeInfo* dyn_trait_find_equality(
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const query::MemberKey member)
+{
+    const auto found = std::ranges::find_if(associated_equalities,
+        [&](const TraitImplAssociatedTypeInfo& equality) { return equality.member_key == member; });
+    return found == associated_equalities.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] bool dyn_trait_associated_equalities_match(const TypeTable& types,
+    const std::span<const TraitImplAssociatedTypeInfo> object_equalities,
+    const std::span<const TraitImplAssociatedTypeInfo> impl_equalities)
+{
+    for (const TraitImplAssociatedTypeInfo& object_equality : object_equalities) {
+        const TraitImplAssociatedTypeInfo* const impl_equality =
+            dyn_trait_find_equality(impl_equalities, object_equality.member_key);
+        if (impl_equality == nullptr || !types.same(object_equality.value_type, impl_equality->value_type)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] base::u32 dyn_trait_method_slot_count(const CheckedModule& checked,
+    const query::TraitObjectTypeKey& object_key) noexcept
+{
+    base::u32 count = 0;
+    for (const TraitObjectMethodSlotFact& fact : checked.trait_object_method_slots) {
+        if (fact.object_type_key == object_key && fact.slot != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
+            count = std::max(count, fact.slot + 1U);
+        }
+    }
+    return count;
+}
+
+[[nodiscard]] const TraitObjectMethodSlotFact* dyn_trait_method_slot_fact(const CheckedModule& checked,
+    const query::TraitObjectTypeKey& object_key, const IdentId method_name_id)
+{
+    for (const TraitObjectMethodSlotFact& fact : checked.trait_object_method_slots) {
+        if (fact.object_type_key == object_key && fact.method_name_id == method_name_id) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] base::u32 sema_part_index_or_zero(const SemanticAnalyzerCore& core) noexcept
+{
+    return syntax::is_valid(core.state_.flow.current_item) ? core.item_part_index(core.state_.flow.current_item) : 0U;
 }
 
 } // namespace
@@ -563,6 +736,204 @@ query::MemberKey SemanticAnalyzerCore::TraitAnalyzer::trait_associated_type_memb
     const TraitSignature& trait, const std::string_view name, const base::u32 ordinal) const noexcept
 {
     return query::member_key(this->trait_query_key(trait), query::MemberKind::associated_type, name, ordinal);
+}
+
+query::StableFingerprint128 SemanticAnalyzerCore::TraitAnalyzer::trait_object_slot_schema(
+    const TraitSignature& trait,
+    const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities) const
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_DYN_TRAIT_SLOT_SCHEMA_TAG);
+    query::append_stable_key(writer, this->trait_query_key(trait));
+    writer.write_u64(static_cast<base::u64>(trait_args.size()));
+    for (const TypeHandle arg : trait_args) {
+        append_checked_canonical_type_or_display(this->core_, writer, arg);
+    }
+    std::vector<const TraitImplAssociatedTypeInfo*> equalities;
+    equalities.reserve(associated_equalities.size());
+    for (const TraitImplAssociatedTypeInfo& equality : associated_equalities) {
+        equalities.push_back(&equality);
+    }
+    std::ranges::sort(equalities, [](const TraitImplAssociatedTypeInfo* lhs, const TraitImplAssociatedTypeInfo* rhs) {
+        return lhs->member_key.global_id < rhs->member_key.global_id;
+    });
+    writer.write_u64(static_cast<base::u64>(equalities.size()));
+    for (const TraitImplAssociatedTypeInfo* const equality : equalities) {
+        query::append_stable_key(writer, equality->member_key);
+        append_checked_canonical_type_or_display(this->core_, writer, equality->value_type);
+    }
+    std::vector<const TraitMethodRequirement*> requirements;
+    requirements.reserve(trait.requirements.size());
+    for (const TraitMethodRequirement& requirement : trait.requirements) {
+        requirements.push_back(&requirement);
+    }
+    std::ranges::sort(requirements, [](const TraitMethodRequirement* lhs, const TraitMethodRequirement* rhs) {
+        return lhs->ordinal < rhs->ordinal;
+    });
+    for (const TraitMethodRequirement* const requirement : requirements) {
+        ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+        if (!requirement->has_self_param || requirement->param_types.empty()
+            || !dyn_trait_receiver_access(this->core_.state_.checked.types, requirement->param_types.front(),
+                receiver_access)) {
+            continue;
+        }
+        bool uses_self_outside_receiver = dyn_trait_type_has_unconstrained_self(
+            this->core_.state_.checked.types, requirement->return_type, associated_equalities);
+        for (base::usize index = SEMA_DYN_TRAIT_RECEIVER_PARAM_COUNT; index < requirement->param_types.size();
+             ++index) {
+            uses_self_outside_receiver =
+                uses_self_outside_receiver
+                || dyn_trait_type_has_unconstrained_self(
+                    this->core_.state_.checked.types, requirement->param_types[index], associated_equalities);
+        }
+        if (uses_self_outside_receiver) {
+            continue;
+        }
+        writer.write_u32(requirement->ordinal);
+        writer.write_string(requirement->name);
+        writer.write_u8(static_cast<base::u8>(receiver_access));
+        writer.write_bool(requirement->is_unsafe);
+        writer.write_bool(requirement->is_variadic);
+        writer.write_u64(static_cast<base::u64>(requirement->param_types.size()));
+        for (const TypeHandle param : requirement->param_types) {
+            append_checked_canonical_type_or_display(this->core_, writer, param);
+        }
+        append_checked_canonical_type_or_display(this->core_, writer, requirement->return_type);
+    }
+    return writer.fingerprint();
+}
+
+bool SemanticAnalyzerCore::TraitAnalyzer::validate_trait_object_callability(const TraitSignature& trait,
+    const TypeHandle,
+    const std::span<const TypeHandle>,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    bool ok = true;
+    for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+        if (dyn_trait_find_equality(associated_equalities, associated_type.member_key) == nullptr) {
+            ok = false;
+            if (report_failure) {
+                this->core_.report_type(
+                    range, sema_dyn_trait_missing_associated_type_message(trait.name, associated_type.name));
+            }
+        }
+    }
+    for (const TraitMethodRequirement& requirement : trait.requirements) {
+        if (!requirement.has_self_param || requirement.param_types.empty()) {
+            ok = false;
+            if (report_failure) {
+                this->core_.report_type(
+                    requirement.range, sema_dyn_trait_method_requires_self_message(trait.name, requirement.name));
+            }
+            continue;
+        }
+        ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+        if (!dyn_trait_receiver_access(
+                this->core_.state_.checked.types, requirement.param_types.front(), receiver_access)) {
+            ok = false;
+            if (report_failure) {
+                this->core_.report_type(
+                    requirement.range, sema_dyn_trait_receiver_message(trait.name, requirement.name));
+            }
+            continue;
+        }
+        bool uses_self_outside_receiver = dyn_trait_type_has_unconstrained_self(
+            this->core_.state_.checked.types, requirement.return_type, associated_equalities);
+        for (base::usize index = SEMA_DYN_TRAIT_RECEIVER_PARAM_COUNT; index < requirement.param_types.size();
+             ++index) {
+            uses_self_outside_receiver =
+                uses_self_outside_receiver
+                || dyn_trait_type_has_unconstrained_self(
+                    this->core_.state_.checked.types, requirement.param_types[index], associated_equalities);
+        }
+        if (uses_self_outside_receiver) {
+            ok = false;
+            if (report_failure) {
+                this->core_.report_type(
+                    requirement.range, sema_dyn_trait_self_usage_message(trait.name, requirement.name));
+            }
+        }
+    }
+    return ok;
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::record_trait_object_callability(const TypeHandle object_type,
+    const TraitSignature& trait,
+    const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities,
+    const base::SourceRange& range)
+{
+    if (!is_valid(object_type) || object_type.value >= this->core_.state_.checked.types.size()) {
+        return;
+    }
+    const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
+    if (object_info.kind != TypeKind::trait_object || !query::is_valid(object_info.trait_object_key)) {
+        return;
+    }
+    if (std::ranges::any_of(this->core_.state_.checked.trait_object_callability,
+            [&](const TraitObjectCallabilityFact& fact) {
+                return fact.object_type_key == object_info.trait_object_key;
+            })) {
+        return;
+    }
+    if (!this->validate_trait_object_callability(trait, object_type, trait_args, associated_equalities, range, true)) {
+        return;
+    }
+    const query::StableFingerprint128 slot_schema =
+        this->trait_object_slot_schema(trait, trait_args, associated_equalities);
+    base::u32 slot = 0;
+    for (const TraitMethodRequirement& requirement : trait.requirements) {
+        ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+        if (!dyn_trait_receiver_access(
+                this->core_.state_.checked.types, requirement.param_types.front(), receiver_access)) {
+            continue;
+        }
+        bool uses_self_outside_receiver = dyn_trait_type_has_unconstrained_self(
+            this->core_.state_.checked.types, requirement.return_type, associated_equalities);
+        for (base::usize index = SEMA_DYN_TRAIT_RECEIVER_PARAM_COUNT; index < requirement.param_types.size();
+             ++index) {
+            uses_self_outside_receiver =
+                uses_self_outside_receiver
+                || dyn_trait_type_has_unconstrained_self(
+                    this->core_.state_.checked.types, requirement.param_types[index], associated_equalities);
+        }
+        if (uses_self_outside_receiver) {
+            continue;
+        }
+        TraitObjectMethodSlotFact fact = this->core_.state_.checked.make_trait_object_method_slot_fact();
+        fact.object_type_key = object_info.trait_object_key;
+        fact.object_type = object_type;
+        fact.trait_module = trait.module;
+        fact.trait_name_id = trait.name_id;
+        fact.method_name = this->core_.state_.checked.intern_text(requirement.name);
+        fact.method_name_id = requirement.name_id;
+        fact.requirement_ordinal = requirement.ordinal;
+        fact.slot = slot;
+        fact.receiver_type = this->substitute_requirement_type(
+            requirement.param_types.front(), object_type, trait_args, trait, associated_equalities);
+        fact.return_type = this->substitute_requirement_type(
+            requirement.return_type, object_type, trait_args, trait, associated_equalities);
+        fact.receiver_access = receiver_access;
+        fact.slot_schema = slot_schema;
+        fact.range = requirement.range;
+        fact.part_index = sema_part_index_or_zero(this->core_);
+        this->core_.state_.checked.trait_object_method_slots.push_back(fact);
+        ++slot;
+    }
+    TraitObjectCallabilityFact callability = this->core_.state_.checked.make_trait_object_callability_fact();
+    callability.object_type_key = object_info.trait_object_key;
+    callability.object_type = object_type;
+    callability.trait_module = trait.module;
+    callability.trait_name_id = trait.name_id;
+    callability.trait_name = this->core_.state_.checked.intern_text(trait.name);
+    callability.method_slot_count = slot;
+    callability.slot_schema = slot_schema;
+    callability.range = range;
+    callability.part_index = sema_part_index_or_zero(this->core_);
+    this->core_.state_.checked.trait_object_callability.push_back(callability);
 }
 
 const TraitAssociatedTypeRequirement* SemanticAnalyzerCore::TraitAnalyzer::find_trait_associated_type_requirement(
@@ -1740,6 +2111,184 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnaly
     return {};
 }
 
+const TraitImplInfo* SemanticAnalyzerCore::TraitAnalyzer::find_trait_object_impl(const TypeHandle concrete_type,
+    const TypeInfo& object_info,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    if (!is_valid(concrete_type) || object_info.kind != TypeKind::trait_object) {
+        return nullptr;
+    }
+    const TraitImplInfo* result = nullptr;
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        if (impl.trait_module.value != object_info.trait_object_module.value
+            || impl.trait_name_id != object_info.trait_object_name_id
+            || !this->core_.state_.checked.types.same(impl.self_type, concrete_type)
+            || impl.trait_args.size() != object_info.trait_object_args.size()) {
+            continue;
+        }
+        bool args_match = true;
+        for (base::usize index = 0; index < impl.trait_args.size(); ++index) {
+            args_match = args_match
+                && this->core_.state_.checked.types.same(impl.trait_args[index], object_info.trait_object_args[index]);
+        }
+        if (!args_match) {
+            continue;
+        }
+        std::vector<TraitImplAssociatedTypeInfo> object_equalities;
+        object_equalities.reserve(object_info.trait_object_associated_equalities.size());
+        for (const TraitObjectAssociatedTypeEquality& equality : object_info.trait_object_associated_equalities) {
+            TraitImplAssociatedTypeInfo info = this->core_.state_.checked.make_trait_impl_associated_type_info();
+            info.name = equality.name;
+            info.name_id = equality.name.id;
+            info.value_type = equality.value_type;
+            info.member_key = equality.associated_member;
+            object_equalities.push_back(info);
+        }
+        if (!dyn_trait_associated_equalities_match(
+                this->core_.state_.checked.types, object_equalities, impl.associated_types)) {
+            continue;
+        }
+        if (result != nullptr) {
+            if (report_failure) {
+                const TraitSignature* const first_trait = this->trait_signature_for_impl(*result);
+                const TraitSignature* const second_trait = this->trait_signature_for_impl(impl);
+                this->core_.report_lookup(range,
+                    sema_ambiguous_trait_method_message(this->core_.state_.checked.types.display_name(concrete_type),
+                        object_info.trait_object_name,
+                        first_trait == nullptr ? result->trait_name.view()
+                                               : this->trait_display_name(*first_trait, result->trait_args),
+                        second_trait == nullptr ? impl.trait_name.view()
+                                                : this->trait_display_name(*second_trait, impl.trait_args)));
+            }
+            return nullptr;
+        }
+        result = &impl;
+    }
+    if (result == nullptr && report_failure) {
+        this->core_.report_type(range,
+            sema_dyn_trait_impl_missing_message(this->core_.state_.checked.types.display_name(concrete_type),
+                object_info.trait_object_name));
+    }
+    return result;
+}
+
+query::VTableLayoutKey SemanticAnalyzerCore::TraitAnalyzer::record_vtable_layout(const TypeHandle concrete_type,
+    const TypeHandle object_type,
+    const base::SourceRange& range)
+{
+    if (!is_valid(object_type) || object_type.value >= this->core_.state_.checked.types.size()) {
+        return {};
+    }
+    const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
+    if (object_info.kind != TypeKind::trait_object || !query::is_valid(object_info.trait_object_key)) {
+        return {};
+    }
+    const TraitImplInfo* const impl = this->find_trait_object_impl(concrete_type, object_info, range, true);
+    if (impl == nullptr) {
+        return {};
+    }
+    base::Result<query::CanonicalTypeKey> concrete_key = this->core_.checked_canonical_type_key(concrete_type);
+    if (!concrete_key) {
+        this->core_.report_internal_contract(range, concrete_key.error().message);
+        return {};
+    }
+    const base::u32 slot_count =
+        dyn_trait_method_slot_count(this->core_.state_.checked, object_info.trait_object_key);
+    const query::VTableLayoutKey layout = query::vtable_layout_key(concrete_key.take_value(),
+        object_info.trait_object_key, object_info.trait_object_key.object_callability_schema,
+        impl->coherence_fingerprint, slot_count);
+    if (!query::is_valid(layout)) {
+        this->core_.report_internal_contract(range, "failed to create dyn trait vtable layout key");
+        return {};
+    }
+    if (!std::ranges::any_of(this->core_.state_.checked.vtable_layouts, [&](const VTableLayoutFact& fact) {
+            return fact.layout_key == layout;
+        })) {
+        VTableLayoutFact fact = this->core_.state_.checked.make_vtable_layout_fact();
+        fact.layout_key = layout;
+        fact.concrete_type = concrete_type;
+        fact.object_type = object_type;
+        fact.impl_key = impl->key;
+        fact.impl_evidence = impl->coherence_fingerprint;
+        fact.method_slot_count = slot_count;
+        fact.range = range;
+        fact.part_index = sema_part_index_or_zero(this->core_);
+        this->core_.state_.checked.vtable_layouts.push_back(fact);
+    }
+    return layout;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHandle object_type,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    TraitMethodCallResolution resolution;
+    if (!is_valid(object_type) || object_type.value >= this->core_.state_.checked.types.size()) {
+        return resolution;
+    }
+    const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
+    if (object_info.kind != TypeKind::trait_object || !query::is_valid(object_info.trait_object_key)) {
+        return resolution;
+    }
+    const auto trait_found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+        object_info.trait_object_module.value,
+        object_info.trait_object_name_id,
+    });
+    if (trait_found == this->core_.state_.checked.traits.end()) {
+        return resolution;
+    }
+    const TraitSignature& trait = trait_found->second;
+    const TraitMethodRequirement* const requirement = this->find_trait_method_requirement(trait, name_id, true);
+    if (requirement == nullptr) {
+        if (report_failure) {
+            this->core_.report_lookup(range,
+                sema_trait_method_impl_missing_message(
+                    this->core_.state_.checked.types.display_name(object_type), name));
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
+    const TraitObjectMethodSlotFact* const slot_fact =
+        dyn_trait_method_slot_fact(this->core_.state_.checked, object_info.trait_object_key, name_id);
+    if (slot_fact == nullptr) {
+        if (report_failure) {
+            this->core_.report_type(range, sema_dyn_trait_receiver_message(trait.name, requirement->name));
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
+    std::vector<TraitImplAssociatedTypeInfo> associated_equalities;
+    associated_equalities.reserve(object_info.trait_object_associated_equalities.size());
+    for (const TraitObjectAssociatedTypeEquality& equality : object_info.trait_object_associated_equalities) {
+        TraitImplAssociatedTypeInfo info = this->core_.state_.checked.make_trait_impl_associated_type_info();
+        info.name = equality.name;
+        info.name_id = equality.name.id;
+        info.value_type = equality.value_type;
+        info.member_key = equality.associated_member;
+        associated_equalities.push_back(info);
+    }
+    resolution.trait = &trait;
+    resolution.requirement = requirement;
+    resolution.return_type =
+        this->substitute_requirement_type(requirement->return_type, object_type, object_info.trait_object_args, trait,
+            associated_equalities);
+    resolution.param_types.reserve(requirement->param_types.size());
+    for (const TypeHandle param : requirement->param_types) {
+        resolution.param_types.push_back(
+            this->substitute_requirement_type(param, object_type, object_info.trait_object_args, trait,
+                associated_equalities));
+    }
+    resolution.dispatch = TraitMethodDispatchKind::vtable_slot;
+    resolution.vtable_slot = slot_fact->slot;
+    resolution.found = true;
+    return resolution;
+}
+
 std::string SemanticAnalyzerCore::TraitAnalyzer::trait_display_name(
     const TraitSignature& trait, const std::span<const TypeHandle> trait_args) const
 {
@@ -2098,6 +2647,69 @@ const TraitSignature* SemanticAnalyzerCore::find_trait_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
     return TraitAnalyzer(*this).find_trait_in_visible_modules(name_id, name, range, report_unknown);
+}
+
+const TraitSignature* SemanticAnalyzerCore::find_trait_in_module(const syntax::ModuleId module,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange& range,
+    const bool report_unknown)
+{
+    return TraitAnalyzer(*this).find_trait_in_module(module, name_id, name, range, report_unknown);
+}
+
+query::DefKey SemanticAnalyzerCore::trait_query_key(const TraitSignature& trait) noexcept
+{
+    return TraitAnalyzer(*this).trait_query_key(trait);
+}
+
+query::StableFingerprint128 SemanticAnalyzerCore::trait_object_slot_schema(const TraitSignature& trait,
+    const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities) const
+{
+    return TraitAnalyzer(const_cast<SemanticAnalyzerCore&>(*this))
+        .trait_object_slot_schema(trait, trait_args, associated_equalities);
+}
+
+bool SemanticAnalyzerCore::validate_trait_object_callability(const TraitSignature& trait,
+    const TypeHandle object_type,
+    const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    return TraitAnalyzer(*this).validate_trait_object_callability(
+        trait, object_type, trait_args, associated_equalities, range, report_failure);
+}
+
+void SemanticAnalyzerCore::record_trait_object_callability(const TypeHandle object_type,
+    const TraitSignature& trait,
+    const std::span<const TypeHandle> trait_args,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities,
+    const base::SourceRange& range)
+{
+    TraitAnalyzer(*this).record_trait_object_callability(object_type, trait, trait_args, associated_equalities, range);
+}
+
+const TraitImplInfo* SemanticAnalyzerCore::find_trait_object_impl(const TypeHandle concrete_type,
+    const TypeInfo& object_info,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    return TraitAnalyzer(*this).find_trait_object_impl(concrete_type, object_info, range, report_failure);
+}
+
+query::VTableLayoutKey SemanticAnalyzerCore::record_vtable_layout(
+    const TypeHandle concrete_type, const TypeHandle object_type, const base::SourceRange& range)
+{
+    return TraitAnalyzer(*this).record_vtable_layout(concrete_type, object_type, range);
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::resolve_dyn_trait_method_call(
+    const TypeHandle object_type, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
+    const bool report_failure)
+{
+    return TraitAnalyzer(*this).resolve_dyn_trait_method_call(object_type, name_id, name, range, report_failure);
 }
 
 SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::resolve_trait_method_call(

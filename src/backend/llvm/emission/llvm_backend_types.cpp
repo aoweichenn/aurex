@@ -126,6 +126,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type)
                 continue;
             case sema::TypeKind::generic_param:
             case sema::TypeKind::associated_projection:
+            case sema::TypeKind::trait_object:
                 result = llvm::Type::getVoidTy(this->context_);
                 break;
         }

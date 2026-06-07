@@ -7,7 +7,7 @@ M8 主线已经开到 `m8` 分支，第一步调研设计基线记录在
 
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
 第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
-通过 checked vtable witness 做动态派发；不在 M8a 引入 owning dyn、`Box<dyn Trait>`、allocator、标准库、
+通过 checked vtable witness 描述动态派发；不在 M8 引入 owning dyn、`Box<dyn Trait>`、allocator、标准库、
 dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
 
 M8a query foundation 已完成：无语义形状的 `CanonicalTypeKind::trait_object` 占位已移除，并新增
@@ -15,13 +15,26 @@ M8a query foundation 已完成：无语义形状的 `CanonicalTypeKind::trait_ob
 trait object canonical key，必须包含 principal trait、trait args、associated equality、object origin/lifetime
 和 vtable layout identity，不能再用 0-child kind tag 表示“trait object”。
 
+M8b/M8c frontend/query closure 也已完成。当前语言层能写 `&dyn Trait`、`&mut dyn Trait`、
+`dyn Trait[Assoc = Type]` 这类 borrowed dyn view；sema 会做 object-callability 诊断，并在 `&T` / `&mut T`
+满足可见 nominal impl 时记录 borrowed dyn coercion、checked vtable layout、method slot 和 `vtable_slot` method
+binding。当前仍没有 IR trait object pack/extract、LLVM vtable global 或 indirect call，因此完整运行时动态派发
+属于下一步 M8d。
+
 当前建议路线：
 
 - M8a：已完成。设计基线与 query 地基已固定，错误占位已清理，不开放语言 surface。
-- M8b：`dyn Trait` syntax / sema type / object-callability diagnostics。
-- M8c：borrowed dyn coercion、checked vtable layout facts、`vtable_slot` method binding。
-- M8d：IR trait-object pack/extract/vtable-slot 和 LLVM backend indirect dispatch。
-- M8e：hardening 与 owning dyn / dynamic Drop / supertrait upcasting 后续评估。
+- M8b：已完成。`dyn Trait` syntax / sema type / object-callability diagnostics 已落地。
+- M8c：已完成。borrowed dyn coercion、checked vtable layout facts、`vtable_slot` method binding 已落地。
+- M8d：下一步。IR trait-object pack/extract/vtable-slot 和 LLVM backend indirect dispatch。
+- M8e：M8 收口。hardening、incremental/tooling/perf、default method slot 与 associated equality 边界补强。
+
+剩余代码量粗估：
+
+| 阶段 | 内容 | 预计新增/修改代码量 |
+| --- | --- | ---: |
+| M8d | IR pack/extract/vtable-slot、IR verifier、LLVM vtable global、indirect call lowering、execution tests | 2,800-4,200 行 |
+| M8e | hardening、incremental invalidation、tooling projection、default method slot 边界、associated equality 细节和 coverage 补洞 | 1,200-2,000 行 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 

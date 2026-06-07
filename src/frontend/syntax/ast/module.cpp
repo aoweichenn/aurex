@@ -463,6 +463,9 @@ void AstModule::intern_type_node(TypeNode& node)
     this->intern_identifier_list(node.scope_parts, node.scope_part_ids);
     this->intern_identifier_text(node.name, node.name_id);
     this->intern_identifier_list(node.reference_origin.names, node.reference_origin.name_ids);
+    for (AssociatedTypeConstraintDecl& constraint : node.associated_type_constraints) {
+        this->intern_identifier_text(constraint.name, constraint.name_id);
+    }
 }
 
 void AstModule::intern_name_expr_payload(NameExprPayload& payload)

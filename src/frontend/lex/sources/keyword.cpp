@@ -39,6 +39,7 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"enum", syntax::TokenKind::kw_enum},
     KeywordEntry{"type", syntax::TokenKind::kw_type},
     KeywordEntry{"impl", syntax::TokenKind::kw_impl},
+    KeywordEntry{"dyn", syntax::TokenKind::kw_dyn},
     KeywordEntry{"else", syntax::TokenKind::kw_else},
     KeywordEntry{"true", syntax::TokenKind::kw_true},
     KeywordEntry{"null", syntax::TokenKind::kw_null},

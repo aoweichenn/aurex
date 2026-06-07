@@ -262,6 +262,7 @@ bool SemanticAnalyzerCore::BorrowContractAnalyzer::type_can_contain_borrow(const
             case TypeKind::pointer:
             case TypeKind::function:
             case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
                 break;
         }
     }

@@ -2486,6 +2486,7 @@ bool SemanticAnalyzerCore::GenericAnalyzer::unify_generic_type(const TypeHandle 
             case TypeKind::builtin:
             case TypeKind::opaque_struct:
             case TypeKind::associated_projection:
+            case TypeKind::trait_object:
                 if (!this->core_.state_.checked.types.same(current_pattern, current_actual)) {
                     return false;
                 }
@@ -2645,6 +2646,15 @@ SemanticAnalyzerCore::GenericAnalyzer::generic_param_identities_in_type(const Ty
             case TypeKind::enum_:
                 for (const TypeHandle arg : type_info.generic_args) {
                     pending.push_back(arg);
+                }
+                break;
+            case TypeKind::trait_object:
+                for (const TypeHandle arg : type_info.trait_object_args) {
+                    pending.push_back(arg);
+                }
+                for (const TraitObjectAssociatedTypeEquality& equality :
+                    type_info.trait_object_associated_equalities) {
+                    pending.push_back(equality.value_type);
                 }
                 break;
             case TypeKind::builtin:
@@ -2862,6 +2872,14 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_contains_generic_param(const Ty
             case TypeKind::enum_:
                 for (const TypeHandle arg : info.generic_args) {
                     pending.push_back(arg);
+                }
+                break;
+            case TypeKind::trait_object:
+                for (const TypeHandle arg : info.trait_object_args) {
+                    pending.push_back(arg);
+                }
+                for (const TraitObjectAssociatedTypeEquality& equality : info.trait_object_associated_equalities) {
+                    pending.push_back(equality.value_type);
                 }
                 break;
             case TypeKind::builtin:

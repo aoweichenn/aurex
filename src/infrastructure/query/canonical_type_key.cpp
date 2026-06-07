@@ -37,6 +37,8 @@ constexpr base::usize QUERY_CANONICAL_TYPE_STACK_RESERVE = 16;
             return "const_arg";
         case CanonicalTypeKind::associated_type_projection:
             return "associated_type_projection";
+        case CanonicalTypeKind::trait_object_view:
+            return "trait_object_view";
     }
     return "invalid";
 }
@@ -48,7 +50,8 @@ constexpr base::usize QUERY_CANONICAL_TYPE_STACK_RESERVE = 16;
         && lhs.function_is_unsafe == rhs.function_is_unsafe && lhs.function_is_variadic == rhs.function_is_variadic
         && lhs.function_param_count == rhs.function_param_count && lhs.nominal_def == rhs.nominal_def
         && lhs.generic_param == rhs.generic_param && lhs.associated_member == rhs.associated_member
-        && lhs.const_value == rhs.const_value && lhs.children.size() == rhs.children.size();
+        && lhs.const_value == rhs.const_value && lhs.trait_object_identity == rhs.trait_object_identity
+        && lhs.children.size() == rhs.children.size();
 }
 
 void write_type_header(StableKeyWriter& writer, const CanonicalTypeKey& key)
@@ -84,6 +87,9 @@ void write_type_header(StableKeyWriter& writer, const CanonicalTypeKey& key)
             break;
         case CanonicalTypeKind::associated_type_projection:
             append_stable_key(writer, key.associated_member);
+            break;
+        case CanonicalTypeKind::trait_object_view:
+            writer.write_fingerprint(key.trait_object_identity);
             break;
         case CanonicalTypeKind::tuple:
         case CanonicalTypeKind::invalid:
@@ -244,6 +250,14 @@ CanonicalTypeKey canonical_associated_type_projection(CanonicalTypeKey base_type
     key.kind = CanonicalTypeKind::associated_type_projection;
     key.associated_member = associated_member;
     key.children.push_back(std::move(base_type));
+    return key;
+}
+
+CanonicalTypeKey canonical_trait_object_view(const StableFingerprint128 identity)
+{
+    CanonicalTypeKey key;
+    key.kind = CanonicalTypeKind::trait_object_view;
+    key.trait_object_identity = identity;
     return key;
 }
 

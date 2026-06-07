@@ -301,6 +301,7 @@ std::span<const base::u32> SemanticAnalyzerCore::DropCheckAnalyzer::concrete_ori
             case TypeKind::opaque_struct:
             case TypeKind::generic_param:
             case TypeKind::associated_projection:
+            case TypeKind::trait_object:
                 break;
         }
     }

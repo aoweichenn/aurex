@@ -337,6 +337,7 @@ enum class TraitMethodDispatchKind {
     param_env,
     impl_override,
     trait_default,
+    vtable_slot,
 };
 
 struct TraitPredicate {
@@ -396,17 +397,72 @@ struct TraitMethodCallBinding {
     query::StableFingerprint128 predicate_fingerprint;
     TraitImplLookupKey impl_key;
     FunctionLookupKey function_key;
+    query::VTableLayoutKey vtable_layout;
     syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
     IdentId trait_name_id = INVALID_IDENT_ID;
     InternedText method_name;
     IdentId method_name_id = INVALID_IDENT_ID;
     base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    base::u32 vtable_slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     TypeHandle receiver_type = INVALID_TYPE_HANDLE;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
     bool receiver_auto_borrow = false;
     bool receiver_two_phase_eligible = false;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitObjectMethodSlotFact {
+    query::TraitObjectTypeKey object_type_key;
+    TypeHandle object_type = INVALID_TYPE_HANDLE;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    InternedText method_name;
+    IdentId method_name_id = INVALID_IDENT_ID;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    base::u32 slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    query::StableFingerprint128 slot_schema;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitObjectCallabilityFact {
+    query::TraitObjectTypeKey object_type_key;
+    TypeHandle object_type = INVALID_TYPE_HANDLE;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    InternedText trait_name;
+    base::u32 method_slot_count = 0;
+    query::StableFingerprint128 slot_schema;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct VTableLayoutFact {
+    query::VTableLayoutKey layout_key;
+    TypeHandle concrete_type = INVALID_TYPE_HANDLE;
+    TypeHandle object_type = INVALID_TYPE_HANDLE;
+    TraitImplLookupKey impl_key;
+    query::StableFingerprint128 impl_evidence;
+    base::u32 method_slot_count = 0;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitObjectCoercionFact {
+    query::TraitObjectCoercionKey coercion_key;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    TypeHandle source_reference_type = INVALID_TYPE_HANDLE;
+    TypeHandle target_reference_type = INVALID_TYPE_HANDLE;
+    TypeHandle source_type = INVALID_TYPE_HANDLE;
+    TypeHandle object_type = INVALID_TYPE_HANDLE;
+    query::VTableLayoutKey vtable_layout;
+    query::TraitObjectBorrowKindKey borrow_kind = query::TraitObjectBorrowKindKey::shared;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -768,6 +824,10 @@ using TraitObligationList = SemaVector<TraitObligation>;
 using TraitEvidenceList = SemaVector<TraitEvidence>;
 using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
 using FunctionCallBindingList = SemaVector<FunctionCallBinding>;
+using TraitObjectMethodSlotFactList = SemaVector<TraitObjectMethodSlotFact>;
+using TraitObjectCallabilityFactList = SemaVector<TraitObjectCallabilityFact>;
+using VTableLayoutFactList = SemaVector<VTableLayoutFact>;
+using TraitObjectCoercionFactList = SemaVector<TraitObjectCoercionFact>;
 using CallBindingExprIndexMap = SemaMap<base::u32, base::u32>;
 using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
 using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
@@ -1110,6 +1170,7 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] query::StableFingerprint128 checked_destructors_fingerprint(const CheckedModule& checked) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_place_state_facts_fingerprint(
     const FunctionPlaceStateFacts& facts) noexcept;
+[[nodiscard]] query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& checked) noexcept;
 [[nodiscard]] std::string summarize_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts);
 [[nodiscard]] std::string dump_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts);
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
@@ -1121,6 +1182,7 @@ enum class CoercionKind {
     contextual_float_literal,
     null_to_pointer,
     slice_to_expected_slice,
+    borrowed_dyn_trait,
 };
 
 struct CoercionRecord {
@@ -1440,6 +1502,10 @@ public:
     TraitEvidenceList trait_evidence;
     TraitMethodCallBindingList trait_method_calls;
     FunctionCallBindingList function_calls;
+    TraitObjectMethodSlotFactList trait_object_method_slots;
+    TraitObjectCallabilityFactList trait_object_callability;
+    VTableLayoutFactList vtable_layouts;
+    TraitObjectCoercionFactList trait_object_coercions;
     CallBindingExprIndexMap trait_method_call_by_expr;
     CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;
@@ -1499,6 +1565,10 @@ public:
     [[nodiscard]] TraitEvidence make_trait_evidence() const;
     [[nodiscard]] TraitMethodCallBinding make_trait_method_call_binding() const;
     [[nodiscard]] FunctionCallBinding make_function_call_binding() const;
+    [[nodiscard]] TraitObjectMethodSlotFact make_trait_object_method_slot_fact() const;
+    [[nodiscard]] TraitObjectCallabilityFact make_trait_object_callability_fact() const;
+    [[nodiscard]] VTableLayoutFact make_vtable_layout_fact() const;
+    [[nodiscard]] TraitObjectCoercionFact make_trait_object_coercion_fact() const;
     [[nodiscard]] LifetimeOriginParamInfo clone_lifetime_origin_param(const LifetimeOriginParamInfo& other);
     [[nodiscard]] ReferenceOriginFact clone_reference_origin_fact(const ReferenceOriginFact& other);
     [[nodiscard]] TypeLifetimeInfo clone_type_lifetime_info(const TypeLifetimeInfo& other);
@@ -1538,6 +1608,13 @@ public:
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
     [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);
     [[nodiscard]] FunctionCallBinding clone_function_call_binding(const FunctionCallBinding& other) const;
+    [[nodiscard]] TraitObjectMethodSlotFact clone_trait_object_method_slot_fact(
+        const TraitObjectMethodSlotFact& other);
+    [[nodiscard]] TraitObjectCallabilityFact clone_trait_object_callability_fact(
+        const TraitObjectCallabilityFact& other);
+    [[nodiscard]] VTableLayoutFact clone_vtable_layout_fact(const VTableLayoutFact& other) const;
+    [[nodiscard]] TraitObjectCoercionFact clone_trait_object_coercion_fact(
+        const TraitObjectCoercionFact& other) const;
     [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;

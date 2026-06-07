@@ -24,6 +24,7 @@ constexpr std::string_view SEMA_FUNCTION_CALL_BINDING_ID_CONTEXT = "sema functio
 constexpr std::string_view SEMA_DESTRUCTOR_INFO_FINGERPRINT_MARKER = "sema.destructor.info.v1";
 constexpr std::string_view SEMA_DESTRUCTORS_FINGERPRINT_MARKER = "sema.destructors.v1";
 constexpr std::string_view SEMA_MOVE_REJECTION_FACTS_FINGERPRINT_MARKER = "sema.move_rejection.facts.v1";
+constexpr std::string_view SEMA_TRAIT_OBJECT_FACTS_FINGERPRINT_MARKER = "sema.trait_object.facts.v1";
 
 [[nodiscard]] std::size_t mix_trait_impl_hash(std::size_t hash, const std::uint64_t value) noexcept
 {
@@ -583,6 +584,10 @@ CheckedModule::CheckedModule()
       trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
       trait_method_calls(make_sema_vector<TraitMethodCallBinding>(*this->arena_)),
       function_calls(make_sema_vector<FunctionCallBinding>(*this->arena_)),
+      trait_object_method_slots(make_sema_vector<TraitObjectMethodSlotFact>(*this->arena_)),
+      trait_object_callability(make_sema_vector<TraitObjectCallabilityFact>(*this->arena_)),
+      vtable_layouts(make_sema_vector<VTableLayoutFact>(*this->arena_)),
+      trait_object_coercions(make_sema_vector<TraitObjectCoercionFact>(*this->arena_)),
       trait_method_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       function_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       borrow_summaries(make_sema_map<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>(
@@ -646,6 +651,10 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
       trait_method_calls(std::move(other.trait_method_calls)), function_calls(std::move(other.function_calls)),
+      trait_object_method_slots(std::move(other.trait_object_method_slots)),
+      trait_object_callability(std::move(other.trait_object_callability)),
+      vtable_layouts(std::move(other.vtable_layouts)),
+      trait_object_coercions(std::move(other.trait_object_coercions)),
       trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
@@ -724,6 +733,10 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_evidence.swap(other.trait_evidence);
     this->trait_method_calls.swap(other.trait_method_calls);
     this->function_calls.swap(other.function_calls);
+    this->trait_object_method_slots.swap(other.trait_object_method_slots);
+    this->trait_object_callability.swap(other.trait_object_callability);
+    this->vtable_layouts.swap(other.vtable_layouts);
+    this->trait_object_coercions.swap(other.trait_object_coercions);
     this->trait_method_call_by_expr.swap(other.trait_method_call_by_expr);
     this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
@@ -843,6 +856,26 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->function_call_by_expr.reserve(other.function_calls.size());
     for (const FunctionCallBinding& binding : other.function_calls) {
         this->append_function_call_binding(this->clone_function_call_binding(binding));
+    }
+    this->trait_object_method_slots.clear();
+    this->trait_object_method_slots.reserve(other.trait_object_method_slots.size());
+    for (const TraitObjectMethodSlotFact& fact : other.trait_object_method_slots) {
+        this->trait_object_method_slots.push_back(this->clone_trait_object_method_slot_fact(fact));
+    }
+    this->trait_object_callability.clear();
+    this->trait_object_callability.reserve(other.trait_object_callability.size());
+    for (const TraitObjectCallabilityFact& fact : other.trait_object_callability) {
+        this->trait_object_callability.push_back(this->clone_trait_object_callability_fact(fact));
+    }
+    this->vtable_layouts.clear();
+    this->vtable_layouts.reserve(other.vtable_layouts.size());
+    for (const VTableLayoutFact& fact : other.vtable_layouts) {
+        this->vtable_layouts.push_back(this->clone_vtable_layout_fact(fact));
+    }
+    this->trait_object_coercions.clear();
+    this->trait_object_coercions.reserve(other.trait_object_coercions.size());
+    for (const TraitObjectCoercionFact& fact : other.trait_object_coercions) {
+        this->trait_object_coercions.push_back(this->clone_trait_object_coercion_fact(fact));
     }
     this->borrow_summaries.clear();
     this->borrow_summaries.reserve(other.borrow_summaries.size());
@@ -1079,6 +1112,26 @@ TraitMethodCallBinding CheckedModule::make_trait_method_call_binding() const
 }
 
 FunctionCallBinding CheckedModule::make_function_call_binding() const
+{
+    return {};
+}
+
+TraitObjectMethodSlotFact CheckedModule::make_trait_object_method_slot_fact() const
+{
+    return {};
+}
+
+TraitObjectCallabilityFact CheckedModule::make_trait_object_callability_fact() const
+{
+    return {};
+}
+
+VTableLayoutFact CheckedModule::make_vtable_layout_fact() const
+{
+    return {};
+}
+
+TraitObjectCoercionFact CheckedModule::make_trait_object_coercion_fact() const
 {
     return {};
 }
@@ -1428,6 +1481,33 @@ FunctionCallBinding CheckedModule::clone_function_call_binding(const FunctionCal
     return other;
 }
 
+TraitObjectMethodSlotFact CheckedModule::clone_trait_object_method_slot_fact(
+    const TraitObjectMethodSlotFact& other)
+{
+    TraitObjectMethodSlotFact copy = other;
+    copy.method_name = this->intern_text(other.method_name);
+    return copy;
+}
+
+TraitObjectCallabilityFact CheckedModule::clone_trait_object_callability_fact(
+    const TraitObjectCallabilityFact& other)
+{
+    TraitObjectCallabilityFact copy = other;
+    copy.trait_name = this->intern_text(other.trait_name);
+    return copy;
+}
+
+VTableLayoutFact CheckedModule::clone_vtable_layout_fact(const VTableLayoutFact& other) const
+{
+    return other;
+}
+
+TraitObjectCoercionFact CheckedModule::clone_trait_object_coercion_fact(
+    const TraitObjectCoercionFact& other) const
+{
+    return other;
+}
+
 LifetimeOriginParamInfo CheckedModule::clone_lifetime_origin_param(const LifetimeOriginParamInfo& other)
 {
     LifetimeOriginParamInfo copy = other;
@@ -1612,6 +1692,59 @@ query::StableFingerprint128 checked_destructors_fingerprint(const CheckedModule&
     builder.mix_u64(static_cast<base::u64>(destructors.size()));
     for (const DestructorInfo* const info : destructors) {
         builder.mix_fingerprint(destructor_info_fingerprint(*info));
+    }
+    return builder.finish();
+}
+
+query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& checked) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_TRAIT_OBJECT_FACTS_FINGERPRINT_MARKER);
+    builder.mix_u64(static_cast<base::u64>(checked.trait_object_callability.size()));
+    for (const TraitObjectCallabilityFact& fact : checked.trait_object_callability) {
+        builder.mix_u64(fact.object_type_key.global_id);
+        builder.mix_u32(fact.object_type.value);
+        builder.mix_u32(fact.trait_module.value);
+        builder.mix_u32(fact.trait_name_id.value);
+        builder.mix_u32(fact.method_slot_count);
+        builder.mix_fingerprint(fact.slot_schema);
+    }
+    builder.mix_u64(static_cast<base::u64>(checked.trait_object_method_slots.size()));
+    for (const TraitObjectMethodSlotFact& fact : checked.trait_object_method_slots) {
+        builder.mix_u64(fact.object_type_key.global_id);
+        builder.mix_u32(fact.object_type.value);
+        builder.mix_u32(fact.trait_module.value);
+        builder.mix_u32(fact.trait_name_id.value);
+        builder.mix_u32(fact.method_name_id.value);
+        builder.mix_u32(fact.requirement_ordinal);
+        builder.mix_u32(fact.slot);
+        builder.mix_u32(fact.receiver_type.value);
+        builder.mix_u32(fact.return_type.value);
+        builder.mix_u8(static_cast<base::u8>(fact.receiver_access));
+        builder.mix_fingerprint(fact.slot_schema);
+    }
+    builder.mix_u64(static_cast<base::u64>(checked.vtable_layouts.size()));
+    for (const VTableLayoutFact& fact : checked.vtable_layouts) {
+        builder.mix_u64(fact.layout_key.global_id);
+        builder.mix_u32(fact.concrete_type.value);
+        builder.mix_u32(fact.object_type.value);
+        builder.mix_u32(fact.impl_key.trait_module);
+        builder.mix_u32(fact.impl_key.trait_name.value);
+        builder.mix_u32(fact.impl_key.self_type);
+        builder.mix_fingerprint(fact.impl_key.trait_args);
+        builder.mix_fingerprint(fact.impl_evidence);
+        builder.mix_u32(fact.method_slot_count);
+    }
+    builder.mix_u64(static_cast<base::u64>(checked.trait_object_coercions.size()));
+    for (const TraitObjectCoercionFact& fact : checked.trait_object_coercions) {
+        builder.mix_u64(fact.coercion_key.global_id);
+        builder.mix_u32(fact.expr.value);
+        builder.mix_u32(fact.source_reference_type.value);
+        builder.mix_u32(fact.target_reference_type.value);
+        builder.mix_u32(fact.source_type.value);
+        builder.mix_u32(fact.object_type.value);
+        builder.mix_u64(fact.vtable_layout.global_id);
+        builder.mix_u8(static_cast<base::u8>(fact.borrow_kind));
     }
     return builder.finish();
 }
@@ -1866,6 +1999,18 @@ void rebind_trait_method_call_binding_texts(
     rebind_interned_text(binding.method_name, from, to);
 }
 
+void rebind_trait_object_method_slot_fact_texts(
+    TraitObjectMethodSlotFact& fact, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(fact.method_name, from, to);
+}
+
+void rebind_trait_object_callability_fact_texts(
+    TraitObjectCallabilityFact& fact, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(fact.trait_name, from, to);
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -1893,6 +2038,12 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (TraitMethodCallBinding& binding : this->trait_method_calls) {
         rebind_trait_method_call_binding_texts(binding, from, to);
+    }
+    for (TraitObjectMethodSlotFact& fact : this->trait_object_method_slots) {
+        rebind_trait_object_method_slot_fact_texts(fact, from, to);
+    }
+    for (TraitObjectCallabilityFact& fact : this->trait_object_callability) {
+        rebind_trait_object_callability_fact_texts(fact, from, to);
     }
     for (LifetimeOriginParamInfo& origin_param : this->lifetime_origin_params) {
         rebind_interned_text(origin_param.name, from, to);
@@ -2163,6 +2314,8 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
             return "impl_override";
         case TraitMethodDispatchKind::trait_default:
             return "trait_default";
+        case TraitMethodDispatchKind::vtable_slot:
+            return "vtable_slot";
     }
     return "param_env";
 }
@@ -2224,6 +2377,15 @@ void populate_type_check_body_borrow_authority(
     if (!checked.destructors.empty()) {
         authority.has_destructor_facts = true;
         authority.destructor_fingerprint = checked_destructors_fingerprint(checked);
+    }
+    authority.trait_object_method_slot_count = static_cast<base::u64>(checked.trait_object_method_slots.size());
+    authority.trait_object_callability_count = static_cast<base::u64>(checked.trait_object_callability.size());
+    authority.vtable_layout_count = static_cast<base::u64>(checked.vtable_layouts.size());
+    authority.trait_object_coercion_count = static_cast<base::u64>(checked.trait_object_coercions.size());
+    if (authority.trait_object_method_slot_count != 0 || authority.trait_object_callability_count != 0
+        || authority.vtable_layout_count != 0 || authority.trait_object_coercion_count != 0) {
+        authority.has_trait_object_facts = true;
+        authority.trait_object_fingerprint = trait_object_facts_fingerprint(checked);
     }
     if (const auto summary = checked.borrow_summaries.find(function); summary != checked.borrow_summaries.end()) {
         authority.has_borrow_summary = true;
@@ -2614,10 +2776,67 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (binding.requirement_ordinal != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
             out << " requirement=" << binding.requirement_ordinal;
         }
+        if (binding.dispatch == TraitMethodDispatchKind::vtable_slot) {
+            out << " slot=" << binding.vtable_slot;
+            if (query::is_valid(binding.vtable_layout)) {
+                out << " vtable=" << query::debug_string(query::stable_key_fingerprint(binding.vtable_layout));
+            }
+        }
         out << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
             << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
             << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
         append_part_origin(out, show_parts, binding.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_object_callability " << checked.trait_object_callability.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_object_callability.size(); ++index) {
+        const TraitObjectCallabilityFact& fact = checked.trait_object_callability[index];
+        out << "    trait_object #" << index << " " << checked.types.display_name(fact.object_type)
+            << " slots=" << fact.method_slot_count
+            << " key=" << query::debug_string(query::stable_key_fingerprint(fact.object_type_key))
+            << " schema=" << query::debug_string(fact.slot_schema);
+        append_part_origin(out, show_parts, fact.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_object_method_slots " << checked.trait_object_method_slots.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_object_method_slots.size(); ++index) {
+        const TraitObjectMethodSlotFact& fact = checked.trait_object_method_slots[index];
+        out << "    slot #" << index << " " << checked.types.display_name(fact.object_type) << "."
+            << (fact.method_name.empty() ? std::string_view{"<invalid>"} : fact.method_name.view())
+            << " slot=" << fact.slot
+            << " requirement=" << fact.requirement_ordinal
+            << " receiver_access=" << receiver_access_kind_name(fact.receiver_access)
+            << " receiver=" << checked.types.display_name(fact.receiver_type)
+            << " return=" << checked.types.display_name(fact.return_type);
+        append_part_origin(out, show_parts, fact.part_index);
+        out << "\n";
+    }
+
+    out << "  vtable_layouts " << checked.vtable_layouts.size() << "\n";
+    for (base::usize index = 0; index < checked.vtable_layouts.size(); ++index) {
+        const VTableLayoutFact& fact = checked.vtable_layouts[index];
+        out << "    vtable #" << index << " " << checked.types.display_name(fact.concrete_type) << " as "
+            << checked.types.display_name(fact.object_type)
+            << " slots=" << fact.method_slot_count
+            << " key=" << query::debug_string(query::stable_key_fingerprint(fact.layout_key))
+            << " evidence=" << query::debug_string(fact.impl_evidence);
+        append_part_origin(out, show_parts, fact.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_object_coercions " << checked.trait_object_coercions.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_object_coercions.size(); ++index) {
+        const TraitObjectCoercionFact& fact = checked.trait_object_coercions[index];
+        out << "    dyn_coercion #" << index << " expr=e" << fact.expr.value << " "
+            << checked.types.display_name(fact.source_reference_type) << " -> "
+            << checked.types.display_name(fact.target_reference_type)
+            << " source=" << checked.types.display_name(fact.source_type)
+            << " object=" << checked.types.display_name(fact.object_type)
+            << " borrow=" << (fact.borrow_kind == query::TraitObjectBorrowKindKey::mut ? "mut" : "shared")
+            << " key=" << query::debug_string(query::stable_key_fingerprint(fact.coercion_key));
+        append_part_origin(out, show_parts, fact.part_index);
         out << "\n";
     }
 

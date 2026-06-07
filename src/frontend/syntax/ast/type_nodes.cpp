@@ -93,6 +93,7 @@ void TypeNodeList::reserve(const base::usize size)
     this->payloads_.slices.reserve(secondary);
     this->payloads_.tuples.reserve(secondary);
     this->payloads_.functions.reserve(secondary);
+    this->payloads_.dyn_traits.reserve(secondary);
 }
 
 void TypeNodeList::reserve_headers(const base::usize size)
@@ -192,6 +193,19 @@ base::u32 TypeNodeList::store_payload(const TypeNode& node)
                     this->copy_list(node.function_params),
                     node.function_return,
                 });
+        case TypeKind::dyn_trait:
+            return this->push_payload(this->payloads_.dyn_traits,
+                DynTraitTypePayload{
+                    node.scope_name,
+                    node.scope_range,
+                    this->copy_list(node.scope_parts),
+                    node.name,
+                    node.scope_name_id,
+                    this->copy_list(node.scope_part_ids),
+                    node.name_id,
+                    this->copy_list(node.type_args),
+                    this->copy_list(node.associated_type_constraints),
+                });
     }
     return UINT32_MAX;
 }
@@ -259,6 +273,19 @@ TypeNode TypeNodeList::load(const base::usize index) const
             node.function_return = payload.return_type;
             break;
         }
+        case TypeKind::dyn_trait: {
+            const DynTraitTypePayload& payload = this->payloads_.dyn_traits[header.payload];
+            node.scope_name = payload.scope_name;
+            node.scope_range = payload.scope_range;
+            node.scope_parts = copy_std_vector(payload.scope_parts);
+            node.name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
+            node.name_id = payload.name_id;
+            node.type_args = copy_std_vector(payload.type_args);
+            node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
+            break;
+        }
     }
     return node;
 }
@@ -324,6 +351,19 @@ TypeNode TypeNodeList::load_moved(const base::usize index)
             node.function_is_variadic = payload.is_variadic;
             node.function_params = copy_std_vector(payload.params);
             node.function_return = payload.return_type;
+            break;
+        }
+        case TypeKind::dyn_trait: {
+            DynTraitTypePayload& payload = this->payloads_.dyn_traits[header.payload];
+            node.scope_name = payload.scope_name;
+            node.scope_range = payload.scope_range;
+            node.scope_parts = copy_std_vector(payload.scope_parts);
+            node.name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
+            node.name_id = payload.name_id;
+            node.type_args = copy_std_vector(payload.type_args);
+            node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
             break;
         }
     }

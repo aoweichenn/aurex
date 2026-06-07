@@ -1,6 +1,8 @@
 #include <aurex/frontend/sema/sema_messages.hpp>
+#include <aurex/frontend/sema/canonical_type_builder.hpp>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <optional>
 #include <span>
@@ -44,6 +46,7 @@ enum class TypeResolveActionKind {
     build_slice,
     build_tuple,
     build_function,
+    build_dyn_trait,
 };
 
 struct TypeResolveAction {
@@ -57,6 +60,8 @@ struct TypeResolveAction {
     std::optional<base::u64> array_count{};
     base::usize tuple_element_count = 0;
     base::usize function_param_count = 0;
+    base::usize dyn_trait_arg_count = 0;
+    base::usize dyn_trait_associated_constraint_count = 0;
 };
 
 struct LayoutResult {
@@ -344,6 +349,28 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
                         values.push_back(resolved);
                         break;
                     }
+                    case syntax::TypeKind::dyn_trait: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_dyn_trait;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.dyn_trait_arg_count = type.type_args.size();
+                        build.dyn_trait_associated_constraint_count = type.associated_type_constraints.size();
+                        actions.push_back(build);
+                        for (base::usize index = type.type_args.size(); index > 0; --index) {
+                            TypeResolveAction resolve_arg;
+                            resolve_arg.kind = TypeResolveActionKind::resolve;
+                            resolve_arg.type = type.type_args[index - 1];
+                            actions.push_back(resolve_arg);
+                        }
+                        for (base::usize index = type.associated_type_constraints.size(); index > 0; --index) {
+                            TypeResolveAction resolve_value;
+                            resolve_value.kind = TypeResolveActionKind::resolve;
+                            resolve_value.type = type.associated_type_constraints[index - 1].value_type;
+                            actions.push_back(resolve_value);
+                        }
+                        break;
+                    }
                 }
                 break;
             }
@@ -359,7 +386,9 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
             case TypeResolveActionKind::build_reference: {
                 const TypeHandle pointee = values.back();
                 values.pop_back();
-                if (!this->core_.is_valid_storage_type(pointee)) {
+                const bool pointee_is_trait_object = is_valid(pointee)
+                    && this->core_.state_.checked.types.get(pointee).kind == TypeKind::trait_object;
+                if (!pointee_is_trait_object && !this->core_.is_valid_storage_type(pointee)) {
                     this->core_.report_general(
                         this->core_.ctx_.module.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
                 }
@@ -468,10 +497,185 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
                 values.push_back(resolved);
                 break;
             }
+            case TypeResolveActionKind::build_dyn_trait: {
+                std::vector<TypeHandle> trait_args(action.dyn_trait_arg_count, INVALID_TYPE_HANDLE);
+                for (base::usize index = action.dyn_trait_arg_count; index > 0; --index) {
+                    if (values.empty()) {
+                        break;
+                    }
+                    trait_args[index - 1] = values.back();
+                    values.pop_back();
+                }
+                std::vector<TypeHandle> associated_values(
+                    action.dyn_trait_associated_constraint_count, INVALID_TYPE_HANDLE);
+                for (base::usize index = action.dyn_trait_associated_constraint_count; index > 0; --index) {
+                    if (values.empty()) {
+                        break;
+                    }
+                    associated_values[index - 1] = values.back();
+                    values.pop_back();
+                }
+                const syntax::TypeNode& syntax_type = this->core_.ctx_.module.types[action.type.value];
+                const TypeHandle resolved =
+                    this->resolve_dyn_trait_type(action.type, syntax_type, trait_args, associated_values);
+                values.push_back(resolved);
+                break;
+            }
         }
     }
 
     const TypeHandle resolved = values.back();
+    this->core_.record_syntax_type_handle(type_id, resolved);
+    return resolved;
+}
+
+TypeHandle SemanticTypeResolver::resolve_dyn_trait_type(const syntax::TypeId type_id,
+    const syntax::TypeNode& type,
+    const std::span<const TypeHandle> resolved_args,
+    const std::span<const TypeHandle> associated_value_types)
+{
+    const bool qualified = !type.scope_parts.empty();
+    const TraitSignature* trait = nullptr;
+    if (qualified) {
+        const syntax::ModuleId module = this->core_.resolve_type_scope(type, true);
+        trait = this->core_.find_trait_in_module(module, type.name_id, type.name, type.range, true);
+    } else {
+        trait = this->core_.find_trait_in_visible_modules(type.name_id, type.name, type.range, true);
+    }
+    if (trait == nullptr) {
+        return INVALID_TYPE_HANDLE;
+    }
+
+    if (resolved_args.empty() && !trait->generic_params.empty()) {
+        this->core_.report_type(type.range,
+            sema_generic_argument_count_message("trait type arguments", trait->name, 0, trait->generic_params.size()));
+        return INVALID_TYPE_HANDLE;
+    }
+    if (!resolved_args.empty() && trait->generic_params.empty()) {
+        this->core_.report_type(type.range, sema_trait_not_generic_message(trait->name));
+        return INVALID_TYPE_HANDLE;
+    }
+    if (resolved_args.size() != trait->generic_params.size()) {
+        this->core_.report_type(type.range,
+            sema_generic_argument_count_message(
+                "trait type arguments", trait->name, resolved_args.size(), trait->generic_params.size()));
+        return INVALID_TYPE_HANDLE;
+    }
+    if (associated_value_types.size() != type.associated_type_constraints.size()) {
+        this->core_.report_internal_contract(type.range, "dyn trait associated equality value count mismatch");
+        return INVALID_TYPE_HANDLE;
+    }
+
+    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_equalities;
+    seen_equalities.reserve(type.associated_type_constraints.size());
+    std::vector<TraitImplAssociatedTypeInfo> associated_equalities;
+    associated_equalities.reserve(type.associated_type_constraints.size());
+    std::vector<TraitObjectAssociatedTypeEquality> object_equalities;
+    object_equalities.reserve(type.associated_type_constraints.size());
+    std::vector<query::TraitObjectAssociatedTypeEqualityKey> equality_keys;
+    equality_keys.reserve(type.associated_type_constraints.size());
+    bool ok = true;
+    for (base::usize index = 0; index < type.associated_type_constraints.size(); ++index) {
+        const syntax::AssociatedTypeConstraintDecl& constraint = type.associated_type_constraints[index];
+        const auto inserted = seen_equalities.emplace(constraint.name_id, constraint.name_range);
+        if (!inserted.second) {
+            this->core_.report_type(
+                constraint.range, sema_duplicate_associated_type_constraint_message(trait->name, constraint.name));
+            this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(constraint.name));
+            ok = false;
+            continue;
+        }
+        const auto requirement = std::ranges::find_if(trait->associated_types,
+            [&](const TraitAssociatedTypeRequirement& candidate) { return candidate.name_id == constraint.name_id; });
+        if (requirement == trait->associated_types.end()) {
+            this->core_.report_type(
+                constraint.range, sema_unknown_associated_type_constraint_message(trait->name, constraint.name));
+            ok = false;
+            continue;
+        }
+        TraitImplAssociatedTypeInfo equality = this->core_.state_.checked.make_trait_impl_associated_type_info();
+        equality.name = this->core_.source_name_text(constraint.name_id, constraint.name);
+        equality.name_id = constraint.name_id;
+        equality.syntax_type = constraint.value_type;
+        equality.value_type = associated_value_types[index];
+        equality.member_key = requirement->member_key;
+        equality.requirement_ordinal = requirement->ordinal;
+        associated_equalities.push_back(equality);
+
+        TraitObjectAssociatedTypeEquality object_equality;
+        object_equality.associated_member = requirement->member_key;
+        object_equality.name = this->core_.source_name_text(constraint.name_id, constraint.name);
+        object_equality.value_type = associated_value_types[index];
+        object_equalities.push_back(object_equality);
+
+        base::Result<query::CanonicalTypeKey> canonical_value =
+            this->core_.checked_canonical_type_key(associated_value_types[index]);
+        if (!canonical_value) {
+            this->core_.report_internal_contract(constraint.range, canonical_value.error().message);
+            ok = false;
+            continue;
+        }
+        equality_keys.push_back(query::TraitObjectAssociatedTypeEqualityKey{
+            requirement->member_key,
+            canonical_value.take_value(),
+        });
+    }
+
+    for (const TraitAssociatedTypeRequirement& requirement : trait->associated_types) {
+        if (!seen_equalities.contains(requirement.name_id)) {
+            this->core_.report_type(
+                type.range, sema_dyn_trait_missing_associated_type_message(trait->name, requirement.name));
+            ok = false;
+        }
+    }
+    if (!ok) {
+        return INVALID_TYPE_HANDLE;
+    }
+
+    std::vector<query::CanonicalTypeKey> canonical_args;
+    canonical_args.reserve(resolved_args.size());
+    for (const TypeHandle arg : resolved_args) {
+        base::Result<query::CanonicalTypeKey> canonical_arg = this->core_.checked_canonical_type_key(arg);
+        if (!canonical_arg) {
+            this->core_.report_internal_contract(type.range, canonical_arg.error().message);
+            return INVALID_TYPE_HANDLE;
+        }
+        canonical_args.push_back(canonical_arg.take_value());
+    }
+
+    const query::StableFingerprint128 slot_schema =
+        this->core_.trait_object_slot_schema(*trait, resolved_args, associated_equalities);
+    query::StableKeyWriter origin_writer;
+    origin_writer.write_string("dyn-trait-object-origin:v1");
+    query::append_stable_key(origin_writer, this->core_.trait_query_key(*trait));
+    origin_writer.write_u64(static_cast<base::u64>(canonical_args.size()));
+    for (const query::CanonicalTypeKey& arg : canonical_args) {
+        query::append_stable_key(origin_writer, arg);
+    }
+    std::ranges::sort(equality_keys, [](const query::TraitObjectAssociatedTypeEqualityKey& lhs,
+                                         const query::TraitObjectAssociatedTypeEqualityKey& rhs) {
+        if (lhs.associated_type.global_id != rhs.associated_type.global_id) {
+            return lhs.associated_type.global_id < rhs.associated_type.global_id;
+        }
+        return query::stable_serialize(lhs.value_type) < query::stable_serialize(rhs.value_type);
+    });
+    origin_writer.write_u64(static_cast<base::u64>(equality_keys.size()));
+    for (const query::TraitObjectAssociatedTypeEqualityKey& equality : equality_keys) {
+        query::append_stable_key(origin_writer, equality.associated_type);
+        query::append_stable_key(origin_writer, equality.value_type);
+    }
+    origin_writer.write_fingerprint(slot_schema);
+
+    const query::TraitObjectTypeKey key = query::trait_object_type_key(this->core_.trait_query_key(*trait),
+        canonical_args, equality_keys, origin_writer.fingerprint(), slot_schema);
+    const TypeHandle resolved = this->core_.state_.checked.types.trait_object(
+        key, trait->name, trait->module, trait->name_id, resolved_args, object_equalities);
+    if (!is_valid(resolved)) {
+        this->core_.report_internal_contract(type.range, "failed to create dyn trait object type");
+        return INVALID_TYPE_HANDLE;
+    }
+    this->core_.record_trait_object_callability(resolved, *trait, resolved_args, associated_equalities, type.range);
     this->core_.record_syntax_type_handle(type_id, resolved);
     return resolved;
 }
@@ -589,6 +793,9 @@ bool SemanticTypeValidator::can_assign(
     if (this->core_.state_.checked.types.is_reference(dst) && this->core_.state_.checked.types.is_reference(src)) {
         const TypeInfo& dst_info = this->core_.state_.checked.types.get(dst);
         const TypeInfo& src_info = this->core_.state_.checked.types.get(src);
+        if (this->core_.can_borrowed_dyn_trait_coerce(dst, src)) {
+            return true;
+        }
         if (!this->core_.state_.checked.types.same(dst_info.pointee, src_info.pointee)) {
             return false;
         }
@@ -624,11 +831,18 @@ bool SemanticTypeValidator::is_valid_storage_type(const TypeHandle type) const
         if (this->core_.state_.checked.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
             return false;
         }
+        if (info.kind == TypeKind::trait_object) {
+            return false;
+        }
         if (info.kind == TypeKind::slice) {
             pending.push_back(info.slice_element);
             continue;
         }
         if (info.kind == TypeKind::reference) {
+            if (is_valid(info.pointee)
+                && this->core_.state_.checked.types.get(info.pointee).kind == TypeKind::trait_object) {
+                continue;
+            }
             pending.push_back(info.pointee);
             continue;
         }
@@ -1189,6 +1403,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             case TypeKind::opaque_struct:
             case TypeKind::generic_param:
             case TypeKind::associated_projection:
+            case TypeKind::trait_object:
                 return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
         }
         return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
@@ -1205,7 +1420,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
                 || info.kind == TypeKind::slice || info.kind == TypeKind::function
                 || info.kind == TypeKind::generic_param || info.kind == TypeKind::associated_projection
-                || info.kind == TypeKind::opaque_struct) {
+                || info.kind == TypeKind::opaque_struct || info.kind == TypeKind::trait_object) {
                 stack.push_back(TypeLayoutFrame{dependency, {}, TypeLayoutFrameStage::enter});
                 return;
             }
@@ -1250,6 +1465,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             case TypeKind::generic_param:
             case TypeKind::opaque_struct:
             case TypeKind::associated_projection:
+            case TypeKind::trait_object:
                 break;
         }
     };

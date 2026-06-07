@@ -5848,6 +5848,60 @@ TEST(QueryUnit, TraitObjectQueryKeysRejectIncompleteOrMixedIdentities)
     EXPECT_FALSE(query::is_valid(query::vtable_layout_key(invalid_type, object_type, object_callability,
         query::stable_fingerprint("impl-evidence"), 1)));
 
+    query::TraitObjectTypeKey zero_global_object = object_type;
+    zero_global_object.global_id = 0;
+    EXPECT_FALSE(query::is_valid(zero_global_object));
+    EXPECT_NE(object_type, zero_global_object);
+
+    query::TraitObjectTypeKey invalid_abi_object = object_type;
+    invalid_abi_object.abi_policy = static_cast<query::TraitObjectAbiPolicyKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::is_valid(invalid_abi_object));
+    EXPECT_NE(object_type, invalid_abi_object);
+
+    query::VTableLayoutKey zero_global_vtable = vtable_layout;
+    zero_global_vtable.global_id = 0;
+    EXPECT_FALSE(query::is_valid(zero_global_vtable));
+    EXPECT_NE(vtable_layout, zero_global_vtable);
+
+    query::VTableLayoutKey invalid_schema_vtable = vtable_layout;
+    invalid_schema_vtable.schema = 0;
+    EXPECT_FALSE(query::is_valid(invalid_schema_vtable));
+    EXPECT_NE(vtable_layout, invalid_schema_vtable);
+
+    query::VTableLayoutKey invalid_abi_vtable = vtable_layout;
+    invalid_abi_vtable.abi_policy = static_cast<query::TraitObjectAbiPolicyKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::is_valid(invalid_abi_vtable));
+    EXPECT_NE(vtable_layout, invalid_abi_vtable);
+
+    query::VTableLayoutKey invalid_metadata_vtable = vtable_layout;
+    invalid_metadata_vtable.metadata_policy =
+        static_cast<query::TraitObjectMetadataPolicyKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::is_valid(invalid_metadata_vtable));
+    EXPECT_NE(vtable_layout, invalid_metadata_vtable);
+
+    query::VTableLayoutKey zero_impl_evidence_vtable = vtable_layout;
+    zero_impl_evidence_vtable.impl_evidence = {};
+    EXPECT_FALSE(query::is_valid(zero_impl_evidence_vtable));
+    EXPECT_NE(vtable_layout, zero_impl_evidence_vtable);
+
+    const query::TraitObjectCoercionKey coercion =
+        query_test_trait_object_coercion_key(concrete_type, object_type, vtable_layout);
+    query::TraitObjectCoercionKey zero_global_coercion = coercion;
+    zero_global_coercion.global_id = 0;
+    EXPECT_FALSE(query::is_valid(zero_global_coercion));
+    EXPECT_NE(coercion, zero_global_coercion);
+
+    query::TraitObjectCoercionKey invalid_schema_coercion = coercion;
+    invalid_schema_coercion.schema = 0;
+    EXPECT_FALSE(query::is_valid(invalid_schema_coercion));
+    EXPECT_NE(coercion, invalid_schema_coercion);
+
+    query::TraitObjectCoercionKey invalid_borrow_kind_coercion = coercion;
+    invalid_borrow_kind_coercion.borrow_kind =
+        static_cast<query::TraitObjectBorrowKindKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::is_valid(invalid_borrow_kind_coercion));
+    EXPECT_NE(coercion, invalid_borrow_kind_coercion);
+
     const query::CanonicalTypeKey other_source = query::canonical_builtin(query::BuiltinTypeKey::u8);
     EXPECT_FALSE(query::is_valid(query::trait_object_coercion_key(
         other_source, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared)));

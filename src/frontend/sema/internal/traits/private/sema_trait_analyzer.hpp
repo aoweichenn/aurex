@@ -18,6 +18,25 @@ public:
     void analyze_trait_default_method_bodies();
     [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] const TraitSignature* find_trait_in_module(syntax::ModuleId module, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] query::DefKey trait_query_key(const TraitSignature& trait) const noexcept;
+    [[nodiscard]] query::StableFingerprint128 trait_object_slot_schema(const TraitSignature& trait,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities) const;
+    [[nodiscard]] bool validate_trait_object_callability(const TraitSignature& trait, TypeHandle object_type,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range,
+        bool report_failure);
+    void record_trait_object_callability(TypeHandle object_type, const TraitSignature& trait,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range);
+    [[nodiscard]] const TraitImplInfo* find_trait_object_impl(
+        TypeHandle concrete_type, const TypeInfo& object_info, const base::SourceRange& range, bool report_failure);
+    [[nodiscard]] query::VTableLayoutKey record_vtable_layout(
+        TypeHandle concrete_type, TypeHandle object_type, const base::SourceRange& range);
+    [[nodiscard]] TraitMethodCallResolution resolve_dyn_trait_method_call(TypeHandle object_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool report_failure = true);
     [[nodiscard]] TraitMethodCallResolution resolve_trait_method_call(TypeHandle owner_type, IdentId name_id,
         std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure = true);
     [[nodiscard]] TypeHandle resolve_associated_type_projection(TypeHandle base_type, IdentId associated_name_id,
@@ -34,8 +53,6 @@ private:
     };
 
     void mark_trait_requirements(const syntax::ItemNode& item);
-    [[nodiscard]] const TraitSignature* find_trait_in_module(syntax::ModuleId module, IdentId name_id,
-        std::string_view name, const base::SourceRange& range, bool report_unknown = true);
     void resolve_trait_signature(TraitSignature& signature);
     [[nodiscard]] TraitMethodRequirement resolve_trait_requirement(const TraitSignature& trait,
         const syntax::ItemNode& requirement, syntax::ItemId requirement_id, base::u32 ordinal);
@@ -50,7 +67,6 @@ private:
         const TraitSignature& trait, const TraitMethodRequirement& requirement) const;
     void analyze_trait_default_method_body(
         const TraitSignature& trait, const TraitMethodRequirement& requirement, GenericContext& context);
-    [[nodiscard]] query::DefKey trait_query_key(const TraitSignature& trait) const noexcept;
     [[nodiscard]] query::MemberKey trait_associated_type_member_key(
         const TraitSignature& trait, std::string_view name, base::u32 ordinal) const noexcept;
     [[nodiscard]] const TraitAssociatedTypeRequirement* find_trait_associated_type_requirement(

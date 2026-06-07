@@ -162,6 +162,8 @@ public:
         const TraitImplInfo* impl = nullptr;
         const TraitPredicate* predicate = nullptr;
         const FunctionSignature* signature = nullptr;
+        query::VTableLayoutKey vtable_layout;
+        base::u32 vtable_slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
         std::vector<TypeHandle> param_types;
         TypeHandle return_type = INVALID_TYPE_HANDLE;
         TraitMethodDispatchKind dispatch = TraitMethodDispatchKind::param_env;
@@ -603,6 +605,25 @@ public:
     [[nodiscard]] CapabilitySet& capability_bucket(CapabilityIdentityMap& map, GenericParamIdentity key) const;
     [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] const TraitSignature* find_trait_in_module(syntax::ModuleId module, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] query::DefKey trait_query_key(const TraitSignature& trait) noexcept;
+    [[nodiscard]] query::StableFingerprint128 trait_object_slot_schema(const TraitSignature& trait,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities) const;
+    [[nodiscard]] bool validate_trait_object_callability(const TraitSignature& trait, TypeHandle object_type,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range,
+        bool report_failure);
+    void record_trait_object_callability(TypeHandle object_type, const TraitSignature& trait,
+        std::span<const TypeHandle> trait_args,
+        std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range);
+    [[nodiscard]] const TraitImplInfo* find_trait_object_impl(
+        TypeHandle concrete_type, const TypeInfo& object_info, const base::SourceRange& range, bool report_failure);
+    [[nodiscard]] query::VTableLayoutKey record_vtable_layout(
+        TypeHandle concrete_type, TypeHandle object_type, const base::SourceRange& range);
+    [[nodiscard]] TraitMethodCallResolution resolve_dyn_trait_method_call(TypeHandle object_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool report_failure = true);
     [[nodiscard]] TraitMethodCallResolution resolve_trait_method_call(TypeHandle owner_type, IdentId name_id,
         std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure = true);
     [[nodiscard]] TypeHandle resolve_associated_type_projection(TypeHandle base_type, IdentId associated_name_id,
@@ -871,6 +892,7 @@ public:
         TypeHandle handle, const TypeInfo& info) const;
     [[nodiscard]] std::optional<query::GenericParamKey> canonical_generic_param_query_key(
         const GenericTemplateInfo& owner, query::DefKey owner_key, const TypeInfo& info) const;
+    [[nodiscard]] base::Result<query::CanonicalTypeKey> checked_canonical_type_key(TypeHandle type) const;
     [[nodiscard]] query::ParamEnvKey generic_param_env_key(const GenericTemplateInfo& info) const;
     [[nodiscard]] base::Result<GenericInstanceIdentity> generic_instance_identity(
         const GenericTemplateInfo& info, std::span<const TypeHandle> args, query::DefNamespace name_space) const;
@@ -884,6 +906,9 @@ public:
     [[nodiscard]] base::Result<std::string> generic_type_alias_instance_signature_fingerprint(
         const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle target_type) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
+    [[nodiscard]] bool can_borrowed_dyn_trait_coerce(TypeHandle dst, TypeHandle src) const noexcept;
+    void record_borrowed_dyn_trait_coercion_if_needed(
+        syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     [[nodiscard]] bool check_m2_value_abi(
         TypeHandle type, ValueAbiContext context, const base::SourceRange& range) const;

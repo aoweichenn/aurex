@@ -15,6 +15,9 @@ public:
 private:
     [[nodiscard]] syntax::TypeId parse_type_atom();
     [[nodiscard]] syntax::TypeId parse_named_type();
+    [[nodiscard]] syntax::TypeId parse_dyn_trait_type();
+    void parse_dyn_trait_args(syntax::TypeNode& type);
+    [[nodiscard]] bool recover_dyn_trait_arg_separator() const;
     [[nodiscard]] syntax::TypeId parse_tuple_or_parenthesized_type();
     [[nodiscard]] bool recover_tuple_type_separator() const;
     [[nodiscard]] const syntax::Token& expect_tuple_type_end(const syntax::Token& opening) const;

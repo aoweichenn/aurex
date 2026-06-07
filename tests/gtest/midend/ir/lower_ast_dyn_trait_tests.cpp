@@ -3,6 +3,7 @@
 #include <aurex/frontend/parse/parser.hpp>
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/infrastructure/query/trait_object_key.hpp>
+#include <aurex/midend/ir/ir_dyn_abi_facts.hpp>
 #include <aurex/midend/ir/ir_dump.hpp>
 #include <aurex/midend/ir/ir_fingerprint.hpp>
 #include <aurex/midend/ir/lower_ast.hpp>
@@ -10,8 +11,10 @@
 
 #include <gtest/support/ir_test_helpers.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aurex::test {
 namespace {
@@ -38,6 +41,7 @@ struct DynTraitIrFixture {
     TypeHandle draw_function = sema::INVALID_TYPE_HANDLE;
     query::VTableLayoutKey layout_key;
     FunctionId draw_function_id = INVALID_FUNCTION_ID;
+    FunctionId fill_function_id = INVALID_FUNCTION_ID;
 };
 
 [[nodiscard]] syntax::AstModule parse_dyn_trait_lowering_source(const std::string_view source)
@@ -108,6 +112,17 @@ struct DynTraitIrFixture {
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] std::optional<query::FunctionDynAbiFacts> find_dyn_abi_facts_by_symbol_fragment(
+    const std::vector<query::FunctionDynAbiFacts>& facts, const std::string_view symbol_fragment)
+{
+    for (const query::FunctionDynAbiFacts& function_facts : facts) {
+        if (function_facts.symbol.find(symbol_fragment) != std::string::npos) {
+            return function_facts;
+        }
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] Value dyn_trait_typed_value(Module& module, const ValueKind kind, const TypeHandle type)
@@ -198,6 +213,41 @@ struct DynTraitIrFixture {
     return fixture;
 }
 
+void add_second_vtable_slot(DynTraitIrFixture& fixture)
+{
+    Function fill = make_function(fixture.module, "fill", fixture.i32);
+    fill.signature_params.push_back(function_param(fixture.module, "self", fixture.file_ref));
+    fill.signature_params.push_back(function_param(fixture.module, "amount", fixture.i32));
+    const ValueId self_param =
+        add_value(fixture.module, dyn_trait_typed_value(fixture.module, ValueKind::param, fixture.file_ref));
+    const ValueId amount_param =
+        add_value(fixture.module, dyn_trait_typed_value(fixture.module, ValueKind::param, fixture.i32));
+    fill.param_values.push_back(self_param);
+    fill.param_values.push_back(amount_param);
+    const BlockId fill_entry = add_block(fixture.module, fill, "entry");
+    fill.blocks[fill_entry.value].values.push_back(self_param);
+    fill.blocks[fill_entry.value].values.push_back(amount_param);
+    fill.blocks[fill_entry.value].terminator.kind = TerminatorKind::return_;
+    fill.blocks[fill_entry.value].terminator.value = amount_param;
+    fixture.fill_function_id = add_function(fixture.module, fill);
+
+    const TypeHandle fill_function =
+        fixture.module.types.function(sema::FunctionCallConv::aurex, false, {fixture.erased_data, fixture.i32},
+            fixture.i32);
+    fixture.module.trait_object_vtables.front().layout_key =
+        query::vtable_layout_key(test_nominal_type_key("dyn_ir", "File"), fixture.layout_key.object_type,
+            fixture.layout_key.slot_schema, fixture.layout_key.impl_evidence, 2U);
+    fixture.layout_key = fixture.module.trait_object_vtables.front().layout_key;
+    fixture.module.trait_object_vtables.front().method_slots.push_back(ir::TraitObjectVTableMethodSlot{
+        1U,
+        fixture.fill_function_id,
+        fill_function,
+        fixture.file_ref,
+        fixture.i32,
+        fixture.module.intern("fill"),
+    });
+}
+
 } // namespace
 
 TEST(CoreUnit, LowerAstDynTraitDynamicDispatchEmitsExplicitIrNodes)
@@ -260,6 +310,155 @@ TEST(CoreUnit, LowerAstDynTraitDynamicDispatchEmitsExplicitIrNodes)
             "vtable_slot",
             "layout=",
         });
+}
+
+TEST(CoreUnit, IrDynAbiFactsProjectFunctionLocalBorrowedDispatch)
+{
+    const std::string_view source =
+        "module ir_dyn_abi_facts;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn render(drawable: &dyn Draw) -> i32 {\n"
+        "  return drawable.draw();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 11 };\n"
+        "  let drawable: &dyn Draw = &file;\n"
+        "  return render(drawable);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    const std::vector<query::FunctionDynAbiFacts> all_facts = ir::function_dyn_abi_facts(fixture.ir);
+    const std::optional<query::FunctionDynAbiFacts> render_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "render");
+    ASSERT_TRUE(render_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*render_facts));
+    EXPECT_EQ(render_facts->objects.size(), 1U);
+    EXPECT_EQ(render_facts->vtables.size(), 1U);
+    EXPECT_EQ(render_facts->vtables.front().slots.size(), 1U);
+    EXPECT_EQ(render_facts->coercions.size(), 0U);
+    ASSERT_EQ(render_facts->dispatches.size(), 1U);
+    EXPECT_EQ(render_facts->dispatches.front().slot, 0U);
+    EXPECT_EQ(render_facts->dispatches.front().method_name, "draw");
+    EXPECT_TRUE(query::is_valid(render_facts->dispatches.front().layout));
+    EXPECT_TRUE(query::is_valid(render_facts->dispatches.front().object_type));
+    EXPECT_EQ(render_facts->vtables.front().abi_policy, query::DynAbiPolicy::borrowed_view_v1);
+    EXPECT_EQ(render_facts->vtables.front().metadata_policy, query::DynMetadataPolicy::borrowed_methods_only_v1);
+    EXPECT_EQ(render_facts->vtables.front().slots.front().method_name, "draw");
+    EXPECT_EQ(render_facts->fingerprint, query::function_dyn_abi_facts_fingerprint(*render_facts));
+
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->vtables.size(), 1U);
+    EXPECT_EQ(main_facts->dispatches.size(), 0U);
+    EXPECT_NE(main_facts->fingerprint, render_facts->fingerprint);
+
+    EXPECT_EQ(all_facts.size(), fixture.ir.functions.size());
+    EXPECT_FALSE(ir::function_dyn_abi_facts_by_symbol(fixture.ir, "missing").has_value());
+
+    const std::string summary = query::summarize_function_dyn_abi_facts(*render_facts);
+    EXPECT_NE(summary.find("abi=borrowed_view_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("metadata=borrowed_methods_only_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_dispatch=vtable_slot slot=0"), std::string::npos) << summary;
+    const std::string dump = query::dump_function_dyn_abi_facts(*render_facts);
+    EXPECT_NE(dump.find("dyn_vtable_slot slot=0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dispatch=vtable_slot"), std::string::npos) << dump;
+}
+
+TEST(CoreUnit, IrDynAbiFactsCoverDescriptorEdgesAndInvalidValues)
+{
+    DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();
+    add_second_vtable_slot(fixture);
+
+    Function caller = fixture.module.make_function();
+    caller.name = fixture.module.intern("anonymous_dyn_edges");
+    FunctionBuilder builder{fixture.module, caller};
+    const ValueId data = builder.add(dyn_trait_typed_value(fixture.module, ValueKind::param, fixture.file_ref));
+
+    Value missing_layout_pack = fixture.module.make_value();
+    missing_layout_pack.kind = ValueKind::trait_object_pack;
+    missing_layout_pack.type = fixture.draw_ref;
+    missing_layout_pack.lhs = data;
+    const ValueId missing_layout = builder.add(missing_layout_pack);
+
+    Value pack = fixture.module.make_value();
+    pack.kind = ValueKind::trait_object_pack;
+    pack.type = fixture.draw_ref;
+    pack.lhs = data;
+    pack.vtable_layout = fixture.layout_key;
+    const ValueId packed = builder.add(pack);
+
+    Value dyn_data = fixture.module.make_value();
+    dyn_data.kind = ValueKind::trait_object_data;
+    dyn_data.type = sema::TypeHandle{base::checked_u32(fixture.module.types.size() + 1U, "dyn abi test type")};
+    dyn_data.object = packed;
+    dyn_data.vtable_layout = fixture.layout_key;
+    const ValueId receiver_data = builder.add(dyn_data);
+
+    Value dyn_vtable = fixture.module.make_value();
+    dyn_vtable.kind = ValueKind::trait_object_vtable;
+    dyn_vtable.type = fixture.vtable_ptr;
+    dyn_vtable.object = packed;
+    dyn_vtable.vtable_layout = fixture.layout_key;
+    const ValueId vtable = builder.add(dyn_vtable);
+
+    Value first_slot = fixture.module.make_value();
+    first_slot.kind = ValueKind::vtable_slot;
+    first_slot.type = fixture.draw_function;
+    first_slot.object = vtable;
+    first_slot.vtable_layout = fixture.layout_key;
+    first_slot.vtable_slot = 1U;
+    const ValueId callee = builder.add(first_slot);
+
+    Value duplicate_slot = first_slot;
+    const ValueId duplicate_callee = builder.add(duplicate_slot);
+
+    Value missing_slot = first_slot;
+    missing_slot.vtable_slot = 3U;
+    const ValueId missing_callee = builder.add(missing_slot);
+
+    Value call = fixture.module.make_value();
+    call.kind = ValueKind::call;
+    call.type = fixture.i32;
+    call.object = callee;
+    call.args.push_back(receiver_data);
+    const ValueId result = builder.add(call);
+
+    const BlockId entry = builder.block("entry");
+    assign_ir_vector(caller.param_values, {data});
+    assign_ir_vector(caller.signature_params, {function_param(fixture.module, "data", fixture.file_ref)});
+    assign_ir_vector(caller.blocks[entry.value].values,
+        {data, missing_layout, packed, receiver_data, vtable, callee, duplicate_callee, missing_callee, result});
+    caller.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    caller.blocks[entry.value].terminator.value = result;
+    const FunctionId caller_id = add_function(fixture.module, caller);
+
+    const query::FunctionDynAbiFacts facts = ir::function_dyn_abi_facts(fixture.module,
+        fixture.module.functions[caller_id.value]);
+    EXPECT_TRUE(query::is_valid(facts));
+    EXPECT_TRUE(facts.symbol.empty());
+    EXPECT_EQ(facts.objects.size(), 1U);
+    ASSERT_EQ(facts.vtables.size(), 1U);
+    ASSERT_EQ(facts.vtables.front().slots.size(), 2U);
+    EXPECT_EQ(facts.vtables.front().slots[0].method_name, "draw");
+    EXPECT_EQ(facts.vtables.front().slots[1].method_name, "fill");
+    ASSERT_EQ(facts.dispatches.size(), 1U);
+    EXPECT_EQ(facts.dispatches.front().slot, 1U);
+    EXPECT_EQ(facts.dispatches.front().method_name, "fill");
+    EXPECT_EQ(facts.dispatches.front().function_type_name.find("fn("), 0U);
+
+    const std::string dump = query::dump_function_dyn_abi_facts(facts);
+    EXPECT_NE(dump.find("function=<anonymous>"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dyn_vtable_slot slot=1"), std::string::npos) << dump;
+    ASSERT_TRUE(ir::function_dyn_abi_facts_by_symbol(fixture.module, "").has_value());
+    ASSERT_TRUE(ir::function_dyn_abi_facts_by_symbol(fixture.module, "test_draw").has_value());
 }
 
 TEST(CoreUnit, LowerAstDynTraitDefaultMethodSlotBindsInstantiatedFunction)

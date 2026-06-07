@@ -26,6 +26,7 @@ struct LowerGenericInstanceIRQueryRequest {
     GenericInstanceKey key;
     QueryResultFingerprint ir;
     FunctionCleanupMarkerFacts cleanup_markers;
+    FunctionDynAbiFacts dyn_abi;
 };
 
 using QueryRequestInput = std::variant<ProjectGraphProviderInput, FileContentProviderInput, LexFileProviderInput,

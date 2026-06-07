@@ -10,6 +10,7 @@ add_library(aurex_sema
     src/frontend/sema/internal/declarations/sources/sema_generic_analyzer.cpp
     src/frontend/sema/generics/generic_instance_identity.cpp
     src/frontend/sema/checked/checked_module.cpp
+    src/frontend/sema/checked/checked_dyn_abi_facts.cpp
     src/frontend/sema/internal/core/sources/name_resolution.cpp
     src/frontend/sema/internal/borrow/sources/contract.cpp
     src/frontend/sema/internal/borrow/sources/summary.cpp

@@ -1,11 +1,12 @@
 # 下一步计划
 
-## 当前最高优先级：M9 Dyn ABI / Tooling 设计阶段
+## 当前最高优先级：M9c Advanced Dyn Design Gate
 
 M8 主线已经在 `m8` 分支完成 release closure，设计和实现基线记录在
 [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。M9 已从 `m9` 分支开启，第一阶段
-记录在 [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)。当前应继续推进 M9b
-ABI/tooling implementation，而不是继续在 M8 中追加语言语义。
+记录在 [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)。M9b ABI/tooling implementation
+已经完成；当前下一步应进入 M9c advanced dyn design gate，而不是继续在 M8 中追加语言语义，也不是把标准库塞进
+M9b。
 
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
 第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
@@ -32,21 +33,30 @@ runtime sample suite，缺失 associated equality 和缺失 nominal impl coercio
 
 M9 第一阶段命名为 **M9 Dyn ABI / Tooling Design Baseline**。它的目标是把 M8 已经能运行的 borrowed dyn
 dispatch 固化成可跨 backend、query/cache、IDE/tooling 和后续高级 dyn 设计复用的 ABI/metadata/diagnostic
-设计，而不是立即实现 owning dyn 或标准库。M9a 已完成设计基线文档和文档测试接入；M9 第一包的非目标保持明确：不实现标准库、`Box<dyn Trait>`、
+设计，而不是立即实现 owning dyn 或标准库。M9a 已完成设计基线文档和文档测试接入；M9b 已完成 DTO、adapter、
+query/cache 和 IDE/tooling implementation；M9 第一包的非目标保持明确：不实现标准库、`Box<dyn Trait>`、
 allocator、owning dyn、dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
 
-M9b 的下一步实现入口：
+M9b 已完成的实现入口：
 
-- 新增 library-independent dyn ABI DTO，表达 borrowed view object descriptor、vtable descriptor、slot descriptor
-  和 coercion descriptor。
+- 新增 library-independent dyn ABI DTO，表达 borrowed view object descriptor、vtable descriptor、slot descriptor、
+  coercion descriptor 和 dispatch descriptor。
 - 明确 metadata policy：当前只承认 `borrowed_methods_only_v1`，不隐式加入 drop/size/align/supertrait metadata。
-- 为 DTO 增加 stable serialize / fingerprint / debug / dump，并接入 query/cache invalidation。
+- 为 DTO 增加 validation、stable fingerprint、summary 和 dump，并接入 query/cache invalidation。
 - 将 checked vtable facts 和 IR `TraitObjectVTableLayout` 投影为 tooling semantic facts，IDE hover 可展示
   `abi=borrowed_view_v1`、`metadata=borrowed_methods_only_v1` 和 `dispatch=vtable_slot slot=N`。
-- 补 cross-module invalidation tests：trait signature、impl evidence、associated equality、coercion source range、
-  package/import identity 和 comment-only reuse。
-- 补 verifier/backend negative matrix：layout duplicate、slot mismatch、receiver ABI mismatch、fat-view type mismatch、
-  missing layout 和 invalid slot pointer type。
+- 补 focused invalidation / adapter tests：lower-function-IR result fingerprint 会响应 dyn ABI facts 变化；IR adapter
+  只投影函数 value closure 实际使用的 dyn ABI layout。
+- 补 verifier/backend negative matrix 中与当前 ABI facts 直接相关的 slot mismatch、layout/slot validation、dump
+  和 tooling projection 覆盖。
+
+M9c 的下一步设计入口：
+
+- 只做 advanced dyn design review 和小原型 gate，不自动实现标准库。
+- 研究 supertrait upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy、多 trait object
+  composition 是否进入后续阶段。
+- 必须先说明它们如何复用或扩展 M9b 的 `borrowed_view_v1` / `borrowed_methods_only_v1` facts，而不是复用同一个
+  vtable layout 偷偷扩展。
 
 当前建议路线：
 
@@ -62,7 +72,7 @@ M9b 的下一步实现入口：
 | --- | --- | ---: |
 | M8 follow-up | 已完成 release closure；后续不再追加 M8 语言语义 | 0-100 行 |
 | M9a design baseline | library-independent dyn ABI DTO、metadata/fingerprint schema、tooling/query projection 和 cross-module invalidation 设计；已完成 | 500-900 行文档/测试 |
-| M9b ABI/tooling implementation | dyn ABI DTO、tooling/query 投影、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
+| M9b ABI/tooling implementation | dyn ABI DTO、tooling/query 投影、lower-IR invalidation、focused negative verifier/backend tests；已完成 | 1,000-2,000 行 |
 | M9c advanced dyn design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
 | 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |
 

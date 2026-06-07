@@ -164,6 +164,7 @@ void evaluate_lower_function_ir_query_subject(query::QueryContext& context, cons
                 subject.body,
                 subject.ir,
                 subject.cleanup_markers,
+                subject.dyn_abi,
             };
             static_cast<void>(context.evaluate_lower_function_ir(input));
             return;
@@ -173,6 +174,7 @@ void evaluate_lower_function_ir_query_subject(query::QueryContext& context, cons
                 subject.generic_instance,
                 subject.ir,
                 subject.cleanup_markers,
+                subject.dyn_abi,
             };
             static_cast<void>(context.evaluate_lower_generic_instance_ir(input));
             return;

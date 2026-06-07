@@ -21,6 +21,7 @@
 
 #if defined(AUREX_TOOLING_ENABLE_IR_FACTS)
 #include <aurex/midend/ir/ir_cleanup_marker_facts.hpp>
+#include <aurex/midend/ir/ir_dyn_abi_facts.hpp>
 #include <aurex/midend/ir/lower_ast.hpp>
 #endif
 
@@ -63,6 +64,7 @@ constexpr std::string_view IDE_SEMANTIC_FACT_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_DROPCK_FACTS = "dropck_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_PLACE_STATE = "place_state";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
+constexpr std::string_view IDE_SEMANTIC_FACT_DYN_ABI_FACTS = "dyn_abi_facts";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM = "enum";
@@ -109,6 +111,8 @@ constexpr std::string_view IDE_DETAIL_MOVE_REJECTION_SEPARATOR = " move_rejectio
 constexpr std::string_view IDE_DETAIL_LIFETIME_SEPARATOR = " lifetime=";
 constexpr std::string_view IDE_DETAIL_PLACE_STATE_SEPARATOR = " place_state=";
 constexpr std::string_view IDE_DETAIL_CLEANUP_MARKER_SEPARATOR = " cleanup_markers=";
+constexpr std::string_view IDE_DETAIL_DYN_ABI_SEPARATOR = " dyn_abi=";
+constexpr std::string_view IDE_DETAIL_DYN_DISPATCH_SEPARATOR = " dyn_dispatch=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -994,15 +998,18 @@ void recover_resolved_fragment_source_part(
 }
 
 [[nodiscard]] query::QueryResultFingerprint lower_function_ir_input_fingerprint(const query::BodyKey key,
-    const query::QueryResultFingerprint type_check_result, const query::FunctionCleanupMarkerFacts& facts)
+    const query::QueryResultFingerprint type_check_result, const query::FunctionCleanupMarkerFacts& cleanup,
+    const query::FunctionDynAbiFacts& dyn_abi)
 {
     query::StableHashBuilder builder;
     builder.mix_string(IDE_LOWER_FUNCTION_IR_RESULT_MARKER);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(type_check_result.global_id);
     builder.mix_fingerprint(type_check_result.fingerprint);
-    builder.mix_string(facts.symbol);
-    builder.mix_fingerprint(query::function_cleanup_marker_facts_fingerprint(facts));
+    builder.mix_string(cleanup.symbol);
+    builder.mix_fingerprint(query::function_cleanup_marker_facts_fingerprint(cleanup));
+    builder.mix_string(dyn_abi.symbol);
+    builder.mix_fingerprint(query::function_dyn_abi_facts_fingerprint(dyn_abi));
     return query::query_result_fingerprint(builder.finish());
 }
 
@@ -1156,6 +1163,32 @@ void recover_resolved_fragment_source_part(
     return query::summarize_function_cleanup_marker_facts(facts);
 }
 
+[[nodiscard]] const query::FunctionDynAbiFacts* dyn_abi_facts_for_symbol(
+    const IdeSnapshot& snapshot, const std::string_view symbol) noexcept
+{
+    for (const query::FunctionDynAbiFacts& facts : snapshot.dyn_abi_facts) {
+        if (facts.symbol == symbol) {
+            return &facts;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] std::string dyn_abi_facts_detail(const query::FunctionDynAbiFacts& facts)
+{
+    std::string detail = query::summarize_function_dyn_abi_facts(facts);
+    if (detail.rfind(IDE_SEMANTIC_FACT_DYN_ABI_FACTS, 0) == 0) {
+        return detail;
+    }
+    return std::string(IDE_SEMANTIC_FACT_DYN_ABI_FACTS) + " " + detail;
+}
+
+[[nodiscard]] bool dyn_abi_facts_has_surface(const query::FunctionDynAbiFacts& facts) noexcept
+{
+    return !facts.objects.empty() || !facts.vtables.empty() || !facts.coercions.empty()
+        || !facts.dispatches.empty();
+}
+
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
     const IdeSnapshot& snapshot, const sema::FunctionSignature& signature) noexcept
 {
@@ -1275,6 +1308,21 @@ void recover_resolved_fragment_source_part(
                 label << "/first_policy=" << query::cleanup_marker_policy_name(cleanup->markers.front().policy);
             }
         }
+        if (const query::FunctionDynAbiFacts* const dyn_abi =
+                dyn_abi_facts_for_symbol(snapshot, signature.c_name.view());
+            dyn_abi != nullptr && dyn_abi_facts_has_surface(*dyn_abi)) {
+            label << IDE_DETAIL_DYN_ABI_SEPARATOR
+                  << "abi=" << query::dyn_abi_policy_name(query::DynAbiPolicy::borrowed_view_v1)
+                  << "/metadata="
+                  << query::dyn_metadata_policy_name(query::DynMetadataPolicy::borrowed_methods_only_v1)
+                  << "/vtables=" << dyn_abi->vtables.size()
+                  << "/slots=" << dyn_abi->summary.slot_count
+                  << "/dispatches=" << dyn_abi->dispatches.size();
+            if (!dyn_abi->dispatches.empty()) {
+                label << "/dispatch=vtable_slot"
+                      << "/slot=" << dyn_abi->dispatches.front().slot;
+            }
+        }
     }
     return label.str();
 }
@@ -1327,6 +1375,19 @@ void recover_resolved_fragment_source_part(
         label << " default";
     }
     return label.str();
+}
+
+void append_trait_method_dispatch_detail(std::ostringstream& label, const sema::TraitMethodCallBinding& binding)
+{
+    if (binding.dispatch != sema::TraitMethodDispatchKind::vtable_slot) {
+        return;
+    }
+    label << IDE_DETAIL_DYN_DISPATCH_SEPARATOR
+          << "dispatch=vtable_slot"
+          << "/slot=" << binding.vtable_slot
+          << "/abi=" << query::dyn_abi_policy_name(query::DynAbiPolicy::borrowed_view_v1)
+          << "/metadata="
+          << query::dyn_metadata_policy_name(query::DynMetadataPolicy::borrowed_methods_only_v1);
 }
 
 [[nodiscard]] std::string associated_type_detail(const sema::CheckedModule& checked, const std::string_view owner_name,
@@ -2067,6 +2128,27 @@ void push_cleanup_marker_facts_fact(IdeSnapshot& snapshot, const query::QueryKey
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_dyn_abi_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const base::SourceRange range)
+{
+    const query::FunctionDynAbiFacts* const facts = dyn_abi_facts_for_symbol(snapshot, signature.c_name.view());
+    if (facts == nullptr || !dyn_abi_facts_has_surface(*facts)) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::dyn_abi_facts;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = dyn_abi_facts_detail(*facts);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
     const query::FunctionBodySyntaxAuthority& authority, const sema::FunctionSignature& signature,
     const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
@@ -2149,27 +2231,39 @@ void push_lower_function_ir_fact(query::QueryContext& context, IdeSnapshot& snap
     const sema::FunctionSignature& signature, const query::QueryResultFingerprint type_check_result,
     const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
 {
-    const query::FunctionCleanupMarkerFacts* const facts =
+    const query::FunctionCleanupMarkerFacts* const cleanup =
         cleanup_marker_facts_for_symbol(snapshot, signature.c_name.view());
-    if (facts == nullptr || facts->markers.empty() || !query::is_valid(type_check_result)) {
+    const query::FunctionCleanupMarkerFacts empty_cleanup;
+    const query::FunctionCleanupMarkerFacts& cleanup_facts = cleanup == nullptr ? empty_cleanup : *cleanup;
+    const query::FunctionDynAbiFacts* const dyn_abi =
+        dyn_abi_facts_for_symbol(snapshot, signature.c_name.view());
+    const query::FunctionDynAbiFacts empty_dyn_abi;
+    const query::FunctionDynAbiFacts& dyn_abi_facts = dyn_abi == nullptr ? empty_dyn_abi : *dyn_abi;
+    if ((!cleanup_facts.markers.empty() || dyn_abi_facts_has_surface(dyn_abi_facts))
+        && query::is_valid(type_check_result)) {
+        const query::QueryResultFingerprint ir_input =
+            lower_function_ir_input_fingerprint(key, type_check_result, cleanup_facts, dyn_abi_facts);
+        const query::QueryResultFingerprint ir_result =
+            query::lower_function_ir_result_fingerprint(ir_input, cleanup_facts, dyn_abi_facts);
+        seed_reusable_query_record(context, incremental, query::lower_function_ir_query_record(key, ir_result));
+        const query::QueryEvaluationResult result =
+            context.evaluate_lower_function_ir(query::LowerFunctionIRProviderInput{
+                key,
+                ir_input,
+                cleanup_facts,
+                dyn_abi_facts,
+            });
+        if (!query_evaluation_completed(result)) {
+            return;
+        }
+        const std::optional<query::QueryKey> query_key = query::lower_function_ir_query_key(key);
+        if (!query_key.has_value()) {
+            return;
+        }
+        push_cleanup_marker_facts_fact(snapshot, *query_key, key, signature, range);
+        push_dyn_abi_facts_fact(snapshot, *query_key, key, signature, range);
         return;
     }
-    const query::QueryResultFingerprint ir_input = lower_function_ir_input_fingerprint(key, type_check_result, *facts);
-    const query::QueryResultFingerprint ir_result = query::lower_function_ir_result_fingerprint(ir_input, *facts);
-    seed_reusable_query_record(context, incremental, query::lower_function_ir_query_record(key, ir_result));
-    const query::QueryEvaluationResult result = context.evaluate_lower_function_ir(query::LowerFunctionIRProviderInput{
-        key,
-        ir_input,
-        *facts,
-    });
-    if (!query_evaluation_completed(result)) {
-        return;
-    }
-    const std::optional<query::QueryKey> query_key = query::lower_function_ir_query_key(key);
-    if (!query_key.has_value()) {
-        return;
-    }
-    push_cleanup_marker_facts_fact(snapshot, *query_key, key, signature, range);
 }
 
 void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot,
@@ -2274,7 +2368,7 @@ void evaluate_semantic_queries(IdeSnapshot& snapshot, const IdeIncrementalSnapsh
 }
 
 #if defined(AUREX_TOOLING_ENABLE_IR_FACTS)
-void populate_cleanup_marker_facts(IdeSnapshot& snapshot)
+void populate_ir_facts(IdeSnapshot& snapshot)
 {
     if (!snapshot.checked_semantics) {
         return;
@@ -2284,9 +2378,10 @@ void populate_cleanup_marker_facts(IdeSnapshot& snapshot)
         return;
     }
     snapshot.cleanup_marker_facts = ir::function_cleanup_marker_facts(lowered.value());
+    snapshot.dyn_abi_facts = ir::function_dyn_abi_facts(lowered.value());
 }
 #else
-void populate_cleanup_marker_facts(IdeSnapshot& snapshot)
+void populate_ir_facts(IdeSnapshot& snapshot)
 {
     static_cast<void>(snapshot);
 }
@@ -2653,13 +2748,16 @@ void collect_local_symbols_from_function(
     }
     const base::SourceRange range =
         item_name_range(snapshot, requirement->item, requirement->name.view(), requirement->range);
+    std::ostringstream detail;
+    detail << trait_method_detail(snapshot.checked, *trait, *requirement);
+    append_trait_method_dispatch_detail(detail, binding);
     return IdeSymbol{
         trait_method_definition_key(snapshot, *requirement),
         range,
         trait->range,
         std::string(requirement->name.view()),
         std::string(IDE_SYMBOL_KIND_TRAIT_METHOD),
-        trait_method_detail(snapshot.checked, *trait, *requirement),
+        detail.str(),
         trait->part_index,
         false,
         true,
@@ -3173,7 +3271,7 @@ void build_ide_snapshot_into(
             if (checked) {
                 snapshot.checked_semantics = true;
                 snapshot.checked = checked.take_value();
-                populate_cleanup_marker_facts(snapshot);
+                populate_ir_facts(snapshot);
             }
         } else {
             parse_result = parse_result_fingerprint(snapshot.lossless, snapshot.parsed, diagnostics.diagnostics());

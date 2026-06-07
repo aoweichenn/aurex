@@ -524,6 +524,72 @@ TEST(CoreUnit, IdeToolingProjectsCleanupMarkerFactsWhenIrFactsAreEnabled)
     EXPECT_NE(hover->label.find("/first_policy="), std::string::npos) << hover->label;
 }
 
+TEST(CoreUnit, IdeToolingProjectsDynAbiFactsAndDynDispatchHover)
+{
+    constexpr std::string_view source =
+        "module ide.dyn_abi_facts;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn render(drawable: &dyn Draw) -> i32 {\n"
+        "  return drawable.draw();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 11 };\n"
+        "  let drawable: &dyn Draw = &file;\n"
+        "  return render(drawable);\n"
+        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+
+    if (snapshot.dyn_abi_facts.empty()) {
+        EXPECT_FALSE(has_semantic_fact_kind(snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts,
+            query::QueryKind::lower_function_ir, "render"));
+    } else {
+        EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+        EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
+            query::QueryKind::type_check_body));
+        const tooling::IdeSemanticFact* const dyn_fact = find_semantic_fact(
+            snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "render");
+        ASSERT_NE(dyn_fact, nullptr);
+        EXPECT_NE(dyn_fact->detail.find("dyn_abi_facts objects="), std::string::npos)
+            << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("abi=borrowed_view_v1"), std::string::npos)
+            << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("metadata=borrowed_methods_only_v1"), std::string::npos)
+            << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("first_dispatch=vtable_slot slot=0"), std::string::npos)
+            << dyn_fact->detail;
+
+        const base::usize render_offset = source.find("render(drawable");
+        ASSERT_NE(render_offset, std::string_view::npos);
+        const std::optional<tooling::IdeHoverInfo> render_hover =
+            tooling::hover_at_offset(snapshot, render_offset);
+        ASSERT_TRUE(render_hover.has_value());
+        EXPECT_NE(render_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
+            << render_hover->label;
+        EXPECT_NE(render_hover->label.find("/metadata=borrowed_methods_only_v1"), std::string::npos)
+            << render_hover->label;
+    }
+
+    const base::usize draw_offset = source.find("draw();");
+    ASSERT_NE(draw_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> draw_hover = tooling::hover_at_offset(snapshot, draw_offset);
+    ASSERT_TRUE(draw_hover.has_value());
+    EXPECT_NE(draw_hover->label.find("identifier `draw` -> trait_method"), std::string::npos)
+        << draw_hover->label;
+    EXPECT_NE(draw_hover->label.find("dyn_dispatch=dispatch=vtable_slot/slot=0"), std::string::npos)
+        << draw_hover->label;
+    EXPECT_NE(draw_hover->label.find("/abi=borrowed_view_v1"), std::string::npos) << draw_hover->label;
+    EXPECT_NE(draw_hover->label.find("/metadata=borrowed_methods_only_v1"), std::string::npos)
+        << draw_hover->label;
+}
+
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
 {
     constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"

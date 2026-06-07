@@ -12,6 +12,7 @@ add_library(aurex_query
     src/infrastructure/query/query_result.cpp
     src/infrastructure/query/query_reuse.cpp
     src/infrastructure/query/cleanup_marker_facts.cpp
+    src/infrastructure/query/dyn_abi_facts.cpp
     src/infrastructure/query/project_graph_query.cpp
     src/infrastructure/query/source_file_query.cpp
     src/infrastructure/query/diagnostics_query.cpp

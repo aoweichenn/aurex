@@ -262,6 +262,7 @@ void append_pipeline_requests_for_subject(
         subject.body,
         subject.ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     }});
 
     const std::optional<query::QueryKey> producer = query::lower_function_ir_query_key(subject.body);

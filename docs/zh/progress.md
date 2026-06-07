@@ -1,23 +1,30 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M9 Dyn ABI / Tooling Design Baseline
+阶段：M9b Dyn ABI / Tooling Implementation Baseline
 
 ## 总体状态
 
-2026-06-07：M9 Dyn ABI / Tooling Design Baseline 已从 `m9` 分支开启。M8 release closure 已完成，当前主线不再
+2026-06-07：M9b Dyn ABI / Tooling implementation baseline 已完成。M8 release closure 已完成，当前主线不再
 给 M8 追加语言语义，而是把 M8 已经能运行的 borrowed dyn runtime dispatch 固化成可跨 backend、query/cache、
 IDE/tooling 和后续 advanced dyn 设计复用的 facts-first ABI 基线。M9a 新增
-[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)，设计范围包括 library-independent dyn
-ABI DTO、metadata policy、fingerprint schema、tooling/query projection、cross-module invalidation matrix 以及
-verifier/backend negative matrix。
+[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)，M9b 则把该设计落到代码：query 层新增
+library-independent `FunctionDynAbiFacts` DTO，覆盖 object descriptor、vtable descriptor、slot descriptor、
+coercion descriptor 和 dispatch descriptor；DTO 提供 validation、stable fingerprint、summary 和 dump。
 
-M9a 明确不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting
-或多 trait object composition；也不改变 M8 的 `&dyn Trait` / `&mut dyn Trait` 语义。当前 M9 只把
-`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`、checked vtable facts、IR
-`trait_object_pack/data/vtable/vtable_slot` 和 LLVM `{data*, vtable*}` borrowed view lowering 梳理成后续可实现的
-ABI/tooling DTO 设计。下一步 M9b 才进入 DTO、tooling projection、cache invalidation 和 verifier/backend negative
-tests 的实现。
+M9b 明确不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting
+或多 trait object composition；也不改变 M8 的 `&dyn Trait` / `&mut dyn Trait` 语义。当前 M9 只承认
+`abi=borrowed_view_v1` 和 `metadata=borrowed_methods_only_v1`。实现层已经把 `TraitObjectTypeKey`、
+`VTableLayoutKey`、`TraitObjectCoercionKey`、checked vtable facts、IR
+`trait_object_pack/data/vtable/vtable_slot` 和 LLVM `{data*, vtable*}` borrowed view lowering 投影成 ABI/tooling
+facts，而不是从 IR dump 或 backend 文本反推。
+
+M9b 同步完成 checked adapter、IR adapter、lower-IR query/cache invalidation 和 IDE tooling projection：
+checked-module adapter 能导出 object/vtable/coercion/dispatch facts；IR adapter 会按函数 value closure 只投影当前
+函数实际使用的 dyn ABI layout 和 `vtable_slot` dispatch；lower-function-IR result fingerprint 现在混入 cleanup
+facts 与 dyn ABI facts；IDE semantic facts / hover 可展示 `abi=borrowed_view_v1`、
+`metadata=borrowed_methods_only_v1` 和 `dispatch=vtable_slot slot=N`。新增 query/IR/sema/tooling focused tests
+覆盖 DTO validation、fingerprint/dump、adapter 投影、IDE hover 和 lower-IR invalidation。
 
 2026-06-07：M8 release closure 已完成。M8a-M8e borrowed dyn trait runtime dispatch closure 已完成，M8
 follow-up sample / release polish 主项也已完成。M8 主线从最新 M7 基线开到

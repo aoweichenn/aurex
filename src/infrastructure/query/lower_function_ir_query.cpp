@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_LOWER_FUNCTION_IR_RESULT_MARKER = "query.lower_function_ir.result.v2";
+constexpr std::string_view QUERY_LOWER_FUNCTION_IR_RESULT_MARKER = "query.lower_function_ir.result.v3";
 
 [[nodiscard]] bool is_valid_lower_function_ir_output(
     const QueryRecord& record, const QueryResultFingerprint result) noexcept
@@ -68,7 +68,8 @@ bool is_valid(const LowerGenericInstanceIRProviderOutput& output) noexcept
 }
 
 QueryResultFingerprint lower_function_ir_result_fingerprint(
-    const QueryResultFingerprint ir, const FunctionCleanupMarkerFacts& cleanup_markers) noexcept
+    const QueryResultFingerprint ir, const FunctionCleanupMarkerFacts& cleanup_markers,
+    const FunctionDynAbiFacts& dyn_abi) noexcept
 {
     if (!is_valid(ir)) {
         return {};
@@ -87,6 +88,12 @@ QueryResultFingerprint lower_function_ir_result_fingerprint(
     builder.mix_u64(cleanup_markers.summary.opaque_marker_only_count);
     builder.mix_u64(cleanup_markers.summary.unknown_marker_only_count);
     builder.mix_u64(cleanup_markers.summary.static_custom_destructor_count);
+    builder.mix_fingerprint(function_dyn_abi_facts_fingerprint(dyn_abi));
+    builder.mix_u64(dyn_abi.objects.size());
+    builder.mix_u64(dyn_abi.vtables.size());
+    builder.mix_u64(dyn_abi.coercions.size());
+    builder.mix_u64(dyn_abi.dispatches.size());
+    builder.mix_u64(dyn_abi.summary.slot_count);
     return query_result_fingerprint(builder.finish());
 }
 
@@ -96,7 +103,8 @@ std::optional<LowerFunctionIRProviderOutput> provide_lower_function_ir_query(con
         return std::nullopt;
     }
 
-    const QueryResultFingerprint result = lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers);
+    const QueryResultFingerprint result =
+        lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers, input.dyn_abi);
     std::optional<QueryRecord> record = lower_function_ir_query_record(input.key, result);
     std::vector<QueryKey> dependencies;
     if (const std::optional<QueryKey> type_check_key = type_check_body_query_key(input.key)) {
@@ -107,6 +115,7 @@ std::optional<LowerFunctionIRProviderOutput> provide_lower_function_ir_query(con
         result,
         std::move(dependencies),
         input.cleanup_markers,
+        input.dyn_abi,
     };
 }
 
@@ -117,7 +126,8 @@ std::optional<LowerGenericInstanceIRProviderOutput> provide_lower_generic_instan
         return std::nullopt;
     }
 
-    const QueryResultFingerprint result = lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers);
+    const QueryResultFingerprint result =
+        lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers, input.dyn_abi);
     std::optional<QueryRecord> record = lower_generic_instance_ir_query_record(*input.key, result);
     std::vector<QueryKey> dependencies;
     if (const std::optional<QueryKey> generic_body_key = generic_instance_body_query_key(*input.key)) {
@@ -128,6 +138,7 @@ std::optional<LowerGenericInstanceIRProviderOutput> provide_lower_generic_instan
         result,
         std::move(dependencies),
         input.cleanup_markers,
+        input.dyn_abi,
     };
 }
 

@@ -24,6 +24,7 @@ constexpr std::string_view TOOLING_INDEX_KIND_DROPCK_FACTS = "dropck_facts";
 constexpr std::string_view TOOLING_INDEX_KIND_PLACE_STATE = "place_state";
 constexpr std::string_view TOOLING_INDEX_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view TOOLING_INDEX_KIND_CLEANUP_MARKER_FACTS = "cleanup_marker_facts";
+constexpr std::string_view TOOLING_INDEX_KIND_DYN_ABI_FACTS = "dyn_abi_facts";
 constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
 
 [[nodiscard]] const base::SourceFile* tooling_index_source_file_for_range(
@@ -102,6 +103,8 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
             return TOOLING_INDEX_KIND_BODY_LOAN_CHECK;
         case IdeSemanticFactKind::cleanup_marker_facts:
             return TOOLING_INDEX_KIND_CLEANUP_MARKER_FACTS;
+        case IdeSemanticFactKind::dyn_abi_facts:
+            return TOOLING_INDEX_KIND_DYN_ABI_FACTS;
     }
     return TOOLING_INDEX_KIND_ITEM_SIGNATURE;
 }

@@ -1,4 +1,5 @@
 #include <aurex/infrastructure/query/diagnostics_query.hpp>
+#include <aurex/infrastructure/query/dyn_abi_facts.hpp>
 #include <aurex/infrastructure/query/function_body_syntax_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_body_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -331,6 +333,233 @@ TEST(QueryUnit, CleanupMarkerFactsExposePolicyNamesCountsAndFallbacks)
         query::function_cleanup_marker_facts_fingerprint(empty));
     EXPECT_FALSE(query::is_valid(
         query::lower_function_ir_result_fingerprint(query::QueryResultFingerprint{}, invalid_facts)));
+}
+
+TEST(QueryUnit, DynAbiFactsExposeStableDescriptorsValidationAndDump)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey trait_def = test_trait_def(module);
+    const query::DefKey struct_def = test_struct_def(module);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey concrete_type =
+        query::canonical_nominal(struct_def, std::span<const query::CanonicalTypeKey>{});
+    const query::StableFingerprint128 origin = query::stable_fingerprint("dyn-abi-origin:Sprite");
+    const query::StableFingerprint128 slot_schema = query::stable_fingerprint("dyn-abi-slot-schema:Drawable");
+    const query::TraitObjectTypeKey object_type = query::trait_object_type_key(
+        trait_def, std::span<const query::CanonicalTypeKey>{}, std::span<const query::TraitObjectAssociatedTypeEqualityKey>{},
+        origin, slot_schema);
+    const query::VTableLayoutKey vtable_layout = query::vtable_layout_key(
+        concrete_type, object_type, slot_schema, query::stable_fingerprint("dyn-abi-impl:Sprite:Drawable"), 1U);
+    const query::TraitObjectCoercionKey coercion = query::trait_object_coercion_key(
+        concrete_type, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared);
+
+    EXPECT_EQ(query::dyn_abi_policy_name(query::DynAbiPolicy::borrowed_view_v1), "borrowed_view_v1");
+    EXPECT_EQ(query::dyn_metadata_policy_name(query::DynMetadataPolicy::borrowed_methods_only_v1),
+        "borrowed_methods_only_v1");
+    EXPECT_EQ(query::dyn_borrow_kind_name(query::DynBorrowKind::shared), "shared");
+    EXPECT_EQ(query::dyn_borrow_kind_name(query::DynBorrowKind::mut), "mut");
+    EXPECT_EQ(query::dyn_abi_policy_name(static_cast<query::DynAbiPolicy>(QUERY_TEST_STABLE_BYTE_FLIP_MASK)),
+        "invalid");
+    EXPECT_EQ(query::dyn_metadata_policy_name(
+                  static_cast<query::DynMetadataPolicy>(QUERY_TEST_STABLE_BYTE_FLIP_MASK)),
+        "invalid");
+    EXPECT_EQ(query::dyn_borrow_kind_name(static_cast<query::DynBorrowKind>(QUERY_TEST_STABLE_BYTE_FLIP_MASK)),
+        "invalid");
+    EXPECT_TRUE(query::is_valid(query::DynAbiPolicy::borrowed_view_v1));
+    EXPECT_TRUE(query::is_valid(query::DynMetadataPolicy::borrowed_methods_only_v1));
+    EXPECT_FALSE(query::is_valid(static_cast<query::DynBorrowKind>(QUERY_TEST_STABLE_BYTE_FLIP_MASK)));
+    EXPECT_EQ(query::dyn_abi_policy_from_key(query::TraitObjectAbiPolicyKey::borrowed_view_v1),
+        query::DynAbiPolicy::borrowed_view_v1);
+    EXPECT_EQ(query::dyn_metadata_policy_from_key(query::TraitObjectMetadataPolicyKey::borrowed_methods_only_v1),
+        query::DynMetadataPolicy::borrowed_methods_only_v1);
+    EXPECT_EQ(query::dyn_borrow_kind_from_key(query::TraitObjectBorrowKindKey::mut), query::DynBorrowKind::mut);
+    EXPECT_EQ(query::dyn_borrow_kind_to_key(query::DynBorrowKind::shared), query::TraitObjectBorrowKindKey::shared);
+
+    query::FunctionDynAbiFacts facts;
+    facts.symbol = "test_render";
+    query::record_dyn_object_abi_descriptor(facts,
+        query::DynObjectAbiDescriptor{
+            object_type,
+            query::DynAbiPolicy::borrowed_view_v1,
+            "dyn Drawable",
+            "Drawable",
+        });
+    query::record_dyn_vtable_abi_descriptor(facts,
+        query::DynVTableAbiDescriptor{
+            vtable_layout,
+            query::DynAbiPolicy::borrowed_view_v1,
+            query::DynMetadataPolicy::borrowed_methods_only_v1,
+            "__aurex_vtable_sprite_drawable",
+            "Sprite",
+            "dyn Drawable",
+            {
+                query::DynVTableSlotAbiDescriptor{
+                    0U,
+                    0U,
+                    "draw",
+                    "Sprite_draw",
+                    "fn(*const u8) -> i32",
+                    "*const u8",
+                    "i32",
+                },
+            },
+        });
+    query::record_dyn_coercion_abi_descriptor(facts,
+        query::DynCoercionAbiDescriptor{
+            coercion,
+            vtable_layout,
+            query::DynBorrowKind::shared,
+            "&Sprite",
+            "&dyn Drawable",
+            "Sprite",
+            "dyn Drawable",
+        });
+    query::record_dyn_dispatch_abi_descriptor(facts,
+        query::DynDispatchAbiDescriptor{
+            vtable_layout,
+            0U,
+            "draw",
+            "Sprite_draw",
+            "fn(*const u8) -> i32",
+            object_type,
+            "dyn Drawable",
+        });
+    facts.fingerprint = query::function_dyn_abi_facts_fingerprint(facts);
+
+    EXPECT_TRUE(query::is_valid(facts));
+    EXPECT_EQ(facts.summary.object_count, 1U);
+    EXPECT_EQ(facts.summary.vtable_count, 1U);
+    EXPECT_EQ(facts.summary.slot_count, 1U);
+    EXPECT_EQ(facts.summary.coercion_count, 1U);
+    EXPECT_EQ(facts.summary.dispatch_count, 1U);
+    EXPECT_EQ(facts.summary.shared_borrow_count, 1U);
+    EXPECT_EQ(facts.summary.mut_borrow_count, 0U);
+    EXPECT_EQ(facts.fingerprint, query::function_dyn_abi_facts_fingerprint(facts));
+
+    const std::optional<const query::DynVTableAbiDescriptor*> found_vtable =
+        query::dyn_vtable_descriptor_for_layout(facts, vtable_layout);
+    ASSERT_TRUE(found_vtable.has_value());
+    ASSERT_NE(*found_vtable, nullptr);
+    const std::optional<const query::DynVTableSlotAbiDescriptor*> found_slot =
+        query::dyn_vtable_slot_descriptor(**found_vtable, 0U);
+    ASSERT_TRUE(found_slot.has_value());
+    ASSERT_NE(*found_slot, nullptr);
+    EXPECT_EQ((*found_slot)->method_name, "draw");
+    EXPECT_FALSE(query::dyn_vtable_slot_descriptor(**found_vtable, 1U).has_value());
+
+    const std::string summary = query::summarize_function_dyn_abi_facts(facts);
+    EXPECT_NE(summary.find("abi=borrowed_view_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("metadata=borrowed_methods_only_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_dispatch=vtable_slot slot=0"), std::string::npos) << summary;
+    const std::string dump = query::dump_function_dyn_abi_facts(facts);
+    EXPECT_NE(dump.find("dyn_vtable_slot slot=0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dyn_coercion #0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dispatch=vtable_slot"), std::string::npos) << dump;
+
+    query::FunctionDynAbiFacts invalid_slot_facts = facts;
+    invalid_slot_facts.vtables.front().slots.front().slot = 1U;
+    EXPECT_FALSE(query::is_valid(invalid_slot_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(invalid_slot_facts), facts.fingerprint);
+
+    query::FunctionDynAbiFacts invalid_policy_facts = facts;
+    invalid_policy_facts.vtables.front().metadata_policy =
+        static_cast<query::DynMetadataPolicy>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::is_valid(invalid_policy_facts));
+
+    query::DynCoercionAbiDescriptor mismatched_coercion = facts.coercions.front();
+    mismatched_coercion.borrow_kind = query::DynBorrowKind::mut;
+    EXPECT_FALSE(query::is_valid(mismatched_coercion));
+
+    query::DynCoercionAbiDescriptor mut_coercion = facts.coercions.front();
+    mut_coercion.coercion = query::trait_object_coercion_key(
+        concrete_type, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::mut);
+    mut_coercion.borrow_kind = query::DynBorrowKind::mut;
+    query::FunctionDynAbiFacts mut_facts;
+    query::record_dyn_coercion_abi_descriptor(mut_facts, mut_coercion);
+    EXPECT_EQ(mut_facts.summary.shared_borrow_count, 0U);
+    EXPECT_EQ(mut_facts.summary.mut_borrow_count, 1U);
+
+    query::DynVTableAbiDescriptor duplicate_slot_vtable = facts.vtables.front();
+    duplicate_slot_vtable.slots.push_back(duplicate_slot_vtable.slots.front());
+    duplicate_slot_vtable.layout = query::vtable_layout_key(
+        concrete_type, object_type, slot_schema, query::stable_fingerprint("dyn-abi-impl:duplicate"), 2U);
+    EXPECT_FALSE(query::is_valid(duplicate_slot_vtable));
+
+    query::DynDispatchAbiDescriptor object_scoped_dispatch{
+        {},
+        0U,
+        "draw",
+        {},
+        {},
+        object_type,
+        "dyn Drawable",
+    };
+    EXPECT_TRUE(query::is_valid(object_scoped_dispatch));
+    query::FunctionDynAbiFacts object_dispatch_facts;
+    object_dispatch_facts.symbol = "";
+    query::record_dyn_object_abi_descriptor(object_dispatch_facts,
+        query::DynObjectAbiDescriptor{
+            object_type,
+            query::DynAbiPolicy::borrowed_view_v1,
+            "",
+            "",
+        });
+    query::record_dyn_vtable_abi_descriptor(object_dispatch_facts,
+        query::DynVTableAbiDescriptor{
+            vtable_layout,
+            query::DynAbiPolicy::borrowed_view_v1,
+            query::DynMetadataPolicy::borrowed_methods_only_v1,
+            "",
+            "Sprite",
+            "dyn Drawable",
+            {
+                query::DynVTableSlotAbiDescriptor{
+                    0U,
+                    0U,
+                    "draw",
+                    "",
+                    "fn(*const u8) -> i32",
+                    "*const u8",
+                    "i32",
+                },
+            },
+        });
+    query::record_dyn_dispatch_abi_descriptor(object_dispatch_facts, object_scoped_dispatch);
+    EXPECT_TRUE(query::is_valid(object_dispatch_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(object_dispatch_facts),
+        query::function_dyn_abi_facts_fingerprint(facts));
+    const std::string object_dispatch_dump = query::dump_function_dyn_abi_facts(object_dispatch_facts);
+    EXPECT_NE(object_dispatch_dump.find("function=<anonymous>"), std::string::npos) << object_dispatch_dump;
+    EXPECT_NE(object_dispatch_dump.find("type=<anonymous>"), std::string::npos) << object_dispatch_dump;
+    EXPECT_NE(object_dispatch_dump.find("trait=<unknown>"), std::string::npos) << object_dispatch_dump;
+    EXPECT_NE(object_dispatch_dump.find("symbol=<anonymous>"), std::string::npos) << object_dispatch_dump;
+    EXPECT_NE(object_dispatch_dump.find("fn=<missing>"), std::string::npos) << object_dispatch_dump;
+    EXPECT_NE(object_dispatch_dump.find("object_key="), std::string::npos) << object_dispatch_dump;
+
+    query::DynDispatchAbiDescriptor invalid_dispatch = object_scoped_dispatch;
+    invalid_dispatch.slot = std::numeric_limits<base::u32>::max();
+    EXPECT_FALSE(query::is_valid(invalid_dispatch));
+    invalid_dispatch = object_scoped_dispatch;
+    invalid_dispatch.method_name.clear();
+    EXPECT_FALSE(query::is_valid(invalid_dispatch));
+    invalid_dispatch = object_scoped_dispatch;
+    invalid_dispatch.object_type = {};
+    EXPECT_FALSE(query::is_valid(invalid_dispatch));
+    EXPECT_FALSE(query::dyn_vtable_descriptor_for_layout(facts, {}).has_value());
+
+    query::DynVTableAbiDescriptor sparse_slot_vtable = facts.vtables.front();
+    sparse_slot_vtable.slots.front().slot = 2U;
+    EXPECT_FALSE(query::is_valid(sparse_slot_vtable));
+
+    const query::QueryResultFingerprint ir =
+        query::query_result_fingerprint(query::stable_fingerprint("dyn-abi-lower-ir"));
+    const query::QueryResultFingerprint without_dyn =
+        query::lower_function_ir_result_fingerprint(ir, query::FunctionCleanupMarkerFacts{});
+    const query::QueryResultFingerprint with_dyn =
+        query::lower_function_ir_result_fingerprint(ir, query::FunctionCleanupMarkerFacts{}, facts);
+    EXPECT_NE(without_dyn, with_dyn);
+    static_cast<void>(i32);
 }
 
 [[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
@@ -1893,11 +2122,13 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
             body_subject.body,
             body_subject.lowered_ir,
             query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{},
         }},
         query::QueryRequest{query::LowerGenericInstanceIRQueryRequest{
             generic_subject.key,
             body_subject.lowered_ir,
             query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{},
         }},
         query::QueryRequest{query::DiagnosticsProviderInput{*item_query, test_query_result(QUERY_TEST_DIAGNOSTICS)}},
     };
@@ -3559,6 +3790,7 @@ TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
         subject.body,
         subject.lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::LowerFunctionIRProviderOutput> output = query::provide_lower_function_ir_query(input);
@@ -3577,10 +3809,12 @@ TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
     EXPECT_FALSE(query::lower_function_ir_query_key(query::BodyKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderInput{}));
     EXPECT_FALSE(query::provide_lower_function_ir_query(
-        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{}})
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{}})
             .has_value());
     EXPECT_FALSE(query::provide_lower_function_ir_query(
-        query::LowerFunctionIRProviderInput{subject.body, query::QueryResultFingerprint{}, query::FunctionCleanupMarkerFacts{}})
+        query::LowerFunctionIRProviderInput{subject.body, query::QueryResultFingerprint{},
+            query::FunctionCleanupMarkerFacts{}, query::FunctionDynAbiFacts{}})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderOutput{}));
 
@@ -3621,6 +3855,7 @@ TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependen
         &subject.key,
         lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::LowerGenericInstanceIRProviderOutput> output =
@@ -3633,20 +3868,23 @@ TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependen
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::lower_function_ir);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
-    EXPECT_EQ(output->result, query::lower_function_ir_result_fingerprint(lowered_ir, input.cleanup_markers));
+    EXPECT_EQ(output->result,
+        query::lower_function_ir_result_fingerprint(lowered_ir, input.cleanup_markers, input.dyn_abi));
     EXPECT_EQ(output->record.result, output->result);
 
     const query::GenericInstanceKey invalid_key;
     EXPECT_FALSE(query::lower_generic_instance_ir_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderInput{}));
     EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
-        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{}})
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{}})
             .has_value());
     EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
         query::LowerGenericInstanceIRProviderInput{
             &subject.key,
             query::QueryResultFingerprint{},
             query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{},
         })
             .has_value());
     EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderOutput{}));
@@ -4414,6 +4652,7 @@ TEST(QueryUnit, QueryContextCachesLowerFunctionIRAndRecordsTypeCheckDependency)
         subject.body,
         subject.lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     const query::QueryEvaluationResult first = context.evaluate_lower_function_ir(input);
     ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
@@ -4444,7 +4683,8 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
 
     query::QueryContext invalid_input_context;
     const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_function_ir(
-        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{}});
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{}});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 
@@ -4457,6 +4697,7 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
         subject.body,
         subject.lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_function_ir(input);
     ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
@@ -4478,6 +4719,7 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
                 other_subject.body,
                 other_subject.lowered_ir,
                 query::FunctionCleanupMarkerFacts{},
+                query::FunctionDynAbiFacts{},
             });
     });
     const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_function_ir(input);
@@ -4678,6 +4920,7 @@ TEST(QueryUnit, QueryContextCachesLowerGenericInstanceIRAndRecordsGenericBodyDep
         &subject.key,
         lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     const query::QueryEvaluationResult first = context.evaluate_lower_generic_instance_ir(input);
     ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
@@ -4712,12 +4955,14 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
 
     query::QueryContext invalid_input_context;
     const query::QueryEvaluationResult null_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
-        query::LowerGenericInstanceIRProviderInput{nullptr, lowered_ir, query::FunctionCleanupMarkerFacts{}});
+        query::LowerGenericInstanceIRProviderInput{nullptr, lowered_ir, query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{}});
     EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(null_key_result.node, nullptr);
     const query::GenericInstanceKey invalid_key;
     const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
-        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{}});
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{}});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 
@@ -4731,6 +4976,7 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
         &subject.key,
         lowered_ir,
         query::FunctionCleanupMarkerFacts{},
+        query::FunctionDynAbiFacts{},
     };
     const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_generic_instance_ir(input);
     ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
@@ -4752,6 +4998,7 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
                 &other_subject.key,
                 lowered_ir,
                 query::FunctionCleanupMarkerFacts{},
+                query::FunctionDynAbiFacts{},
             });
         });
     const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_generic_instance_ir(input);
@@ -4897,6 +5144,7 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
             first_subject.body,
             first_subject.lowered_ir,
             query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{},
         });
     ASSERT_EQ(first_result.status, query::QueryEvaluationStatus::computed);
     const query::QueryEvaluationResult second_result = context.evaluate_lower_function_ir(
@@ -4904,6 +5152,7 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
             second_subject.body,
             second_subject.lowered_ir,
             query::FunctionCleanupMarkerFacts{},
+            query::FunctionDynAbiFacts{},
         });
     ASSERT_EQ(second_result.status, query::QueryEvaluationStatus::computed);
 

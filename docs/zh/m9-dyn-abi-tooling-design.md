@@ -2,8 +2,8 @@
 
 日期：2026-06-07
 
-状态：M9a design baseline 已完成。M8 release closure 已完成；M9 从 `m9` 分支开始，第一包只做 dyn ABI、
-metadata、query/cache、tooling 和 verifier/backend negative matrix 的设计基线，不实现标准库、
+状态：M9b implementation baseline 已完成。M8 release closure 已完成；M9 从 `m9` 分支开始，第一包只做 dyn ABI、
+metadata、query/cache、tooling 和 verifier/backend negative matrix 的设计/实现基线，不实现标准库、
 `Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting 或多 trait object
 composition。
 
@@ -31,7 +31,7 @@ M9a 选择的方向是 **facts-first dyn ABI DTO**：
 - 第一版只固定 borrowed view ABI policy `borrowed_view_v1` 和 metadata policy
   `borrowed_methods_only_v1`；后续 advanced dyn 只能通过明确的 policy/schema gate 进入。
 
-M9a 不改语言语义。M9b 才开始实现 DTO / tooling projection / invalidation tests / verifier negative tests。
+M9a 不改语言语义。M9b 已实现 DTO / tooling projection / invalidation tests / verifier negative tests 的第一包。
 M9c 才研究 advanced dyn design，而且仍必须单独 gate。
 
 ## 1. 当前代码事实
@@ -566,16 +566,17 @@ M9b 的用户可见 diagnostics 不需要新增大量文案，但内部错误必
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
 | M9a design baseline | 本文档、progress/next-steps/version/README 更新、documentation tests | 500-900 行 |
-| M9b ABI/tooling implementation | query-facing DTO、IR adapter、dump/fingerprint、tooling projection、invalidation tests、verifier/backend negative tests | 1,000-2,000 行 |
+| M9b ABI/tooling implementation | query-facing DTO、checked/IR adapter、dump/fingerprint、tooling projection、invalidation tests、verifier/backend negative tests；已完成 | 1,000-2,000 行 |
 | M9c advanced dyn design | owning dyn / dynamic Drop / supertrait upcasting / trait-object composition 的独立设计与小原型 gate；继续不实现标准库 | 2,500-4,500 行 |
 
-M9b 代码量的主要来源：
+M9b 实际实现的主要代码量来源：
 
-- DTO schema 与 validation：250-450 行。
-- stable serialize/fingerprint/debug/dump：200-350 行。
-- checked/IR adapter：250-450 行。
-- tooling projection：200-350 行。
-- tests：400-800 行。
+- DTO schema 与 validation。
+- stable fingerprint、summary、dump。
+- checked adapter 与 function-local IR adapter。
+- lower-IR query/cache invalidation 和 driver subject 传递。
+- IDE semantic fact、hover 和 reuse/index kind。
+- query、sema、IR、tooling、documentation tests。
 
 如果实际代码量超出预估，最可能的原因是：
 
@@ -598,11 +599,11 @@ M9a：
 
 M9b：
 
-- DTO validation 有 positive/negative unit tests。
-- IR adapter 有 golden/dump/fingerprint tests。
-- tooling projection 有 IDE semantic fact/hover tests。
-- cross-module invalidation 有 driver/query tests。
-- verifier/backend negative matrix 有 focused tests。
+- DTO validation 有 positive/negative unit tests。已完成。
+- checked/IR adapter 有 dump/fingerprint tests。已完成。
+- tooling projection 有 IDE semantic fact/hover tests。已完成。
+- lower-IR invalidation 有 query/driver subject tests。已完成。
+- verifier/backend negative matrix 有 focused tests。已覆盖当前 borrowed ABI facts 相关路径。
 - coverage gate 保持 90% 以上。
 
 M9c：
@@ -613,20 +614,30 @@ M9c：
 
 ## 16. 当前阶段能做什么
 
-M9a 完成后，仓库具备：
+M9b 完成后，仓库具备：
 
 - M8 release closure 的正式封口状态。
-- M9 dyn ABI / tooling 的正式设计入口。
+- M9 dyn ABI / tooling 的正式设计入口和第一包实现基线。
 - 清晰的 M9 非目标，避免标准库或 owning dyn 混入第一包。
-- M9b 实现前的 DTO schema、metadata policy、fingerprint schema、tooling projection 和 invalidation matrix。
+- `FunctionDynAbiFacts` DTO：object、vtable、slot、coercion 和 dispatch descriptor。
+- 当前唯一 ABI/metadata policy：`borrowed_view_v1` / `borrowed_methods_only_v1`。
+- checked facts 到 ABI facts 的 adapter：可从 `TraitObjectTypeKey`、`VTableLayoutKey`、
+  `TraitObjectCoercionKey`、method slot 和 dyn dispatch binding 投影。
+- IR facts 到 ABI facts 的 adapter：按函数 value closure 提取 `trait_object_pack/data/vtable/vtable_slot`
+  实际使用的 layout 和 slot。
+- lower-function-IR result fingerprint 会混入 cleanup facts 与 dyn ABI facts。
+- IDE semantic facts / hover 可显示 `abi=borrowed_view_v1`、`metadata=borrowed_methods_only_v1` 和
+  `dispatch=vtable_slot slot=N`。
 - 文档测试防漂移。
 
-M9a 完成后，仓库仍不会新增：
+M9b 完成后，仓库仍不会新增：
 
 - 新语言语法。
 - 新标准库 API。
 - owning dyn runtime。
 - dynamic Drop dispatch。
 - allocator 或 `Box`。
+- supertrait upcasting。
+- 多 trait object composition。
 
 这是刻意的：M9 先把“已经能跑的 borrowed dyn”变成工程上能长期维护、缓存、调试和扩展的 ABI/tooling 基线。

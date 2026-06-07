@@ -193,6 +193,7 @@ struct QueryEvaluateVisitor {
             &request.key,
             request.ir,
             request.cleanup_markers,
+            request.dyn_abi,
         });
     }
 

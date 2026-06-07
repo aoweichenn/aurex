@@ -7,6 +7,7 @@
 #include <aurex/infrastructure/base/diagnostic.hpp>
 #include <aurex/infrastructure/pipeline/stage.hpp>
 #include <aurex/infrastructure/query/cleanup_marker_facts.hpp>
+#include <aurex/infrastructure/query/dyn_abi_facts.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
 #include <aurex/infrastructure/query/query_context.hpp>
 
@@ -67,6 +68,7 @@ enum class IdeSemanticFactKind : base::u8 {
     place_state,
     body_loan_check,
     cleanup_marker_facts,
+    dyn_abi_facts,
 };
 
 struct IdeSemanticFact {
@@ -101,6 +103,7 @@ struct IdeSnapshot {
     syntax::AstModule ast;
     sema::CheckedModule checked;
     std::vector<query::FunctionCleanupMarkerFacts> cleanup_marker_facts;
+    std::vector<query::FunctionDynAbiFacts> dyn_abi_facts;
     IdeQuerySnapshot query;
     std::vector<IdeDiagnostic> diagnostics;
     IdeModulePartContext source_part;

@@ -1,4 +1,5 @@
 #include <aurex/midend/ir/ir_cleanup_marker_facts.hpp>
+#include <aurex/midend/ir/ir_dyn_abi_facts.hpp>
 #include <aurex/midend/ir/ir_fingerprint.hpp>
 
 #include <algorithm>
@@ -19,6 +20,7 @@ using namespace cache_format;
 namespace {
 
 using CleanupMarkerFactsBySymbol = std::unordered_map<std::string, query::FunctionCleanupMarkerFacts>;
+using DynAbiFactsBySymbol = std::unordered_map<std::string, query::FunctionDynAbiFacts>;
 
 constexpr std::string_view INCREMENTAL_CACHE_PRIMARY_MODULE_PART_KEY_NAME = "<primary>";
 constexpr std::string_view INCREMENTAL_CACHE_LOWER_FUNCTION_IR_BODY_KIND = "body";
@@ -618,12 +620,12 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
 
 void push_lower_function_ir_query_subject(std::vector<LowerFunctionIRQuerySubject>& subjects,
     const TypeCheckBodyQuerySubject& type_check_subject, const ir::FunctionIRUnitFingerprint& ir_unit,
-    const query::FunctionCleanupMarkerFacts& cleanup_markers)
+    const query::FunctionCleanupMarkerFacts& cleanup_markers, const query::FunctionDynAbiFacts& dyn_abi)
 {
     const query::QueryResultFingerprint ir_input = lower_function_ir_input_fingerprint(
         type_check_subject.key, query::type_check_body_result_fingerprint(type_check_subject.authority), ir_unit);
     const query::QueryResultFingerprint result = query::lower_function_ir_result_fingerprint(
-        ir_input, cleanup_markers);
+        ir_input, cleanup_markers, dyn_abi);
     subjects.push_back(LowerFunctionIRQuerySubject{
         LowerFunctionIRSubjectKind::body,
         type_check_subject.key,
@@ -631,12 +633,13 @@ void push_lower_function_ir_query_subject(std::vector<LowerFunctionIRQuerySubjec
         ir_input,
         result,
         cleanup_markers,
+        dyn_abi,
     });
 }
 
 void push_lower_generic_instance_ir_query_subject(std::vector<LowerFunctionIRQuerySubject>& subjects,
     const GenericInstanceBodyQuerySubject& generic_body_subject, const ir::FunctionIRUnitFingerprint& ir_unit,
-    const query::FunctionCleanupMarkerFacts& cleanup_markers)
+    const query::FunctionCleanupMarkerFacts& cleanup_markers, const query::FunctionDynAbiFacts& dyn_abi)
 {
     if (generic_body_subject.key == nullptr) {
         return;
@@ -644,7 +647,7 @@ void push_lower_generic_instance_ir_query_subject(std::vector<LowerFunctionIRQue
     const query::QueryResultFingerprint ir_input = lower_generic_instance_ir_input_fingerprint(*generic_body_subject.key,
         query::generic_instance_body_result_fingerprint(generic_body_subject.authority), ir_unit);
     const query::QueryResultFingerprint result = query::lower_function_ir_result_fingerprint(
-        ir_input, cleanup_markers);
+        ir_input, cleanup_markers, dyn_abi);
     subjects.push_back(LowerFunctionIRQuerySubject{
         LowerFunctionIRSubjectKind::generic_instance,
         {},
@@ -652,6 +655,7 @@ void push_lower_generic_instance_ir_query_subject(std::vector<LowerFunctionIRQue
         ir_input,
         result,
         cleanup_markers,
+        dyn_abi,
     });
 }
 
@@ -770,6 +774,18 @@ using IRUnitBySymbol = std::unordered_map<std::string, ir::FunctionIRUnitFingerp
     return facts_by_symbol;
 }
 
+[[nodiscard]] DynAbiFactsBySymbol dyn_abi_facts_by_symbol(const ir::Module& lowered_ir)
+{
+    DynAbiFactsBySymbol facts_by_symbol;
+    std::vector<query::FunctionDynAbiFacts> facts = ir::function_dyn_abi_facts(lowered_ir);
+    facts_by_symbol.reserve(facts.size());
+    for (query::FunctionDynAbiFacts& fact : facts) {
+        std::string symbol = fact.symbol;
+        facts_by_symbol.emplace(std::move(symbol), std::move(fact));
+    }
+    return facts_by_symbol;
+}
+
 [[nodiscard]] query::FunctionCleanupMarkerFacts cleanup_marker_facts_for_symbol(
     const CleanupMarkerFactsBySymbol& facts, const std::string& symbol)
 {
@@ -777,9 +793,16 @@ using IRUnitBySymbol = std::unordered_map<std::string, ir::FunctionIRUnitFingerp
     return found == facts.end() ? query::FunctionCleanupMarkerFacts{} : found->second;
 }
 
+[[nodiscard]] query::FunctionDynAbiFacts dyn_abi_facts_for_symbol(
+    const DynAbiFactsBySymbol& facts, const std::string& symbol)
+{
+    const auto found = facts.find(symbol);
+    return found == facts.end() ? query::FunctionDynAbiFacts{} : found->second;
+}
+
 void push_lower_function_ir_query_subject_for_symbol(std::vector<LowerFunctionIRQuerySubject>& subjects,
     const TypeCheckBodyQuerySubject& type_check_subject, const SymbolByStableKey& symbols, const IRUnitBySymbol& units,
-    const CleanupMarkerFactsBySymbol& cleanup_facts)
+    const CleanupMarkerFactsBySymbol& cleanup_facts, const DynAbiFactsBySymbol& dyn_abi_facts)
 {
     const auto symbol = symbols.find(query::stable_serialize(type_check_subject.key));
     if (symbol == symbols.end()) {
@@ -790,12 +813,14 @@ void push_lower_function_ir_query_subject_for_symbol(std::vector<LowerFunctionIR
         return;
     }
     push_lower_function_ir_query_subject(subjects, type_check_subject, unit->second,
-        cleanup_marker_facts_for_symbol(cleanup_facts, symbol->second));
+        cleanup_marker_facts_for_symbol(cleanup_facts, symbol->second),
+        dyn_abi_facts_for_symbol(dyn_abi_facts, symbol->second));
 }
 
 void push_lower_generic_instance_ir_query_subject_for_symbol(std::vector<LowerFunctionIRQuerySubject>& subjects,
     const GenericInstanceBodyQuerySubject& generic_body_subject, const SymbolByStableKey& symbols,
-    const IRUnitBySymbol& units, const CleanupMarkerFactsBySymbol& cleanup_facts)
+    const IRUnitBySymbol& units, const CleanupMarkerFactsBySymbol& cleanup_facts,
+    const DynAbiFactsBySymbol& dyn_abi_facts)
 {
     if (generic_body_subject.key == nullptr) {
         return;
@@ -809,7 +834,8 @@ void push_lower_generic_instance_ir_query_subject_for_symbol(std::vector<LowerFu
         return;
     }
     push_lower_generic_instance_ir_query_subject(subjects, generic_body_subject, unit->second,
-        cleanup_marker_facts_for_symbol(cleanup_facts, symbol->second));
+        cleanup_marker_facts_for_symbol(cleanup_facts, symbol->second),
+        dyn_abi_facts_for_symbol(dyn_abi_facts, symbol->second));
 }
 
 } // namespace
@@ -934,16 +960,17 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     const SymbolByStableKey generic_symbols = generic_instance_symbols_by_stable_key(checked);
     const IRUnitBySymbol units = ir_units_by_symbol(lowered_ir);
     const CleanupMarkerFactsBySymbol cleanup_facts = cleanup_marker_facts_by_symbol(lowered_ir);
+    const DynAbiFactsBySymbol dyn_abi_facts = dyn_abi_facts_by_symbol(lowered_ir);
 
     std::vector<LowerFunctionIRQuerySubject> subjects;
     subjects.reserve(type_check_subjects.size() + generic_body_subjects.size());
     for (const TypeCheckBodyQuerySubject& type_check_subject : type_check_subjects) {
         push_lower_function_ir_query_subject_for_symbol(
-            subjects, type_check_subject, function_symbols, units, cleanup_facts);
+            subjects, type_check_subject, function_symbols, units, cleanup_facts, dyn_abi_facts);
     }
     for (const GenericInstanceBodyQuerySubject& generic_body_subject : generic_body_subjects) {
         push_lower_generic_instance_ir_query_subject_for_symbol(
-            subjects, generic_body_subject, generic_symbols, units, cleanup_facts);
+            subjects, generic_body_subject, generic_symbols, units, cleanup_facts, dyn_abi_facts);
     }
     return subjects;
 }

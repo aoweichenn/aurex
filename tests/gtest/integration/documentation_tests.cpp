@@ -173,7 +173,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "origin-bound erased view");
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M9 Dyn ABI / Tooling 设计阶段");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M9c Advanced Dyn Design Gate");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -215,16 +215,20 @@ TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
 {
     expect_document_contains("docs/zh/README.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M9 Dyn ABI / Tooling 设计基线");
-    expect_document_contains("docs/zh/progress.md", "阶段：M9 Dyn ABI / Tooling Design Baseline");
+    expect_document_contains("docs/zh/progress.md", "阶段：M9b Dyn ABI / Tooling Implementation Baseline");
+    expect_document_contains("docs/zh/progress.md", "FunctionDynAbiFacts");
     expect_document_contains("docs/zh/progress.md", "library-independent dyn ABI DTO");
-    expect_document_contains("docs/zh/version.md", "## M9 Dyn ABI / Tooling Design Baseline");
-    expect_document_contains("docs/zh/next-steps.md", "当前应继续推进 M9b");
+    expect_document_contains("docs/zh/version.md", "## M9b Dyn ABI / Tooling Implementation Baseline");
+    expect_document_contains("docs/zh/next-steps.md", "M9b ABI/tooling implementation");
+    expect_document_contains("docs/zh/next-steps.md", "M9c Advanced Dyn Design Gate");
     expect_document_contains("docs/zh/next-steps.md", "borrowed_methods_only_v1");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "facts-first dyn ABI DTO");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "TraitObjectTypeKey");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "VTableLayoutKey");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "TraitObjectCoercionKey");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "FunctionDynAbiFacts");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "borrowed_methods_only_v1");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "dispatch=vtable_slot slot=N");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "Cross-Module Invalidation Matrix");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "Verifier And Backend Negative Matrix");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "不实现标准库");

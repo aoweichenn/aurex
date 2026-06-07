@@ -1,5 +1,6 @@
 #include <aurex/frontend/lex/lexer.hpp>
 #include <aurex/frontend/parse/parser.hpp>
+#include <aurex/frontend/sema/checked_dyn_abi_facts.hpp>
 #include <aurex/frontend/sema/checked_module.hpp>
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/infrastructure/base/diagnostic.hpp>
@@ -1439,6 +1440,237 @@ TEST(CoreUnit, DynTraitRejectsInvalidObjectSurfacesAndMissingImplCoercions)
     for (const auto& [source, diagnostic] : cases) {
         expect_dyn_trait_source_diagnostic(source, diagnostic);
     }
+}
+
+TEST(CoreUnit, DynTraitCheckedFactsProjectBorrowedAbiDescriptors)
+{
+    constexpr std::string_view source =
+        "module dyn_trait_checked_abi_facts_whitebox;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "  fn scale(self: &Self, amount: i32) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "  fn scale(self: &File, amount: i32) -> i32 { return self.value + amount; }\n"
+        "}\n"
+        "fn render(drawable: &dyn Draw) -> i32 {\n"
+        "  return drawable.draw() + drawable.scale(2);\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 9 };\n"
+        "  let drawable: &dyn Draw = &file;\n"
+        "  return render(drawable);\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    const query::FunctionDynAbiFacts facts = sema::checked_dyn_abi_facts(checked);
+    EXPECT_EQ(facts.symbol, "<checked-module>");
+    ASSERT_EQ(facts.objects.size(), 1U);
+    ASSERT_EQ(facts.vtables.size(), 1U);
+    ASSERT_EQ(facts.vtables.front().slots.size(), 2U);
+    ASSERT_EQ(facts.coercions.size(), 1U);
+    ASSERT_EQ(facts.dispatches.size(), 2U);
+    EXPECT_TRUE(query::is_valid(facts));
+    EXPECT_EQ(facts.objects.front().principal_trait_name, "Draw");
+    EXPECT_EQ(facts.objects.front().abi_policy, query::DynAbiPolicy::borrowed_view_v1);
+    EXPECT_EQ(facts.vtables.front().metadata_policy, query::DynMetadataPolicy::borrowed_methods_only_v1);
+    EXPECT_EQ(facts.vtables.front().concrete_type_name, "dyn_trait_checked_abi_facts_whitebox.File");
+    EXPECT_EQ(facts.vtables.front().object_type_name, "dyn Draw");
+    EXPECT_EQ(facts.vtables.front().slots.front().slot, 0U);
+    EXPECT_EQ(facts.vtables.front().slots.front().method_name, "draw");
+    EXPECT_NE(facts.vtables.front().slots.front().function_type_name.find("fn("), std::string::npos);
+    EXPECT_EQ(facts.vtables.front().slots[1].slot, 1U);
+    EXPECT_EQ(facts.vtables.front().slots[1].method_name, "scale");
+    EXPECT_NE(facts.vtables.front().slots[1].function_type_name.find(", i32"), std::string::npos);
+    EXPECT_EQ(facts.coercions.front().borrow_kind, query::DynBorrowKind::shared);
+    EXPECT_EQ(facts.coercions.front().source_reference_type_name, "&dyn_trait_checked_abi_facts_whitebox.File");
+    EXPECT_EQ(facts.coercions.front().target_reference_type_name, "&dyn Draw");
+    EXPECT_EQ(facts.dispatches.front().slot, 0U);
+    EXPECT_EQ(facts.dispatches.front().method_name, "draw");
+    EXPECT_FALSE(query::is_valid(facts.dispatches.front().layout));
+    EXPECT_TRUE(query::is_valid(facts.dispatches.front().object_type));
+    EXPECT_EQ(facts.dispatches.front().object_type_name, "dyn Draw");
+    EXPECT_EQ(facts.dispatches[1].slot, 1U);
+    EXPECT_EQ(facts.dispatches[1].method_name, "scale");
+    EXPECT_EQ(facts.fingerprint, query::function_dyn_abi_facts_fingerprint(facts));
+
+    const std::string summary = query::summarize_function_dyn_abi_facts(facts);
+    EXPECT_NE(summary.find("abi=borrowed_view_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("metadata=borrowed_methods_only_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_dispatch=vtable_slot slot=0"), std::string::npos) << summary;
+    const std::string dump = query::dump_function_dyn_abi_facts(facts);
+    EXPECT_NE(dump.find("dyn_vtable_slot slot=0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dyn_coercion #0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dispatch=vtable_slot"), std::string::npos) << dump;
+}
+
+TEST(CoreUnit, DynTraitCheckedFactsFilterMergeAndSortDescriptorEdges)
+{
+    DynTraitWhiteBoxHarness harness("dyn_trait_checked_abi_edges");
+    sema::TraitSignature draw = harness.trait_signature("Draw");
+    sema::TraitSignature paint = harness.trait_signature("Paint");
+    const sema::TypeHandle self = harness.types.generic_param(sema::generic_param_identity_from_text("Self"), "Self");
+    const sema::TypeHandle self_ref = harness.types.reference(sema::PointerMutability::const_, self);
+    draw.requirements.push_back(harness.method("draw", self_ref, harness.i32, 0U));
+    paint.requirements.push_back(harness.method("paint", self_ref, harness.bool_type, 0U));
+
+    const sema::TypeHandle draw_object = harness.trait_object(draw);
+    const sema::TypeHandle paint_object = harness.trait_object(paint);
+    ASSERT_TRUE(sema::is_valid(draw_object));
+    ASSERT_TRUE(sema::is_valid(paint_object));
+
+    const sema::TypeHandle file = harness.struct_type("File");
+    const sema::TypeHandle canvas = harness.struct_type("Canvas");
+    constexpr std::array<std::string_view, 1> MODULE_PATH{"dyn_trait_checked_abi_edges"};
+    const query::CanonicalTypeKey file_key = query::canonical_nominal(
+        query::def_key_from_stable_id(query::package_key({}),
+            query::stable_definition_id(query::stable_module_id(MODULE_PATH), query::StableSymbolKind::type, "File"),
+            query::DefNamespace::type, query::DefKind::struct_),
+        {});
+    const query::CanonicalTypeKey canvas_key = query::canonical_nominal(
+        query::def_key_from_stable_id(query::package_key({}),
+            query::stable_definition_id(query::stable_module_id(MODULE_PATH), query::StableSymbolKind::type, "Canvas"),
+            query::DefNamespace::type, query::DefKind::struct_),
+        {});
+
+    const query::TraitObjectTypeKey draw_object_key = harness.types.get(draw_object).trait_object_key;
+    const query::TraitObjectTypeKey paint_object_key = harness.types.get(paint_object).trait_object_key;
+    const query::VTableLayoutKey draw_layout_key = query::vtable_layout_key(file_key, draw_object_key,
+        draw_object_key.object_callability_schema, query::stable_fingerprint("dyn-abi-edge-draw-impl"), 1U);
+    const query::VTableLayoutKey paint_layout_key = query::vtable_layout_key(canvas_key, paint_object_key,
+        paint_object_key.object_callability_schema, query::stable_fingerprint("dyn-abi-edge-paint-impl"), 1U);
+    ASSERT_TRUE(query::is_valid(draw_layout_key));
+    ASSERT_TRUE(query::is_valid(paint_layout_key));
+
+    sema::CheckedModule& checked = harness.analyzer.state_.checked;
+    sema::TraitObjectCallabilityFact invalid_callability = checked.make_trait_object_callability_fact();
+    invalid_callability.trait_name = checked.intern_text("");
+    checked.trait_object_callability.push_back(invalid_callability);
+
+    sema::TraitObjectCallabilityFact draw_callability = checked.make_trait_object_callability_fact();
+    draw_callability.object_type_key = draw_object_key;
+    draw_callability.object_type = sema::INVALID_TYPE_HANDLE;
+    draw_callability.trait_name = checked.intern_text("Draw");
+    draw_callability.method_slot_count = 1U;
+    checked.trait_object_callability.push_back(draw_callability);
+
+    sema::TraitObjectCallabilityFact paint_callability = checked.make_trait_object_callability_fact();
+    paint_callability.object_type_key = paint_object_key;
+    paint_callability.object_type = paint_object;
+    paint_callability.trait_name = checked.intern_text("Paint");
+    paint_callability.method_slot_count = 1U;
+    checked.trait_object_callability.push_back(paint_callability);
+
+    sema::VTableLayoutFact paint_layout = checked.make_vtable_layout_fact();
+    paint_layout.layout_key = paint_layout_key;
+    paint_layout.concrete_type = canvas;
+    paint_layout.object_type = paint_object;
+    paint_layout.method_slot_count = 1U;
+    sema::VTableMethodSlotFact paint_slot;
+    paint_slot.object_type_key = paint_object_key;
+    paint_slot.concrete_type = canvas;
+    paint_slot.object_type = paint_object;
+    paint_slot.method_name = checked.intern_text("paint");
+    paint_slot.requirement_ordinal = 0U;
+    paint_slot.slot = 0U;
+    paint_slot.receiver_type = harness.types.reference(sema::PointerMutability::const_, paint_object);
+    paint_slot.return_type = harness.bool_type;
+    paint_slot.param_types.push_back(paint_slot.receiver_type);
+    paint_layout.method_slots.push_back(paint_slot);
+    checked.vtable_layouts.push_back(paint_layout);
+
+    sema::VTableLayoutFact invalid_layout = checked.make_vtable_layout_fact();
+    invalid_layout.layout_key = draw_layout_key;
+    invalid_layout.concrete_type = file;
+    invalid_layout.object_type = draw_object;
+    invalid_layout.method_slot_count = 1U;
+    checked.vtable_layouts.push_back(invalid_layout);
+
+    sema::VTableLayoutFact draw_layout = checked.make_vtable_layout_fact();
+    draw_layout.layout_key = draw_layout_key;
+    draw_layout.concrete_type = file;
+    draw_layout.object_type = draw_object;
+    draw_layout.method_slot_count = 1U;
+    sema::VTableMethodSlotFact draw_slot;
+    draw_slot.object_type_key = draw_object_key;
+    draw_slot.concrete_type = file;
+    draw_slot.object_type = draw_object;
+    draw_slot.method_name = checked.intern_text("draw");
+    draw_slot.requirement_ordinal = 0U;
+    draw_slot.slot = 0U;
+    draw_slot.receiver_type = harness.types.reference(sema::PointerMutability::const_, draw_object);
+    draw_slot.return_type = harness.i32;
+    draw_slot.param_types.push_back(draw_slot.receiver_type);
+    draw_layout.method_slots.push_back(draw_slot);
+    checked.vtable_layouts.push_back(draw_layout);
+
+    sema::TraitObjectCoercionFact draw_coercion = checked.make_trait_object_coercion_fact();
+    draw_coercion.coercion_key = query::trait_object_coercion_key(file_key, draw_object_key.object_origin,
+        draw_object_key, draw_layout_key, query::TraitObjectBorrowKindKey::shared);
+    draw_coercion.vtable_layout = draw_layout_key;
+    draw_coercion.source_reference_type = harness.types.reference(sema::PointerMutability::const_, file);
+    draw_coercion.target_reference_type = harness.types.reference(sema::PointerMutability::const_, draw_object);
+    draw_coercion.source_type = file;
+    draw_coercion.object_type = draw_object;
+    checked.trait_object_coercions.push_back(draw_coercion);
+    checked.trait_object_coercions.push_back(draw_coercion);
+
+    sema::TraitObjectCoercionFact invalid_coercion = checked.make_trait_object_coercion_fact();
+    invalid_coercion.coercion_key = draw_coercion.coercion_key;
+    invalid_coercion.vtable_layout = query::VTableLayoutKey{};
+    checked.trait_object_coercions.push_back(invalid_coercion);
+
+    sema::TraitMethodCallBinding ignored_dispatch = checked.make_trait_method_call_binding();
+    ignored_dispatch.dispatch = sema::TraitMethodDispatchKind::impl_override;
+    ignored_dispatch.method_name = checked.intern_text("draw");
+    ignored_dispatch.self_type = draw_object;
+    checked.append_trait_method_call_binding(ignored_dispatch);
+
+    sema::TraitMethodCallBinding invalid_dispatch = checked.make_trait_method_call_binding();
+    invalid_dispatch.dispatch = sema::TraitMethodDispatchKind::vtable_slot;
+    invalid_dispatch.method_name = checked.intern_text("");
+    invalid_dispatch.self_type = sema::INVALID_TYPE_HANDLE;
+    checked.append_trait_method_call_binding(invalid_dispatch);
+
+    sema::TraitMethodCallBinding paint_dispatch = checked.make_trait_method_call_binding();
+    paint_dispatch.dispatch = sema::TraitMethodDispatchKind::vtable_slot;
+    paint_dispatch.method_name = checked.intern_text("paint");
+    paint_dispatch.self_type = paint_object;
+    paint_dispatch.vtable_slot = 0U;
+    checked.append_trait_method_call_binding(paint_dispatch);
+
+    sema::TraitMethodCallBinding draw_dispatch = checked.make_trait_method_call_binding();
+    draw_dispatch.dispatch = sema::TraitMethodDispatchKind::vtable_slot;
+    draw_dispatch.method_name = checked.intern_text("draw");
+    draw_dispatch.self_type = draw_object;
+    draw_dispatch.vtable_slot = 0U;
+    checked.append_trait_method_call_binding(draw_dispatch);
+
+    const query::FunctionDynAbiFacts facts = sema::checked_dyn_abi_facts(checked);
+    EXPECT_TRUE(query::is_valid(facts));
+    ASSERT_EQ(facts.objects.size(), 2U);
+    ASSERT_EQ(facts.vtables.size(), 2U);
+    ASSERT_EQ(facts.coercions.size(), 1U);
+    ASSERT_EQ(facts.dispatches.size(), 2U);
+    EXPECT_EQ(facts.summary.object_count, 2U);
+    EXPECT_EQ(facts.summary.vtable_count, 2U);
+    EXPECT_EQ(facts.summary.coercion_count, 1U);
+    EXPECT_EQ(facts.summary.dispatch_count, 2U);
+    EXPECT_EQ(facts.summary.slot_count, 2U);
+    EXPECT_EQ(facts.objects[0].object_type.global_id < facts.objects[1].object_type.global_id,
+        draw_object_key.global_id < paint_object_key.global_id);
+    EXPECT_NE(facts.objects[0].principal_trait_name, "");
+    EXPECT_NE(facts.objects[0].object_type_name, "");
+    EXPECT_NE(facts.objects[1].principal_trait_name, "");
+    EXPECT_NE(facts.objects[1].object_type_name, "");
+    EXPECT_LT(facts.vtables[0].layout.global_id, facts.vtables[1].layout.global_id);
+    EXPECT_EQ(facts.coercions.front().coercion, draw_coercion.coercion_key);
+    EXPECT_LT(facts.dispatches[0].object_type.global_id, facts.dispatches[1].object_type.global_id);
+    EXPECT_FALSE(query::is_valid(facts.dispatches.front().layout));
+    EXPECT_TRUE(query::is_valid(facts.dispatches.front().object_type));
+    EXPECT_EQ(facts.fingerprint, query::function_dyn_abi_facts_fingerprint(facts));
 }
 
 } // namespace aurex::test

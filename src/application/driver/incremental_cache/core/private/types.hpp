@@ -200,6 +200,7 @@ struct LowerFunctionIRQuerySubject {
     query::QueryResultFingerprint ir;
     query::QueryResultFingerprint result;
     query::FunctionCleanupMarkerFacts cleanup_markers;
+    query::FunctionDynAbiFacts dyn_abi;
 };
 
 struct DiagnosticsQuerySubject {

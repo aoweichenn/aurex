@@ -2,7 +2,7 @@
 
 ## M8 Dyn Trait、Erased View 与动态派发设计基线
 
-M8 主线已从最新 M7 基线开出，第一步完成 dyn trait / erased view 调研设计和 query 地基修正。M8 不把 dyn
+M8 主线已从最新 M7 基线开出，M8a 已完成 dyn trait / erased view 调研设计和 query 地基修正。M8 不把 dyn
 trait 当成“照抄 Rust trait object”或“补一个 parser 分支”；新的设计基线选择 Aurex 自己的
 origin-bound erased view：第一版只做 borrowed dyn view，复用 M7 origin / loan / lifetime facts，以 checked
 vtable witness 做动态派发。
@@ -14,8 +14,12 @@ vtable witness 做动态派发。
 - 移除 query 层无语义形状的 `CanonicalTypeKind::trait_object` 占位。该旧设计没有 principal trait、
   associated equality、object origin/lifetime 或 vtable layout identity，却被 decoder 和 tests 当作有效
   canonical type key；M8 后续不能在这个错误稳定 key 上继续扩展。
+- 新增结构化 M8a query identity：`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`。三者分别表达
+  borrowed erased view 类型、checked vtable witness 和 borrow-to-dyn coercion，不再把 canonical type、vtable
+  layout、conformance evidence 混在一个 kind tag 或 children list 里。
 - 更新 stable key decoder 与 query tests：当前 canonical type key 只承认可由现有语言/语义实际产生的类型形状。
-  后续如果重新引入 trait object canonical key，必须提供结构化 constructor 和 decoder 校验。
+  M8a decoder 还会验证 trait object / vtable / coercion key 的 schema、policy、principal trait、associated
+  type member 和嵌套 canonical type 形状，并拒绝三类 key 布局混用。
 - 更新 `next-steps` 与中文文档入口，把 M8a-M8e 路线明确为：query 地基、syntax/sema、borrowed dyn coercion、
   IR/backend dispatch、hardening/后续扩展评估。
 

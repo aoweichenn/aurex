@@ -173,8 +173,12 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发设计基线");
     expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M8 Dyn Trait、Erased View 与动态派发");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
+    expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
+    expect_document_contains("docs/zh/progress.md", "M8a Borrowed Erased Trait View query foundation");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "origin-bound erased view");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "ObjectCallability");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "`TraitObjectTypeKey`");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "剩余阶段代码量预估");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8a：设计基线与 query 地基");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "当前阶段继续不实现标准库");
 

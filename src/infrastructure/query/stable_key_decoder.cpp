@@ -1,6 +1,7 @@
 #include <aurex/infrastructure/query/canonical_type_key.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
 #include <aurex/infrastructure/query/stable_key_decoder.hpp>
+#include <aurex/infrastructure/query/trait_object_key.hpp>
 
 #include <limits>
 
@@ -24,6 +25,9 @@ constexpr base::u64 QUERY_QUERY_KEY_MARKER = 0x51554552594b3031ULL;
 constexpr base::u64 QUERY_CANONICAL_TYPE_KEY_MARKER = 0x5143545950453031ULL;
 constexpr base::u64 QUERY_PARAM_ENV_KEY_MARKER = 0x5150454e56303131ULL;
 constexpr base::u64 QUERY_GENERIC_INSTANCE_KEY_MARKER = 0x5147494e53543031ULL;
+constexpr base::u64 QUERY_TRAIT_OBJECT_TYPE_KEY_MARKER = 0x51544f4254593031ULL;
+constexpr base::u64 QUERY_VTABLE_LAYOUT_KEY_MARKER = 0x515654424c303131ULL;
+constexpr base::u64 QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER = 0x5154434f45524331ULL;
 constexpr base::usize QUERY_STABLE_U8_BYTES = sizeof(base::u8);
 constexpr base::usize QUERY_STABLE_U16_BYTES = sizeof(base::u16);
 constexpr base::usize QUERY_STABLE_U32_BYTES = sizeof(base::u32);
@@ -134,6 +138,14 @@ private:
     return reader.skip(QUERY_STABLE_FINGERPRINT_BYTES);
 }
 
+[[nodiscard]] bool read_nonempty_fingerprint(StableKeyReader& reader) noexcept
+{
+    base::u64 primary = 0;
+    base::u64 secondary = 0;
+    base::u32 byte_count = 0;
+    return reader.read_u64(primary) && reader.read_u64(secondary) && reader.read_u32(byte_count) && byte_count != 0;
+}
+
 [[nodiscard]] bool skip_fingerprints(StableKeyReader& reader, const base::u64 count) noexcept
 {
     const base::u64 available_count = static_cast<base::u64>(reader.remaining() / QUERY_STABLE_FINGERPRINT_BYTES);
@@ -227,6 +239,26 @@ template <typename Enum>
     return read_enum_value(reader, enum_byte(FunctionCallConvKey::aurex), enum_byte(FunctionCallConvKey::c));
 }
 
+[[nodiscard]] bool read_trait_object_abi_policy(StableKeyReader& reader) noexcept
+{
+    return read_enum_value(
+        reader, enum_byte(TraitObjectAbiPolicyKey::borrowed_view_v1),
+        enum_byte(TraitObjectAbiPolicyKey::borrowed_view_v1));
+}
+
+[[nodiscard]] bool read_trait_object_metadata_policy(StableKeyReader& reader) noexcept
+{
+    return read_enum_value(
+        reader, enum_byte(TraitObjectMetadataPolicyKey::borrowed_methods_only_v1),
+        enum_byte(TraitObjectMetadataPolicyKey::borrowed_methods_only_v1));
+}
+
+[[nodiscard]] bool read_trait_object_borrow_kind(StableKeyReader& reader) noexcept
+{
+    return read_enum_value(
+        reader, enum_byte(TraitObjectBorrowKindKey::shared), enum_byte(TraitObjectBorrowKindKey::mut));
+}
+
 [[nodiscard]] bool skip_package_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_project_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_file_key(StableKeyReader& reader) noexcept;
@@ -234,12 +266,17 @@ template <typename Enum>
 [[nodiscard]] bool skip_module_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_module_part_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_def_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_trait_def_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_member_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_associated_type_member_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_body_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_generic_param_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_canonical_type_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_param_env_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_generic_instance_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_trait_object_type_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_vtable_layout_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_trait_object_coercion_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_query_key(StableKeyReader& reader) noexcept;
 
 [[nodiscard]] std::optional<std::string_view> read_file_key_slice(StableKeyReader& reader) noexcept
@@ -281,6 +318,42 @@ template <typename Enum>
 {
     const base::usize start = reader.offset();
     if (!skip_def_key(reader)) {
+        return std::nullopt;
+    }
+    return reader.slice_from(start);
+}
+
+[[nodiscard]] std::optional<std::string_view> read_trait_def_key_slice(StableKeyReader& reader) noexcept
+{
+    const base::usize start = reader.offset();
+    if (!skip_trait_def_key(reader)) {
+        return std::nullopt;
+    }
+    return reader.slice_from(start);
+}
+
+[[nodiscard]] std::optional<std::string_view> read_canonical_type_key_slice(StableKeyReader& reader) noexcept
+{
+    const base::usize start = reader.offset();
+    if (!skip_canonical_type_key(reader)) {
+        return std::nullopt;
+    }
+    return reader.slice_from(start);
+}
+
+[[nodiscard]] std::optional<std::string_view> read_trait_object_type_key_slice(StableKeyReader& reader) noexcept
+{
+    const base::usize start = reader.offset();
+    if (!skip_trait_object_type_key(reader)) {
+        return std::nullopt;
+    }
+    return reader.slice_from(start);
+}
+
+[[nodiscard]] std::optional<std::string_view> read_vtable_layout_key_slice(StableKeyReader& reader) noexcept
+{
+    const base::usize start = reader.offset();
+    if (!skip_vtable_layout_key(reader)) {
         return std::nullopt;
     }
     return reader.slice_from(start);
@@ -343,10 +416,26 @@ template <typename Enum>
         && reader.skip(QUERY_STABLE_U32_BYTES) && read_nonzero_u64(reader);
 }
 
+[[nodiscard]] bool skip_trait_def_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_DEF_KEY_MARKER) && skip_module_key(reader) && skip_fingerprint(reader)
+        && reader.skip(QUERY_STABLE_U32_BYTES) && read_enum_value(reader, enum_byte(DefNamespace::trait_),
+               enum_byte(DefNamespace::trait_))
+        && read_enum_value(reader, enum_byte(DefKind::trait_), enum_byte(DefKind::trait_))
+        && reader.skip(QUERY_STABLE_U32_BYTES) && read_nonzero_u64(reader);
+}
+
 [[nodiscard]] bool skip_member_key(StableKeyReader& reader) noexcept
 {
     return read_marker(reader, QUERY_MEMBER_KEY_MARKER) && skip_def_key(reader) && skip_fingerprint(reader)
         && read_member_kind(reader) && reader.skip(QUERY_STABLE_U32_BYTES) && read_nonzero_u64(reader);
+}
+
+[[nodiscard]] bool skip_associated_type_member_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_MEMBER_KEY_MARKER) && skip_def_key(reader) && skip_fingerprint(reader)
+        && read_enum_value(reader, enum_byte(MemberKind::associated_type), enum_byte(MemberKind::associated_type))
+        && reader.skip(QUERY_STABLE_U32_BYTES) && read_nonzero_u64(reader);
 }
 
 [[nodiscard]] bool skip_body_key(StableKeyReader& reader) noexcept
@@ -509,6 +598,63 @@ template <typename Enum>
         && read_nonzero_u64(reader);
 }
 
+[[nodiscard]] bool skip_associated_type_equalities(StableKeyReader& reader, const base::u64 count) noexcept
+{
+    for (base::u64 index = 0; index < count; ++index) {
+        if (!skip_associated_type_member_key(reader) || !skip_canonical_type_key(reader)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool skip_trait_object_type_payload(StableKeyReader& reader) noexcept
+{
+    base::u32 schema = 0;
+    base::u64 trait_arg_count = 0;
+    base::u64 associated_equality_count = 0;
+    return reader.read_u32(schema) && schema == QUERY_TRAIT_OBJECT_TYPE_KEY_SCHEMA_VERSION
+        && read_trait_object_abi_policy(reader) && skip_trait_def_key(reader) && read_nonempty_fingerprint(reader)
+        && read_nonempty_fingerprint(reader) && reader.read_u64(trait_arg_count)
+        && skip_canonical_type_keys(reader, trait_arg_count) && reader.read_u64(associated_equality_count)
+        && skip_associated_type_equalities(reader, associated_equality_count);
+}
+
+[[nodiscard]] bool skip_trait_object_type_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_TRAIT_OBJECT_TYPE_KEY_MARKER) && skip_trait_object_type_payload(reader)
+        && read_nonzero_u64(reader);
+}
+
+[[nodiscard]] bool skip_vtable_layout_payload(StableKeyReader& reader) noexcept
+{
+    base::u32 schema = 0;
+    return reader.read_u32(schema) && schema == QUERY_VTABLE_LAYOUT_KEY_SCHEMA_VERSION
+        && read_trait_object_abi_policy(reader) && read_trait_object_metadata_policy(reader)
+        && skip_canonical_type_key(reader) && skip_trait_object_type_key(reader) && read_nonempty_fingerprint(reader)
+        && read_nonempty_fingerprint(reader) && reader.skip(QUERY_STABLE_U32_BYTES);
+}
+
+[[nodiscard]] bool skip_vtable_layout_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_VTABLE_LAYOUT_KEY_MARKER) && skip_vtable_layout_payload(reader)
+        && read_nonzero_u64(reader);
+}
+
+[[nodiscard]] bool skip_trait_object_coercion_payload(StableKeyReader& reader) noexcept
+{
+    base::u32 schema = 0;
+    return reader.read_u32(schema) && schema == QUERY_TRAIT_OBJECT_COERCION_KEY_SCHEMA_VERSION
+        && read_trait_object_borrow_kind(reader) && skip_canonical_type_key(reader) && read_nonempty_fingerprint(reader)
+        && skip_trait_object_type_key(reader) && skip_vtable_layout_key(reader);
+}
+
+[[nodiscard]] bool skip_trait_object_coercion_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER)
+        && skip_trait_object_coercion_payload(reader) && read_nonzero_u64(reader);
+}
+
 [[nodiscard]] bool skip_query_key(StableKeyReader& reader) noexcept
 {
     return read_marker(reader, QUERY_QUERY_KEY_MARKER) && read_query_kind(reader) && reader.skip(QUERY_STABLE_U16_BYTES)
@@ -552,6 +698,21 @@ bool stable_key_has_body_key_layout(const std::string_view bytes) noexcept
 bool stable_key_has_generic_instance_key_layout(const std::string_view bytes) noexcept
 {
     return stable_key_has_layout(bytes, skip_generic_instance_key);
+}
+
+bool stable_key_has_trait_object_type_key_layout(const std::string_view bytes) noexcept
+{
+    return stable_key_has_layout(bytes, skip_trait_object_type_key);
+}
+
+bool stable_key_has_vtable_layout_key_layout(const std::string_view bytes) noexcept
+{
+    return stable_key_has_layout(bytes, skip_vtable_layout_key);
+}
+
+bool stable_key_has_trait_object_coercion_key_layout(const std::string_view bytes) noexcept
+{
+    return stable_key_has_layout(bytes, skip_trait_object_coercion_key);
 }
 
 bool stable_key_has_query_key_layout(const std::string_view bytes) noexcept
@@ -685,6 +846,72 @@ std::optional<DecodedGenericInstanceKeyIdentity> decode_generic_instance_key_ide
         return std::nullopt;
     }
     return DecodedGenericInstanceKeyIdentity{*template_def};
+}
+
+std::optional<DecodedTraitObjectTypeKeyIdentity> decode_trait_object_type_key_identity(
+    const std::string_view bytes) noexcept
+{
+    StableKeyReader reader(bytes);
+    std::optional<std::string_view> principal_trait;
+    base::u32 schema = 0;
+    base::u64 trait_arg_count = 0;
+    base::u64 associated_equality_count = 0;
+    if (!read_marker(reader, QUERY_TRAIT_OBJECT_TYPE_KEY_MARKER) || !reader.read_u32(schema)
+        || schema != QUERY_TRAIT_OBJECT_TYPE_KEY_SCHEMA_VERSION || !read_trait_object_abi_policy(reader)
+        || !(principal_trait = read_trait_def_key_slice(reader)).has_value() || !read_nonempty_fingerprint(reader)
+        || !read_nonempty_fingerprint(reader) || !reader.read_u64(trait_arg_count)
+        || !skip_canonical_type_keys(reader, trait_arg_count) || !reader.read_u64(associated_equality_count)
+        || !skip_associated_type_equalities(reader, associated_equality_count) || !read_nonzero_u64(reader)
+        || !reader.eof()) {
+        return std::nullopt;
+    }
+    return DecodedTraitObjectTypeKeyIdentity{*principal_trait};
+}
+
+std::optional<DecodedVTableLayoutKeyIdentity> decode_vtable_layout_key_identity(
+    const std::string_view bytes) noexcept
+{
+    StableKeyReader reader(bytes);
+    std::optional<std::string_view> concrete_type;
+    std::optional<std::string_view> object_type;
+    base::u32 schema = 0;
+    if (!read_marker(reader, QUERY_VTABLE_LAYOUT_KEY_MARKER) || !reader.read_u32(schema)
+        || schema != QUERY_VTABLE_LAYOUT_KEY_SCHEMA_VERSION || !read_trait_object_abi_policy(reader)
+        || !read_trait_object_metadata_policy(reader)
+        || !(concrete_type = read_canonical_type_key_slice(reader)).has_value()
+        || !(object_type = read_trait_object_type_key_slice(reader)).has_value() || !read_nonempty_fingerprint(reader)
+        || !read_nonempty_fingerprint(reader) || !reader.skip(QUERY_STABLE_U32_BYTES)
+        || !read_nonzero_u64(reader)
+        || !reader.eof()) {
+        return std::nullopt;
+    }
+    return DecodedVTableLayoutKeyIdentity{
+        *concrete_type,
+        *object_type,
+    };
+}
+
+std::optional<DecodedTraitObjectCoercionKeyIdentity> decode_trait_object_coercion_key_identity(
+    const std::string_view bytes) noexcept
+{
+    StableKeyReader reader(bytes);
+    std::optional<std::string_view> source_type;
+    std::optional<std::string_view> target_object_type;
+    std::optional<std::string_view> vtable_layout;
+    base::u32 schema = 0;
+    if (!read_marker(reader, QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER) || !reader.read_u32(schema)
+        || schema != QUERY_TRAIT_OBJECT_COERCION_KEY_SCHEMA_VERSION || !read_trait_object_borrow_kind(reader)
+        || !(source_type = read_canonical_type_key_slice(reader)).has_value() || !read_nonempty_fingerprint(reader)
+        || !(target_object_type = read_trait_object_type_key_slice(reader)).has_value()
+        || !(vtable_layout = read_vtable_layout_key_slice(reader)).has_value() || !read_nonzero_u64(reader)
+        || !reader.eof()) {
+        return std::nullopt;
+    }
+    return DecodedTraitObjectCoercionKeyIdentity{
+        *source_type,
+        *target_object_type,
+        *vtable_layout,
+    };
 }
 
 } // namespace aurex::query

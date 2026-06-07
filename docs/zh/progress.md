@@ -5,9 +5,15 @@
 
 ## 总体状态
 
-2026-06-07：M8 主线已从最新 M7 基线开到 `m8` 分支。第一步完成 dyn trait / erased view
-调研设计基线，并把 query 层错误地基同步改掉：无语义形状的 `CanonicalTypeKind::trait_object`
-占位已从代码中移除，stable key decoder 和 query tests 不再承认 0-child trait object canonical key。
+2026-06-07：M8 主线已从最新 M7 基线开到 `m8` 分支。M8a Borrowed Erased Trait View query foundation
+已完成：dyn trait / erased view 调研设计基线已固定，query 层错误地基同步改掉。无语义形状的
+`CanonicalTypeKind::trait_object` 占位已从代码中移除，stable key decoder 和 query tests 不再承认 0-child
+trait object canonical key。
+
+M8a 新增 `TraitObjectTypeKey`、`VTableLayoutKey` 和 `TraitObjectCoercionKey` 三类结构化 query identity，
+分别表达 borrowed erased view 类型、checked vtable witness 和 borrow-to-dyn coercion。decoder 会验证 schema、
+policy、principal trait、associated type member、嵌套 canonical type 和 key layout；query tests 覆盖稳定
+serialization/hash/debug、identity decode、associated equality 归一化和 malformed layout rejection。
 
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 当前选择 **origin-bound erased view**：
 第一版只做 borrowed dyn view，目标 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /

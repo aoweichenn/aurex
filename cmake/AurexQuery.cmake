@@ -29,6 +29,7 @@ add_library(aurex_query
     src/infrastructure/query/query_context.cpp
     src/infrastructure/query/canonical_type_key.cpp
     src/infrastructure/query/generic_instance_key.cpp
+    src/infrastructure/query/trait_object_key.cpp
 )
 target_link_libraries(aurex_query PUBLIC aurex_base)
 target_include_directories(aurex_query PUBLIC include)

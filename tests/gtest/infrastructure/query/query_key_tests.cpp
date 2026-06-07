@@ -22,6 +22,7 @@
 #include <aurex/infrastructure/query/source_file_query.hpp>
 #include <aurex/infrastructure/query/stable_identity.hpp>
 #include <aurex/infrastructure/query/stable_key_decoder.hpp>
+#include <aurex/infrastructure/query/trait_object_key.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
 
 #include <algorithm>
@@ -129,6 +130,18 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 {
     const std::array<std::string_view, 2> path{"Reader", "read"};
     return query::def_key(module, query::DefNamespace::member, query::DefKind::trait_method, path);
+}
+
+[[nodiscard]] query::DefKey test_trait_def(const query::ModuleKey module)
+{
+    const std::array<std::string_view, 1> path{"Drawable"};
+    return query::def_key(module, query::DefNamespace::trait_, query::DefKind::trait_, path);
+}
+
+[[nodiscard]] query::DefKey test_struct_def(const query::ModuleKey module)
+{
+    const std::array<std::string_view, 1> path{"Sprite"};
+    return query::def_key(module, query::DefNamespace::type, query::DefKind::struct_, path);
 }
 
 [[nodiscard]] query::ModulePartKey test_primary_module_part(const query::ModuleKey module)
@@ -490,6 +503,16 @@ void query_test_flip_stable_byte_at(std::string& bytes, const base::usize offset
     }
 }
 
+void query_test_zero_stable_bytes_at(std::string& bytes, const base::usize offset, const base::usize width)
+{
+    if (offset > bytes.size() || width > bytes.size() - offset) {
+        return;
+    }
+    for (base::usize index = 0; index < width; ++index) {
+        bytes[offset + index] = 0;
+    }
+}
+
 [[nodiscard]] std::string query_test_stable_fingerprint_bytes(const query::StableFingerprint128 fingerprint)
 {
     query::StableKeyWriter writer;
@@ -503,6 +526,21 @@ void query_test_flip_stable_byte_at(std::string& bytes, const base::usize offset
     const std::array<query::CanonicalTypeKey, 1> type_args{type_arg};
     return query::generic_instance_key(template_def, type_args, std::span<const query::StableFingerprint128>{},
         query::param_env_key(std::span<const std::string_view>{}));
+}
+
+[[nodiscard]] query::VTableLayoutKey query_test_vtable_layout_key(
+    const query::CanonicalTypeKey& concrete_type, const query::TraitObjectTypeKey& object_type)
+{
+    return query::vtable_layout_key(concrete_type, object_type, object_type.object_callability_schema,
+        query::stable_fingerprint("impl-evidence:Sprite:Drawable"), 1);
+}
+
+[[nodiscard]] query::TraitObjectCoercionKey query_test_trait_object_coercion_key(
+    const query::CanonicalTypeKey& concrete_type, const query::TraitObjectTypeKey& object_type,
+    const query::VTableLayoutKey& vtable_layout)
+{
+    return query::trait_object_coercion_key(
+        concrete_type, object_type.object_origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared);
 }
 
 [[nodiscard]] bool contains_query_dependency_edge(
@@ -5683,6 +5721,170 @@ TEST(QueryUnit, CanonicalTypeKeyEqualityRejectsEveryShallowFieldAndNestedChild)
         query::canonical_associated_type_projection(i32, other_associated_type));
     EXPECT_NE(query::canonical_pointer(query::PointerMutabilityKey::const_, i32),
         query::canonical_pointer(query::PointerMutabilityKey::const_, i64));
+}
+
+TEST(QueryUnit, TraitObjectQueryKeysAreStructuredStableAndHandleFree)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey trait_def = test_trait_def(module);
+    const query::DefKey struct_def = test_struct_def(module);
+    const query::MemberKey item_member =
+        query::member_key(trait_def, query::MemberKind::associated_type, "Item", QUERY_TEST_STABLE_ORDINAL);
+    const query::MemberKey error_member =
+        query::member_key(trait_def, query::MemberKind::associated_type, "Error", QUERY_TEST_STABLE_ORDINAL + 1);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey u8 = query::canonical_builtin(query::BuiltinTypeKey::u8);
+    const query::CanonicalTypeKey concrete_type =
+        query::canonical_nominal(struct_def, std::span<const query::CanonicalTypeKey>{});
+    const query::TraitObjectAssociatedTypeEqualityKey item_equality{item_member, i32};
+    const query::TraitObjectAssociatedTypeEqualityKey error_equality{error_member, u8};
+    const std::array<query::TraitObjectAssociatedTypeEqualityKey, 2> sorted_equalities{
+        item_equality,
+        error_equality,
+    };
+    const std::array<query::TraitObjectAssociatedTypeEqualityKey, 2> reversed_equalities{
+        error_equality,
+        item_equality,
+    };
+    const query::StableFingerprint128 origin = query::stable_fingerprint("origin:draw-view");
+    const query::StableFingerprint128 object_callability = query::stable_fingerprint("object-callability:Drawable/v1");
+
+    const query::TraitObjectTypeKey object_type = query::trait_object_type_key(
+        trait_def, std::span<const query::CanonicalTypeKey>{}, sorted_equalities, origin, object_callability);
+    const query::TraitObjectTypeKey reordered_object_type = query::trait_object_type_key(
+        trait_def, std::span<const query::CanonicalTypeKey>{}, reversed_equalities, origin, object_callability);
+    const query::VTableLayoutKey vtable_layout = query::vtable_layout_key(
+        concrete_type, object_type, object_callability, query::stable_fingerprint("impl-evidence:Sprite:Drawable"), 1);
+    const query::TraitObjectCoercionKey coercion = query::trait_object_coercion_key(
+        concrete_type, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared);
+    const query::TraitObjectCoercionKey mutable_coercion = query::trait_object_coercion_key(
+        concrete_type, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::mut);
+
+    EXPECT_TRUE(query::is_valid(item_equality));
+    EXPECT_TRUE(query::is_valid(object_type));
+    EXPECT_TRUE(query::is_valid(vtable_layout));
+    EXPECT_TRUE(query::is_valid(coercion));
+    EXPECT_EQ(object_type, reordered_object_type);
+    EXPECT_EQ(query::stable_key_fingerprint(object_type), query::stable_key_fingerprint(reordered_object_type));
+    EXPECT_NE(coercion, mutable_coercion);
+
+    const std::string object_type_bytes = query::stable_serialize(object_type);
+    const std::string vtable_layout_bytes = query::stable_serialize(vtable_layout);
+    const std::string coercion_bytes = query::stable_serialize(coercion);
+    EXPECT_TRUE(query::stable_key_has_trait_object_type_key_layout(object_type_bytes));
+    EXPECT_TRUE(query::stable_key_has_vtable_layout_key_layout(vtable_layout_bytes));
+    EXPECT_TRUE(query::stable_key_has_trait_object_coercion_key_layout(coercion_bytes));
+    EXPECT_FALSE(query::stable_key_has_trait_object_type_key_layout(vtable_layout_bytes));
+    EXPECT_FALSE(query::stable_key_has_vtable_layout_key_layout(coercion_bytes));
+    EXPECT_FALSE(query::stable_key_has_trait_object_coercion_key_layout(object_type_bytes));
+
+    const std::optional<query::DecodedTraitObjectTypeKeyIdentity> object_identity =
+        query::decode_trait_object_type_key_identity(object_type_bytes);
+    ASSERT_TRUE(object_identity.has_value());
+    EXPECT_EQ(object_identity->principal_trait, query::stable_serialize(trait_def));
+    const std::optional<query::DecodedVTableLayoutKeyIdentity> vtable_identity =
+        query::decode_vtable_layout_key_identity(vtable_layout_bytes);
+    ASSERT_TRUE(vtable_identity.has_value());
+    EXPECT_EQ(vtable_identity->concrete_type, query::stable_serialize(concrete_type));
+    EXPECT_EQ(vtable_identity->object_type, object_type_bytes);
+    const std::optional<query::DecodedTraitObjectCoercionKeyIdentity> coercion_identity =
+        query::decode_trait_object_coercion_key_identity(coercion_bytes);
+    ASSERT_TRUE(coercion_identity.has_value());
+    EXPECT_EQ(coercion_identity->source_type, query::stable_serialize(concrete_type));
+    EXPECT_EQ(coercion_identity->target_object_type, object_type_bytes);
+    EXPECT_EQ(coercion_identity->vtable_layout, vtable_layout_bytes);
+
+    EXPECT_NE(query::TraitObjectTypeKeyHash{}(object_type), 0U);
+    EXPECT_NE(query::VTableLayoutKeyHash{}(vtable_layout), 0U);
+    EXPECT_NE(query::TraitObjectCoercionKeyHash{}(coercion), 0U);
+    EXPECT_NE(query::debug_string(object_type).find("TraitObjectTypeKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(vtable_layout).find("VTableLayoutKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(coercion).find("TraitObjectCoercionKey"), std::string::npos);
+}
+
+TEST(QueryUnit, TraitObjectQueryKeysRejectIncompleteOrMixedIdentities)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey trait_def = test_trait_def(module);
+    const query::DefKey struct_def = test_struct_def(module);
+    const query::DefKey function_def = test_function_def(module);
+    const query::MemberKey associated_type =
+        query::member_key(trait_def, query::MemberKind::associated_type, "Item", QUERY_TEST_STABLE_ORDINAL);
+    const query::MemberKey method_member =
+        query::member_key(trait_def, query::MemberKind::trait_method, "draw", QUERY_TEST_STABLE_ORDINAL + 1);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey concrete_type =
+        query::canonical_nominal(struct_def, std::span<const query::CanonicalTypeKey>{});
+    const query::TraitObjectAssociatedTypeEqualityKey equality{associated_type, i32};
+    const std::array<query::TraitObjectAssociatedTypeEqualityKey, 1> equalities{equality};
+    const query::StableFingerprint128 origin = query::stable_fingerprint("origin:draw-view");
+    const query::StableFingerprint128 object_callability = query::stable_fingerprint("object-callability:Drawable/v1");
+    const query::TraitObjectTypeKey object_type = query::trait_object_type_key(
+        trait_def, std::span<const query::CanonicalTypeKey>{}, equalities, origin, object_callability);
+    const query::VTableLayoutKey vtable_layout = query_test_vtable_layout_key(concrete_type, object_type);
+
+    EXPECT_FALSE(query::is_valid(query::TraitObjectTypeKey{}));
+    EXPECT_FALSE(query::is_valid(query::VTableLayoutKey{}));
+    EXPECT_FALSE(query::is_valid(query::TraitObjectCoercionKey{}));
+    EXPECT_FALSE(query::is_valid(query::TraitObjectAssociatedTypeEqualityKey{method_member, i32}));
+    EXPECT_FALSE(query::is_valid(query::trait_object_type_key(function_def,
+        std::span<const query::CanonicalTypeKey>{}, equalities, origin, object_callability)));
+    EXPECT_FALSE(query::is_valid(query::trait_object_type_key(trait_def,
+        std::span<const query::CanonicalTypeKey>{}, equalities, query::StableFingerprint128{}, object_callability)));
+
+    std::array<query::TraitObjectAssociatedTypeEqualityKey, 2> duplicate_equalities{equality, equality};
+    EXPECT_FALSE(query::is_valid(query::trait_object_type_key(
+        trait_def, std::span<const query::CanonicalTypeKey>{}, duplicate_equalities, origin, object_callability)));
+
+    query::CanonicalTypeKey invalid_type;
+    const std::array<query::CanonicalTypeKey, 1> invalid_trait_args{invalid_type};
+    EXPECT_FALSE(query::is_valid(
+        query::trait_object_type_key(trait_def, invalid_trait_args, equalities, origin, object_callability)));
+
+    EXPECT_FALSE(query::is_valid(query::vtable_layout_key(concrete_type, object_type,
+        query::stable_fingerprint("different-slot-schema"), query::stable_fingerprint("impl-evidence"), 1)));
+    EXPECT_FALSE(query::is_valid(query::vtable_layout_key(invalid_type, object_type, object_callability,
+        query::stable_fingerprint("impl-evidence"), 1)));
+
+    const query::CanonicalTypeKey other_source = query::canonical_builtin(query::BuiltinTypeKey::u8);
+    EXPECT_FALSE(query::is_valid(query::trait_object_coercion_key(
+        other_source, origin, object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared)));
+    EXPECT_FALSE(query::is_valid(query::trait_object_coercion_key(concrete_type,
+        query::stable_fingerprint("other-origin"), object_type, vtable_layout, query::TraitObjectBorrowKindKey::shared)));
+
+    query::TraitObjectTypeKey invalid_schema_object = object_type;
+    invalid_schema_object.schema = 0;
+    EXPECT_FALSE(query::decode_trait_object_type_key_identity(query::stable_serialize(invalid_schema_object)).has_value());
+    EXPECT_FALSE(query::stable_key_has_trait_object_type_key_layout(query::stable_serialize(invalid_schema_object)));
+
+    query::TraitObjectTypeKey wrong_principal = object_type;
+    wrong_principal.principal_trait = function_def;
+    EXPECT_FALSE(query::decode_trait_object_type_key_identity(query::stable_serialize(wrong_principal)).has_value());
+
+    query::TraitObjectTypeKey wrong_associated_member = object_type;
+    wrong_associated_member.associated_equalities.front().associated_type = method_member;
+    EXPECT_FALSE(
+        query::decode_trait_object_type_key_identity(query::stable_serialize(wrong_associated_member)).has_value());
+
+    std::string zero_origin_object = query::stable_serialize(object_type);
+    const std::string origin_bytes = query_test_stable_fingerprint_bytes(object_type.object_origin);
+    const base::usize origin_offset = zero_origin_object.find(origin_bytes);
+    ASSERT_NE(origin_offset, std::string::npos);
+    query_test_zero_stable_bytes_at(zero_origin_object, origin_offset, origin_bytes.size());
+    EXPECT_FALSE(query::decode_trait_object_type_key_identity(zero_origin_object).has_value());
+    EXPECT_FALSE(query::stable_key_has_trait_object_type_key_layout(zero_origin_object));
+
+    query::VTableLayoutKey invalid_policy_vtable = vtable_layout;
+    invalid_policy_vtable.metadata_policy = static_cast<query::TraitObjectMetadataPolicyKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(query::decode_vtable_layout_key_identity(query::stable_serialize(invalid_policy_vtable)).has_value());
+
+    query::TraitObjectCoercionKey invalid_borrow_coercion =
+        query_test_trait_object_coercion_key(concrete_type, object_type, vtable_layout);
+    invalid_borrow_coercion.borrow_kind = static_cast<query::TraitObjectBorrowKindKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    EXPECT_FALSE(
+        query::decode_trait_object_coercion_key_identity(query::stable_serialize(invalid_borrow_coercion)).has_value());
 }
 
 TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment)

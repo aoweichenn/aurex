@@ -2,8 +2,9 @@
 
 日期：2026-06-07
 
-状态：M8 主线第一步调研设计已建立；代码层已移除 query canonical type 中无语义形状的
-`trait_object` 占位，避免把错误稳定 key 形态带入 M8。
+状态：M8a Borrowed Erased Trait View query foundation 已完成；代码层已移除 query canonical type 中无语义形状的
+`trait_object` 占位，并新增结构化 trait object / vtable / coercion query identity，避免把错误稳定 key
+形态带入 M8。
 
 ## 0. 结论
 
@@ -291,7 +292,17 @@ M8a backend 只需要 borrowed dyn method call：
 
 ## 5. Query / Cache / Tooling
 
-M8 第一改已经移除了错误的 `CanonicalTypeKind::trait_object` 占位。后续重新引入时必须满足：
+M8a 已经移除了错误的 `CanonicalTypeKind::trait_object` 占位，并新增独立 query identity：
+
+- `TraitObjectTypeKey`：表示 borrowed erased view 的类型身份，包含 principal trait、trait args、
+  associated type equality、object origin、object-callability schema fingerprint 和 ABI policy。
+- `VTableLayoutKey`：表示 `(concrete type, trait object type)` 的 checked vtable witness 身份，包含 concrete
+  canonical type、object type、slot schema、impl evidence、method slot count、metadata policy 和 ABI policy。
+- `TraitObjectCoercionKey`：表示 `&T` / `&mut T` 到 borrowed dyn view 的 coercion 身份，包含 source type、
+  source origin、target object type、vtable layout 和 borrow kind。
+
+这三类 key 是分开的：canonical type、vtable layout、conformance/coercion evidence 不混塞进
+`CanonicalTypeKey::children`。后续重新引入 trait object canonical type 时必须满足：
 
 - 有公开 constructor，不允许测试手写 kind tag 当 valid key。
 - decoder 验证 trait object key 的 child count 和 header fields。
@@ -299,13 +310,9 @@ M8 第一改已经移除了错误的 `CanonicalTypeKind::trait_object` 占位。
 - generic instance / drop glue / vtable key 之间 identity 不混淆。
 - IDE hover/index 可以展示 dyn method dispatch fact 和 vtable fingerprint。
 
-建议新增独立 query key：
-
-- `TraitObjectTypeKey`
-- `VTableLayoutKey`
-- `TraitObjectCoercionKey`
-
-不建议把所有东西塞回 `CanonicalTypeKey::children`，否则 canonical type、vtable layout、conformance evidence 三种身份会混在一起。
+M8a decoder 会拒绝无效 schema、无效 policy、非 trait principal、非 associated type member、非法 canonical
+type child 和三类 key 布局混用。associated equality 在 constructor 中按 member identity 归一化，保证用户书写顺序
+不会污染 stable fingerprint。
 
 ## 6. 分阶段路线
 
@@ -316,12 +323,16 @@ M8 第一改已经移除了错误的 `CanonicalTypeKind::trait_object` 占位。
 - 固定 M8 dyn trait 设计。
 - 移除无语义 trait object canonical key。
 - 增加 object-callability 规则设计与测试计划。
+- 增加 `TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey` 的结构化 query identity。
+- 增加 stable key decoder layout 校验和 malformed key 测试。
 - 不实现语言 surface。
 
 验收：
 
 - `docs/zh/m8-dyn-trait-design.md`
 - query tests 不再承认无信息 `trait_object` key。
+- query tests 覆盖 trait object type / vtable layout / coercion key 的稳定序列化、hash、debug、identity decode
+  和 malformed layout rejection。
 - full query/frontend tests 通过。
 
 ### M8b：syntax + sema type + object-callability diagnostics
@@ -377,6 +388,20 @@ M8 第一改已经移除了错误的 `CanonicalTypeKind::trait_object` 占位。
 - supertrait slot layout。
 - owning dyn 设计研究。
 
+### 剩余阶段代码量预估
+
+这是基于当前代码结构和 M8a 已完成 query foundation 的粗估。实际代码量会受诊断文本、golden 测试数量和
+coverage 补洞影响：
+
+| 阶段 | 主要内容 | 预计新增/修改代码量 |
+| --- | --- | ---: |
+| M8b | `dyn Trait` lexer/parser/syntax/sema type、object-callability collector 与 diagnostics，不做 dispatch | 1,800-2,600 行 |
+| M8c | borrowed dyn coercion、checked vtable layout facts、trait method binding `vtable_slot`、IDE/query projection | 2,400-3,600 行 |
+| M8d | IR pack/extract/vtable-slot、verifier、LLVM vtable global 与 indirect dispatch、execution tests | 2,800-4,200 行 |
+| M8e | hardening、incremental invalidation、default method slot 边界、associated equality surface 补齐、性能/coverage 收口 | 1,200-2,000 行 |
+
+如果 M8c 提前纳入 supertrait slot 或 M8d 提前纳入 dynamic Drop，代码量会明显上浮；这些仍按非默认项处理。
+
 仍不默认进入 M8a-M8d：
 
 - 标准库 `Box`
@@ -428,4 +453,3 @@ M8d 测试：
   https://github.com/swiftlang/swift/blob/main/docs/GenericsManifesto.md
 - Go Language Specification, interface types and type sets: https://go.dev/ref/spec#Interface_types
 - Itanium C++ ABI, virtual table layout: https://itanium-cxx-abi.github.io/cxx-abi/abi.html#vtable
-

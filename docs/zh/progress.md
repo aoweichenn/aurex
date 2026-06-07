@@ -1,11 +1,12 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M8 Dyn Trait、Erased View 与动态派发设计基线
+阶段：M8 Dyn Trait、Erased View 与动态派发 release closure
 
 ## 总体状态
 
-2026-06-07：M8a-M8e borrowed dyn trait runtime dispatch closure 已完成。M8 主线从最新 M7 基线开到
+2026-06-07：M8 release closure 已完成。M8a-M8e borrowed dyn trait runtime dispatch closure 已完成，M8
+follow-up sample / release polish 主项也已完成。M8 主线从最新 M7 基线开到
 `m8` 分支后，先完成 M8a Borrowed Erased Trait View query foundation：dyn trait / erased view 调研设计
 基线已固定，query 层错误地基同步改掉。无语义形状的
 `CanonicalTypeKind::trait_object` 占位已从代码中移除，stable key decoder 和 query tests 不再承认 0-child
@@ -46,6 +47,11 @@ lifetime facts，以 checked vtable witness 描述动态派发。本阶段继续
 allocator、owning existential container、dynamic Drop dispatch、supertrait upcasting 或多 trait object
 composition。M8 当前已完成 M8a-M8e；后续应先做 post-M8/M9 设计评审，而不是继续把标准库或 owning dyn 塞进
 当前阶段。
+
+M8 封口结论：`m8` 分支只承载 borrowed dyn runtime dispatch 的 release baseline，不再增加语言语义。下一条主线
+从 `m9` 分支开始，目标是 dyn ABI / tooling 设计阶段：先设计 library-independent dyn ABI DTO、tooling/query
+投影、cross-module invalidation 和 verifier/backend negative matrix；标准库、owning dyn、allocator 和 dynamic
+Drop dispatch 仍不进入 M9 第一设计包的实现范围。
 
 2026-06-05：M7d-F tuple / index place-state closure 已完成 compiler-only 子集。本阶段继续不实现任何标准库。
 parser 现在接受匿名 tuple 数字字段访问：`pair.0` 和 `pair . 0` 都会进入普通 field expression；`pair.0f32`

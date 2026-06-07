@@ -1,9 +1,10 @@
 # 版本文档
 
-## M8 Dyn Trait、Erased View 与动态派发设计基线
+## M8 Dyn Trait、Erased View 与动态派发 Release Closure
 
-M8 主线已从最新 M7 基线开出，M8a-M8e 已完成 dyn trait / erased view 调研设计、query 地基修正、frontend
-syntax/sema、borrowed dyn coercion、checked vtable facts、IR/backend runtime dispatch 和 hardening closure。
+M8 主线已完成 release closure。M8a-M8e 已完成 dyn trait / erased view 调研设计、query 地基修正、frontend
+syntax/sema、borrowed dyn coercion、checked vtable facts、IR/backend runtime dispatch 和 hardening closure；
+M8 follow-up sample / release polish 也已完成。
 M8 不把 dyn trait 当成“照抄 Rust trait object”或
 “补一个 parser 分支”；新的设计基线选择 Aurex 自己的 origin-bound erased view：第一版只做 borrowed dyn view，
 复用 M7 origin / loan / lifetime facts，以 checked vtable witness 描述动态派发。
@@ -40,6 +41,7 @@ M8 不把 dyn trait 当成“照抄 Rust trait object”或
 
 当前仍保守的边界：M8 只完成 borrowed dyn view 和 runtime method dispatch，不实现 owning dyn、
 `Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
+下一条主线是 M9 dyn ABI / tooling 设计阶段；M9 第一设计包同样不实现标准库或 owning dyn。
 
 ## M7d-K Array Repeat Resource Safety Closure
 

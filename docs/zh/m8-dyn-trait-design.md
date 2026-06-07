@@ -2,7 +2,7 @@
 
 日期：2026-06-07
 
-状态：M8a-M8e 已完成，M8 follow-up 的 sample 和 release polish 主项也已进入常规验证矩阵。代码层已移除
+状态：M8 release closure 已完成。M8a-M8e 已完成，M8 follow-up 的 sample 和 release polish 主项也已进入常规验证矩阵。代码层已移除
 query canonical type 中无语义形状的 `trait_object` 占位，完成 borrowed dyn trait 的 query identity、frontend
 syntax/sema、borrowed dyn coercion、checked vtable facts、IR/backend runtime dynamic dispatch，以及 M8e
 hardening / release closure。
@@ -22,6 +22,7 @@ Aurex。Aurex 需要的是一套服务于现有语言地基的 **erased trait vi
 - 常规 sample suite 已覆盖 borrowed dyn 的 shared dispatch、mutable dispatch、default method slot 和 associated
   equality；负例 sample 也覆盖缺失 associated equality 和缺失 nominal impl coercion。
 - 当前阶段继续不实现标准库，不实现 `Box<dyn Trait>`，不实现 owning existential container。
+- M8 已正式封口；下一阶段从 M9 dyn ABI / tooling 设计基线开始，不在 M8 中继续追加语言语义。
 
 M8 第一刀命名为 **M8a Borrowed Erased Trait View**。用户表面保留 `dyn Trait` 这个行业通用词，
 但内部模型不叫“任意 trait object”，而叫 **origin-bound erased view**：一个带 origin 的引用，引用目标的
@@ -459,6 +460,20 @@ supertrait upcasting 或多 trait object composition。
   nominal impl 时拒绝 `&T -> &dyn Trait` coercion。
 - sample suite runtime smoke 明确执行 borrowed dyn sample，不只依赖 gtest 内嵌 source。
 - usage / documentation tests 把 sample 路径和 M8 follow-up 状态固定下来，后续文档漂移会在集成测试中暴露。
+
+### M8 release closure
+
+状态：已完成。
+
+封口结论：
+
+- `m8` 分支的语言能力边界固定为 borrowed dyn runtime dispatch：`&dyn Trait`、`&mut dyn Trait`、
+  `dyn Trait[Assoc = Type]`、checked vtable witness、IR/backend indirect dispatch、default method slot 和
+  associated equality dispatch。
+- `m8` 不再追加 owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、supertrait upcasting、多 trait
+  object composition 或标准库 API。
+- 后续 M9 从 ABI/tooling 设计开始，先把 M8 runtime dispatch 的 metadata、fingerprint、query/cache、tooling 和
+  verifier/backend negative matrix 固化，再评估 advanced dyn design。
 
 ### 剩余阶段代码量预估
 

@@ -167,11 +167,13 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
 
 TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M8 Dyn Trait、Erased View 与动态派发设计基线");
-    expect_document_contains("docs/zh/progress.md", "阶段：M8 Dyn Trait、Erased View 与动态派发设计基线");
+    expect_document_contains("docs/zh/README.md", "M8 Dyn Trait、Erased View 与动态派发 release closure");
+    expect_document_contains("docs/zh/progress.md", "阶段：M8 Dyn Trait、Erased View 与动态派发 release closure");
     expect_document_contains("docs/zh/progress.md", "origin-bound erased view");
-    expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发设计基线");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M8 Dyn Trait、Erased View 与动态派发");
+    expect_document_contains("docs/zh/progress.md", "M8 封口结论");
+    expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M9 Dyn ABI / Tooling 设计阶段");
+    expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
     expect_document_contains("docs/zh/progress.md", "M8a Borrowed Erased Trait View query foundation");
@@ -183,6 +185,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8d：IR/backend dynamic dispatch");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8e：hardening 和后续扩展评估");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8 follow-up：sample 和 release polish");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8 release closure");
     expect_document_contains(
         "docs/zh/m8-dyn-trait-design.md", "borrowed dyn view runtime dynamic dispatch 已完成");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "当前阶段继续不实现标准库");

@@ -1,9 +1,10 @@
 # 下一步计划
 
-## 当前最高优先级：M8 Dyn Trait、Erased View 与动态派发
+## 当前最高优先级：M9 Dyn ABI / Tooling 设计阶段
 
-M8 主线已经开到 `m8` 分支，第一步调研设计基线记录在
-[Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。
+M8 主线已经在 `m8` 分支完成 release closure，设计和实现基线记录在
+[Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。下一条主线应从 `m9`
+分支开始，先做 dyn ABI / tooling 设计阶段，而不是继续在 M8 中追加语言语义。
 
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
 第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
@@ -22,11 +23,16 @@ binding。
 
 M8d/M8e 已完成 runtime dispatch 和 hardening：IR 已有 trait-object pack/extract/vtable-slot，LLVM backend 已生成
 vtable global 和 indirect call，native execution 已覆盖 shared dyn、mutable dyn、default method slot 和
-associated equality dispatch。当前最高优先级不再是继续 M8d，而是结束 M8 后进入 post-M8/M9 设计评审。
+associated equality dispatch。当前最高优先级不再是继续 M8d，而是从 M8 release closure 进入 M9 设计评审。
 
 M8 follow-up 的 sample / release polish 主项也已完成：borrowed dyn trait runtime dispatch 已进入常规 positive
 runtime sample suite，缺失 associated equality 和缺失 nominal impl coercion 已进入常规 negative sample suite。
 后续 M8 内只保留很小的文案或 profile 抛光，不再增加语言语义。
+
+M9 第一阶段建议命名为 **M9 Dyn ABI / Tooling Design Baseline**。它的目标是把 M8 已经能运行的 borrowed dyn
+dispatch 固化成可跨 backend、query/cache、IDE/tooling 和后续高级 dyn 设计复用的 ABI/metadata/diagnostic
+设计，而不是立即实现 owning dyn 或标准库。M9 设计阶段的非目标保持明确：不实现标准库、`Box<dyn Trait>`、
+allocator、owning dyn、dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
 
 当前建议路线：
 
@@ -40,9 +46,10 @@ runtime sample suite，缺失 associated equality 和缺失 nominal impl coercio
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
-| M8 follow-up | sample/release polish 主项已完成；只余小规模 dump 文案、目标化 perf/profile 或 release note 微调 | 100-300 行 |
-| Post-M8 / M9 dyn advanced design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
-| M9 ABI/tooling closure | library-independent dyn ABI DTO、tooling/query 投影完善、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
+| M8 follow-up | 已完成 release closure；后续不再追加 M8 语言语义 | 0-100 行 |
+| M9a design baseline | library-independent dyn ABI DTO、metadata/fingerprint schema、tooling/query projection 和 cross-module invalidation 设计 | 500-900 行文档/测试 |
+| M9b ABI/tooling implementation | dyn ABI DTO、tooling/query 投影、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
+| M9c advanced dyn design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
 | 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

@@ -1,0 +1,18 @@
+module trait_dyn_missing_impl_coercion;
+
+trait Draw {
+    fn draw(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+fn render(drawable: &dyn Draw) -> i32 {
+    return drawable.draw();
+}
+
+fn main() -> i32 {
+    let file: File = File { value: 1 };
+    return render(&file);
+}

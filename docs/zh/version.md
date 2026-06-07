@@ -33,6 +33,8 @@ M8 不把 dyn trait 当成“照抄 Rust trait object”或
   LLVM backend 生成 `{data*, vtable*}` fat view、internal vtable global 和 indirect call。
 - 新增 M8e hardening：default method slot、associated equality dispatch、checked/IR fingerprint、lower-IR unit
   invalidation、native execution 和文档收口都已补强。
+- 新增 M8 follow-up sample / release polish：borrowed dyn runtime dispatch 进入常规 positive runtime sample
+  suite，缺失 associated equality 和缺失 nominal impl coercion 进入常规 negative sample suite。
 - 更新 `next-steps` 与中文文档入口，把 M8a-M8e 路线明确为：query 地基、syntax/sema、borrowed dyn coercion、
   IR/backend dispatch、hardening/后续扩展评估。
 

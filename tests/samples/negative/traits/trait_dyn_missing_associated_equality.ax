@@ -1,0 +1,28 @@
+module trait_dyn_missing_associated_equality;
+
+trait Source {
+    type Item;
+
+    fn read(self: &Self) -> Self.Item;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Source for File {
+    type Item = i32;
+
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn score(source: &dyn Source) -> i32 {
+    return 1;
+}
+
+fn main() -> i32 {
+    let file: File = File { value: 1 };
+    return score(&file);
+}

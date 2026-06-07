@@ -135,6 +135,10 @@ fn main() -> i32 {
 `{data*, vtable*}` fat view，method call 会从 checked vtable slot 加载函数指针并间接派发。`dyn Trait[Item = i32]`
 这类 associated equality 已支持，trait default method slot 也可以进入 vtable。
 
+常规 sample suite 中的 `tests/samples/positive/traits/trait_dyn_borrowed_dispatch.ax` 展示了一个完整 borrowed
+dyn 用例：`&dyn Source[Item = i32]` shared dispatch、`&mut dyn Accumulate` mutable receiver 写回、default
+method slot 和 associated equality 在同一个程序中运行。
+
 当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting、
 多 trait object composition、specialization、default associated type、generic associated type 或 associated const。
 

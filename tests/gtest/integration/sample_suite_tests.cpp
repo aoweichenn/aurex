@@ -243,6 +243,9 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
         "trait impl missing method: Reader for trait_default_method_missing_required.File.read"},
     {"trait_default_method_return_mismatch", "return type mismatch"},
     {"trait_default_method_self_field", "field access requires a non-opaque struct value"},
+    {"trait_dyn_missing_associated_equality", "dyn trait `Source` requires associated type equality `Item = ...`"},
+    {"trait_dyn_missing_impl_coercion",
+        "type trait_dyn_missing_impl_coercion.File cannot be coerced to dyn trait `Draw`"},
     {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
     {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},
@@ -582,6 +585,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_inherent_p
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_function_field_precedence)
 {
     run_positive_runtime_smoke_sample("traits", "trait_method_function_field_precedence.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_dyn_borrowed_dispatch)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_dyn_borrowed_dispatch.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)

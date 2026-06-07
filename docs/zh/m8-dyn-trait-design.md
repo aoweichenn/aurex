@@ -2,9 +2,10 @@
 
 日期：2026-06-07
 
-状态：M8a-M8e 已完成。代码层已移除 query canonical type 中无语义形状的 `trait_object` 占位，完成
-borrowed dyn trait 的 query identity、frontend syntax/sema、borrowed dyn coercion、checked vtable facts、
-IR/backend runtime dynamic dispatch，以及 M8e hardening / release closure。
+状态：M8a-M8e 已完成，M8 follow-up 的 sample 和 release polish 主项也已进入常规验证矩阵。代码层已移除
+query canonical type 中无语义形状的 `trait_object` 占位，完成 borrowed dyn trait 的 query identity、frontend
+syntax/sema、borrowed dyn coercion、checked vtable facts、IR/backend runtime dynamic dispatch，以及 M8e
+hardening / release closure。
 
 ## 0. 结论
 
@@ -18,6 +19,8 @@ Aurex。Aurex 需要的是一套服务于现有语言地基的 **erased trait vi
 - query/cache/tooling 必须先有稳定事实和 fingerprint，再让 IR/backend 消费。
 - borrowed dyn view runtime dynamic dispatch 已完成：`&dyn Trait` / `&mut dyn Trait` 方法调用会经 fat view
   和 vtable slot 间接派发。
+- 常规 sample suite 已覆盖 borrowed dyn 的 shared dispatch、mutable dispatch、default method slot 和 associated
+  equality；负例 sample 也覆盖缺失 associated equality 和缺失 nominal impl coercion。
 - 当前阶段继续不实现标准库，不实现 `Box<dyn Trait>`，不实现 owning existential container。
 
 M8 第一刀命名为 **M8a Borrowed Erased Trait View**。用户表面保留 `dyn Trait` 这个行业通用词，
@@ -336,6 +339,9 @@ global 和 native indirect call 均已落地。
 - 同一个 dyn 参数可接收不同 concrete impl，runtime vtable 决定实际调用目标。
 - checked dump、IR dump、IR fingerprint、lower-IR unit fingerprint 和 query authority 能感知 vtable layout /
   method slot 变化。
+- `tests/samples/positive/traits/trait_dyn_borrowed_dispatch.ax` 已作为用户层 runtime sample 进入 sample suite；
+  `tests/samples/negative/traits/trait_dyn_missing_associated_equality.ax` 和
+  `tests/samples/negative/traits/trait_dyn_missing_impl_coercion.ax` 已作为诊断负例进入 sample suite。
 
 当前阶段继续不实现标准库，不做 owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、
 supertrait upcasting 或多 trait object composition。
@@ -440,13 +446,27 @@ supertrait upcasting 或多 trait object composition。
 - 文档明确当前可做 borrowed dyn runtime dispatch，也明确不进入标准库、owning dyn、dynamic Drop dispatch、
   supertrait upcasting 或多 trait composition。
 
+### M8 follow-up：sample 和 release polish
+
+状态：sample / release polish 主项已完成。
+
+已完成：
+
+- 常规 positive sample 增加 borrowed dyn trait runtime dispatch：同一个文件覆盖 `&dyn Trait` shared dispatch、
+  `&mut dyn Trait` mutable receiver 写回、trait default method slot 和 `dyn Trait[Assoc = Type]` associated
+  equality。
+- 常规 negative sample 增加两个用户可读诊断：缺失 required associated equality，以及 concrete type 没有可见
+  nominal impl 时拒绝 `&T -> &dyn Trait` coercion。
+- sample suite runtime smoke 明确执行 borrowed dyn sample，不只依赖 gtest 内嵌 source。
+- usage / documentation tests 把 sample 路径和 M8 follow-up 状态固定下来，后续文档漂移会在集成测试中暴露。
+
 ### 剩余阶段代码量预估
 
 M8a-M8e 已完成，M8 主线可以进入收尾评审。下面是 M8 完成后的后续粗估，不再把它们当成当前 M8 默认范围：
 
 | 阶段 | 主要内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
-| M8 follow-up | 小规模 cleanup、dump 文案、目标化 perf/profile、补充样例和 release 文档抛光 | 400-900 行 |
+| M8 follow-up | sample/release polish 主项已完成；只余小规模 dump 文案、目标化 perf/profile 或 release note 微调 | 100-300 行 |
 | Post-M8 / M9 dyn advanced design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
 | M9 ABI/tooling closure | library-independent dyn ABI DTO、tooling/query 投影完善、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
 | 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |

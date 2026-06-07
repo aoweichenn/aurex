@@ -24,6 +24,10 @@ M8d/M8e 已完成 runtime dispatch 和 hardening：IR 已有 trait-object pack/e
 vtable global 和 indirect call，native execution 已覆盖 shared dyn、mutable dyn、default method slot 和
 associated equality dispatch。当前最高优先级不再是继续 M8d，而是结束 M8 后进入 post-M8/M9 设计评审。
 
+M8 follow-up 的 sample / release polish 主项也已完成：borrowed dyn trait runtime dispatch 已进入常规 positive
+runtime sample suite，缺失 associated equality 和缺失 nominal impl coercion 已进入常规 negative sample suite。
+后续 M8 内只保留很小的文案或 profile 抛光，不再增加语言语义。
+
 当前建议路线：
 
 - M8a：已完成。设计基线与 query 地基已固定，错误占位已清理，不开放语言 surface。
@@ -36,7 +40,7 @@ associated equality dispatch。当前最高优先级不再是继续 M8d，而是
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
-| M8 follow-up | 小规模 cleanup、dump 文案、目标化 perf/profile、补充样例和 release 文档抛光 | 400-900 行 |
+| M8 follow-up | sample/release polish 主项已完成；只余小规模 dump 文案、目标化 perf/profile 或 release note 微调 | 100-300 行 |
 | Post-M8 / M9 dyn advanced design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
 | M9 ABI/tooling closure | library-independent dyn ABI DTO、tooling/query 投影完善、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
 | 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |

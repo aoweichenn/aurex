@@ -36,6 +36,10 @@ LLVM backend 将 `&dyn Trait` / `&mut dyn Trait` lowering 为 `{data*, vtable*}`
 slot load 后通过已有 indirect call path 派发。native execution tests 覆盖 shared dyn dispatch、mutable dyn
 receiver 写回、default method slot 和 `dyn Trait[Assoc = Type]` associated equality dispatch。
 
+M8 follow-up 的 sample / release polish 主项已完成：`trait_dyn_borrowed_dispatch.ax` 进入 positive runtime
+sample suite，覆盖 shared dyn、mutable dyn、default method slot 和 associated equality；缺失 associated
+equality 与缺失 nominal impl coercion 也进入 negative sample suite，确保用户层诊断不只停留在白盒测试里。
+
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 当前选择 **origin-bound erased view**：
 第一版只做 borrowed dyn view，当前可用 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /
 lifetime facts，以 checked vtable witness 描述动态派发。本阶段继续不实现标准库，不实现 `Box<dyn Trait>`、

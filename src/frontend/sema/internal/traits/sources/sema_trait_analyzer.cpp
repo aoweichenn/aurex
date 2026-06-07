@@ -1768,6 +1768,87 @@ FunctionSignature* SemanticAnalyzerCore::TraitAnalyzer::instantiate_trait_defaul
     return &this->core_.state_.checked.trait_default_method_instances[instance_index].signature;
 }
 
+const TraitObjectMethodSlotFact* SemanticAnalyzerCore::TraitAnalyzer::trait_object_method_slot_for_requirement(
+    const query::TraitObjectTypeKey& object_key, const base::u32 requirement_ordinal) const noexcept
+{
+    for (const TraitObjectMethodSlotFact& fact : this->core_.state_.checked.trait_object_method_slots) {
+        if (fact.object_type_key == object_key && fact.requirement_ordinal == requirement_ordinal) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+VTableMethodSlotFact SemanticAnalyzerCore::TraitAnalyzer::make_vtable_method_slot_fact(const TraitSignature& trait,
+    const TraitImplInfo& impl,
+    const TraitMethodRequirement& requirement,
+    const TraitObjectMethodSlotFact& slot_fact,
+    const TypeHandle concrete_type,
+    const TypeHandle object_type)
+{
+    const TraitImplMethodInfo* method_info = nullptr;
+    for (const TraitImplMethodInfo& method : impl.methods) {
+        if (method.requirement_ordinal == requirement.ordinal) {
+            method_info = &method;
+            break;
+        }
+    }
+
+    FunctionLookupKey function_key{};
+    const FunctionSignature* signature = nullptr;
+    TraitImplMethodOrigin origin = TraitImplMethodOrigin::impl_override;
+    if (method_info != nullptr) {
+        origin = method_info->origin;
+        function_key = method_info->function_key;
+        if (origin == TraitImplMethodOrigin::trait_default) {
+            signature = this->instantiate_trait_default_method(trait, impl, requirement);
+            if (signature != nullptr) {
+                function_key = signature->semantic_key;
+            }
+        } else if (const auto found = this->core_.state_.checked.functions.find(function_key);
+                   found != this->core_.state_.checked.functions.end()) {
+            signature = &found->second;
+        }
+    }
+
+    VTableMethodSlotFact fact;
+    fact.object_type_key = slot_fact.object_type_key;
+    fact.concrete_type = concrete_type;
+    fact.object_type = object_type;
+    fact.method_name = this->core_.state_.checked.intern_text(requirement.name);
+    fact.method_name_id = requirement.name_id;
+    fact.function_key = function_key;
+    fact.requirement_ordinal = requirement.ordinal;
+    fact.slot = slot_fact.slot;
+    fact.receiver_type = slot_fact.receiver_type;
+    fact.return_type = slot_fact.return_type;
+    fact.param_types = this->core_.state_.checked.make_type_handle_list();
+    fact.receiver_access = slot_fact.receiver_access;
+    fact.origin = origin;
+    fact.range = requirement.range;
+    fact.part_index = sema_part_index_or_zero(this->core_);
+
+    if (signature != nullptr) {
+        fact.receiver_type = signature->param_types.empty() ? slot_fact.receiver_type : signature->param_types.front();
+        fact.return_type = signature->return_type;
+        fact.param_types.reserve(signature->param_types.size());
+        for (const TypeHandle param : signature->param_types) {
+            fact.param_types.push_back(param);
+        }
+        return fact;
+    }
+
+    fact.param_types.reserve(requirement.param_types.size());
+    for (const TypeHandle param : requirement.param_types) {
+        fact.param_types.push_back(
+            this->substitute_requirement_type(param, impl.self_type, impl.trait_args, trait, impl.associated_types));
+    }
+    fact.receiver_type = fact.param_types.empty() ? slot_fact.receiver_type : fact.param_types.front();
+    fact.return_type = this->substitute_requirement_type(
+        requirement.return_type, impl.self_type, impl.trait_args, trait, impl.associated_types);
+    return fact;
+}
+
 SemanticAnalyzerCore::TraitMethodCallResolution
 SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_resolution(
     const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement)
@@ -2206,6 +2287,11 @@ query::VTableLayoutKey SemanticAnalyzerCore::TraitAnalyzer::record_vtable_layout
     if (!std::ranges::any_of(this->core_.state_.checked.vtable_layouts, [&](const VTableLayoutFact& fact) {
             return fact.layout_key == layout;
         })) {
+        const TraitSignature* const trait = this->trait_signature_for_impl(*impl);
+        if (trait == nullptr) {
+            this->core_.report_internal_contract(range, "failed to resolve dyn trait vtable trait signature");
+            return {};
+        }
         VTableLayoutFact fact = this->core_.state_.checked.make_vtable_layout_fact();
         fact.layout_key = layout;
         fact.concrete_type = concrete_type;
@@ -2213,6 +2299,30 @@ query::VTableLayoutKey SemanticAnalyzerCore::TraitAnalyzer::record_vtable_layout
         fact.impl_key = impl->key;
         fact.impl_evidence = impl->coherence_fingerprint;
         fact.method_slot_count = slot_count;
+        fact.method_slots.reserve(slot_count);
+        for (const TraitMethodRequirement& requirement : trait->requirements) {
+            const TraitObjectMethodSlotFact* const slot_fact =
+                this->trait_object_method_slot_for_requirement(object_info.trait_object_key, requirement.ordinal);
+            if (slot_fact == nullptr) {
+                continue;
+            }
+            VTableMethodSlotFact slot =
+                this->make_vtable_method_slot_fact(*trait, *impl, requirement, *slot_fact, concrete_type, object_type);
+            if (!is_valid(slot.function_key)) {
+                this->core_.report_internal_contract(
+                    requirement.range, "failed to bind dyn trait vtable method slot to a function");
+                return {};
+            }
+            fact.method_slots.push_back(std::move(slot));
+        }
+        if (fact.method_slots.size() != slot_count) {
+            this->core_.report_internal_contract(range, "dyn trait vtable method slot witness count mismatch");
+            return {};
+        }
+        std::ranges::sort(fact.method_slots, [](const VTableMethodSlotFact& lhs,
+                                                 const VTableMethodSlotFact& rhs) noexcept {
+            return lhs.slot < rhs.slot;
+        });
         fact.range = range;
         fact.part_index = sema_part_index_or_zero(this->core_);
         this->core_.state_.checked.vtable_layouts.push_back(fact);

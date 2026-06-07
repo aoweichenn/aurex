@@ -10,6 +10,8 @@
 #include <vector>
 
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -20,6 +22,12 @@
 #include <llvm/TargetParser/Triple.h>
 
 namespace aurex::backend {
+
+namespace {
+
+constexpr unsigned LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE = 0U;
+
+} // namespace
 
 LlvmEmitter::LlvmEmitter(const Module& module, const std::string_view module_name)
     : source_(module), context_(), module_(std::make_unique<llvm::Module>(module_name, context_)), builder_(context_)
@@ -50,6 +58,7 @@ base::Result<LlvmIrOutput> LlvmEmitter::run()
     declare_records();
     declare_constants();
     declare_functions();
+    declare_trait_object_vtables();
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
         if (function.linkage != Linkage::extern_c) {
@@ -115,6 +124,29 @@ void LlvmEmitter::declare_functions()
         functions_[i] = declare_function(FunctionId{i}, source_.functions[i]);
     }
     declare_main_wrapper();
+}
+
+void LlvmEmitter::declare_trait_object_vtables()
+{
+    for (const TraitObjectVTableLayout& layout : this->source_.trait_object_vtables) {
+        llvm::ArrayType* array_type = this->llvm_vtable_array_type(layout);
+        std::vector<llvm::Constant*> entries(
+            layout.method_slots.size(),
+            llvm::ConstantPointerNull::get(
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE)));
+        for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
+            if (slot.slot >= entries.size()) {
+                continue;
+            }
+            entries[slot.slot] = llvm::ConstantExpr::getBitCast(this->functions_.at(slot.function.value),
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE));
+        }
+        llvm::Constant* initializer = llvm::ConstantArray::get(array_type, entries);
+        llvm::GlobalVariable* global = new llvm::GlobalVariable(*this->module_, array_type, true,
+            llvm::GlobalValue::InternalLinkage, initializer, this->text(layout.symbol));
+        global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        this->trait_object_vtables_[layout.layout_key.global_id] = global;
+    }
 }
 
 llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, const Function& function)

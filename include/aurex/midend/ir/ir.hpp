@@ -4,6 +4,7 @@
 #include <aurex/frontend/sema/type.hpp>
 #include <aurex/infrastructure/base/bump_allocator.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/query/trait_object_key.hpp>
 
 #include <functional>
 #include <limits>
@@ -47,6 +48,7 @@ inline constexpr ValueId INVALID_VALUE_ID{ValueId::INVALID_VALUE};
 inline constexpr BlockId INVALID_BLOCK_ID{BlockId::INVALID_VALUE};
 inline constexpr FunctionId INVALID_FUNCTION_ID{FunctionId::INVALID_VALUE};
 inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID{GlobalConstantId::INVALID_VALUE};
+inline constexpr base::u32 IR_INVALID_VTABLE_SLOT = std::numeric_limits<base::u32>::max();
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept
 {
@@ -115,6 +117,10 @@ enum class ValueKind {
     str_from_utf8_checked,
     str_slice_checked,
     str_from_bytes_unchecked,
+    trait_object_pack,
+    trait_object_data,
+    trait_object_vtable,
+    vtable_slot,
     drop,
     drop_if,
 };
@@ -206,6 +212,26 @@ struct RecordLayout {
     IrVector<RecordField> fields;
 };
 
+struct TraitObjectVTableMethodSlot {
+    base::u32 slot = IR_INVALID_VTABLE_SLOT;
+    FunctionId function = INVALID_FUNCTION_ID;
+    sema::TypeHandle function_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle receiver_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle return_type = sema::INVALID_TYPE_HANDLE;
+    IrTextId method_name = INVALID_IR_TEXT_ID;
+};
+
+struct TraitObjectVTableLayout {
+    TraitObjectVTableLayout();
+    explicit TraitObjectVTableLayout(base::BumpAllocator& arena);
+
+    query::VTableLayoutKey layout_key;
+    sema::TypeHandle concrete_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
+    IrTextId symbol = INVALID_IR_TEXT_ID;
+    IrVector<TraitObjectVTableMethodSlot> method_slots;
+};
+
 struct Value {
     Value();
     explicit Value(base::BumpAllocator& arena);
@@ -229,6 +255,8 @@ struct Value {
     CastKind cast_kind = CastKind::numeric;
     sema::TypeHandle target_type = sema::INVALID_TYPE_HANDLE;
     CleanupAbiPolicy cleanup_policy = CleanupAbiPolicy::none;
+    query::VTableLayoutKey vtable_layout;
+    base::u32 vtable_slot = IR_INVALID_VTABLE_SLOT;
 };
 
 enum class TerminatorKind {
@@ -313,6 +341,8 @@ public:
     [[nodiscard]] Function clone_function(const Function& other);
     [[nodiscard]] BasicBlock clone_block(const BasicBlock& other);
     [[nodiscard]] RecordLayout clone_record_layout(const RecordLayout& other);
+    [[nodiscard]] TraitObjectVTableLayout make_trait_object_vtable_layout();
+    [[nodiscard]] TraitObjectVTableLayout clone_trait_object_vtable_layout(const TraitObjectVTableLayout& other);
 
     template <typename T>
     [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> source_values)
@@ -330,6 +360,7 @@ public:
     sema::IdentifierInterner identifiers;
     IrVector<GlobalConstant> constants;
     IrVector<RecordLayout> records;
+    IrVector<TraitObjectVTableLayout> trait_object_vtables;
     IrVector<Value> values;
     IrVector<Function> functions;
     RecordIndexMap record_indices;

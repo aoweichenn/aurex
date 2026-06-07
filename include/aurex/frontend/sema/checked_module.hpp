@@ -443,6 +443,26 @@ struct TraitObjectCallabilityFact {
     base::u32 part_index = 0;
 };
 
+struct VTableMethodSlotFact {
+    query::TraitObjectTypeKey object_type_key;
+    TypeHandle concrete_type = INVALID_TYPE_HANDLE;
+    TypeHandle object_type = INVALID_TYPE_HANDLE;
+    InternedText method_name;
+    IdentId method_name_id = INVALID_IDENT_ID;
+    FunctionLookupKey function_key;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    base::u32 slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandleList param_types;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    TraitImplMethodOrigin origin = TraitImplMethodOrigin::impl_override;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+using VTableMethodSlotFactList = SemaVector<VTableMethodSlotFact>;
+
 struct VTableLayoutFact {
     query::VTableLayoutKey layout_key;
     TypeHandle concrete_type = INVALID_TYPE_HANDLE;
@@ -450,6 +470,7 @@ struct VTableLayoutFact {
     TraitImplLookupKey impl_key;
     query::StableFingerprint128 impl_evidence;
     base::u32 method_slot_count = 0;
+    VTableMethodSlotFactList method_slots;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -1576,6 +1597,10 @@ public:
         const GenericLifetimePredicate& other);
     void append_trait_method_call_binding(TraitMethodCallBinding binding);
     void append_function_call_binding(FunctionCallBinding binding);
+    [[nodiscard]] const TraitMethodCallBinding* trait_method_call_binding_for_call_expr(
+        syntax::ExprId call_expr) const noexcept;
+    [[nodiscard]] const TraitMethodCallBinding* trait_method_call_binding_for_callee_expr(
+        syntax::ExprId callee_expr) const noexcept;
     [[nodiscard]] const TraitMethodCallBinding* trait_method_call_binding_for_expr(
         syntax::ExprId call_expr) const noexcept;
     [[nodiscard]] const FunctionCallBinding* function_call_binding_for_expr(syntax::ExprId call_expr) const noexcept;
@@ -1612,7 +1637,7 @@ public:
         const TraitObjectMethodSlotFact& other);
     [[nodiscard]] TraitObjectCallabilityFact clone_trait_object_callability_fact(
         const TraitObjectCallabilityFact& other);
-    [[nodiscard]] VTableLayoutFact clone_vtable_layout_fact(const VTableLayoutFact& other) const;
+    [[nodiscard]] VTableLayoutFact clone_vtable_layout_fact(const VTableLayoutFact& other);
     [[nodiscard]] TraitObjectCoercionFact clone_trait_object_coercion_fact(
         const TraitObjectCoercionFact& other) const;
     [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);

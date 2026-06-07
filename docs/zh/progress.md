@@ -5,8 +5,9 @@
 
 ## 总体状态
 
-2026-06-07：M8 主线已从最新 M7 基线开到 `m8` 分支。M8a Borrowed Erased Trait View query foundation
-已完成：dyn trait / erased view 调研设计基线已固定，query 层错误地基同步改掉。无语义形状的
+2026-06-07：M8a-M8e borrowed dyn trait runtime dispatch closure 已完成。M8 主线从最新 M7 基线开到
+`m8` 分支后，先完成 M8a Borrowed Erased Trait View query foundation：dyn trait / erased view 调研设计
+基线已固定，query 层错误地基同步改掉。无语义形状的
 `CanonicalTypeKind::trait_object` 占位已从代码中移除，stable key decoder 和 query tests 不再承认 0-child
 trait object canonical key。
 
@@ -28,12 +29,19 @@ nominal impl 与 associated equality，一致时记录 `TraitObjectCoercionFact`
 coercion fingerprint。CheckedModule copy/move/swap、stable fingerprint、TypeCheckBodyAuthority 和 query key
 路径均已纳入新 facts。
 
+M8d/M8e runtime dispatch 和 hardening 也已完成：checked vtable method slot facts 会绑定 impl override 或
+trait default instance function；IR 新增 trait-object pack/data/vtable/slot value kind 和 vtable layout；
+verifier 检查 layout 唯一性、slot 范围、function target、erased receiver ABI 和 fat-view type invariant；
+LLVM backend 将 `&dyn Trait` / `&mut dyn Trait` lowering 为 `{data*, vtable*}`，生成 internal vtable global，
+slot load 后通过已有 indirect call path 派发。native execution tests 覆盖 shared dyn dispatch、mutable dyn
+receiver 写回、default method slot 和 `dyn Trait[Assoc = Type]` associated equality dispatch。
+
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 当前选择 **origin-bound erased view**：
 第一版只做 borrowed dyn view，当前可用 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /
 lifetime facts，以 checked vtable witness 描述动态派发。本阶段继续不实现标准库，不实现 `Box<dyn Trait>`、
 allocator、owning existential container、dynamic Drop dispatch、supertrait upcasting 或多 trait object
-composition。M8 当前已完成 M8a-M8c frontend/query 闭环；剩余按 M8d IR/backend dispatch、M8e hardening
-推进。
+composition。M8 当前已完成 M8a-M8e；后续应先做 post-M8/M9 设计评审，而不是继续把标准库或 owning dyn 塞进
+当前阶段。
 
 2026-06-05：M7d-F tuple / index place-state closure 已完成 compiler-only 子集。本阶段继续不实现任何标准库。
 parser 现在接受匿名 tuple 数字字段访问：`pair.0` 和 `pair . 0` 都会进入普通 field expression；`pair.0f32`

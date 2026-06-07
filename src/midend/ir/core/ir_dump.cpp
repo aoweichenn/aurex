@@ -274,6 +274,20 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             }
             out << ")";
             break;
+        case ValueKind::trait_object_pack:
+            out << "dyn.pack " << value_ref(value.lhs)
+                << ", vtable=" << value.vtable_layout.global_id;
+            break;
+        case ValueKind::trait_object_data:
+            out << "dyn.data " << value_ref(value.object);
+            break;
+        case ValueKind::trait_object_vtable:
+            out << "dyn.vtable " << value_ref(value.object);
+            break;
+        case ValueKind::vtable_slot:
+            out << "vtable_slot " << value_ref(value.object) << "[" << value.vtable_slot
+                << "] layout=" << value.vtable_layout.global_id;
+            break;
         case ValueKind::drop:
             out << "drop " << value_ref(value.object) << " as " << module.types.display_name(value.target_type)
                 << " abi(" << cleanup_abi_policy_name(value.cleanup_policy) << ")";
@@ -328,6 +342,23 @@ std::string dump_module(const Module& module)
         out << " {\n";
         for (const RecordField& field : record.fields) {
             out << "  ." << module.text(field.name) << ": " << module.types.display_name(field.type) << "\n";
+        }
+        out << "}\n";
+    }
+    for (const TraitObjectVTableLayout& layout : module.trait_object_vtables) {
+        out << "vtable @" << module.text(layout.symbol) << " " << module.types.display_name(layout.concrete_type)
+            << " as " << module.types.display_name(layout.object_type) << " key=" << layout.layout_key.global_id
+            << " {\n";
+        for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
+            out << "  slot " << slot.slot << " @"
+                << (is_valid(slot.function) && slot.function.value < module.functions.size()
+                           ? module.text(module.functions[slot.function.value].symbol)
+                           : std::string_view{"<invalid>"})
+                << " : " << module.types.display_name(slot.function_type);
+            if (module.has_text(slot.method_name)) {
+                out << " method=" << module.text(slot.method_name);
+            }
+            out << "\n";
         }
         out << "}\n";
     }

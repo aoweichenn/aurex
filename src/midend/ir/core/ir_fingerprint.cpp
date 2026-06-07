@@ -124,6 +124,24 @@ void mix_global_constant(query::StableHashBuilder& builder, const Module& module
     mix_value_id(builder, constant.initializer);
 }
 
+void mix_trait_object_vtable_layout(
+    query::StableHashBuilder& builder, const Module& module, const TraitObjectVTableLayout& layout)
+{
+    builder.mix_u64(layout.layout_key.global_id);
+    mix_type(builder, module, layout.concrete_type);
+    mix_type(builder, module, layout.object_type);
+    mix_text(builder, module, layout.symbol);
+    builder.mix_u64(static_cast<base::u64>(layout.method_slots.size()));
+    for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
+        builder.mix_u32(slot.slot);
+        mix_function_id(builder, module, slot.function);
+        mix_type(builder, module, slot.function_type);
+        mix_type(builder, module, slot.receiver_type);
+        mix_type(builder, module, slot.return_type);
+        mix_text(builder, module, slot.method_name);
+    }
+}
+
 void mix_function_signature(query::StableHashBuilder& builder, const Module& module, const Function& function)
 {
     mix_text(builder, module, function.name);
@@ -246,6 +264,8 @@ void mix_value(query::StableHashBuilder& builder, const Module& module, const Va
     builder.mix_u8(static_cast<base::u8>(value.cast_kind));
     mix_type(builder, module, value.target_type);
     builder.mix_u8(static_cast<base::u8>(value.cleanup_policy));
+    builder.mix_u64(value.vtable_layout.global_id);
+    builder.mix_u32(value.vtable_slot);
 
     builder.mix_u64(value.args.size());
     for (const ValueId arg : value.args) {
@@ -337,6 +357,10 @@ query::QueryResultFingerprint layout_abi_fingerprint(const Module& module)
     builder.mix_u64(module.constants.size());
     for (const GlobalConstant& constant : module.constants) {
         mix_global_constant(builder, module, constant);
+    }
+    builder.mix_u64(module.trait_object_vtables.size());
+    for (const TraitObjectVTableLayout& layout : module.trait_object_vtables) {
+        mix_trait_object_vtable_layout(builder, module, layout);
     }
     builder.mix_u64(module.functions.size());
     for (const Function& function : module.functions) {

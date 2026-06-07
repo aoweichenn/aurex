@@ -226,6 +226,14 @@ struct FunctionUseInfo {
                         record_slot_use(arg, block_index, false);
                     }
                     break;
+                case ValueKind::trait_object_pack:
+                    record_slot_use(value.lhs, block_index, false);
+                    break;
+                case ValueKind::trait_object_data:
+                case ValueKind::trait_object_vtable:
+                case ValueKind::vtable_slot:
+                    record_slot_use(value.object, block_index, false);
+                    break;
                 case ValueKind::param:
                 case ValueKind::integer_literal:
                 case ValueKind::float_literal:

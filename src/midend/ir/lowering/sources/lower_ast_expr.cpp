@@ -596,6 +596,13 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
         enum_case != nullptr && !enum_case->payload_types.empty()) {
         return this->lower_enum_constructor_call(*enum_case, expr);
     }
+    const sema::TraitMethodCallBinding* binding = this->checked_.trait_method_call_binding_for_call_expr(expr_id);
+    if (binding == nullptr) {
+        binding = this->checked_.trait_method_call_binding_for_callee_expr(expr.callee);
+    }
+    if (binding != nullptr && binding->dispatch == sema::TraitMethodDispatchKind::vtable_slot) {
+        return this->lower_dyn_trait_call_expr(expr_id, expr, *binding);
+    }
     Value value = this->module_.make_value();
     value.kind = ValueKind::call;
     value.type = this->expr_type(expr_id);
@@ -652,6 +659,99 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
         value.args.push_back(this->coerce_value(arg, param_type));
     }
     return this->append_value(value);
+}
+
+ValueId Lowerer::lower_dyn_trait_call_expr(
+    const syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding)
+{
+    syntax::ExprId receiver_callee = expr.callee;
+    if (syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
+        && this->ast_.exprs.kind(receiver_callee.value) == syntax::ExprKind::generic_apply) {
+        if (const syntax::GenericApplyExprPayload* const apply =
+                this->ast_.exprs.generic_apply_payload(receiver_callee.value);
+            apply != nullptr) {
+            receiver_callee = apply->callee;
+        }
+    }
+    const syntax::FieldExprPayload* const callee_field =
+        syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
+        ? this->ast_.exprs.field_payload(receiver_callee.value)
+        : nullptr;
+    const sema::TypeHandle dyn_receiver_type = this->erased_trait_object_receiver_type(binding);
+    const sema::TypeHandle dyn_object_type =
+        sema::is_valid(dyn_receiver_type) && this->module_.types.is_reference(dyn_receiver_type)
+        ? this->module_.types.get(dyn_receiver_type).pointee
+        : sema::INVALID_TYPE_HANDLE;
+    const TraitObjectVTableLayout* layout = this->trait_object_vtable_layout(binding.vtable_layout);
+    if (layout == nullptr) {
+        layout = this->trait_object_vtable_layout_for_object(dyn_object_type);
+    }
+    const TraitObjectVTableMethodSlot* slot = nullptr;
+    if (layout != nullptr) {
+        for (const TraitObjectVTableMethodSlot& method_slot : layout->method_slots) {
+            if (method_slot.slot == binding.vtable_slot) {
+                slot = &method_slot;
+                break;
+            }
+        }
+    }
+    if (slot == nullptr) {
+        slot = this->trait_object_vtable_method_slot_for_object(dyn_object_type, binding.vtable_slot);
+    }
+    if (callee_field == nullptr || slot == nullptr || layout == nullptr) {
+        Value invalid = this->module_.make_value();
+        invalid.kind = ValueKind::undef;
+        invalid.type = this->expr_type(expr_id);
+        return this->append_value(invalid);
+    }
+
+    const sema::TypeInfo& function = this->module_.types.get(slot->function_type);
+    const ValueId receiver = this->lower_expr(callee_field->object, dyn_receiver_type);
+    Value data = this->module_.make_value();
+    data.kind = ValueKind::trait_object_data;
+    data.type = function.function_params.empty() ? slot->receiver_type : function.function_params.front();
+    data.object = receiver;
+    data.vtable_layout = layout->layout_key;
+    const ValueId receiver_data = this->append_value(data);
+
+    Value vtable = this->module_.make_value();
+    vtable.kind = ValueKind::trait_object_vtable;
+    vtable.type = this->vtable_pointer_type();
+    vtable.object = receiver;
+    vtable.vtable_layout = layout->layout_key;
+    const ValueId vtable_id = this->append_value(vtable);
+
+    Value slot_value = this->module_.make_value();
+    slot_value.kind = ValueKind::vtable_slot;
+    slot_value.type = slot->function_type;
+    slot_value.object = vtable_id;
+    slot_value.vtable_layout = layout->layout_key;
+    slot_value.vtable_slot = binding.vtable_slot;
+    const ValueId callee = this->append_value(slot_value);
+
+    Value call = this->module_.make_value();
+    call.kind = ValueKind::call;
+    call.type = this->expr_type(expr_id);
+    call.object = callee;
+    call.name = this->module_.intern(binding.method_name.empty() ? std::string_view{"dyn.call"}
+                                                                 : binding.method_name.view());
+    if (function.function_params.empty()) {
+        return this->append_value(call);
+    }
+    call.args.push_back(this->coerce_value(receiver_data, function.function_params.front()));
+    for (base::usize i = 0; i < expr.args.size(); ++i) {
+        const base::usize param_index = i + IR_METHOD_RECEIVER_PARAM_COUNT;
+        sema::TypeHandle param_type = param_index < function.function_params.size()
+            ? function.function_params[param_index]
+            : sema::INVALID_TYPE_HANDLE;
+        const ValueId arg = this->lower_expr(expr.args[i], param_type);
+        if (function.function_is_variadic && !sema::is_valid(param_type) && is_valid(arg)
+            && arg.value < this->module_.values.size()) {
+            param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
+        }
+        call.args.push_back(this->coerce_value(arg, param_type));
+    }
+    return this->append_value(call);
 }
 
 ValueId Lowerer::lower_indirect_call_expr(
@@ -1456,6 +1556,94 @@ sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept
     return module_.types.get(slot_type).pointee;
 }
 
+const TraitObjectVTableLayout* Lowerer::trait_object_vtable_layout(
+    const query::VTableLayoutKey& layout_key) const noexcept
+{
+    for (const TraitObjectVTableLayout& layout : this->module_.trait_object_vtables) {
+        if (layout.layout_key == layout_key) {
+            return &layout;
+        }
+    }
+    return nullptr;
+}
+
+const TraitObjectVTableLayout* Lowerer::trait_object_vtable_layout_for_object(
+    const sema::TypeHandle object_type) const noexcept
+{
+    if (!sema::is_valid(object_type)) {
+        return nullptr;
+    }
+    for (const TraitObjectVTableLayout& layout : this->module_.trait_object_vtables) {
+        if (this->module_.types.same(layout.object_type, object_type)) {
+            return &layout;
+        }
+    }
+    return nullptr;
+}
+
+const TraitObjectVTableMethodSlot* Lowerer::trait_object_vtable_method_slot(
+    const query::VTableLayoutKey& layout_key, const base::u32 slot) const noexcept
+{
+    const TraitObjectVTableLayout* const layout = this->trait_object_vtable_layout(layout_key);
+    if (layout == nullptr) {
+        return nullptr;
+    }
+    for (const TraitObjectVTableMethodSlot& method_slot : layout->method_slots) {
+        if (method_slot.slot == slot) {
+            return &method_slot;
+        }
+    }
+    return nullptr;
+}
+
+const TraitObjectVTableMethodSlot* Lowerer::trait_object_vtable_method_slot_for_object(
+    const sema::TypeHandle object_type, const base::u32 slot) const noexcept
+{
+    const TraitObjectVTableLayout* const layout = this->trait_object_vtable_layout_for_object(object_type);
+    if (layout == nullptr) {
+        return nullptr;
+    }
+    for (const TraitObjectVTableMethodSlot& method_slot : layout->method_slots) {
+        if (method_slot.slot == slot) {
+            return &method_slot;
+        }
+    }
+    return nullptr;
+}
+
+const sema::TraitObjectCoercionFact* Lowerer::trait_object_coercion(
+    const sema::TypeHandle source_type, const sema::TypeHandle target_type) const noexcept
+{
+    if (!sema::is_valid(source_type) || !sema::is_valid(target_type)) {
+        return nullptr;
+    }
+    for (const sema::TraitObjectCoercionFact& fact : this->checked_.trait_object_coercions) {
+        if (this->module_.types.same(fact.source_reference_type, source_type)
+            && this->module_.types.same(fact.target_reference_type, target_type)
+            && this->trait_object_vtable_layout(fact.vtable_layout) != nullptr) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+sema::TypeHandle Lowerer::vtable_pointer_type() noexcept
+{
+    return this->module_.types.pointer(
+        sema::PointerMutability::const_, this->module_.types.builtin(sema::BuiltinType::u8));
+}
+
+sema::TypeHandle Lowerer::erased_trait_object_receiver_type(const sema::TraitMethodCallBinding& binding) noexcept
+{
+    if (sema::is_valid(binding.receiver_type) && this->module_.types.is_reference(binding.receiver_type)) {
+        return binding.receiver_type;
+    }
+    if (sema::is_valid(binding.self_type)) {
+        return this->module_.types.reference(sema::PointerMutability::const_, binding.self_type);
+    }
+    return sema::INVALID_TYPE_HANDLE;
+}
+
 ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle target_type)
 {
     if (!is_valid(value_id) || value_id.value >= module_.values.size()) {
@@ -1470,6 +1658,48 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     if (!sema::is_valid(target_type) || !sema::is_valid(source_type)
         || this->module_.types.same(source_type, target_type)) {
         return value_id;
+    }
+    if (const sema::TraitObjectCoercionFact* const coercion =
+            this->trait_object_coercion(source_type, target_type);
+        coercion != nullptr) {
+        Value value = this->module_.make_value();
+        value.kind = ValueKind::trait_object_pack;
+        value.type = target_type;
+        value.lhs = value_id;
+        value.vtable_layout = coercion->vtable_layout;
+        return this->append_value(value);
+    }
+    if ((this->module_.types.is_pointer(source_type) || this->module_.types.is_reference(source_type))
+        && this->module_.types.is_reference(target_type)) {
+        const sema::TypeInfo& source = this->module_.types.get(source_type);
+        const sema::TypeInfo& target = this->module_.types.get(target_type);
+        const sema::TypeHandle canonical_target =
+            this->module_.types.reference(target.pointer_mutability, target.pointee);
+        const auto append_pack = [&](const sema::TraitObjectCoercionFact& coercion) -> ValueId {
+            Value value = this->module_.make_value();
+            value.kind = ValueKind::trait_object_pack;
+            value.type = target_type;
+            value.lhs = value_id;
+            value.vtable_layout = coercion.vtable_layout;
+            return this->append_value(value);
+        };
+        const sema::TypeHandle semantic_source =
+            this->module_.types.reference(target.pointer_mutability, source.pointee);
+        if (target.pointer_mutability == sema::PointerMutability::const_
+            || source.pointer_mutability == sema::PointerMutability::mut) {
+            if (const sema::TraitObjectCoercionFact* const coercion =
+                    this->trait_object_coercion(semantic_source, canonical_target);
+                coercion != nullptr) {
+                return append_pack(*coercion);
+            }
+        }
+        const sema::TypeHandle structural_source =
+            this->module_.types.reference(source.pointer_mutability, source.pointee);
+        if (const sema::TraitObjectCoercionFact* const coercion =
+                this->trait_object_coercion(structural_source, canonical_target);
+            coercion != nullptr) {
+            return append_pack(*coercion);
+        }
     }
     if (this->module_.types.is_slice(source_type) && this->module_.types.is_slice(target_type)) {
         const sema::TypeInfo& source = this->module_.types.get(source_type);

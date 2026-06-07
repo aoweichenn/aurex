@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/frontend/sema/resource_semantics.hpp>
+#include <aurex/infrastructure/query/trait_object_key.hpp>
 #include <aurex/midend/ir/lower_ast.hpp>
 
 #include <functional>
@@ -230,6 +231,7 @@ public:
     void lower_record_layouts();
     void declare_global_constants();
     void lower_function_declarations();
+    void lower_trait_object_vtable_layouts();
     void lower_global_constant_initializers();
     void index_enum_cases();
 
@@ -352,6 +354,8 @@ public:
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_dyn_trait_call_expr(
+        syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding);
     [[nodiscard]] ValueId lower_indirect_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
@@ -399,6 +403,19 @@ public:
     [[nodiscard]] sema::TypeHandle aggregate_field_type(
         sema::TypeHandle aggregate_type, std::string_view name) const noexcept;
     [[nodiscard]] sema::TypeHandle local_load_type(ValueId slot) const noexcept;
+    [[nodiscard]] const TraitObjectVTableLayout* trait_object_vtable_layout(
+        const query::VTableLayoutKey& layout_key) const noexcept;
+    [[nodiscard]] const TraitObjectVTableLayout* trait_object_vtable_layout_for_object(
+        sema::TypeHandle object_type) const noexcept;
+    [[nodiscard]] const TraitObjectVTableMethodSlot* trait_object_vtable_method_slot(
+        const query::VTableLayoutKey& layout_key, base::u32 slot) const noexcept;
+    [[nodiscard]] const TraitObjectVTableMethodSlot* trait_object_vtable_method_slot_for_object(
+        sema::TypeHandle object_type, base::u32 slot) const noexcept;
+    [[nodiscard]] const sema::TraitObjectCoercionFact* trait_object_coercion(
+        sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
+    [[nodiscard]] sema::TypeHandle vtable_pointer_type() noexcept;
+    [[nodiscard]] sema::TypeHandle erased_trait_object_receiver_type(
+        const sema::TraitMethodCallBinding& binding) noexcept;
 
     [[nodiscard]] ValueId coerce_value(ValueId value_id, sema::TypeHandle target_type);
     [[nodiscard]] ValueId append_value(const Value& value);

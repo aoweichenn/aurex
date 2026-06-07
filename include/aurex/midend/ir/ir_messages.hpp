@@ -186,6 +186,35 @@ inline constexpr std::string_view IR_VERIFY_INDIRECT_CALL_ARGUMENT_COUNT = "indi
 
 inline constexpr std::string_view IR_VERIFY_INDIRECT_CALL_RESULT_TYPE = "indirect call result type mismatch";
 
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_PACK_RESULT =
+    "dyn pack result must be a reference to dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_PACK_DATA =
+    "dyn pack data must be a pointer or reference to the concrete type";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_LAYOUT =
+    "dyn trait vtable layout is invalid or missing";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE =
+    "dyn trait vtable layout does not match concrete/object types";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT =
+    "dyn data object must be a reference to dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_DATA_RESULT =
+    "dyn data result must be a pointer or reference to the concrete type";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_VTABLE_RESULT =
+    "dyn vtable result must be a pointer";
+
+inline constexpr std::string_view IR_VERIFY_VTABLE_SLOT_OBJECT =
+    "vtable slot object must be a pointer";
+
+inline constexpr std::string_view IR_VERIFY_VTABLE_SLOT_RANGE = "vtable slot index is out of range";
+
+inline constexpr std::string_view IR_VERIFY_VTABLE_SLOT_RESULT =
+    "vtable slot result must be the slot function type";
+
 inline constexpr std::string_view IR_VERIFY_FIELD_ADDRESS_POINTER = "field address result is not a pointer";
 
 inline constexpr std::string_view IR_VERIFY_FIELD_ADDRESS_TYPE = "field address result type mismatch";

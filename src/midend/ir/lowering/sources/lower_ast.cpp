@@ -1,5 +1,6 @@
 #include <aurex/midend/ir/enum_layout.hpp>
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -13,6 +14,21 @@ namespace aurex::ir::detail {
 namespace {
 
 constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
+
+[[nodiscard]] bool trait_object_vtable_slot_less(
+    const TraitObjectVTableMethodSlot& lhs, const TraitObjectVTableMethodSlot& rhs) noexcept
+{
+    return lhs.slot < rhs.slot;
+}
+
+[[nodiscard]] sema::PointerMutability vtable_receiver_mutability(
+    const sema::TypeTable& types, const sema::TypeHandle receiver_type) noexcept
+{
+    if (!types.is_pointer(receiver_type) && !types.is_reference(receiver_type)) {
+        return sema::PointerMutability::const_;
+    }
+    return types.get(receiver_type).pointer_mutability;
+}
 
 [[nodiscard]] Linkage item_linkage(const syntax::ItemNode& item) noexcept
 {
@@ -148,6 +164,7 @@ Module Lowerer::lower()
     this->lower_record_layouts();
     this->declare_global_constants();
     this->lower_function_declarations();
+    this->lower_trait_object_vtable_layouts();
     this->lower_global_constant_initializers();
     for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
         if (this->ast_.items.kind(index) != syntax::ItemKind::fn_decl) {
@@ -405,6 +422,54 @@ void Lowerer::lower_function_declarations()
         const FunctionId function_id = add_function(this->module_, function);
         this->trait_default_instance_functions_[index] = function_id;
         this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
+    }
+}
+
+void Lowerer::lower_trait_object_vtable_layouts()
+{
+    this->module_.trait_object_vtables.reserve(this->checked_.vtable_layouts.size());
+    for (const sema::VTableLayoutFact& checked_layout : this->checked_.vtable_layouts) {
+        TraitObjectVTableLayout layout = this->module_.make_trait_object_vtable_layout();
+        layout.layout_key = checked_layout.layout_key;
+        layout.concrete_type = checked_layout.concrete_type;
+        layout.object_type = checked_layout.object_type;
+        layout.symbol = this->module_.intern("__aurex_vtable_" + std::to_string(checked_layout.layout_key.global_id));
+        layout.method_slots.reserve(checked_layout.method_slots.size());
+        for (const sema::VTableMethodSlotFact& checked_slot : checked_layout.method_slots) {
+            const auto signature = this->checked_.functions.find(checked_slot.function_key);
+            if (signature == this->checked_.functions.end()) {
+                continue;
+            }
+            const IrTextId symbol = this->module_.intern(signature->second.c_name);
+            const auto function = this->function_symbols_.find(symbol);
+            if (function == this->function_symbols_.end()) {
+                continue;
+            }
+            std::vector<sema::TypeHandle> params;
+            params.reserve(checked_slot.param_types.size());
+            for (base::usize param_index = 0; param_index < checked_slot.param_types.size(); ++param_index) {
+                sema::TypeHandle param = checked_slot.param_types[param_index];
+                if (param_index == 0U) {
+                    param = this->module_.types.pointer(vtable_receiver_mutability(this->module_.types, param),
+                        this->module_.types.builtin(sema::BuiltinType::u8));
+                }
+                params.push_back(param);
+            }
+            const sema::TypeHandle function_type = this->module_.types.function(
+                signature->second.is_extern_c || signature->second.is_export_c ? sema::FunctionCallConv::c
+                                                                               : sema::FunctionCallConv::aurex,
+                signature->second.is_unsafe, signature->second.is_variadic, params, checked_slot.return_type);
+            layout.method_slots.push_back(TraitObjectVTableMethodSlot{
+                checked_slot.slot,
+                function->second,
+                function_type,
+                checked_slot.receiver_type,
+                checked_slot.return_type,
+                this->module_.intern(checked_slot.method_name),
+            });
+        }
+        std::ranges::sort(layout.method_slots, trait_object_vtable_slot_less);
+        this->module_.trait_object_vtables.push_back(std::move(layout));
     }
 }
 

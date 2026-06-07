@@ -65,6 +65,7 @@ public:
         for (base::u32 i = 0; i < this->module_.constants.size(); ++i) {
             this->verify_constant(GlobalConstantId{i}, constant_stack);
         }
+        this->verify_trait_object_vtables();
         for (base::usize i = 0; i < this->module_.functions.size(); ++i) {
             this->verify_function(FunctionId{static_cast<base::u32>(i)}, this->module_.functions[i]);
         }
@@ -439,6 +440,18 @@ private:
                 break;
             case ValueKind::str_from_bytes_unchecked:
                 this->verify_str_from_bytes_unchecked(*value);
+                break;
+            case ValueKind::trait_object_pack:
+                this->verify_trait_object_pack(*value);
+                break;
+            case ValueKind::trait_object_data:
+                this->verify_trait_object_data(*value);
+                break;
+            case ValueKind::trait_object_vtable:
+                this->verify_trait_object_vtable(*value);
+                break;
+            case ValueKind::vtable_slot:
+                this->verify_vtable_slot(*value);
                 break;
             case ValueKind::constant_ref:
                 static_cast<void>(this->verify_constant_ref(*value));
@@ -840,6 +853,52 @@ private:
         return true;
     }
 
+    [[nodiscard]] bool vtable_slot_function_type_matches_target(
+        const TraitObjectVTableLayout& layout, const TraitObjectVTableMethodSlot& slot, const Function& target)
+        const noexcept
+    {
+        if (!this->module_.types.is_function(slot.function_type)) {
+            return false;
+        }
+        const sema::TypeInfo& function = this->module_.types.get(slot.function_type);
+        const bool target_is_c = target.call_conv == AbiCallConv::c;
+        const bool type_is_c = function.function_call_conv == sema::FunctionCallConv::c;
+        if (target_is_c != type_is_c || function.function_is_unsafe != target.is_unsafe
+            || function.function_is_variadic != target.is_variadic
+            || function.function_params.size() != target.signature_params.size()
+            || !this->module_.types.same(function.function_return, target.return_type)) {
+            return false;
+        }
+        if (function.function_params.empty()) {
+            return true;
+        }
+        if (!this->is_erased_receiver_param(function.function_params.front(), slot.receiver_type, layout.concrete_type)) {
+            return false;
+        }
+        for (base::usize index = 1; index < function.function_params.size(); ++index) {
+            if (!this->module_.types.same(function.function_params[index], target.signature_params[index].type)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool is_erased_receiver_param(const sema::TypeHandle erased_type,
+        const sema::TypeHandle concrete_receiver_type, const sema::TypeHandle concrete_type) const noexcept
+    {
+        if (!this->module_.types.is_pointer(erased_type)
+            || (!this->module_.types.is_pointer(concrete_receiver_type)
+                && !this->module_.types.is_reference(concrete_receiver_type))) {
+            return false;
+        }
+        const sema::TypeInfo& erased = this->module_.types.get(erased_type);
+        const sema::TypeInfo& receiver = this->module_.types.get(concrete_receiver_type);
+        return this->module_.types.same(erased.pointee, this->module_.types.builtin(sema::BuiltinType::u8))
+            && this->module_.types.same(receiver.pointee, concrete_type)
+            && (erased.pointer_mutability == receiver.pointer_mutability
+                || erased.pointer_mutability == sema::PointerMutability::const_);
+    }
+
     [[nodiscard]] bool same_signature(const Function& lhs, const Function& rhs) const noexcept
     {
         if (!this->module_.types.same(lhs.return_type, rhs.return_type)) {
@@ -1024,6 +1083,139 @@ private:
             this->fail(std::string(IR_VERIFY_STRRAW_DATA));
         }
         this->verify_value_type(value.args[1], this->module_.types.builtin(sema::BuiltinType::usize), "strraw length");
+    }
+
+    void verify_trait_object_vtables()
+    {
+        std::unordered_set<base::u64> seen_layouts;
+        seen_layouts.reserve(this->module_.trait_object_vtables.size());
+        for (const TraitObjectVTableLayout& layout : this->module_.trait_object_vtables) {
+            if (!query::is_valid(layout.layout_key) || !seen_layouts.insert(layout.layout_key.global_id).second) {
+                this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            }
+            this->verify_type(layout.concrete_type, "vtable concrete type");
+            this->verify_type(layout.object_type, "vtable object type");
+            if (!this->is_trait_object_type(layout.object_type)) {
+                this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
+            }
+            if (layout.method_slots.size() != layout.layout_key.method_slot_count) {
+                this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RANGE));
+            }
+            std::unordered_set<base::u32> seen_slots;
+            seen_slots.reserve(layout.method_slots.size());
+            for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
+                if (slot.slot >= layout.method_slots.size() || !seen_slots.insert(slot.slot).second) {
+                    this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RANGE));
+                }
+                if (!is_valid(slot.function) || slot.function.value >= this->module_.functions.size()) {
+                    this->fail(std::string(IR_VERIFY_CALL_TARGET_OUT_OF_RANGE));
+                    continue;
+                }
+                this->verify_type(slot.function_type, "vtable slot function type");
+                if (!this->module_.types.is_function(slot.function_type)
+                    || !this->vtable_slot_function_type_matches_target(
+                        layout, slot, this->module_.functions[slot.function.value])) {
+                    this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RESULT));
+                }
+                this->verify_type(slot.receiver_type, "vtable slot receiver type");
+                this->verify_type(slot.return_type, "vtable slot return type");
+            }
+        }
+    }
+
+    void verify_trait_object_pack(const Value& value)
+    {
+        this->verify_type(value.type, "dyn pack result");
+        if (!this->is_trait_object_reference(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_PACK_RESULT));
+            return;
+        }
+        this->verify_pointer_like_value(value.lhs, "dyn pack data");
+        const TraitObjectVTableLayout* const layout = this->find_vtable_layout(value.vtable_layout);
+        if (layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        const sema::TypeHandle source = this->pointee_type(value.lhs);
+        if (!sema::is_valid(source) || !this->module_.types.same(source, layout->concrete_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_PACK_DATA));
+        }
+        if (!this->module_.types.same(this->module_.types.get(value.type).pointee, layout->object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
+        }
+    }
+
+    void verify_trait_object_data(const Value& value)
+    {
+        this->verify_type(value.type, "dyn data result");
+        if (!this->module_.types.is_pointer(value.type) && !this->module_.types.is_reference(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_DATA_RESULT));
+            return;
+        }
+        this->verify_value_id(value.object, "dyn data object");
+        const Value* object = this->get(value.object);
+        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT));
+            return;
+        }
+        const TraitObjectVTableLayout* const layout = this->find_vtable_layout(value.vtable_layout);
+        if (layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        const sema::TypeInfo& data = this->module_.types.get(value.type);
+        if ((!this->module_.types.same(data.pointee, layout->concrete_type)
+                && !this->module_.types.same(data.pointee, this->module_.types.builtin(sema::BuiltinType::u8)))
+            || !this->module_.types.same(this->module_.types.get(object->type).pointee, layout->object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
+        }
+    }
+
+    void verify_trait_object_vtable(const Value& value)
+    {
+        this->verify_type(value.type, "dyn vtable result");
+        this->verify_value_id(value.object, "dyn vtable object");
+        if (!this->module_.types.is_pointer(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_VTABLE_RESULT));
+        }
+        const Value* object = this->get(value.object);
+        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT));
+            return;
+        }
+        const TraitObjectVTableLayout* const layout = this->find_vtable_layout(value.vtable_layout);
+        if (layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        if (!this->module_.types.same(this->module_.types.get(object->type).pointee, layout->object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
+        }
+    }
+
+    void verify_vtable_slot(const Value& value)
+    {
+        this->verify_type(value.type, "vtable slot result");
+        this->verify_value_id(value.object, "vtable slot object");
+        const Value* object = this->get(value.object);
+        if (object == nullptr || !this->module_.types.is_pointer(object->type)) {
+            this->fail(std::string(IR_VERIFY_VTABLE_SLOT_OBJECT));
+            return;
+        }
+        const TraitObjectVTableLayout* const layout = this->find_vtable_layout(value.vtable_layout);
+        if (layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        if (value.vtable_slot >= layout->method_slots.size()) {
+            this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RANGE));
+            return;
+        }
+        const TraitObjectVTableMethodSlot& slot = layout->method_slots[value.vtable_slot];
+        if (!this->module_.types.is_function(value.type)
+            || !this->module_.types.same(value.type, slot.function_type)) {
+            this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RESULT));
+        }
     }
 
     [[nodiscard]] const GlobalConstant* verify_constant_ref(const Value& value)
@@ -1230,11 +1422,17 @@ private:
                 continue;
             }
             if (this->module_.types.is_reference(item.type)) {
-                worklist.push_back(StorageTypeWorkItem{
-                    this->module_.types.get(item.type).pointee,
-                    item.context + " pointee",
-                });
+                const sema::TypeHandle pointee = this->module_.types.get(item.type).pointee;
+                if (!this->is_trait_object_type(pointee)) {
+                    worklist.push_back(StorageTypeWorkItem{
+                        pointee,
+                        item.context + " pointee",
+                    });
+                }
                 continue;
+            }
+            if (this->module_.types.get(item.type).kind == sema::TypeKind::trait_object) {
+                this->fail(ir_verify_storage_type_message(item.context));
             }
             if (this->module_.types.is_tuple(item.type)) {
                 const sema::TypeInfo& tuple = this->module_.types.get(item.type);
@@ -1250,6 +1448,31 @@ private:
                 this->fail(ir_verify_storage_type_message(item.context));
             }
         }
+    }
+
+    [[nodiscard]] const TraitObjectVTableLayout* find_vtable_layout(
+        const query::VTableLayoutKey& layout_key) const noexcept
+    {
+        for (const TraitObjectVTableLayout& layout : this->module_.trait_object_vtables) {
+            if (layout.layout_key == layout_key) {
+                return &layout;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool is_trait_object_type(const sema::TypeHandle type) const noexcept
+    {
+        return sema::is_valid(type) && type.value < this->module_.types.size()
+            && this->module_.types.get(type).kind == sema::TypeKind::trait_object;
+    }
+
+    [[nodiscard]] bool is_trait_object_reference(const sema::TypeHandle type) const noexcept
+    {
+        if (!this->module_.types.is_reference(type)) {
+            return false;
+        }
+        return this->is_trait_object_type(this->module_.types.get(type).pointee);
     }
 
     [[nodiscard]] bool is_const_u8_pointer(const sema::TypeHandle type) const noexcept

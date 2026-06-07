@@ -122,6 +122,7 @@ if(BUILD_TESTING)
             tests/gtest/midend/ir/ir_verifier_edge_tests.cpp
             tests/gtest/midend/ir/ir_verifier_structural_tests.cpp
             tests/gtest/midend/ir/lower_ast_aggregate_rollback_tests.cpp
+            tests/gtest/midend/ir/lower_ast_dyn_trait_tests.cpp
             tests/gtest/midend/ir/lower_ast_whitebox_tests.cpp
             tests/gtest/midend/ir/pass_pipeline_tests.cpp
             tests/gtest/midend/ir/type_table_tests.cpp

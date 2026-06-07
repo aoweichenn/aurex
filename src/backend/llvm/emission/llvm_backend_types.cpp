@@ -19,6 +19,16 @@ llvm::Type* llvm_fat_pointer_type(llvm::LLVMContext& context, const llvm::DataLa
         llvm::PointerType::get(context, LLVM_DEFAULT_ADDRESS_SPACE), data_layout.getIntPtrType(context));
 }
 
+[[nodiscard]] bool is_trait_object_view_type(const sema::TypeTable& types, const sema::TypeHandle type) noexcept
+{
+    if (!types.is_pointer(type) && !types.is_reference(type)) {
+        return false;
+    }
+    const sema::TypeHandle pointee = types.get(type).pointee;
+    return sema::is_valid(pointee) && pointee.value < types.size()
+        && types.get(pointee).kind == sema::TypeKind::trait_object;
+}
+
 } // namespace
 
 void LlvmEmitter::declare_records()
@@ -102,6 +112,11 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type)
                 break;
             case sema::TypeKind::pointer:
             case sema::TypeKind::reference:
+                if (is_trait_object_view_type(this->source_.types, current)) {
+                    result = this->llvm_trait_object_view_type();
+                    break;
+                }
+                [[fallthrough]];
             case sema::TypeKind::function:
                 result = llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE);
                 break;
@@ -164,6 +179,18 @@ llvm::FunctionType* LlvmEmitter::llvm_function_type(const sema::TypeHandle funct
         params.push_back(this->llvm_type(param));
     }
     return llvm::FunctionType::get(this->llvm_type(function.function_return), params, function.function_is_variadic);
+}
+
+llvm::Type* LlvmEmitter::llvm_trait_object_view_type()
+{
+    return llvm::StructType::get(llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE),
+        llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE));
+}
+
+llvm::ArrayType* LlvmEmitter::llvm_vtable_array_type(const TraitObjectVTableLayout& layout)
+{
+    return llvm::ArrayType::get(
+        llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE), layout.method_slots.size());
 }
 
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type)

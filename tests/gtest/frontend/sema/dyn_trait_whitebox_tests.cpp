@@ -287,6 +287,51 @@ struct DynTraitWhiteBoxHarness {
         return impl;
     }
 
+    void add_impl_method(sema::TraitImplInfo& impl,
+        const sema::TraitMethodRequirement& requirement,
+        const std::string_view c_name,
+        const sema::TraitImplMethodOrigin origin = sema::TraitImplMethodOrigin::impl_override)
+    {
+        const sema::FunctionLookupKey key{this->module_id.value, impl.self_type.value, requirement.name_id};
+
+        sema::FunctionSignature signature = this->analyzer.state_.checked.make_function_signature();
+        signature.name = this->analyzer.state_.checked.intern_text(requirement.name);
+        signature.name_id = requirement.name_id;
+        signature.semantic_key = key;
+        signature.c_name = this->analyzer.state_.checked.intern_text(c_name);
+        signature.module = this->module_id;
+        signature.method_owner_type = impl.self_type;
+        signature.trait_module = impl.trait_module;
+        signature.trait_name_id = impl.trait_name_id;
+        signature.return_type = requirement.return_type;
+        signature.param_types = this->analyzer.state_.checked.make_type_handle_list();
+        signature.param_types.reserve(requirement.param_types.size());
+        for (base::usize index = 0; index < requirement.param_types.size(); ++index) {
+            sema::TypeHandle param = requirement.param_types[index];
+            if (index == 0 && this->types.is_reference(param)) {
+                const sema::TypeInfo& reference = this->types.get(param);
+                if (sema::is_valid(reference.pointee)
+                    && this->types.get(reference.pointee).kind == sema::TypeKind::generic_param) {
+                    param = this->types.reference(reference.pointer_mutability, impl.self_type);
+                }
+            }
+            signature.param_types.push_back(param);
+        }
+        signature.is_method = true;
+        signature.has_self_param = requirement.has_self_param;
+        signature.is_trait_impl_method = true;
+        signature.has_definition = true;
+        this->analyzer.state_.checked.functions.emplace(key, std::move(signature));
+
+        sema::TraitImplMethodInfo method = this->analyzer.state_.checked.make_trait_impl_method_info();
+        method.name = this->analyzer.state_.checked.intern_text(requirement.name);
+        method.name_id = requirement.name_id;
+        method.function_key = key;
+        method.requirement_ordinal = requirement.ordinal;
+        method.origin = origin;
+        impl.methods.push_back(method);
+    }
+
     [[nodiscard]] sema::TypeHandle struct_type(const std::string_view name)
     {
         const std::string display = std::string(this->module.modules.front().path.parts.front()) + "."
@@ -368,6 +413,8 @@ TEST(CoreUnit, DynTraitWhiteBoxImplLookupAndVtableLayoutHandleBoundaries)
     const sema::TypeHandle object = harness.trait_object(trait);
     ASSERT_TRUE(sema::is_valid(object));
     harness.traits.record_trait_object_callability(object, trait, {}, {}, {});
+    harness.analyzer.state_.checked.traits.emplace(
+        sema::ModuleLookupKey{harness.module_id.value, trait.name_id}, trait);
 
     const sema::TypeHandle file = harness.struct_type("File");
     const sema::TypeInfo& object_info = harness.types.get(object);
@@ -376,6 +423,7 @@ TEST(CoreUnit, DynTraitWhiteBoxImplLookupAndVtableLayoutHandleBoundaries)
     EXPECT_EQ(harness.traits.find_trait_object_impl(file, object_info, {}, false), nullptr);
 
     sema::TraitImplInfo impl = harness.impl_info(trait, file);
+    harness.add_impl_method(impl, trait.requirements.front(), "dyn_trait_vtable_boundary_File_draw");
     harness.analyzer.state_.checked.trait_impls.emplace(impl.key, impl);
     const sema::TraitImplInfo* const found = harness.traits.find_trait_object_impl(file, object_info, {}, true);
     ASSERT_NE(found, nullptr);
@@ -404,9 +452,12 @@ TEST(CoreUnit, DynTraitWhiteBoxBorrowedCoercionDeduplicatesSameExpressionFact)
     const sema::TypeHandle object = harness.trait_object(trait);
     ASSERT_TRUE(sema::is_valid(object));
     harness.traits.record_trait_object_callability(object, trait, {}, {}, {});
+    harness.analyzer.state_.checked.traits.emplace(
+        sema::ModuleLookupKey{harness.module_id.value, trait.name_id}, trait);
 
     const sema::TypeHandle file = harness.struct_type("File");
     sema::TraitImplInfo impl = harness.impl_info(trait, file);
+    harness.add_impl_method(impl, trait.requirements.front(), "dyn_trait_coercion_same_expr_boundary_File_draw");
     harness.analyzer.state_.checked.trait_impls.emplace(impl.key, impl);
     const sema::TypeHandle file_ref = harness.types.reference(sema::PointerMutability::const_, file);
     const sema::TypeHandle object_ref = harness.types.reference(sema::PointerMutability::const_, object);

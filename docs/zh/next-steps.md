@@ -18,23 +18,28 @@ trait object canonical key，必须包含 principal trait、trait args、associa
 M8b/M8c frontend/query closure 也已完成。当前语言层能写 `&dyn Trait`、`&mut dyn Trait`、
 `dyn Trait[Assoc = Type]` 这类 borrowed dyn view；sema 会做 object-callability 诊断，并在 `&T` / `&mut T`
 满足可见 nominal impl 时记录 borrowed dyn coercion、checked vtable layout、method slot 和 `vtable_slot` method
-binding。当前仍没有 IR trait object pack/extract、LLVM vtable global 或 indirect call，因此完整运行时动态派发
-属于下一步 M8d。
+binding。
+
+M8d/M8e 已完成 runtime dispatch 和 hardening：IR 已有 trait-object pack/extract/vtable-slot，LLVM backend 已生成
+vtable global 和 indirect call，native execution 已覆盖 shared dyn、mutable dyn、default method slot 和
+associated equality dispatch。当前最高优先级不再是继续 M8d，而是结束 M8 后进入 post-M8/M9 设计评审。
 
 当前建议路线：
 
 - M8a：已完成。设计基线与 query 地基已固定，错误占位已清理，不开放语言 surface。
 - M8b：已完成。`dyn Trait` syntax / sema type / object-callability diagnostics 已落地。
 - M8c：已完成。borrowed dyn coercion、checked vtable layout facts、`vtable_slot` method binding 已落地。
-- M8d：下一步。IR trait-object pack/extract/vtable-slot 和 LLVM backend indirect dispatch。
-- M8e：M8 收口。hardening、incremental/tooling/perf、default method slot 与 associated equality 边界补强。
+- M8d：已完成。IR trait-object pack/extract/vtable-slot、IR verifier、LLVM vtable global 和 indirect dispatch 已落地。
+- M8e：已完成。hardening、fingerprint/invalidation、default method slot、associated equality 和文档收口已完成。
 
 剩余代码量粗估：
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
-| M8d | IR pack/extract/vtable-slot、IR verifier、LLVM vtable global、indirect call lowering、execution tests | 2,800-4,200 行 |
-| M8e | hardening、incremental invalidation、tooling projection、default method slot 边界、associated equality 细节和 coverage 补洞 | 1,200-2,000 行 |
+| M8 follow-up | 小规模 cleanup、dump 文案、目标化 perf/profile、补充样例和 release 文档抛光 | 400-900 行 |
+| Post-M8 / M9 dyn advanced design | supertrait/upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 的设计与原型；不在当前阶段实现标准库 | 2,500-4,500 行 |
+| M9 ABI/tooling closure | library-independent dyn ABI DTO、tooling/query 投影完善、跨模块 incremental invalidation、更多 negative verifier/backend tests | 1,000-2,000 行 |
+| 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 

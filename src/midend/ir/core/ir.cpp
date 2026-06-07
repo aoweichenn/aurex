@@ -40,6 +40,13 @@ RecordLayout::RecordLayout(base::BumpAllocator& arena) : fields(base::BumpAlloca
 {
 }
 
+TraitObjectVTableLayout::TraitObjectVTableLayout() = default;
+
+TraitObjectVTableLayout::TraitObjectVTableLayout(base::BumpAllocator& arena)
+    : method_slots(base::BumpAllocatorAdapter<TraitObjectVTableMethodSlot>{arena})
+{
+}
+
 Value::Value() = default;
 
 Value::Value(base::BumpAllocator& arena)
@@ -64,8 +71,9 @@ Function::Function(base::BumpAllocator& arena)
 
 Module::Module()
     : arena_(std::make_unique<base::BumpAllocator>()), constants(this->make_vector<GlobalConstant>()),
-      records(this->make_vector<RecordLayout>()), values(this->make_vector<Value>()),
-      functions(this->make_vector<Function>()), record_indices(this->make_map<base::u32, base::u32>())
+      records(this->make_vector<RecordLayout>()), trait_object_vtables(this->make_vector<TraitObjectVTableLayout>()),
+      values(this->make_vector<Value>()), functions(this->make_vector<Function>()),
+      record_indices(this->make_map<base::u32, base::u32>())
 {
 }
 
@@ -86,8 +94,10 @@ Module& Module::operator=(const Module& other)
 
 Module::Module(Module&& other) noexcept
     : arena_(std::move(other.arena_)), types(std::move(other.types)), identifiers(std::move(other.identifiers)),
-      constants(std::move(other.constants)), records(std::move(other.records)), values(std::move(other.values)),
-      functions(std::move(other.functions)), record_indices(std::move(other.record_indices))
+      constants(std::move(other.constants)), records(std::move(other.records)),
+      trait_object_vtables(std::move(other.trait_object_vtables)), values(std::move(other.values)),
+      functions(std::move(other.functions)),
+      record_indices(std::move(other.record_indices))
 {
     other.ensure_arena();
 }
@@ -167,6 +177,8 @@ Value Module::clone_value(const Value& other)
     copy.cast_kind = other.cast_kind;
     copy.target_type = other.target_type;
     copy.cleanup_policy = other.cleanup_policy;
+    copy.vtable_layout = other.vtable_layout;
+    copy.vtable_slot = other.vtable_slot;
     return copy;
 }
 
@@ -211,6 +223,24 @@ RecordLayout Module::clone_record_layout(const RecordLayout& other)
     return copy;
 }
 
+TraitObjectVTableLayout Module::make_trait_object_vtable_layout()
+{
+    this->ensure_arena();
+    return TraitObjectVTableLayout{*this->arena_};
+}
+
+TraitObjectVTableLayout Module::clone_trait_object_vtable_layout(const TraitObjectVTableLayout& other)
+{
+    TraitObjectVTableLayout copy = this->make_trait_object_vtable_layout();
+    copy.layout_key = other.layout_key;
+    copy.concrete_type = other.concrete_type;
+    copy.object_type = other.object_type;
+    copy.symbol = other.symbol;
+    copy.method_slots =
+        this->copy_vector<TraitObjectVTableMethodSlot>({other.method_slots.data(), other.method_slots.size()});
+    return copy;
+}
+
 void Module::reserve(const base::usize value_count, const base::usize function_count, const base::usize record_count,
     const base::usize constant_count)
 {
@@ -218,6 +248,7 @@ void Module::reserve(const base::usize value_count, const base::usize function_c
     this->functions.reserve(function_count);
     this->records.reserve(record_count);
     this->constants.reserve(constant_count);
+    this->trait_object_vtables.reserve(function_count);
     this->record_indices.reserve(record_count);
     this->identifiers.reserve(value_count + function_count + record_count + constant_count);
 }
@@ -229,6 +260,7 @@ void Module::swap(Module& other) noexcept
     swap(this->identifiers, other.identifiers);
     this->constants.swap(other.constants);
     this->records.swap(other.records);
+    this->trait_object_vtables.swap(other.trait_object_vtables);
     this->values.swap(other.values);
     this->functions.swap(other.functions);
     this->record_indices.swap(other.record_indices);
@@ -250,6 +282,12 @@ void Module::copy_from(const Module& other)
     this->records.reserve(other.records.size());
     for (const RecordLayout& record : other.records) {
         this->records.push_back(this->clone_record_layout(record));
+    }
+
+    this->trait_object_vtables.clear();
+    this->trait_object_vtables.reserve(other.trait_object_vtables.size());
+    for (const TraitObjectVTableLayout& layout : other.trait_object_vtables) {
+        this->trait_object_vtables.push_back(this->clone_trait_object_vtable_layout(layout));
     }
 
     this->values.clear();

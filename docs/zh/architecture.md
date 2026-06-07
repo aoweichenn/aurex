@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M5。M2 已移除标准库层：
+当前架构基线是 M8 borrowed dyn trait runtime dispatch closure。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -25,14 +25,16 @@
 
 ## 当前架构方向
 
-当前编译器架构已经进入 query-backed 且 static-trait-aware 的形态：
+当前编译器架构已经进入 query-backed、borrow/resource-aware 且支持 borrowed dyn trait dispatch 的形态：
 
 - `unsafe` 边界覆盖 raw pointer、unchecked string 和 bit-level cast。
 - ADT enum、pattern matching、array、slice、string 和 function type 构成不依赖 std 的基础值和 ABI 表达。
 - nominal static trait、显式 impl、`where` trait predicate、static trait method dispatch、associated type 和 trait
-  default method body 已进入 M5 baseline。
-- resource semantics、dynamic trait object、object safety、specialization、default associated type、associated const 和
-  generic associated type 仍是后续独立设计流。
+  default method body 已进入稳定 baseline。
+- `&dyn Trait` / `&mut dyn Trait` borrowed erased view 已接入 frontend/sema、checked vtable facts、IR verifier、
+  LLVM vtable global 和 indirect call；这是 borrowed-only dynamic dispatch，不是 owning object model。
+- owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、supertrait upcasting、多 trait object
+  composition、specialization、default associated type、associated const 和 generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向
 

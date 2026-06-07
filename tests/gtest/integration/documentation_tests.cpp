@@ -180,7 +180,13 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "`TraitObjectTypeKey`");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "剩余阶段代码量预估");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8a：设计基线与 query 地基");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8d：IR/backend dynamic dispatch");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8e：hardening 和后续扩展评估");
+    expect_document_contains(
+        "docs/zh/m8-dyn-trait-design.md", "borrowed dyn view runtime dynamic dispatch 已完成");
     expect_document_contains("docs/zh/m8-dyn-trait-design.md", "当前阶段继续不实现标准库");
+    expect_document_contains("docs/zh/language-manual.md", "Borrowed dyn trait view");
+    expect_document_contains("docs/zh/language-manual.md", "`&dyn Trait` / `&mut dyn Trait` lowering 为 `{data*, vtable*}`");
 
     expect_document_contains("docs/zh/README.md", "M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
     expect_document_contains("docs/zh/progress.md", "M7d-F tuple / index place-state closure");

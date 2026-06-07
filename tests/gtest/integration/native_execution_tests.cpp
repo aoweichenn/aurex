@@ -1,6 +1,24 @@
 #include <support/test_support.hpp>
 
+#include <fstream>
+#include <stdexcept>
+#include <string_view>
+
 namespace aurex::test {
+namespace {
+
+fs::path write_native_source_file(const fs::path& path, const std::string_view text)
+{
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("failed to open " + path.string());
+    }
+    out << text;
+    out.close();
+    return path;
+}
+
+} // namespace
 
 TEST_F(AurexIntegrationTest, NativeHelloDefaultExecutableOutputs)
 {
@@ -32,6 +50,112 @@ TEST_F(AurexIntegrationTest, NativeHelloExplicitExecutableOutputs)
     const fs::path direct = test_bin_root() / "hello.direct";
     require_success(aurexc() + " --emit=exe " + q(hello) + " -o " + q(direct));
     EXPECT_EQ(require_success(q(direct)).output, "hello from Aurex M2\n");
+}
+
+TEST_F(AurexIntegrationTest, NativeDynTraitDispatchUsesRuntimeVtable)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_dyn_trait_dispatch.ax",
+        "module native_dyn_trait_dispatch;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "impl Draw for Socket {\n"
+        "  fn draw(self: &Socket) -> i32 { return self.value + 20; }\n"
+        "}\n"
+        "fn render(drawable: &dyn Draw) -> i32 {\n"
+        "  return drawable.draw();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 7 };\n"
+        "  let socket: Socket = Socket { value: 3 };\n"
+        "  let total: i32 = render(&file) + render(&socket);\n"
+        "  if total == 30 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_dyn_trait_dispatch";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, NativeMutableDynTraitDispatchKeepsConcreteReceiver)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_mut_dyn_trait_dispatch.ax",
+        "module native_mut_dyn_trait_dispatch;\n"
+        "trait Accumulate {\n"
+        "  fn add(self: &mut Self, delta: i32) -> i32;\n"
+        "}\n"
+        "struct Counter { value: i32; }\n"
+        "struct Weighted { value: i32; }\n"
+        "impl Accumulate for Counter {\n"
+        "  fn add(self: &mut Counter, delta: i32) -> i32 {\n"
+        "    self.value = self.value + delta;\n"
+        "    return self.value;\n"
+        "  }\n"
+        "}\n"
+        "impl Accumulate for Weighted {\n"
+        "  fn add(self: &mut Weighted, delta: i32) -> i32 {\n"
+        "    self.value = self.value + delta + 10;\n"
+        "    return self.value;\n"
+        "  }\n"
+        "}\n"
+        "fn apply(accumulator: &mut dyn Accumulate, delta: i32) -> i32 {\n"
+        "  return accumulator.add(delta);\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  var counter: Counter = Counter { value: 1 };\n"
+        "  var weighted: Weighted = Weighted { value: 2 };\n"
+        "  let first: i32 = apply(&mut counter, 4);\n"
+        "  let second: i32 = apply(&mut weighted, 4);\n"
+        "  if first == 5 && second == 16 && counter.value == 5 && weighted.value == 16 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_mut_dyn_trait_dispatch";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, NativeDynTraitDefaultMethodAndAssociatedEqualityDispatch)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_dyn_trait_default_assoc_dispatch.ax",
+        "module native_dyn_trait_default_assoc_dispatch;\n"
+        "trait Source {\n"
+        "  type Item;\n"
+        "  fn read(self: &Self) -> Self.Item;\n"
+        "  fn bonus(self: &Self) -> i32 {\n"
+        "    return 100;\n"
+        "  }\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Source for File {\n"
+        "  type Item = i32;\n"
+        "  fn read(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "impl Source for Socket {\n"
+        "  type Item = i32;\n"
+        "  fn read(self: &Socket) -> i32 { return self.value + 10; }\n"
+        "}\n"
+        "fn score(source: &dyn Source[Item = i32]) -> i32 {\n"
+        "  return source.bonus() + source.read();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 0 };\n"
+        "  let socket: Socket = Socket { value: 5 };\n"
+        "  let total: i32 = score(&file) + score(&socket);\n"
+        "  if total == 215 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_dyn_trait_default_assoc_dispatch";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
 }
 
 } // namespace aurex::test

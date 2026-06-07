@@ -1128,7 +1128,9 @@ TraitObjectCallabilityFact CheckedModule::make_trait_object_callability_fact() c
 
 VTableLayoutFact CheckedModule::make_vtable_layout_fact() const
 {
-    return {};
+    VTableLayoutFact fact;
+    fact.method_slots = make_sema_vector<VTableMethodSlotFact>(*this->arena_);
+    return fact;
 }
 
 TraitObjectCoercionFact CheckedModule::make_trait_object_coercion_fact() const
@@ -1139,11 +1141,15 @@ TraitObjectCoercionFact CheckedModule::make_trait_object_coercion_fact() const
 void CheckedModule::append_trait_method_call_binding(TraitMethodCallBinding binding)
 {
     const syntax::ExprId call_expr = binding.call_expr;
+    const syntax::ExprId callee_expr = binding.callee_expr;
     const base::u32 index =
         base::checked_u32(this->trait_method_calls.size(), SEMA_TRAIT_METHOD_CALL_BINDING_ID_CONTEXT);
     this->trait_method_calls.push_back(std::move(binding));
     if (syntax::is_valid(call_expr)) {
         this->trait_method_call_by_expr[call_expr.value] = index;
+    }
+    if (syntax::is_valid(callee_expr)) {
+        this->trait_method_call_by_expr[callee_expr.value] = index;
     }
 }
 
@@ -1157,18 +1163,16 @@ void CheckedModule::append_function_call_binding(FunctionCallBinding binding)
     }
 }
 
-const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_expr(
+const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_call_expr(
     const syntax::ExprId call_expr) const noexcept
 {
     if (!syntax::is_valid(call_expr)) {
         return nullptr;
     }
     if (const auto found = this->trait_method_call_by_expr.find(call_expr.value);
-        found != this->trait_method_call_by_expr.end() && found->second < this->trait_method_calls.size()) {
+        found != this->trait_method_call_by_expr.end() && found->second < this->trait_method_calls.size()
+        && this->trait_method_calls[found->second].call_expr.value == call_expr.value) {
         return &this->trait_method_calls[found->second];
-    }
-    if (this->trait_method_call_by_expr.size() == this->trait_method_calls.size()) {
-        return nullptr;
     }
     for (const TraitMethodCallBinding& binding : this->trait_method_calls) {
         if (binding.call_expr.value == call_expr.value) {
@@ -1176,6 +1180,35 @@ const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_expr(
         }
     }
     return nullptr;
+}
+
+const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_callee_expr(
+    const syntax::ExprId callee_expr) const noexcept
+{
+    if (!syntax::is_valid(callee_expr)) {
+        return nullptr;
+    }
+    if (const auto found = this->trait_method_call_by_expr.find(callee_expr.value);
+        found != this->trait_method_call_by_expr.end() && found->second < this->trait_method_calls.size()
+        && this->trait_method_calls[found->second].callee_expr.value == callee_expr.value) {
+        return &this->trait_method_calls[found->second];
+    }
+    for (const TraitMethodCallBinding& binding : this->trait_method_calls) {
+        if (binding.callee_expr.value == callee_expr.value) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_expr(
+    const syntax::ExprId call_expr) const noexcept
+{
+    if (const TraitMethodCallBinding* const binding = this->trait_method_call_binding_for_call_expr(call_expr);
+        binding != nullptr) {
+        return binding;
+    }
+    return this->trait_method_call_binding_for_callee_expr(call_expr);
 }
 
 const FunctionCallBinding* CheckedModule::function_call_binding_for_expr(const syntax::ExprId call_expr) const noexcept
@@ -1497,9 +1530,25 @@ TraitObjectCallabilityFact CheckedModule::clone_trait_object_callability_fact(
     return copy;
 }
 
-VTableLayoutFact CheckedModule::clone_vtable_layout_fact(const VTableLayoutFact& other) const
+VTableLayoutFact CheckedModule::clone_vtable_layout_fact(const VTableLayoutFact& other)
 {
-    return other;
+    VTableLayoutFact copy = this->make_vtable_layout_fact();
+    copy.layout_key = other.layout_key;
+    copy.concrete_type = other.concrete_type;
+    copy.object_type = other.object_type;
+    copy.impl_key = other.impl_key;
+    copy.impl_evidence = other.impl_evidence;
+    copy.method_slot_count = other.method_slot_count;
+    copy.method_slots.reserve(other.method_slots.size());
+    for (const VTableMethodSlotFact& slot : other.method_slots) {
+        VTableMethodSlotFact slot_copy = slot;
+        slot_copy.method_name = this->intern_text(slot.method_name);
+        slot_copy.param_types = this->copy_type_handle_list(slot.param_types);
+        copy.method_slots.push_back(slot_copy);
+    }
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
 }
 
 TraitObjectCoercionFact CheckedModule::clone_trait_object_coercion_fact(
@@ -1734,6 +1783,24 @@ query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& 
         builder.mix_fingerprint(fact.impl_key.trait_args);
         builder.mix_fingerprint(fact.impl_evidence);
         builder.mix_u32(fact.method_slot_count);
+        builder.mix_u64(static_cast<base::u64>(fact.method_slots.size()));
+        for (const VTableMethodSlotFact& slot : fact.method_slots) {
+            builder.mix_u64(slot.object_type_key.global_id);
+            builder.mix_u32(slot.concrete_type.value);
+            builder.mix_u32(slot.object_type.value);
+            builder.mix_u32(slot.method_name_id.value);
+            mix_function_lookup_key(builder, slot.function_key);
+            builder.mix_u32(slot.requirement_ordinal);
+            builder.mix_u32(slot.slot);
+            builder.mix_u32(slot.receiver_type.value);
+            builder.mix_u32(slot.return_type.value);
+            builder.mix_u64(static_cast<base::u64>(slot.param_types.size()));
+            for (const TypeHandle param : slot.param_types) {
+                builder.mix_u32(param.value);
+            }
+            builder.mix_u8(static_cast<base::u8>(slot.receiver_access));
+            builder.mix_u8(static_cast<base::u8>(slot.origin));
+        }
     }
     builder.mix_u64(static_cast<base::u64>(checked.trait_object_coercions.size()));
     for (const TraitObjectCoercionFact& fact : checked.trait_object_coercions) {
@@ -2011,6 +2078,14 @@ void rebind_trait_object_callability_fact_texts(
     rebind_interned_text(fact.trait_name, from, to);
 }
 
+void rebind_vtable_layout_fact_texts(
+    VTableLayoutFact& fact, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    for (VTableMethodSlotFact& slot : fact.method_slots) {
+        rebind_interned_text(slot.method_name, from, to);
+    }
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -2044,6 +2119,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (TraitObjectCallabilityFact& fact : this->trait_object_callability) {
         rebind_trait_object_callability_fact_texts(fact, from, to);
+    }
+    for (VTableLayoutFact& fact : this->vtable_layouts) {
+        rebind_vtable_layout_fact_texts(fact, from, to);
     }
     for (LifetimeOriginParamInfo& origin_param : this->lifetime_origin_params) {
         rebind_interned_text(origin_param.name, from, to);
@@ -2824,6 +2902,30 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " evidence=" << query::debug_string(fact.impl_evidence);
         append_part_origin(out, show_parts, fact.part_index);
         out << "\n";
+        for (const VTableMethodSlotFact& slot : fact.method_slots) {
+            out << "      vtable_method slot=" << slot.slot
+                << " requirement=" << slot.requirement_ordinal
+                << " origin=" << (slot.origin == TraitImplMethodOrigin::trait_default ? "trait_default"
+                                                                                       : "impl_override")
+                << " " << checked.types.display_name(slot.concrete_type) << "."
+                << (slot.method_name.empty() ? std::string_view{"<invalid>"} : slot.method_name.view())
+                << " fn=(" << slot.function_key.module << "," << slot.function_key.owner_type << ","
+                << slot.function_key.name.value << ")"
+                << " receiver=" << checked.types.display_name(slot.receiver_type)
+                << " return=" << checked.types.display_name(slot.return_type);
+            if (!slot.param_types.empty()) {
+                out << " params=[";
+                for (base::usize param_index = 0; param_index < slot.param_types.size(); ++param_index) {
+                    if (param_index != 0) {
+                        out << ", ";
+                    }
+                    out << checked.types.display_name(slot.param_types[param_index]);
+                }
+                out << "]";
+            }
+            append_part_origin(out, show_parts, slot.part_index);
+            out << "\n";
+        }
     }
 
     out << "  trait_object_coercions " << checked.trait_object_coercions.size() << "\n";

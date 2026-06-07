@@ -115,6 +115,11 @@ private:
         const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
     [[nodiscard]] FunctionSignature* instantiate_trait_default_method(
         const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement);
+    [[nodiscard]] const TraitObjectMethodSlotFact* trait_object_method_slot_for_requirement(
+        const query::TraitObjectTypeKey& object_key, base::u32 requirement_ordinal) const noexcept;
+    [[nodiscard]] VTableMethodSlotFact make_vtable_method_slot_fact(const TraitSignature& trait,
+        const TraitImplInfo& impl, const TraitMethodRequirement& requirement,
+        const TraitObjectMethodSlotFact& slot_fact, TypeHandle concrete_type, TypeHandle object_type);
     [[nodiscard]] const TraitSignature* trait_signature_for_impl(const TraitImplInfo& impl) const;
     [[nodiscard]] bool trait_visible_for_method_call(const TraitSignature& trait, const base::SourceRange& range);
     [[nodiscard]] bool visible_trait_has_associated_type(

@@ -281,7 +281,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
                 .is_mutable = stmt.kind == syntax::StmtKind::var,
                 .field_cleanups = {},
             };
-            append_store(slot_id, lower_expr(stmt.init, local_type));
+            append_store(slot_id, this->coerce_value(this->lower_expr(stmt.init, local_type), local_type));
             this->register_local_cleanup(binding, stmt.name);
             this->bind_local(stmt.name_id, binding);
             break;

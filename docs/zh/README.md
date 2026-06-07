@@ -1,11 +1,11 @@
 # Aurex 文档
 
-文档基线：**M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M8 Dyn Trait、Erased View 与动态派发设计基线**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
-user surface 实现收口基线之上。M7 Hardening Performance Closure 也已完成；当前仍未完成的是 backend custom
-destructor call lowering 和更完整的 RAII runtime integration。
+user surface 实现收口基线之上。M7 Hardening Performance Closure 和 M7d-K Array Repeat Resource Safety Closure
+也已完成；M8 从 borrowed dyn trait / erased view 设计和 query 地基开始。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -45,6 +45,7 @@ destructor call lowering 和更完整的 RAII runtime integration。
 - [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)
 - [Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)
 - [M7 Hardening Performance Closure](m7-hardening-performance-closure.md)
+- [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

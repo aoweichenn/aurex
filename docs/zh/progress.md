@@ -1,9 +1,20 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线
+阶段：M8 Dyn Trait、Erased View 与动态派发设计基线
 
 ## 总体状态
+
+2026-06-07：M8 主线已从最新 M7 基线开到 `m8` 分支。第一步完成 dyn trait / erased view
+调研设计基线，并把 query 层错误地基同步改掉：无语义形状的 `CanonicalTypeKind::trait_object`
+占位已从代码中移除，stable key decoder 和 query tests 不再承认 0-child trait object canonical key。
+
+M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 当前选择 **origin-bound erased view**：
+第一版只做 borrowed dyn view，目标 surface 是 `&dyn Trait` / `&mut dyn Trait`，复用 M7 origin / loan /
+lifetime facts，以 checked vtable witness 做动态派发。本阶段继续不实现标准库，不实现 `Box<dyn Trait>`、
+allocator、owning existential container、dynamic Drop dispatch、supertrait upcasting 或多 trait object
+composition。M8a 当前只固定设计和 query 地基，不开放语言 surface；后续按 M8b syntax/sema、M8c
+borrowed dyn coercion、M8d IR/backend dispatch、M8e hardening 的顺序推进。
 
 2026-06-05：M7d-F tuple / index place-state closure 已完成 compiler-only 子集。本阶段继续不实现任何标准库。
 parser 现在接受匿名 tuple 数字字段访问：`pair.0` 和 `pair . 0` 都会进入普通 field expression；`pair.0f32`

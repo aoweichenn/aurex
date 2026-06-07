@@ -48,6 +48,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m7b-roadmap.md",
         "docs/zh/m7c-m7d-complete-borrow-raii-design.md",
         "docs/zh/m7-hardening-performance-closure.md",
+        "docs/zh/m8-dyn-trait-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -164,14 +165,24 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
     expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "第三轮审视：用户案例");
 }
 
-TEST_F(AurexIntegrationTest, M7cM7dDesignDocumentationIsCurrent)
+TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
 {
+    expect_document_contains("docs/zh/README.md", "M8 Dyn Trait、Erased View 与动态派发设计基线");
+    expect_document_contains("docs/zh/progress.md", "阶段：M8 Dyn Trait、Erased View 与动态派发设计基线");
+    expect_document_contains("docs/zh/progress.md", "origin-bound erased view");
+    expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发设计基线");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M8 Dyn Trait、Erased View 与动态派发");
+    expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "origin-bound erased view");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "ObjectCallability");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "M8a：设计基线与 query 地基");
+    expect_document_contains("docs/zh/m8-dyn-trait-design.md", "当前阶段继续不实现标准库");
+
     expect_document_contains("docs/zh/README.md", "M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
-    expect_document_contains(
-        "docs/zh/progress.md", "阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
+    expect_document_contains("docs/zh/progress.md", "M7d-F tuple / index place-state closure");
     expect_document_contains("docs/zh/version.md", "## M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check");
+        "docs/zh/next-steps.md", "已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "`&[origin] T` / `&mut[origin] T`");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureCaptureFact {");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureEnvironmentFact {");

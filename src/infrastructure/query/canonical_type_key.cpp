@@ -37,8 +37,6 @@ constexpr base::usize QUERY_CANONICAL_TYPE_STACK_RESERVE = 16;
             return "const_arg";
         case CanonicalTypeKind::associated_type_projection:
             return "associated_type_projection";
-        case CanonicalTypeKind::trait_object:
-            return "trait_object";
     }
     return "invalid";
 }
@@ -87,7 +85,6 @@ void write_type_header(StableKeyWriter& writer, const CanonicalTypeKey& key)
         case CanonicalTypeKind::associated_type_projection:
             append_stable_key(writer, key.associated_member);
             break;
-        case CanonicalTypeKind::trait_object:
         case CanonicalTypeKind::tuple:
         case CanonicalTypeKind::invalid:
             break;

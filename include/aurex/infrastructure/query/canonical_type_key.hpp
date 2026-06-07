@@ -40,7 +40,6 @@ enum class CanonicalTypeKind : base::u8 {
     generic_param,
     const_arg,
     associated_type_projection,
-    trait_object,
 };
 
 enum class PointerMutabilityKey : base::u8 {

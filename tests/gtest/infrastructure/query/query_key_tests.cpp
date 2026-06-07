@@ -53,6 +53,8 @@ constexpr base::usize QUERY_TEST_STABLE_U8_WIDTH = 1;
 constexpr base::usize QUERY_TEST_STABLE_U64_WIDTH = 8;
 constexpr base::u8 QUERY_TEST_TRAILING_STABLE_BYTE = 0x7f;
 constexpr base::u8 QUERY_TEST_STABLE_BYTE_FLIP_MASK = 0xff;
+constexpr base::u8 QUERY_TEST_RETIRED_TRAIT_OBJECT_CANONICAL_KIND =
+    static_cast<base::u8>(static_cast<unsigned>(query::CanonicalTypeKind::associated_type_projection) + 1U);
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_PRIMARY = 0x6ebe4a07bced0d95ULL;
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_SECONDARY = 0xbdb2a36668c900d3ULL;
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_GLOBAL_ID = 0x5ca885dc64cb6403ULL;
@@ -929,8 +931,6 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
     const query::CanonicalTypeKey nominal = query::canonical_nominal(template_def, nominal_args);
     const query::CanonicalTypeKey const_arg = query::canonical_const_arg(query::stable_fingerprint("N=4"));
     const query::CanonicalTypeKey projection = query::canonical_associated_type_projection(i32, associated_member);
-    query::CanonicalTypeKey trait_object;
-    trait_object.kind = query::CanonicalTypeKind::trait_object;
     const std::vector<query::CanonicalTypeKey> type_args{
         i32,
         pointer,
@@ -943,7 +943,6 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
         query::canonical_generic_param(generic_param),
         const_arg,
         projection,
-        trait_object,
     };
     const std::array<query::StableFingerprint128, 1> const_args{query::stable_fingerprint("const:N=4")};
     const std::array<std::string_view, 1> predicates{"T: Copy"};
@@ -1202,6 +1201,12 @@ TEST(QueryUnit, StableKeyDecoderRejectsMalformedCanonicalTypeShapes)
     ASSERT_NE(builtin_type_offset, std::string::npos);
     truncated_builtin_kind_instance.resize(builtin_type_offset + QUERY_TEST_STABLE_U64_WIDTH);
     EXPECT_FALSE(query::decode_generic_instance_key_identity(truncated_builtin_kind_instance).has_value());
+
+    std::string retired_trait_object_kind_instance = query::stable_serialize(builtin_instance);
+    retired_trait_object_kind_instance[builtin_type_offset + QUERY_TEST_STABLE_U64_WIDTH] =
+        static_cast<char>(QUERY_TEST_RETIRED_TRAIT_OBJECT_CANONICAL_KIND);
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(retired_trait_object_kind_instance).has_value());
+    EXPECT_FALSE(query::stable_key_has_generic_instance_key_layout(retired_trait_object_kind_instance));
 
     const query::StableFingerprint128 const_arg_fingerprint = query::stable_fingerprint("const-count-overflow");
     const std::array<query::StableFingerprint128, 1> const_args{const_arg_fingerprint};
@@ -5582,7 +5587,7 @@ TEST(QueryUnit, DropGlueAndDestructorBodyKeysAreStableAndHandleFree)
     EXPECT_NE(query::debug_string(glue).find("DropGlueKey"), std::string::npos);
 }
 
-TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionTraitAndUtilityPaths)
+TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionAndUtilityPaths)
 {
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
@@ -5605,19 +5610,15 @@ TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionTraitAndUtilityPaths)
     const query::CanonicalTypeKey nominal = query::canonical_nominal(vector_template, nominal_args);
     const query::CanonicalTypeKey const_arg = query::canonical_const_arg(query::stable_fingerprint("4"));
     const query::CanonicalTypeKey projection = query::canonical_associated_type_projection(i32, associated_type);
-    query::CanonicalTypeKey trait_object;
-    trait_object.kind = query::CanonicalTypeKind::trait_object;
     query::CanonicalTypeKey invalid_type;
     query::CanonicalTypeKey unknown_kind_type;
     unknown_kind_type.kind = static_cast<query::CanonicalTypeKind>(255);
 
     EXPECT_TRUE(query::is_valid(const_arg));
     EXPECT_TRUE(query::is_valid(projection));
-    EXPECT_TRUE(query::is_valid(trait_object));
     EXPECT_FALSE(query::is_valid(invalid_type));
     EXPECT_FALSE(query::stable_serialize(const_arg).empty());
     EXPECT_FALSE(query::stable_serialize(projection).empty());
-    EXPECT_FALSE(query::stable_serialize(trait_object).empty());
     EXPECT_FALSE(query::stable_serialize(invalid_type).empty());
     EXPECT_NE(query::debug_string(i32).find("builtin"), std::string::npos);
     EXPECT_NE(query::debug_string(pointer).find("pointer"), std::string::npos);
@@ -5629,7 +5630,6 @@ TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionTraitAndUtilityPaths)
     EXPECT_NE(query::debug_string(generic_param).find("generic_param"), std::string::npos);
     EXPECT_NE(query::debug_string(const_arg).find("const_arg"), std::string::npos);
     EXPECT_NE(query::debug_string(projection).find("associated_type_projection"), std::string::npos);
-    EXPECT_NE(query::debug_string(trait_object).find("trait_object"), std::string::npos);
     EXPECT_NE(query::debug_string(invalid_type).find("invalid"), std::string::npos);
     EXPECT_NE(query::debug_string(unknown_kind_type).find("invalid"), std::string::npos);
     EXPECT_NE(query::CanonicalTypeKeyHash{}(projection), 0U);

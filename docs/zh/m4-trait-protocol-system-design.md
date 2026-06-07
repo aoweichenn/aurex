@@ -37,8 +37,9 @@ M3.9 已经固定了后续语言特性必须复用的架构边界：
 - `include/aurex/infrastructure/query/query_key.hpp` 已有 `DefNamespace::trait_`、`DefNamespace::impl_`、`DefKind::trait_`、
   `DefKind::trait_method`、`DefKind::associated_type`、`DefKind::associated_const`、`MemberKind::trait_method`、
   `MemberKind::associated_type`、`MemberKind::associated_const` 和 `BodySlotKind::trait_default_method`。
-- `include/aurex/infrastructure/query/canonical_type_key.hpp` 已有 `CanonicalTypeKind::associated_type_projection` 和
-  `CanonicalTypeKind::trait_object`。
+- `include/aurex/infrastructure/query/canonical_type_key.hpp` 已有 `CanonicalTypeKind::associated_type_projection`。
+  M4 时期曾经预留过无结构的 `CanonicalTypeKind::trait_object`，但 M8 已确认这是错误地基并从代码中移除；
+  后续 trait object canonical key 必须携带 principal trait、关联类型等式、origin/lifetime 和 vtable layout identity。
 - `include/aurex/infrastructure/query/generic_instance_key.hpp` 中的 `ParamEnvKey` 已经为“泛型实例在某个约束环境下成立”预留了位置。
 - 语法层目前没有 `kw_trait`，`ItemKind` 没有 `trait_decl`，`ImplBlockItemPayload` 只描述 inherent `impl Type { ... }`，
   还没有 `impl Trait for Type { ... }`。
@@ -416,7 +417,7 @@ where I: Iterator[Item = u8] {
 | 跨包破坏 semver | 上游新增 impl 让下游冲突 | Rust orphan rules 解决 compatible worlds | 当前 package 只能实现本地 trait 或本地 nominal type |
 | solver 非终止 | 递归 trait bound、关联类型投影循环 | GHC undecidable instance 和 Rust solver 都有复杂约束 | M4.0 使用有限 obligation worklist、cycle detection 和 depth budget |
 | associated type 歧义 | 多个 trait 都定义同名 associated type | Rust 需要 qualified projection，Swift PAT/existential 复杂 | M4.1 先要求唯一 shorthand，必要时用显式 projection |
-| dynamic ABI 锁死 | trait object 要定义 data/vtable/drop/layout | Rust dyn compatibility 规则复杂 | M4 不做 dyn trait，保留 `trait_object` key 但不开放语义 |
+| dynamic ABI 锁死 | trait object 要定义 data/vtable/drop/layout | Rust dyn compatibility 规则复杂 | M4 不做 dyn trait；M8 已废弃无结构 `trait_object` key，后续只能引入完整语义 key |
 | 默认方法冲突 | 多个 trait 提供同名 default | Kotlin 必须显式覆盖冲突 | M4.0 不做 default method |
 | structural accidental conformance | 同名方法偶然满足接口 | Go interface 重构风险 | 只做 nominal explicit impl |
 | 隐式搜索不可解释 | 自动 instance/given 选择隐藏来源 | Scala given / Haskell instance search 复杂 | M4.0 不做 implicit search，candidate 必须来自显式 bounds/scope/registry |

@@ -1,6 +1,28 @@
 # 下一步计划
 
-## 当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
+## 当前最高优先级：M8 Dyn Trait、Erased View 与动态派发
+
+M8 主线已经开到 `m8` 分支，第一步调研设计基线记录在
+[Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。
+
+M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
+第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
+通过 checked vtable witness 做动态派发；不在 M8a 引入 owning dyn、`Box<dyn Trait>`、allocator、标准库、
+dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
+
+M8 第一改已经清理 query 层旧设计：无语义形状的 `CanonicalTypeKind::trait_object` 占位已移除。后续如果重新引入
+trait object canonical key，必须包含 principal trait、trait args、associated equality、object origin/lifetime
+和 vtable layout identity，不能再用 0-child kind tag 表示“trait object”。
+
+当前建议路线：
+
+- M8a：设计基线与 query 地基，完成错误占位清理，不开放语言 surface。
+- M8b：`dyn Trait` syntax / sema type / object-callability diagnostics。
+- M8c：borrowed dyn coercion、checked vtable layout facts、`vtable_slot` method binding。
+- M8d：IR trait-object pack/extract/vtable-slot 和 LLVM backend indirect dispatch。
+- M8e：hardening 与 owning dyn / dynamic Drop / supertrait upcasting 后续评估。
+
+## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 
 M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，

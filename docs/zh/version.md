@@ -1,5 +1,34 @@
 # 版本文档
 
+## M9 Dyn ABI / Tooling Design Baseline
+
+M9 已从 `m9` 分支开启。M8 release closure 已完成；当前版本新增
+[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)，把 M8 已经能运行的 borrowed dyn runtime
+dispatch 固化为后续可实现的 ABI/tooling 设计，而不是继续增加 M8 语言语义。
+
+当前新增设计内容包括：
+
+- 将 M9a 明确为 design baseline：不改变 `&dyn Trait` / `&mut dyn Trait` 当前语义，不实现新 runtime feature。
+- 固定 M9 第一包非目标：不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、
+  supertrait upcasting 或多 trait object composition。
+- 基于现有代码事实整理 M9 输入：`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`、checked
+  vtable facts、IR `trait_object_pack/data/vtable/vtable_slot`、IR verifier invariants 和 LLVM `{data*, vtable*}`
+  borrowed view lowering。
+- 设计 library-independent dyn ABI DTO：object descriptor、vtable descriptor、slot descriptor 和 coercion
+  descriptor；DTO 不依赖 LLVM 类型，不扫描 dump 文本，不复活无语义的 canonical trait-object kind tag。
+- 固定 metadata schema：当前只承认 `borrowed_methods_only_v1`，明确 absent metadata 包括 drop/size/align、
+  supertrait vptr、type metadata 和 allocator。
+- 固定 fingerprint schema：object descriptor、vtable descriptor、coercion descriptor 和 tooling projection 分层
+  fingerprint，服务 query/cache 与 cross-module invalidation。
+- 固定 tooling projection 方向：IDE semantic facts / hover 可展示 dyn ABI policy、metadata policy、vtable layout、
+  slot ordinal、dispatch kind 和 coercion relation。
+- 固定 M9b verifier/backend negative matrix：layout duplicate、slot mismatch、receiver ABI mismatch、fat view type
+  mismatch、missing vtable layout 和 invalid slot pointer type 等。
+
+下一步是 M9b ABI/tooling implementation：预计新增/修改 1,000-2,000 行，重点在 DTO schema/validation、
+fingerprint/dump、checked/IR adapter、tooling projection、cross-module invalidation tests 和 verifier/backend
+negative tests。M9c 才评估 advanced dyn design，且仍不自动实现标准库。
+
 ## M8 Dyn Trait、Erased View 与动态派发 Release Closure
 
 M8 主线已完成 release closure。M8a-M8e 已完成 dyn trait / erased view 调研设计、query 地基修正、frontend

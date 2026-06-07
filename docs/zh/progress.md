@@ -1,9 +1,23 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M8 Dyn Trait、Erased View 与动态派发 release closure
+阶段：M9 Dyn ABI / Tooling Design Baseline
 
 ## 总体状态
+
+2026-06-07：M9 Dyn ABI / Tooling Design Baseline 已从 `m9` 分支开启。M8 release closure 已完成，当前主线不再
+给 M8 追加语言语义，而是把 M8 已经能运行的 borrowed dyn runtime dispatch 固化成可跨 backend、query/cache、
+IDE/tooling 和后续 advanced dyn 设计复用的 facts-first ABI 基线。M9a 新增
+[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)，设计范围包括 library-independent dyn
+ABI DTO、metadata policy、fingerprint schema、tooling/query projection、cross-module invalidation matrix 以及
+verifier/backend negative matrix。
+
+M9a 明确不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting
+或多 trait object composition；也不改变 M8 的 `&dyn Trait` / `&mut dyn Trait` 语义。当前 M9 只把
+`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`、checked vtable facts、IR
+`trait_object_pack/data/vtable/vtable_slot` 和 LLVM `{data*, vtable*}` borrowed view lowering 梳理成后续可实现的
+ABI/tooling DTO 设计。下一步 M9b 才进入 DTO、tooling projection、cache invalidation 和 verifier/backend negative
+tests 的实现。
 
 2026-06-07：M8 release closure 已完成。M8a-M8e borrowed dyn trait runtime dispatch closure 已完成，M8
 follow-up sample / release polish 主项也已完成。M8 主线从最新 M7 基线开到

@@ -49,6 +49,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m7c-m7d-complete-borrow-raii-design.md",
         "docs/zh/m7-hardening-performance-closure.md",
         "docs/zh/m8-dyn-trait-design.md",
+        "docs/zh/m9-dyn-abi-tooling-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -167,8 +168,8 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
 
 TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M8 Dyn Trait、Erased View 与动态派发 release closure");
-    expect_document_contains("docs/zh/progress.md", "阶段：M8 Dyn Trait、Erased View 与动态派发 release closure");
+    expect_document_contains("docs/zh/README.md", "M8 已正式封口");
+    expect_document_contains("docs/zh/progress.md", "M8 release closure 已完成");
     expect_document_contains("docs/zh/progress.md", "origin-bound erased view");
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
@@ -208,6 +209,33 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M7 hardening performance closure 也已完成");
     expect_document_contains("docs/zh/m7-hardening-performance-closure.md", "`u32/i32` 审计");
     expect_document_contains("docs/zh/m7-hardening-performance-closure.md", "tools/m7_hardening_perf.py");
+}
+
+TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
+{
+    expect_document_contains("docs/zh/README.md", "M9 Dyn ABI / Tooling Design Baseline");
+    expect_document_contains("docs/zh/README.md", "Aurex M9 Dyn ABI / Tooling 设计基线");
+    expect_document_contains("docs/zh/progress.md", "阶段：M9 Dyn ABI / Tooling Design Baseline");
+    expect_document_contains("docs/zh/progress.md", "library-independent dyn ABI DTO");
+    expect_document_contains("docs/zh/version.md", "## M9 Dyn ABI / Tooling Design Baseline");
+    expect_document_contains("docs/zh/next-steps.md", "当前应继续推进 M9b");
+    expect_document_contains("docs/zh/next-steps.md", "borrowed_methods_only_v1");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "facts-first dyn ABI DTO");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "TraitObjectTypeKey");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "VTableLayoutKey");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "TraitObjectCoercionKey");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "borrowed_methods_only_v1");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "Cross-Module Invalidation Matrix");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "Verifier And Backend Negative Matrix");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "不实现标准库");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "不实现 `Box<dyn Trait>`");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "不实现 owning dyn");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "不实现 dynamic Drop dispatch");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`trait_object_pack`");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`trait_object_data`");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`trait_object_vtable`");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`vtable_slot`");
+    expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "{data*, vtable*}");
 }
 
 } // namespace aurex::test

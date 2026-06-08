@@ -138,6 +138,8 @@ void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchA
 [[nodiscard]] std::optional<const DynVTableSlotAbiDescriptor*> dyn_vtable_slot_descriptor(
     const DynVTableAbiDescriptor& vtable, base::u32 slot) noexcept;
 
+[[nodiscard]] DynMetadataPolicy function_dyn_abi_metadata_policy(
+    const FunctionDynAbiFacts& facts) noexcept;
 [[nodiscard]] StableFingerprint128 function_dyn_abi_facts_fingerprint(
     const FunctionDynAbiFacts& facts) noexcept;
 [[nodiscard]] std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts);

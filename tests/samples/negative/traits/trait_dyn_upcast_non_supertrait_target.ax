@@ -1,0 +1,42 @@
+module trait_dyn_upcast_non_supertrait_target;
+
+trait Parent {
+    fn parent(self: &Self) -> i32;
+}
+
+trait Other {
+    fn other(self: &Self) -> i32;
+}
+
+trait Child: Parent {
+    fn child(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Parent for File {
+    fn parent(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+impl Other for File {
+    fn other(self: &File) -> i32 {
+        return self.value + 1;
+    }
+}
+
+impl Child for File {
+    fn child(self: &File) -> i32 {
+        return self.value + 2;
+    }
+}
+
+fn main() -> i32 {
+    let file: File = File { value: 3 };
+    let child: &dyn Child = &file;
+    let other: &dyn Other = child;
+    return other.other();
+}

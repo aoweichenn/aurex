@@ -1,0 +1,32 @@
+module trait_dyn_upcast_shared_to_mut;
+
+trait Parent {
+    fn parent(self: &mut Self) -> i32;
+}
+
+trait Child: Parent {
+    fn child(self: &mut Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Parent for File {
+    fn parent(self: &mut File) -> i32 {
+        return self.value;
+    }
+}
+
+impl Child for File {
+    fn child(self: &mut File) -> i32 {
+        return self.value + 1;
+    }
+}
+
+fn main() -> i32 {
+    var file: File = File { value: 5 };
+    let child: &dyn Child = &mut file;
+    let parent: &mut dyn Parent = child;
+    return parent.parent();
+}

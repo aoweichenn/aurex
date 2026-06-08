@@ -1,0 +1,26 @@
+module trait_dyn_upcast_missing_parent_impl;
+
+trait Parent {
+    fn parent(self: &Self) -> i32;
+}
+
+trait Child: Parent {
+    fn child(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Child for File {
+    fn child(self: &File) -> i32 {
+        return self.value + 1;
+    }
+}
+
+fn main() -> i32 {
+    let file: File = File { value: 8 };
+    let child: &dyn Child = &file;
+    let parent: &dyn Parent = child;
+    return parent.parent();
+}

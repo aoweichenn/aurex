@@ -361,6 +361,19 @@ std::optional<const DynVTableSlotAbiDescriptor*> dyn_vtable_slot_descriptor(
     return std::nullopt;
 }
 
+DynMetadataPolicy function_dyn_abi_metadata_policy(const FunctionDynAbiFacts& facts) noexcept
+{
+    if (!facts.upcasts.empty()) {
+        return DynMetadataPolicy::supertrait_vptr_metadata_v1;
+    }
+    for (const DynVTableAbiDescriptor& descriptor : facts.vtables) {
+        if (descriptor.metadata_policy == DynMetadataPolicy::supertrait_vptr_metadata_v1) {
+            return DynMetadataPolicy::supertrait_vptr_metadata_v1;
+        }
+    }
+    return DynMetadataPolicy::borrowed_methods_only_v1;
+}
+
 StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFacts& facts) noexcept
 {
     StableHashBuilder builder;
@@ -407,11 +420,17 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
           << " upcasts=" << facts.upcasts.size()
           << " dispatches=" << facts.dispatches.size()
           << " abi=" << dyn_abi_policy_name(DynAbiPolicy::borrowed_view_v1)
-          << " metadata=" << dyn_metadata_policy_name(facts.upcasts.empty()
-                     ? DynMetadataPolicy::borrowed_methods_only_v1
-                     : DynMetadataPolicy::supertrait_vptr_metadata_v1);
+          << " metadata=" << dyn_metadata_policy_name(function_dyn_abi_metadata_policy(facts));
     if (!facts.dispatches.empty()) {
         label << " first_dispatch=vtable_slot slot=" << facts.dispatches.front().slot;
+    } else if (!facts.upcasts.empty()) {
+        const DynUpcastAbiDescriptor& upcast = facts.upcasts.front();
+        label << " first_upcast="
+              << (upcast.source_reference_type_name.empty() ? "<unknown>" : upcast.source_reference_type_name)
+              << "->"
+              << (upcast.target_reference_type_name.empty() ? "<unknown>" : upcast.target_reference_type_name)
+              << " borrow=" << dyn_borrow_kind_name(upcast.borrow_kind)
+              << " metadata=" << dyn_metadata_policy_name(upcast.metadata_policy);
     } else if (!facts.vtables.empty() && !facts.vtables.front().slots.empty()) {
         label << " first_slot=" << facts.vtables.front().slots.front().slot;
     }

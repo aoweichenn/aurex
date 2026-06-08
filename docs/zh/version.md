@@ -1,5 +1,36 @@
 # 版本文档
 
+## M10d Supertrait Hardening / Release Closure
+
+M10d 已完成 supertrait upcasting 的 hardening / release closure。M10 现在完整收口为 borrowed dyn supertrait
+upcasting release baseline：M10a 设计、M10b frontend/query/sema facts、M10c IR/backend runtime、M10d
+query/cache/tooling/sample/docs/coverage closure 均已完成。新增 release 入口见
+[Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)。
+
+M10d 当前新增或固定的实现包括：
+
+- `FunctionDynAbiFacts::upcasts` 会作为 dyn ABI surface 参与 lower-IR query、semantic fact、summary、dump 和
+  fingerprint。
+- IDE function hover 对 supertrait upcast 展示 `metadata=supertrait_vptr_metadata_v1`、`upcasts=N`、首条
+  source/target upcast、borrow kind 和 upcast metadata。
+- Query focused tests 固定 upcast edge / borrow kind 变化会改变 `FunctionDynAbiFacts` fingerprint 和 lower-IR
+  result fingerprint。
+- 常规 negative sample suite 新增非 supertrait target、shared-to-mut borrow upgrade 和 missing parent evidence；
+  IR/verifier focused tests 保持 layout/edge mismatch 覆盖。
+- README、progress、version、next-steps、requirements、architecture、usage、language manual、language feature
+  inventory 和 documentation tests 已统一到 M10d release baseline。
+- M10c 实际代码量偏差已记录：实际 `37 files changed, 1316 insertions(+), 255 deletions(-)`，低于
+  1,600-2,800 预估，原因是 M10b 已铺好 checked/query DTO，M8/M9 已有 borrowed dyn ABI/tooling 基线，LLVM
+  lowering 复用 fat-view/indirect-call 路径，且标准库/owning dyn/Drop dispatch/allocator/multi trait composition
+  均未进入 M10。
+
+M10d 继续不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
+allocator policy、不实现 multi trait composition，也不新增 trait-object Drop metadata。Associated equality edge
+mapping / ambiguity solver 仍是后续项，当前稳定覆盖的是 generic parent args substitution。
+
+M10 已结束。下一步是 **M11 Advanced Dyn Design Baseline**：从 M9c gate 剩余候选中选择后续主线，先设计
+policy/schema 和 query gate，而不是直接实现标准库或 owning dyn。
+
 ## M10c Supertrait IR / Backend Runtime Implementation
 
 M10c 已完成 supertrait upcasting 的 IR/backend runtime implementation。该阶段继续不实现标准库、不实现
@@ -34,8 +65,7 @@ M10c 的重要边界：
 - Associated equality edge mapping 仍是后续项；当前稳定覆盖的是泛型 parent args substitution。
 - 标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 和 multi trait composition 仍不属于 M10。
 
-下一步是 **M10d Supertrait Hardening / Release Closure**：补 query/cache/tooling projection polish、negative sample
-matrix、文档收口、coverage/release gate 和实际代码量偏差分析。标准库仍不属于 M10d。
+M10c 的下一步已由 **M10d Supertrait Hardening / Release Closure** 完成。标准库仍不属于 M10。
 
 ## M10b Supertrait Frontend / Query / Sema Implementation
 
@@ -73,7 +103,7 @@ M10b 的重要边界已由 M10c runtime implementation 承接：
 - Associated equality edge mapping 仍是后续项；M10b 已支持泛型 parent args substitution，但没有完整实现
   supertrait associated equality mapping / ambiguity solver。
 
-M10b 的下一步已由 **M10c Supertrait IR / Backend Runtime Implementation** 完成。标准库仍不属于 M10c/M10d。
+M10b 的下一步已由 **M10d Supertrait Hardening / Release Closure** 完成。标准库仍不属于 M10c/M10d。
 
 ## M10a Supertrait Upcasting Design Baseline
 

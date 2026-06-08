@@ -1,10 +1,10 @@
 # Aurex 当前语法与特性清单
 
 日期：2026-06-08
-阶段：M10c Supertrait IR / Backend Runtime Implementation
-状态：当前实现清单、M10c 完成面与后续非目标
+阶段：M10d Supertrait Hardening / Release Closure
+状态：当前实现清单、M10d 完成面与后续非目标
 
-本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M10d hardening/release closure 的下一步范围。本文以 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/core/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
+本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M10d hardening/release closure 的完成范围。本文以 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/core/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
 
 M2 当前原则：
 
@@ -1056,7 +1056,7 @@ let all = bytes[:];
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
 2. 继续保持 `where` capability / trait predicate 和 borrowed dyn trait 的文档、测试和诊断同步；M9 dyn ABI / tooling release closure 已完成，M10a 已选择 supertrait upcasting 并固定设计基线，M10b 已完成
-   frontend/query/sema check-only 实现，M10c 已完成 IR/backend runtime；下一步应进入 M10d hardening/release closure。owning dyn、trait-object Drop dispatch、allocator、multi trait composition 和完整
+   frontend/query/sema check-only 实现，M10c 已完成 IR/backend runtime，M10d 已完成 hardening/release closure。owning dyn、trait-object Drop dispatch、allocator、multi trait composition 和完整
    Rust-style lifetime surface 继续作为独立后续包。
 3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block；FFI ownership adoption 等资源 unsafe API 等 M6 后续专门设计。

@@ -1,5 +1,6 @@
 #include <aurex/infrastructure/query/canonical_type_key.hpp>
 #include <aurex/infrastructure/query/dyn_abi_facts.hpp>
+#include <aurex/infrastructure/query/lower_function_ir_query.hpp>
 #include <aurex/infrastructure/query/stable_identity.hpp>
 #include <aurex/infrastructure/query/trait_object_key.hpp>
 
@@ -172,6 +173,39 @@ TEST(QueryUnit, TraitObjectUpcastCoercionKeyIncludesGenericObjectIdentity)
     EXPECT_NE(query::stable_key_fingerprint(to_i32), query::stable_key_fingerprint(to_bool));
 }
 
+TEST(QueryUnit, FunctionDynAbiSummaryDerivesSupertraitMetadataFromVTableOnlyFacts)
+{
+    const query::TraitObjectTypeKey child = test_object_key("Child", "Child");
+    const query::CanonicalTypeKey concrete = query::canonical_nominal(test_trait_def("File"), {});
+    const query::VTableLayoutKey layout = query::vtable_layout_key(concrete,
+        child,
+        child.object_callability_schema,
+        query::stable_fingerprint("impl File: Child"),
+        0U,
+        query::TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1);
+
+    query::FunctionDynAbiFacts facts;
+    query::record_dyn_vtable_abi_descriptor(facts,
+        query::DynVTableAbiDescriptor{
+            layout,
+            query::DynAbiPolicy::borrowed_view_v1,
+            query::DynMetadataPolicy::supertrait_vptr_metadata_v1,
+            "_Aurex_vtable_File_Child",
+            "File",
+            "dyn Child",
+            {},
+        });
+
+    ASSERT_TRUE(query::is_valid(facts));
+    EXPECT_TRUE(facts.upcasts.empty());
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(facts),
+        query::DynMetadataPolicy::supertrait_vptr_metadata_v1);
+    const std::string summary = query::summarize_function_dyn_abi_facts(facts);
+    EXPECT_NE(summary.find("vtables=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("upcasts=0"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos) << summary;
+}
+
 TEST(QueryUnit, DynUpcastAbiDescriptorValidatesMetadataBorrowAndDump)
 {
     const query::TraitObjectTypeKey child = test_object_key("Child", "Child");
@@ -212,9 +246,32 @@ TEST(QueryUnit, DynUpcastAbiDescriptorValidatesMetadataBorrowAndDump)
     const std::string summary = query::summarize_function_dyn_abi_facts(facts);
     EXPECT_NE(summary.find("upcasts=1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_upcast=&dyn Child->&dyn Parent"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("borrow=shared"), std::string::npos) << summary;
     const std::string dump = query::dump_function_dyn_abi_facts(facts);
     EXPECT_NE(dump.find("dyn_upcast #0 &dyn Child -> &dyn Parent"), std::string::npos) << dump;
     EXPECT_NE(dump.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos) << dump;
+
+    query::FunctionDynAbiFacts changed_edge_facts = facts;
+    changed_edge_facts.upcasts.front().edge_path = query::stable_fingerprint("Child->OtherParent");
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_edge_facts), facts.fingerprint);
+
+    query::FunctionDynAbiFacts changed_borrow_facts = facts;
+    query::DynUpcastAbiDescriptor mut_descriptor = descriptor;
+    mut_descriptor.upcast = query::trait_object_upcast_coercion_key(
+        child, child.object_origin, parent, edge_path, query::TraitObjectBorrowKindKey::mut);
+    mut_descriptor.borrow_kind = query::DynBorrowKind::mut;
+    changed_borrow_facts.upcasts.front() = mut_descriptor;
+    changed_borrow_facts.summary.shared_borrow_count = 0U;
+    changed_borrow_facts.summary.mut_borrow_count = 1U;
+    EXPECT_TRUE(query::is_valid(changed_borrow_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_borrow_facts), facts.fingerprint);
+
+    const query::QueryResultFingerprint lowered_ir =
+        query::query_result_fingerprint(query::stable_fingerprint("dyn-upcast-lower-ir"));
+    EXPECT_NE(query::lower_function_ir_result_fingerprint(
+                  lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_borrow_facts),
+        query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
 
     query::DynUpcastAbiDescriptor wrong_edge = descriptor;
     wrong_edge.edge_path = query::stable_fingerprint("other-edge");

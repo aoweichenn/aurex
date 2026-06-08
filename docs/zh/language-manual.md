@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-08
-阶段：M10c Supertrait IR / Backend Runtime Implementation，建立在 M10b Supertrait Frontend / Query / Sema Implementation、
+阶段：M10d Supertrait Hardening / Release Closure，建立在 M10b Supertrait Frontend / Query / Sema Implementation、
 M10a supertrait upcasting design baseline、
 M9 dyn ABI / tooling release closure、M8a query foundation、M8b syntax/sema、
 M8c borrowed dyn coercion / checked vtable facts、M8d/M8e borrowed dyn runtime dispatch、M7d-K array repeat resource safety、M7d-J cleanup marker
@@ -1662,7 +1662,7 @@ fn main() -> i32 {
 
 ### 12.2 Borrowed dyn supertrait upcast
 
-M10c 支持 borrowed dyn-to-dyn supertrait upcast 的 runtime 语义。Upcast 是 contextual coercion，不是普通子类型；
+M10d release baseline 支持 borrowed dyn-to-dyn supertrait upcast 的 runtime 语义。Upcast 是 contextual coercion，不是普通子类型；
 它不会让 `dyn Child` 在所有类型关系中自动当成 `dyn Parent`。
 
 ```aurex
@@ -1713,8 +1713,11 @@ fn score(value: &dyn Child) -> i32 {
 
 当前实现边界：
 
-- M10c 会记录 `TraitObjectUpcastCoercionFact`、`TraitObjectUpcastCoercionKey` 和 `DynUpcastAbiDescriptor`。
-- M10c 生成 `trait_object_upcast` IR，并使用 `supertrait_vptr_metadata_v1` LLVM vtable global 投影 parent vtable。
+- M10 会记录 `TraitObjectUpcastCoercionFact`、`TraitObjectUpcastCoercionKey` 和 `DynUpcastAbiDescriptor`。
+- M10 会生成 `trait_object_upcast` IR，并使用 `supertrait_vptr_metadata_v1` LLVM vtable global 投影 parent vtable。
+- M10d 已把 `FunctionDynAbiFacts::upcasts` 接入 summary、dump、fingerprint、lower-IR query invalidation 和 IDE
+  hover；tooling 可展示 `upcasts=N`、首条 upcast source/target 和 borrow kind。
+- 常规 negative sample suite 已覆盖非 supertrait target、shared-to-mut borrow upgrade 和 missing parent evidence。
 - 对 `dyn Child` receiver 的 inherited parent method dispatch 会先 upcast receiver 到 `dyn Parent`，再执行 parent
   `vtable_slot` dispatch。
 - supertrait associated equality edge mapping 仍是后续项；当前稳定覆盖的是泛型 parent args substitution。

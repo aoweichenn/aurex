@@ -590,6 +590,66 @@ TEST(CoreUnit, IdeToolingProjectsDynAbiFactsAndDynDispatchHover)
         << draw_hover->label;
 }
 
+TEST(CoreUnit, IdeToolingProjectsSupertraitUpcastDynAbiFactsAndHover)
+{
+    constexpr std::string_view source =
+        "module ide.dyn_supertrait_upcast_facts;\n"
+        "trait Parent {\n"
+        "  fn parent(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Child: Parent {\n"
+        "  fn child(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File {\n"
+        "  fn parent(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "impl Child for File {\n"
+        "  fn child(self: &File) -> i32 { return self.value + 1; }\n"
+        "}\n"
+        "fn widen(child: &dyn Child) -> &dyn Parent {\n"
+        "  let parent: &dyn Parent = child;\n"
+        "  return parent;\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 19 };\n"
+        "  let child: &dyn Child = &file;\n"
+        "  let parent: &dyn Parent = widen(child);\n"
+        "  return parent.parent();\n"
+        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
+        query::QueryKind::type_check_body));
+
+    const tooling::IdeSemanticFact* const dyn_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "widen");
+    ASSERT_NE(dyn_fact, nullptr);
+    EXPECT_NE(dyn_fact->detail.find("dyn_abi_facts objects="), std::string::npos) << dyn_fact->detail;
+    EXPECT_NE(dyn_fact->detail.find("upcasts=1"), std::string::npos) << dyn_fact->detail;
+    EXPECT_NE(dyn_fact->detail.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos)
+        << dyn_fact->detail;
+    EXPECT_NE(dyn_fact->detail.find("first_upcast=&dyn Child->&dyn Parent"), std::string::npos)
+        << dyn_fact->detail;
+
+    const base::usize widen_offset = source.find("widen(child");
+    ASSERT_NE(widen_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> widen_hover = tooling::hover_at_offset(snapshot, widen_offset);
+    ASSERT_TRUE(widen_hover.has_value());
+    EXPECT_NE(widen_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
+        << widen_hover->label;
+    EXPECT_NE(widen_hover->label.find("/metadata=supertrait_vptr_metadata_v1"), std::string::npos)
+        << widen_hover->label;
+    EXPECT_NE(widen_hover->label.find("/upcasts=1"), std::string::npos) << widen_hover->label;
+    EXPECT_NE(widen_hover->label.find("/upcast=&dyn Child->&dyn Parent"), std::string::npos)
+        << widen_hover->label;
+    EXPECT_NE(widen_hover->label.find("/upcast_borrow=shared"), std::string::npos)
+        << widen_hover->label;
+}
+
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
 {
     constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"

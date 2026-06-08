@@ -2,12 +2,14 @@
 
 ## 当前分支目标
 
-当前实现基线是 M8 borrowed dyn trait runtime dispatch closure。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
+当前实现基线是 M10d Supertrait Hardening / Release Closure。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
 analysis、cleanup obligation lowering、drop-glue identity/planning、tooling projection 和 release closure；
 M7 已完成 CFG-sensitive borrow/lifetime/resource hardening；M8 已完成 borrowed dyn trait frontend/sema、
-checked vtable facts、IR/backend dynamic dispatch 和 hardening closure。
+checked vtable facts、IR/backend dynamic dispatch 和 hardening closure；M9 已完成 dyn ABI/tooling release
+closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upcast facts、`trait_object_upcast` IR、
+`supertrait_vptr_metadata_v1` runtime projection、query/cache/tooling polish 和 release closure。
 历史基线说明：当前实现基线是 M6 Resource And Access Semantics 这条旧 release baseline 仍作为资源语义
-设计入口保留，但当前分支已经继续推进到 M8。
+设计入口保留，但当前分支已经继续推进到 M10d。
 较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
@@ -27,7 +29,8 @@ checked vtable facts、IR/backend dynamic dispatch 和 hardening closure。
   IR/backend indirect dispatch。
 - direct supertrait declaration 和 borrowed dyn supertrait upcast runtime：`trait Child: Parent`、checked
   `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、`trait_object_upcast` IR、
-  `supertrait_vptr_metadata_v1` vtable metadata 和 LLVM parent vtable projection。
+  `supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection、query/cache invalidation 和 IDE
+  hover/tooling projection。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。

@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M10c Supertrait IR / Backend Runtime Implementation**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M10d Supertrait Hardening / Release Closure**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -12,9 +12,10 @@ DTO、metadata/fingerprint schema、query/cache、tooling projection、verifier/
 M9c Advanced Dyn Design Gate 和 M9 release baseline。M10a 已从 M9c gate 中选择 supertrait upcasting 作为 M10
 第一条 advanced dyn 主线；M10b 已把 frontend/query/sema 的 check-only 子集落到代码；M10c 已继续完成
 `trait_object_upcast` IR、`supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection 和
-native inherited supertrait dispatch。
-M10c 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、allocator policy 或多 trait object
-composition runtime；下一步是 M10d hardening / release closure。
+native inherited supertrait dispatch；M10d 已完成 query/cache/tooling projection、negative sample matrix、
+documentation tests、coverage gate 和 release baseline。
+M10 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、allocator policy 或多 trait object
+composition runtime；下一步是 M11 advanced dyn design baseline。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -58,6 +59,7 @@ composition runtime；下一步是 M10d hardening / release closure。
 - [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
 - [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)
 - [Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)
+- [Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

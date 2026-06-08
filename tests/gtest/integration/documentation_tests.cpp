@@ -176,7 +176,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M10d Supertrait Hardening / Release Closure");
+        "docs/zh/next-steps.md", "当前最高优先级：M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -268,22 +268,23 @@ TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M10c Supertrait IR / Backend Runtime Implementation");
+    expect_document_contains("docs/zh/README.md", "M10d Supertrait Hardening / Release Closure");
     expect_document_contains("docs/zh/README.md", "Aurex M10 Supertrait Upcasting 设计基线");
-    expect_document_contains("docs/zh/progress.md", "阶段：M10c Supertrait IR / Backend Runtime Implementation");
+    expect_document_contains("docs/zh/README.md", "Aurex M10 Supertrait Upcasting Release Baseline");
+    expect_document_contains("docs/zh/progress.md", "阶段：M10d Supertrait Hardening / Release Closure");
     expect_document_contains("docs/zh/progress.md", "borrowed dyn-to-dyn coercion");
     expect_document_contains("docs/zh/progress.md", "supertrait_vptr_metadata_v1");
-    expect_document_contains("docs/zh/version.md", "## M10c Supertrait IR / Backend Runtime Implementation");
+    expect_document_contains("docs/zh/progress.md", "37 files changed, 1316 insertions(+), 255 deletions(-)");
+    expect_document_contains("docs/zh/version.md", "## M10d Supertrait Hardening / Release Closure");
+    expect_document_contains("docs/zh/version.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M10d Supertrait Hardening / Release Closure");
-    expect_document_contains("docs/zh/next-steps.md", "`TraitObjectUpcastCoercionKey`");
-    expect_document_contains("docs/zh/next-steps.md", "`VTableSupertraitEdgeDescriptor`");
-    expect_document_contains("docs/zh/next-steps.md", "M10b frontend/query/sema 已完成");
-    expect_document_contains("docs/zh/next-steps.md", "M10c IR/backend runtime 已完成");
-    expect_document_contains("docs/zh/language-feature-inventory.md", "M10c 已完成 IR/backend runtime");
+        "docs/zh/next-steps.md", "当前最高优先级：M11 Advanced Dyn Design Baseline");
+    expect_document_contains("docs/zh/next-steps.md", "M10 已结束");
+    expect_document_contains("docs/zh/next-steps.md", "M11a 设计阶段的退出标准");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "M10d 已完成 hardening/release closure");
 
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md",
-        "M10c Supertrait IR / Backend Runtime Implementation");
+        "M10d Supertrait Hardening / Release Closure");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "supertrait_vptr_metadata_v1");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "TraitSupertraitEdgeFact");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "TraitObjectUpcastCoercionKey");
@@ -303,6 +304,11 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "trait Child: Parent");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "trait_object_upcast");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "native inherited parent dispatch");
+    expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "M10c 实际低于预估");
+    expect_document_contains("docs/zh/m10-release-baseline.md", "M10d 的 hardening/release closure 已完成");
+    expect_document_contains("docs/zh/m10-release-baseline.md", "FunctionDynAbiFacts::upcasts");
+    expect_document_contains("docs/zh/m10-release-baseline.md", "37 files changed, 1316 insertions(+), 255 deletions(-)");
+    expect_document_contains("docs/zh/m10-release-baseline.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/language-manual.md", "Borrowed dyn supertrait upcast");
 }
 

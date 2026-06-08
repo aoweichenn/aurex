@@ -1,9 +1,34 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M10c Supertrait IR / Backend Runtime Implementation
+阶段：M10d Supertrait Hardening / Release Closure
 
 ## 总体状态
+
+2026-06-08：M10d Supertrait Hardening / Release Closure 已完成。M10 现在收口为完整 borrowed dyn supertrait
+upcasting release baseline：M10a 固定设计，M10b 完成 frontend/query/sema facts，M10c 完成 IR/backend runtime，
+M10d 完成 query/cache/tooling polish、negative sample matrix、文档收口、coverage gate 和 M10c 实际代码量偏差分析。
+新增收口文档见 [Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)。
+
+M10d 仍保持 compiler/runtime core 范围，不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现
+dynamic Drop dispatch、不实现 allocator policy、不实现 multi trait composition，也不新增 trait-object Drop metadata。
+当前稳定能力是 borrowed dyn-to-dyn upcast：`&dyn Child -> &dyn Parent`、
+`&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；upcast 是 coercion，不是普通子类型，
+不创建 ownership、不复制对象、不延长 origin、不放宽 loan、不把 shared borrow 升级成 mutable。
+
+M10d 已补齐 tooling/query 收口：`FunctionDynAbiFacts::upcasts` 现在会作为 dyn ABI surface 触发 lower-IR
+query/semantic fact；IDE hover 展示 `metadata=supertrait_vptr_metadata_v1`、`upcasts=N`、首条 upcast source/target
+和 borrow kind；summary/dump/fingerprint/lower-IR invalidation 已覆盖 upcast edge 和 borrow 变化。常规 negative
+sample suite 已覆盖非 supertrait target、shared-to-mut upgrade 和 missing parent evidence；IR/verifier focused tests
+覆盖 layout/edge mismatch。
+
+M10c 的实际 diffstat 是 `37 files changed, 1316 insertions(+), 255 deletions(-)`，低于 1,600-2,800 行预估。
+主要原因是 M10b 已提前铺好 checked/query DTO，M8/M9 已有 borrowed dyn ABI/tooling 基线，LLVM lowering 复用
+现有 fat-view/indirect-call 路径，且标准库、owning dyn、Drop dispatch、allocator 和 multi trait composition 均未进入
+M10c/M10d。
+
+M10 已结束，下一步应进入 **M11 Advanced Dyn Design Baseline**：从 M9c gate 的剩余 advanced dyn 候选中选择
+后续主线，先设计 policy/schema 和 query gate，不直接实现标准库、owning dyn 或 dynamic Drop dispatch。
 
 2026-06-08：M10c Supertrait IR / Backend Runtime Implementation 已完成。M10c 继续保持 compiler/runtime
 core 范围，不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
@@ -27,9 +52,8 @@ global shape 为 `{ [methods x ptr], [supertraits x ptr] }`。`trait_object_upca
 borrowed dyn view。Native execution 已覆盖 inherited parent dispatch、多 concrete child vtable 和 parent vtable
 projection。
 
-M10c 完成后，下一步应进入 M10d Supertrait Hardening / Release Closure：补 query/cache/tooling projection polish、
-negative sample matrix、文档收口、coverage/release gate 和实际代码量偏差分析。标准库、owning dyn、
-`Box<dyn Trait>`、allocator、dynamic Drop dispatch 和 multi trait composition 仍是独立后续阶段，不进入 M10d。
+M10c 的下一步已由 M10d Supertrait Hardening / Release Closure 完成。标准库、owning dyn、`Box<dyn Trait>`、
+allocator、dynamic Drop dispatch 和 multi trait composition 仍是独立后续阶段，不进入 M10。
 
 2026-06-08：M10b Supertrait Frontend / Query / Sema Implementation 已完成。M10b 仍然是 compiler-only /
 check-only 子集，不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现

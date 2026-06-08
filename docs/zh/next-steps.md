@@ -1,157 +1,62 @@
 # 下一步计划
 
-## 当前最高优先级：M10d Supertrait Hardening / Release Closure
+## 当前最高优先级：M11 Advanced Dyn Design Baseline
 
-M8 主线已经在 `m8` 分支完成 release closure，设计和实现基线记录在
-[Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。M9 已从 `m9` 分支开启，第一阶段
-记录在 [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)。M9 release closure 已完成，收口记录在
-[Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)。M10 已从 `m10` 分支开启，M10a 已完成
-[Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)，M10b 已完成
-Supertrait Frontend / Query / Sema Implementation，M10c 已完成 Supertrait IR / Backend Runtime Implementation。
-当前下一步应进入 M10d Supertrait Hardening / Release Closure，而不是继续在 M8/M9 中追加语言语义，也不是把
-标准库塞进 M10。
+M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure 和 M10 supertrait upcasting release closure
+均已完成。当前状态入口：
 
-M10a 已经从 M9c `DynAdvancedDesignGate` 的候选中选择 supertrait upcasting 作为第一条 advanced dyn 主线。M10b
-已经完成 check-only frontend/query/sema：`trait Child: Parent` syntax/AST、direct/transitive
-`TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、borrowed dyn-to-dyn
-contextual coercion facts、cycle/duplicate/private leak diagnostics 和 impl parent evidence checking 都已落地。
-M10c 已把这些 checked facts 贯通到 `trait_object_upcast` IR、`supertrait_vptr_metadata_v1` vtable metadata、
-LLVM parent vtable projection 和 native inherited parent dispatch。M10 固定的语义仍是 borrowed dyn-to-dyn coercion：
-`&dyn Child -> &dyn Parent`、
-`&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；upcast 是 coercion，**不是普通子类型**，
-不创建 ownership，不延长 origin，不放宽 loan，不把 shared borrow 升级成 mutable。`borrowed_view_v1` 仍是
-borrowed fat view ABI；带 supertrait edge 的 vtable 使用 `supertrait_vptr_metadata_v1`。
+- [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
+- [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
+- [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)
+- [Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)
+- [Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)
 
-M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
-第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
-通过 checked vtable witness 描述动态派发；不在 M8 引入 owning dyn、`Box<dyn Trait>`、allocator、标准库、
-dynamic Drop dispatch、supertrait upcasting 或多 trait object composition。
+M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
+`&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
+method call 会通过 `trait_object_upcast` IR 和 `supertrait_vptr_metadata_v1` parent vtable projection runtime dispatch。
+M10d 已补齐 query/cache/tooling projection、negative sample matrix、documentation tests、coverage gate 和 M10c
+实际代码量偏差分析。
 
-M8a query foundation 已完成：无语义形状的 `CanonicalTypeKind::trait_object` 占位已移除，并新增
-`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey` 三类结构化 query identity。后续如果重新引入
-trait object canonical key，必须包含 principal trait、trait args、associated equality、object origin/lifetime
-和 vtable layout identity，不能再用 0-child kind tag 表示“trait object”。
+已完成基线摘要：
 
-M8b/M8c frontend/query closure 也已完成。当前语言层能写 `&dyn Trait`、`&mut dyn Trait`、
-`dyn Trait[Assoc = Type]` 这类 borrowed dyn view；sema 会做 object-callability 诊断，并在 `&T` / `&mut T`
-满足可见 nominal impl 时记录 borrowed dyn coercion、checked vtable layout、method slot 和 `vtable_slot` method
-binding。
+- M8 query foundation 已完成，`CanonicalTypeKind::trait_object` 占位已移除；当前结构化 identity 是
+  `TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`。
+- M9 Dyn ABI / Tooling Design Baseline、M9b ABI/tooling implementation、M9c Advanced Dyn Design Gate 和
+  M9d / M9 release closure 已完成；M9 固定 `borrowed_view_v1` / `borrowed_methods_only_v1`，不实现标准库或 runtime
+  advanced dyn。
+- M10a / post-M9 advanced dyn policy selection 已完成；M10 选择 supertrait upcasting 并最终收口到 M10d release
+  baseline。
 
-M8d/M8e 已完成 runtime dispatch 和 hardening：IR 已有 trait-object pack/extract/vtable-slot，LLVM backend 已生成
-vtable global 和 indirect call，native execution 已覆盖 shared dyn、mutable dyn、default method slot 和
-associated equality dispatch。M9 已完成 dyn ABI / tooling release closure；当前最高优先级已经转为 M10
-supertrait upcasting 后续实现。
+当前下一步应进入 **M11 Advanced Dyn Design Baseline**。M11 先做设计和小范围 query gate，不直接实现标准库、
+owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。M11 必须从 M9c `DynAdvancedDesignGate` 剩余候选中
+重新选择主线，明确新的 ABI policy / metadata policy / query DTO / verifier surface，而不是复用
+`borrowed_view_v1` 或 `borrowed_methods_only_v1` 偷偷扩展。
 
-M8 follow-up 的 sample / release polish 主项也已完成：borrowed dyn trait runtime dispatch 已进入常规 positive
-runtime sample suite，缺失 associated equality 和缺失 nominal impl coercion 已进入常规 negative sample suite。
-后续 M8 内只保留很小的文案或 profile 抛光，不再增加语言语义。
+M11 候选主线：
 
-M9 第一阶段命名为 **M9 Dyn ABI / Tooling Design Baseline**。它的目标是把 M8 已经能运行的 borrowed dyn
-dispatch 固化成可跨 backend、query/cache、IDE/tooling 和后续高级 dyn 设计复用的 ABI/metadata/diagnostic
-设计，而不是立即实现 owning dyn 或标准库。M9a 已完成设计基线文档和文档测试接入；M9b 已完成 DTO、adapter、
-query/cache 和 IDE/tooling implementation；M9c Advanced Dyn Design Gate 已完成，对应 DTO、validation、
-fingerprint、summary/dump 和 focused query tests 均已收口；M9d 已完成 release baseline、状态入口和
-documentation tests 收口。M9 的非目标保持明确：不实现标准库、`Box<dyn Trait>`、allocator、owning dyn runtime、
-dynamic Drop dispatch runtime、supertrait upcasting runtime 或多 trait object composition runtime。
+- multi trait composition：可能形如 borrowed `dyn A + B` 或显式 composition object，但需要新的 composition
+  metadata policy、object identity、method slot namespace 和 ambiguity diagnostics。
+- dynamic Drop dispatch：需要 destructor ABI、drop metadata、runtime dispatch 和 dropck/tooling facts；不能混入
+  M10 的 supertrait vptr metadata。
+- owning dyn / `Box<dyn Trait>` / allocator policy：需要标准库或 runtime ownership policy 的独立阶段，当前不应直接实现。
 
-M9b 已完成的实现入口：
+M11a 设计阶段的退出标准：
 
-- 新增 library-independent dyn ABI DTO，表达 borrowed view object descriptor、vtable descriptor、slot descriptor、
-  coercion descriptor 和 dispatch descriptor。
-- 明确 metadata policy：当前只承认 `borrowed_methods_only_v1`，不隐式加入 drop/size/align/supertrait metadata。
-- 为 DTO 增加 validation、stable fingerprint、summary 和 dump，并接入 query/cache invalidation。
-- 将 checked vtable facts 和 IR `TraitObjectVTableLayout` 投影为 tooling semantic facts，IDE hover 可展示
-  `abi=borrowed_view_v1`、`metadata=borrowed_methods_only_v1` 和 `dispatch=vtable_slot slot=N`。
-- 补 focused invalidation / adapter tests：lower-function-IR result fingerprint 会响应 dyn ABI facts 变化；IR adapter
-  只投影函数 value closure 实际使用的 dyn ABI layout。
-- 补 verifier/backend negative matrix 中与当前 ABI facts 直接相关的 slot mismatch、layout/slot validation、dump
-  和 tooling projection 覆盖。
+- 选定一个主线候选，并明确为什么它是当前最适合 Aurex 的下一步。
+- 写清 semantic model、borrow/ownership/drop/resource 边界、ABI metadata、query/cache/tooling 投影、diagnostics、
+  verifier/backend negative matrix 和非目标。
+- 更新 documentation tests，固定 “M11 只是设计 baseline，不实现标准库” 的阶段边界。
+- 给出 M11b/M11c 的代码量估算，并说明哪些能力必须后移。
 
-M9c 已完成的 advanced dyn gate 入口：
-
-- 只做 advanced dyn design review 和小原型 gate，不自动实现标准库。
-- 研究 supertrait upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy、多 trait object
-  composition 是否进入后续阶段。
-- 必须先说明它们如何复用或扩展 M9b 的 `borrowed_view_v1` / `borrowed_methods_only_v1` facts，而不是复用同一个
-  vtable layout 偷偷扩展。
-- 代码层已新增 `DynAdvancedDesignGate` / `DynAdvancedDesignCandidate`，固定五个候选方向的 required policy、
-  blockers、required facts、impact summary、non-goals、stable fingerprint、summary 和 dump。
-- 当前结论：supertrait upcasting 与 multi trait composition 需要新 metadata policy；owning dyn 与 allocator
-  policy 需要标准库阶段；dynamic Drop dispatch 需要 runtime 阶段。
-
-M9d / M9 release closure 已完成：
-
-- 汇总 M9a-M9c 的 query DTO、tooling projection、文档测试、coverage 和设计非目标，形成 M9 release baseline。
-- 审计 advanced gate 与 `FunctionDynAbiFacts` 的 wording/schema 是否一致，避免下一阶段误解为 runtime feature 已可用。
-- 如需进入 advanced dyn 后续阶段，先单独开阶段估算，不在 M9d 中实现标准库或 runtime。
-
-M10a / post-M9 advanced dyn policy selection 已完成：
-
-- 已选择 supertrait upcasting 作为 M10 第一条 advanced dyn 主线。
-- 已设计 `supertrait_vptr_metadata_v1`、upcast layout projection facts 和 origin-preserving coercion facts。
-- 已固定 `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor` 和
-  `VTableSupertraitEdgeDescriptor`。
-- 已确认 dynamic Drop dispatch、owning dyn、allocator policy 和 multi trait composition 不属于 M10a，也不应在
-  M10b 偷偷实现。
-- M10 阶段继续不实现标准库，也不把 runtime feature 藏进 `borrowed_view_v1` / `borrowed_methods_only_v1`。
-
-M10b frontend/query/sema 已完成：
-
-- `trait Child: Parent, Other where ... { ... }` 已进入 parser/AST/dump。
-- `TraitSignature::supertraits`、`TraitSupertraitEdgeFact` 和 `TraitObjectUpcastCoercionFact` 已进入 checked module、
-  stable fingerprint、checked dump、authority 和 text rebind。
-- Sema 已覆盖 direct/transitive supertrait graph、泛型 parent args substitution、duplicate/cycle/private leak
-  diagnostics、impl parent evidence obligation 和 borrowed dyn-to-dyn contextual coercion fact recording。
-- Query / ABI 层已新增 `TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor` 和
-  `supertrait_vptr_metadata_v1` policy enum value。
-- M10b 明确只做到 checked/query/sema，不做 standard library runtime；`trait_object_upcast` IR 和 LLVM parent
-  vtable projection 已由 M10c 完成。
-
-M10c IR/backend runtime 已完成：
-
-- 新增 target-independent `trait_object_upcast` IR value / operation，并从 M10b checked upcast fact lowering。
-- 新增 IR/backend supertrait edge layout fact，表达 source child vtable 到 target parent vtable 的 edge path。
-- IR verifier 已覆盖 source/target object、borrow kind、edge target、metadata policy、upcast key 和 layout mismatch
-  negative matrix。
-- LLVM backend 已支持 `supertrait_vptr_metadata_v1` explicit metadata shape，并在 upcast lowering 中复用 data pointer、
-  投影 parent vtable pointer。
-- Native execution 已覆盖 inherited parent dispatch、多 concrete child vtable 和 runtime parent vtable projection。
-- 继续保持无标准库、无 owning dyn、无 dynamic Drop dispatch。
-
-M10d 当前要做：
-
-- 补 query/cache/tooling projection polish，确保 checked/IR `FunctionDynAbiFacts`、hover、dump 和 fingerprint 对
-  supertrait upcast 的展示一致。
-- 补 negative sample matrix：invalid target、borrow mutability upgrade、missing parent evidence、layout/edge mismatch
-  和 associated equality edge ambiguity 文案。
-- 收口 language manual、usage、progress、version、README、requirements 和 documentation tests，防止 M10b check-only
-  wording 回流。
-- 跑完整 tests、90% coverage gate、diff check 和 release self-review。
-- 分析 M10c 实际代码量与 1,600-2,800 行预估的偏差，记录原因；标准库、owning dyn、`Box<dyn Trait>`、
-  allocator、dynamic Drop dispatch 和 multi trait composition 继续作为独立后续阶段。
-
-当前建议路线：
-
-- M8a：已完成。设计基线与 query 地基已固定，错误占位已清理，不开放语言 surface。
-- M8b：已完成。`dyn Trait` syntax / sema type / object-callability diagnostics 已落地。
-- M8c：已完成。borrowed dyn coercion、checked vtable layout facts、`vtable_slot` method binding 已落地。
-- M8d：已完成。IR trait-object pack/extract/vtable-slot、IR verifier、LLVM vtable global 和 indirect dispatch 已落地。
-- M8e：已完成。hardening、fingerprint/invalidation、default method slot、associated equality 和文档收口已完成。
-
-剩余代码量粗估：
+近期代码量粗估：
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
-| M8 follow-up | 已完成 release closure；后续不再追加 M8 语言语义 | 0-100 行 |
-| M9a design baseline | library-independent dyn ABI DTO、metadata/fingerprint schema、tooling/query projection 和 cross-module invalidation 设计；已完成 | 500-900 行文档/测试 |
-| M9b ABI/tooling implementation | dyn ABI DTO、tooling/query 投影、lower-IR invalidation、focused negative verifier/backend tests；已完成 | 1,000-2,000 行 |
-| M9c advanced dyn design gate | `DynAdvancedDesignGate` DTO、validation、fingerprint、summary/dump、focused tests、docs；已完成，不实现标准库 | 700-1,300 行 |
-| M9d / M9 release closure | M9 docs/version/progress 收口、非目标一致性审计、coverage/release gate；已完成，不实现标准库或 runtime | 300-700 行 |
-| M10a supertrait upcasting design baseline | 已完成。选择 supertrait upcasting，固定 `supertrait_vptr_metadata_v1`、query/ABI facts、IR/backend plan 和非目标 | 700-1,100 行文档/测试 |
-| M10b frontend/query/sema | 已完成。`trait Child: Parent` syntax/AST、supertrait graph facts、cycle/visibility diagnostics、impl parent evidence、`TraitObjectUpcastCoercionKey`、checked dump/fingerprint facts；associated equality edge mapping 留后续 | 1,800-3,000 行，实际以 M10b diffstat 为准 |
-| M10c IR/backend runtime | 已完成。`supertrait_vptr_metadata_v1` vtable layout、`VTableSupertraitEdgeDescriptor` 等价 IR fact、`trait_object_upcast` IR、verifier、LLVM lowering、runtime native coverage | 1,600-2,800 行，实际以 M10c diffstat 为准 |
-| M10d hardening/release | negative matrix、query/cache invalidation、IDE hover polish、coverage closure、language manual/sample/release docs | 700-1,300 行 |
-| 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |
+| M10d hardening/release | 已完成。query/cache/tooling projection、negative samples、docs/tests/coverage、M10c diffstat 分析 | 实际以本次 diffstat 为准 |
+| M11a design baseline | advanced dyn 后续选择、policy/schema 设计、非目标、documentation tests 和测试计划 | 600-1,000 行文档/测试 |
+| M11b query/prototype gate | 新候选 DTO、validation、fingerprint、summary/dump、focused query tests | 700-1,300 行 |
+| M11c implementation package | 取决于 M11a 选定主线；multi trait composition、dynamic Drop dispatch 或 owning dyn 都必须单独估算 | 待 M11a 后估算 |
+| 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 

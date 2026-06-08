@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M10c Supertrait IR / Backend Runtime Implementation。M2 已移除标准库层：
+当前架构基线是 M10d Supertrait Hardening / Release Closure。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。

@@ -1186,7 +1186,33 @@ void recover_resolved_fragment_source_part(
 [[nodiscard]] bool dyn_abi_facts_has_surface(const query::FunctionDynAbiFacts& facts) noexcept
 {
     return !facts.objects.empty() || !facts.vtables.empty() || !facts.coercions.empty()
-        || !facts.dispatches.empty();
+        || !facts.upcasts.empty() || !facts.dispatches.empty();
+}
+
+void append_dyn_abi_hover_detail(std::ostringstream& label, const query::FunctionDynAbiFacts& facts)
+{
+    label << IDE_DETAIL_DYN_ABI_SEPARATOR
+          << "abi=" << query::dyn_abi_policy_name(query::DynAbiPolicy::borrowed_view_v1)
+          << "/metadata=" << query::dyn_metadata_policy_name(query::function_dyn_abi_metadata_policy(facts))
+          << "/objects=" << facts.objects.size()
+          << "/vtables=" << facts.vtables.size()
+          << "/slots=" << facts.summary.slot_count
+          << "/coercions=" << facts.coercions.size()
+          << "/upcasts=" << facts.upcasts.size()
+          << "/dispatches=" << facts.dispatches.size();
+    if (!facts.upcasts.empty()) {
+        const query::DynUpcastAbiDescriptor& upcast = facts.upcasts.front();
+        label << "/upcast="
+              << (upcast.source_reference_type_name.empty() ? "<unknown>" : upcast.source_reference_type_name)
+              << "->"
+              << (upcast.target_reference_type_name.empty() ? "<unknown>" : upcast.target_reference_type_name)
+              << "/upcast_borrow=" << query::dyn_borrow_kind_name(upcast.borrow_kind)
+              << "/upcast_metadata=" << query::dyn_metadata_policy_name(upcast.metadata_policy);
+    }
+    if (!facts.dispatches.empty()) {
+        label << "/dispatch=vtable_slot"
+              << "/slot=" << facts.dispatches.front().slot;
+    }
 }
 
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
@@ -1311,17 +1337,7 @@ void recover_resolved_fragment_source_part(
         if (const query::FunctionDynAbiFacts* const dyn_abi =
                 dyn_abi_facts_for_symbol(snapshot, signature.c_name.view());
             dyn_abi != nullptr && dyn_abi_facts_has_surface(*dyn_abi)) {
-            label << IDE_DETAIL_DYN_ABI_SEPARATOR
-                  << "abi=" << query::dyn_abi_policy_name(query::DynAbiPolicy::borrowed_view_v1)
-                  << "/metadata="
-                  << query::dyn_metadata_policy_name(query::DynMetadataPolicy::borrowed_methods_only_v1)
-                  << "/vtables=" << dyn_abi->vtables.size()
-                  << "/slots=" << dyn_abi->summary.slot_count
-                  << "/dispatches=" << dyn_abi->dispatches.size();
-            if (!dyn_abi->dispatches.empty()) {
-                label << "/dispatch=vtable_slot"
-                      << "/slot=" << dyn_abi->dispatches.front().slot;
-            }
+            append_dyn_abi_hover_detail(label, *dyn_abi);
         }
     }
     return label.str();

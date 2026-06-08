@@ -618,6 +618,8 @@ public:
     void record_trait_object_callability(TypeHandle object_type, const TraitSignature& trait,
         std::span<const TypeHandle> trait_args,
         std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range);
+    [[nodiscard]] const TraitSupertraitEdgeFact* find_supertrait_edge_path(
+        const TypeInfo& source_object, const TypeInfo& target_object) const;
     [[nodiscard]] const TraitImplInfo* find_trait_object_impl(
         TypeHandle concrete_type, const TypeInfo& object_info, const base::SourceRange& range, bool report_failure);
     [[nodiscard]] query::VTableLayoutKey record_vtable_layout(
@@ -905,9 +907,12 @@ public:
         const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle enum_type) const;
     [[nodiscard]] base::Result<std::string> generic_type_alias_instance_signature_fingerprint(
         const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle target_type) const;
-    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
+    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const;
     [[nodiscard]] bool can_borrowed_dyn_trait_coerce(TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] bool can_borrowed_dyn_trait_upcast(TypeHandle dst, TypeHandle src) const;
     void record_borrowed_dyn_trait_coercion_if_needed(
+        syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
+    void record_borrowed_dyn_trait_upcast_if_needed(
         syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     [[nodiscard]] bool check_m2_value_abi(

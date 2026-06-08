@@ -139,7 +139,11 @@ fn main() -> i32 {
 dyn 用例：`&dyn Source[Item = i32]` shared dispatch、`&mut dyn Accumulate` mutable receiver 写回、default
 method slot 和 associated equality 在同一个程序中运行。
 
-当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting、
+M10b 还支持 check-only borrowed dyn supertrait upcast：`trait Child: Parent` 会进入 checked supertrait graph，
+`&dyn Child` 可以在需要 `&dyn Parent` 的 contextual coercion 中记录 upcast fact。该能力当前只到 parser/sema/query
+事实层，不生成 `trait_object_upcast` IR 或 runtime parent vtable projection。
+
+当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting runtime lowering、
 多 trait object composition、specialization、default associated type、generic associated type 或 associated const。
 
 ## import

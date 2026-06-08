@@ -51,7 +51,7 @@ public:
     [[nodiscard]] SemanticTypeValidator validator() const noexcept;
     [[nodiscard]] SemanticAbiChecker abi_checker() const noexcept;
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
-    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
+    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     void validate_type_layouts() const;
 

@@ -234,6 +234,25 @@ struct TraitAssociatedTypeRequirement {
 
 using TraitAssociatedTypeRequirementList = SemaVector<TraitAssociatedTypeRequirement>;
 
+struct TraitSupertraitInfo {
+    query::DefKey child_trait_key;
+    query::DefKey parent_trait_key;
+    InternedText child_trait_name;
+    IdentId child_trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId child_trait_module = syntax::INVALID_MODULE_ID;
+    InternedText parent_trait_name;
+    IdentId parent_trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId parent_trait_module = syntax::INVALID_MODULE_ID;
+    TypeHandleList parent_trait_args;
+    query::StableFingerprint128 edge_fingerprint;
+    base::u32 direct_edge_ordinal = 0;
+    base::u32 closure_depth = 1;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+using TraitSupertraitInfoList = SemaVector<TraitSupertraitInfo>;
+
 struct TraitSignature {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -243,6 +262,7 @@ struct TraitSignature {
     StableDefId stable_id;
     IncrementalKey incremental_key;
     SemaVector<IdentId> generic_params;
+    TraitSupertraitInfoList supertraits;
     TraitAssociatedTypeRequirementList associated_types;
     TraitMethodRequirementList requirements;
     base::SourceRange range{};
@@ -483,6 +503,36 @@ struct TraitObjectCoercionFact {
     TypeHandle source_type = INVALID_TYPE_HANDLE;
     TypeHandle object_type = INVALID_TYPE_HANDLE;
     query::VTableLayoutKey vtable_layout;
+    query::TraitObjectBorrowKindKey borrow_kind = query::TraitObjectBorrowKindKey::shared;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitSupertraitEdgeFact {
+    query::DefKey child_trait_key;
+    query::DefKey parent_trait_key;
+    InternedText child_trait_name;
+    IdentId child_trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId child_trait_module = syntax::INVALID_MODULE_ID;
+    InternedText parent_trait_name;
+    IdentId parent_trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId parent_trait_module = syntax::INVALID_MODULE_ID;
+    TypeHandleList parent_trait_args;
+    query::StableFingerprint128 edge_fingerprint;
+    base::u32 direct_edge_ordinal = 0;
+    base::u32 closure_depth = 1;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitObjectUpcastCoercionFact {
+    query::TraitObjectUpcastCoercionKey upcast_key;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    TypeHandle source_reference_type = INVALID_TYPE_HANDLE;
+    TypeHandle target_reference_type = INVALID_TYPE_HANDLE;
+    TypeHandle source_object_type = INVALID_TYPE_HANDLE;
+    TypeHandle target_object_type = INVALID_TYPE_HANDLE;
+    query::StableFingerprint128 edge_fingerprint;
     query::TraitObjectBorrowKindKey borrow_kind = query::TraitObjectBorrowKindKey::shared;
     base::SourceRange range{};
     base::u32 part_index = 0;
@@ -849,6 +899,8 @@ using TraitObjectMethodSlotFactList = SemaVector<TraitObjectMethodSlotFact>;
 using TraitObjectCallabilityFactList = SemaVector<TraitObjectCallabilityFact>;
 using VTableLayoutFactList = SemaVector<VTableLayoutFact>;
 using TraitObjectCoercionFactList = SemaVector<TraitObjectCoercionFact>;
+using TraitSupertraitEdgeFactList = SemaVector<TraitSupertraitEdgeFact>;
+using TraitObjectUpcastCoercionFactList = SemaVector<TraitObjectUpcastCoercionFact>;
 using CallBindingExprIndexMap = SemaMap<base::u32, base::u32>;
 using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
 using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
@@ -1527,6 +1579,8 @@ public:
     TraitObjectCallabilityFactList trait_object_callability;
     VTableLayoutFactList vtable_layouts;
     TraitObjectCoercionFactList trait_object_coercions;
+    TraitSupertraitEdgeFactList trait_supertrait_edges;
+    TraitObjectUpcastCoercionFactList trait_object_upcast_coercions;
     CallBindingExprIndexMap trait_method_call_by_expr;
     CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;
@@ -1577,6 +1631,7 @@ public:
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
     [[nodiscard]] TraitMethodRequirement make_trait_method_requirement() const;
     [[nodiscard]] TraitAssociatedTypeRequirement make_trait_associated_type_requirement() const;
+    [[nodiscard]] TraitSupertraitInfo make_trait_supertrait_info() const;
     [[nodiscard]] TraitSignature make_trait_signature() const;
     [[nodiscard]] TraitImplMethodInfo make_trait_impl_method_info() const;
     [[nodiscard]] TraitImplAssociatedTypeInfo make_trait_impl_associated_type_info() const;
@@ -1590,6 +1645,8 @@ public:
     [[nodiscard]] TraitObjectCallabilityFact make_trait_object_callability_fact() const;
     [[nodiscard]] VTableLayoutFact make_vtable_layout_fact() const;
     [[nodiscard]] TraitObjectCoercionFact make_trait_object_coercion_fact() const;
+    [[nodiscard]] TraitSupertraitEdgeFact make_trait_supertrait_edge_fact() const;
+    [[nodiscard]] TraitObjectUpcastCoercionFact make_trait_object_upcast_coercion_fact() const;
     [[nodiscard]] LifetimeOriginParamInfo clone_lifetime_origin_param(const LifetimeOriginParamInfo& other);
     [[nodiscard]] ReferenceOriginFact clone_reference_origin_fact(const ReferenceOriginFact& other);
     [[nodiscard]] TypeLifetimeInfo clone_type_lifetime_info(const TypeLifetimeInfo& other);
@@ -1623,6 +1680,7 @@ public:
     [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);
     [[nodiscard]] TraitAssociatedTypeRequirement clone_trait_associated_type_requirement(
         const TraitAssociatedTypeRequirement& other);
+    [[nodiscard]] TraitSupertraitInfo clone_trait_supertrait_info(const TraitSupertraitInfo& other);
     [[nodiscard]] TraitSignature clone_trait_signature(const TraitSignature& other);
     [[nodiscard]] TraitImplMethodInfo clone_trait_impl_method_info(const TraitImplMethodInfo& other);
     [[nodiscard]] TraitImplAssociatedTypeInfo clone_trait_impl_associated_type_info(
@@ -1640,6 +1698,9 @@ public:
     [[nodiscard]] VTableLayoutFact clone_vtable_layout_fact(const VTableLayoutFact& other);
     [[nodiscard]] TraitObjectCoercionFact clone_trait_object_coercion_fact(
         const TraitObjectCoercionFact& other) const;
+    [[nodiscard]] TraitSupertraitEdgeFact clone_trait_supertrait_edge_fact(const TraitSupertraitEdgeFact& other);
+    [[nodiscard]] TraitObjectUpcastCoercionFact clone_trait_object_upcast_coercion_fact(
+        const TraitObjectUpcastCoercionFact& other) const;
     [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;

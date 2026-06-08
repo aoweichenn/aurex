@@ -324,6 +324,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     node.name,
                     node.name_id,
                     this->copy_list(node.generic_params),
+                    this->copy_list(node.trait_supertraits),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     this->copy_list(node.trait_items),
                 });
@@ -434,6 +435,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.name = payload.name;
             node.name_id = payload.name_id;
             node.generic_params = copy_std_vector(payload.generic_params);
+            node.trait_supertraits = copy_std_vector(payload.supertraits);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.trait_items = copy_std_vector(payload.items);
             loaded_known_payload = true;
@@ -538,6 +540,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.name = payload.name;
             node.name_id = payload.name_id;
             node.generic_params = copy_std_vector(payload.generic_params);
+            node.trait_supertraits = copy_std_vector(payload.supertraits);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.trait_items = copy_std_vector(payload.items);
             loaded_known_payload = true;

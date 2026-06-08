@@ -588,6 +588,8 @@ CheckedModule::CheckedModule()
       trait_object_callability(make_sema_vector<TraitObjectCallabilityFact>(*this->arena_)),
       vtable_layouts(make_sema_vector<VTableLayoutFact>(*this->arena_)),
       trait_object_coercions(make_sema_vector<TraitObjectCoercionFact>(*this->arena_)),
+      trait_supertrait_edges(make_sema_vector<TraitSupertraitEdgeFact>(*this->arena_)),
+      trait_object_upcast_coercions(make_sema_vector<TraitObjectUpcastCoercionFact>(*this->arena_)),
       trait_method_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       function_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       borrow_summaries(make_sema_map<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>(
@@ -655,6 +657,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_object_callability(std::move(other.trait_object_callability)),
       vtable_layouts(std::move(other.vtable_layouts)),
       trait_object_coercions(std::move(other.trait_object_coercions)),
+      trait_supertrait_edges(std::move(other.trait_supertrait_edges)),
+      trait_object_upcast_coercions(std::move(other.trait_object_upcast_coercions)),
       trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
@@ -737,6 +741,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_object_callability.swap(other.trait_object_callability);
     this->vtable_layouts.swap(other.vtable_layouts);
     this->trait_object_coercions.swap(other.trait_object_coercions);
+    this->trait_supertrait_edges.swap(other.trait_supertrait_edges);
+    this->trait_object_upcast_coercions.swap(other.trait_object_upcast_coercions);
     this->trait_method_call_by_expr.swap(other.trait_method_call_by_expr);
     this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
@@ -876,6 +882,16 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->trait_object_coercions.reserve(other.trait_object_coercions.size());
     for (const TraitObjectCoercionFact& fact : other.trait_object_coercions) {
         this->trait_object_coercions.push_back(this->clone_trait_object_coercion_fact(fact));
+    }
+    this->trait_supertrait_edges.clear();
+    this->trait_supertrait_edges.reserve(other.trait_supertrait_edges.size());
+    for (const TraitSupertraitEdgeFact& fact : other.trait_supertrait_edges) {
+        this->trait_supertrait_edges.push_back(this->clone_trait_supertrait_edge_fact(fact));
+    }
+    this->trait_object_upcast_coercions.clear();
+    this->trait_object_upcast_coercions.reserve(other.trait_object_upcast_coercions.size());
+    for (const TraitObjectUpcastCoercionFact& fact : other.trait_object_upcast_coercions) {
+        this->trait_object_upcast_coercions.push_back(this->clone_trait_object_upcast_coercion_fact(fact));
     }
     this->borrow_summaries.clear();
     this->borrow_summaries.reserve(other.borrow_summaries.size());
@@ -1060,10 +1076,18 @@ TraitAssociatedTypeRequirement CheckedModule::make_trait_associated_type_require
     return {};
 }
 
+TraitSupertraitInfo CheckedModule::make_trait_supertrait_info() const
+{
+    TraitSupertraitInfo info;
+    info.parent_trait_args = this->make_type_handle_list();
+    return info;
+}
+
 TraitSignature CheckedModule::make_trait_signature() const
 {
     TraitSignature signature;
     signature.generic_params = make_sema_vector<IdentId>(*this->arena_);
+    signature.supertraits = make_sema_vector<TraitSupertraitInfo>(*this->arena_);
     signature.associated_types = make_sema_vector<TraitAssociatedTypeRequirement>(*this->arena_);
     signature.requirements = make_sema_vector<TraitMethodRequirement>(*this->arena_);
     return signature;
@@ -1134,6 +1158,18 @@ VTableLayoutFact CheckedModule::make_vtable_layout_fact() const
 }
 
 TraitObjectCoercionFact CheckedModule::make_trait_object_coercion_fact() const
+{
+    return {};
+}
+
+TraitSupertraitEdgeFact CheckedModule::make_trait_supertrait_edge_fact() const
+{
+    TraitSupertraitEdgeFact fact;
+    fact.parent_trait_args = this->make_type_handle_list();
+    return fact;
+}
+
+TraitObjectUpcastCoercionFact CheckedModule::make_trait_object_upcast_coercion_fact() const
 {
     return {};
 }
@@ -1384,6 +1420,26 @@ TraitAssociatedTypeRequirement CheckedModule::clone_trait_associated_type_requir
     return copy;
 }
 
+TraitSupertraitInfo CheckedModule::clone_trait_supertrait_info(const TraitSupertraitInfo& other)
+{
+    TraitSupertraitInfo copy = this->make_trait_supertrait_info();
+    copy.child_trait_key = other.child_trait_key;
+    copy.parent_trait_key = other.parent_trait_key;
+    copy.child_trait_name = this->intern_text(other.child_trait_name);
+    copy.child_trait_name_id = other.child_trait_name_id;
+    copy.child_trait_module = other.child_trait_module;
+    copy.parent_trait_name = this->intern_text(other.parent_trait_name);
+    copy.parent_trait_name_id = other.parent_trait_name_id;
+    copy.parent_trait_module = other.parent_trait_module;
+    copy.parent_trait_args = this->copy_type_handle_list(other.parent_trait_args);
+    copy.edge_fingerprint = other.edge_fingerprint;
+    copy.direct_edge_ordinal = other.direct_edge_ordinal;
+    copy.closure_depth = other.closure_depth;
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
 TraitSignature CheckedModule::clone_trait_signature(const TraitSignature& other)
 {
     TraitSignature copy = this->make_trait_signature();
@@ -1396,6 +1452,10 @@ TraitSignature CheckedModule::clone_trait_signature(const TraitSignature& other)
     copy.incremental_key = other.incremental_key;
     copy.generic_params.reserve(other.generic_params.size());
     copy.generic_params.insert(copy.generic_params.end(), other.generic_params.begin(), other.generic_params.end());
+    copy.supertraits.reserve(other.supertraits.size());
+    for (const TraitSupertraitInfo& supertrait : other.supertraits) {
+        copy.supertraits.push_back(this->clone_trait_supertrait_info(supertrait));
+    }
     copy.associated_types.reserve(other.associated_types.size());
     for (const TraitAssociatedTypeRequirement& associated_type : other.associated_types) {
         copy.associated_types.push_back(this->clone_trait_associated_type_requirement(associated_type));
@@ -1553,6 +1613,32 @@ VTableLayoutFact CheckedModule::clone_vtable_layout_fact(const VTableLayoutFact&
 
 TraitObjectCoercionFact CheckedModule::clone_trait_object_coercion_fact(
     const TraitObjectCoercionFact& other) const
+{
+    return other;
+}
+
+TraitSupertraitEdgeFact CheckedModule::clone_trait_supertrait_edge_fact(const TraitSupertraitEdgeFact& other)
+{
+    TraitSupertraitEdgeFact copy = this->make_trait_supertrait_edge_fact();
+    copy.child_trait_key = other.child_trait_key;
+    copy.parent_trait_key = other.parent_trait_key;
+    copy.child_trait_name = this->intern_text(other.child_trait_name);
+    copy.child_trait_name_id = other.child_trait_name_id;
+    copy.child_trait_module = other.child_trait_module;
+    copy.parent_trait_name = this->intern_text(other.parent_trait_name);
+    copy.parent_trait_name_id = other.parent_trait_name_id;
+    copy.parent_trait_module = other.parent_trait_module;
+    copy.parent_trait_args = this->copy_type_handle_list(other.parent_trait_args);
+    copy.edge_fingerprint = other.edge_fingerprint;
+    copy.direct_edge_ordinal = other.direct_edge_ordinal;
+    copy.closure_depth = other.closure_depth;
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitObjectUpcastCoercionFact CheckedModule::clone_trait_object_upcast_coercion_fact(
+    const TraitObjectUpcastCoercionFact& other) const
 {
     return other;
 }
@@ -1811,6 +1897,33 @@ query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& 
         builder.mix_u32(fact.source_type.value);
         builder.mix_u32(fact.object_type.value);
         builder.mix_u64(fact.vtable_layout.global_id);
+        builder.mix_u8(static_cast<base::u8>(fact.borrow_kind));
+    }
+    builder.mix_u64(static_cast<base::u64>(checked.trait_supertrait_edges.size()));
+    for (const TraitSupertraitEdgeFact& fact : checked.trait_supertrait_edges) {
+        builder.mix_u64(fact.child_trait_key.global_id);
+        builder.mix_u64(fact.parent_trait_key.global_id);
+        builder.mix_u32(fact.child_trait_module.value);
+        builder.mix_u32(fact.child_trait_name_id.value);
+        builder.mix_u32(fact.parent_trait_module.value);
+        builder.mix_u32(fact.parent_trait_name_id.value);
+        builder.mix_u64(static_cast<base::u64>(fact.parent_trait_args.size()));
+        for (const TypeHandle arg : fact.parent_trait_args) {
+            builder.mix_u32(arg.value);
+        }
+        builder.mix_fingerprint(fact.edge_fingerprint);
+        builder.mix_u32(fact.direct_edge_ordinal);
+        builder.mix_u32(fact.closure_depth);
+    }
+    builder.mix_u64(static_cast<base::u64>(checked.trait_object_upcast_coercions.size()));
+    for (const TraitObjectUpcastCoercionFact& fact : checked.trait_object_upcast_coercions) {
+        builder.mix_u64(fact.upcast_key.global_id);
+        builder.mix_u32(fact.expr.value);
+        builder.mix_u32(fact.source_reference_type.value);
+        builder.mix_u32(fact.target_reference_type.value);
+        builder.mix_u32(fact.source_object_type.value);
+        builder.mix_u32(fact.target_object_type.value);
+        builder.mix_fingerprint(fact.edge_fingerprint);
         builder.mix_u8(static_cast<base::u8>(fact.borrow_kind));
     }
     return builder.finish();
@@ -2086,6 +2199,20 @@ void rebind_vtable_layout_fact_texts(
     }
 }
 
+void rebind_trait_supertrait_info_texts(
+    TraitSupertraitInfo& info, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(info.child_trait_name, from, to);
+    rebind_interned_text(info.parent_trait_name, from, to);
+}
+
+void rebind_trait_supertrait_edge_fact_texts(
+    TraitSupertraitEdgeFact& fact, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(fact.child_trait_name, from, to);
+    rebind_interned_text(fact.parent_trait_name, from, to);
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -2104,6 +2231,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (auto& entry : this->traits) {
         rebind_trait_signature_texts(entry.second, from, to);
+        for (TraitSupertraitInfo& supertrait : entry.second.supertraits) {
+            rebind_trait_supertrait_info_texts(supertrait, from, to);
+        }
     }
     for (auto& entry : this->trait_impls) {
         rebind_trait_impl_info_texts(entry.second, from, to);
@@ -2122,6 +2252,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (VTableLayoutFact& fact : this->vtable_layouts) {
         rebind_vtable_layout_fact_texts(fact, from, to);
+    }
+    for (TraitSupertraitEdgeFact& fact : this->trait_supertrait_edges) {
+        rebind_trait_supertrait_edge_fact_texts(fact, from, to);
     }
     for (LifetimeOriginParamInfo& origin_param : this->lifetime_origin_params) {
         rebind_interned_text(origin_param.name, from, to);
@@ -2460,8 +2593,12 @@ void populate_type_check_body_borrow_authority(
     authority.trait_object_callability_count = static_cast<base::u64>(checked.trait_object_callability.size());
     authority.vtable_layout_count = static_cast<base::u64>(checked.vtable_layouts.size());
     authority.trait_object_coercion_count = static_cast<base::u64>(checked.trait_object_coercions.size());
+    authority.trait_supertrait_edge_count = static_cast<base::u64>(checked.trait_supertrait_edges.size());
+    authority.trait_object_upcast_coercion_count =
+        static_cast<base::u64>(checked.trait_object_upcast_coercions.size());
     if (authority.trait_object_method_slot_count != 0 || authority.trait_object_callability_count != 0
-        || authority.vtable_layout_count != 0 || authority.trait_object_coercion_count != 0) {
+        || authority.vtable_layout_count != 0 || authority.trait_object_coercion_count != 0
+        || authority.trait_supertrait_edge_count != 0 || authority.trait_object_upcast_coercion_count != 0) {
         authority.has_trait_object_facts = true;
         authority.trait_object_fingerprint = trait_object_facts_fingerprint(checked);
     }
@@ -2938,6 +3075,44 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " object=" << checked.types.display_name(fact.object_type)
             << " borrow=" << (fact.borrow_kind == query::TraitObjectBorrowKindKey::mut ? "mut" : "shared")
             << " key=" << query::debug_string(query::stable_key_fingerprint(fact.coercion_key));
+        append_part_origin(out, show_parts, fact.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_supertrait_edges " << checked.trait_supertrait_edges.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_supertrait_edges.size(); ++index) {
+        const TraitSupertraitEdgeFact& fact = checked.trait_supertrait_edges[index];
+        out << "    supertrait_edge #" << index << " "
+            << (fact.child_trait_name.empty() ? std::string_view{"<invalid>"} : fact.child_trait_name.view())
+            << " -> "
+            << (fact.parent_trait_name.empty() ? std::string_view{"<invalid>"} : fact.parent_trait_name.view())
+            << " ordinal=" << fact.direct_edge_ordinal
+            << " depth=" << fact.closure_depth
+            << " key=" << query::debug_string(fact.edge_fingerprint);
+        if (!fact.parent_trait_args.empty()) {
+            out << " args=[";
+            for (base::usize arg_index = 0; arg_index < fact.parent_trait_args.size(); ++arg_index) {
+                if (arg_index != 0) {
+                    out << ", ";
+                }
+                out << checked.types.display_name(fact.parent_trait_args[arg_index]);
+            }
+            out << "]";
+        }
+        append_part_origin(out, show_parts, fact.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_object_upcast_coercions " << checked.trait_object_upcast_coercions.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_object_upcast_coercions.size(); ++index) {
+        const TraitObjectUpcastCoercionFact& fact = checked.trait_object_upcast_coercions[index];
+        out << "    dyn_upcast #" << index << " expr=e" << fact.expr.value << " "
+            << checked.types.display_name(fact.source_reference_type) << " -> "
+            << checked.types.display_name(fact.target_reference_type)
+            << " source_object=" << checked.types.display_name(fact.source_object_type)
+            << " target_object=" << checked.types.display_name(fact.target_object_type)
+            << " borrow=" << (fact.borrow_kind == query::TraitObjectBorrowKindKey::mut ? "mut" : "shared")
+            << " key=" << query::debug_string(query::stable_key_fingerprint(fact.upcast_key));
         append_part_origin(out, show_parts, fact.part_index);
         out << "\n";
     }

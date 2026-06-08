@@ -17,6 +17,7 @@ enum class DynAbiPolicy : base::u8 {
 
 enum class DynMetadataPolicy : base::u8 {
     borrowed_methods_only_v1 = 1,
+    supertrait_vptr_metadata_v1 = 2,
 };
 
 enum class DynBorrowKind : base::u8 {
@@ -61,6 +62,20 @@ struct DynCoercionAbiDescriptor {
     std::string object_type_name;
 };
 
+struct DynUpcastAbiDescriptor {
+    TraitObjectUpcastCoercionKey upcast;
+    TraitObjectTypeKey source_object;
+    TraitObjectTypeKey target_object;
+    StableFingerprint128 edge_path;
+    DynBorrowKind borrow_kind = DynBorrowKind::shared;
+    DynAbiPolicy abi_policy = DynAbiPolicy::borrowed_view_v1;
+    DynMetadataPolicy metadata_policy = DynMetadataPolicy::supertrait_vptr_metadata_v1;
+    std::string source_reference_type_name;
+    std::string target_reference_type_name;
+    std::string source_object_type_name;
+    std::string target_object_type_name;
+};
+
 struct DynDispatchAbiDescriptor {
     VTableLayoutKey layout;
     base::u32 slot = 0;
@@ -76,6 +91,7 @@ struct DynAbiFactsSummary {
     base::u64 vtable_count = 0;
     base::u64 slot_count = 0;
     base::u64 coercion_count = 0;
+    base::u64 upcast_count = 0;
     base::u64 dispatch_count = 0;
     base::u64 shared_borrow_count = 0;
     base::u64 mut_borrow_count = 0;
@@ -86,6 +102,7 @@ struct FunctionDynAbiFacts {
     std::vector<DynObjectAbiDescriptor> objects;
     std::vector<DynVTableAbiDescriptor> vtables;
     std::vector<DynCoercionAbiDescriptor> coercions;
+    std::vector<DynUpcastAbiDescriptor> upcasts;
     std::vector<DynDispatchAbiDescriptor> dispatches;
     DynAbiFactsSummary summary;
     StableFingerprint128 fingerprint;
@@ -101,6 +118,7 @@ struct FunctionDynAbiFacts {
 [[nodiscard]] bool is_valid(const DynVTableSlotAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynVTableAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynCoercionAbiDescriptor& descriptor) noexcept;
+[[nodiscard]] bool is_valid(const DynUpcastAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const FunctionDynAbiFacts& facts) noexcept;
 
@@ -112,6 +130,7 @@ struct FunctionDynAbiFacts {
 void record_dyn_object_abi_descriptor(FunctionDynAbiFacts& facts, DynObjectAbiDescriptor descriptor);
 void record_dyn_vtable_abi_descriptor(FunctionDynAbiFacts& facts, DynVTableAbiDescriptor descriptor);
 void record_dyn_coercion_abi_descriptor(FunctionDynAbiFacts& facts, DynCoercionAbiDescriptor descriptor);
+void record_dyn_upcast_abi_descriptor(FunctionDynAbiFacts& facts, DynUpcastAbiDescriptor descriptor);
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor);
 
 [[nodiscard]] std::optional<const DynVTableAbiDescriptor*> dyn_vtable_descriptor_for_layout(

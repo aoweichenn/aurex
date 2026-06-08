@@ -27,7 +27,7 @@ class SemanticTypeValidator final {
 public:
     explicit SemanticTypeValidator(const SemanticAnalyzerCore& core) noexcept;
 
-    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
+    [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     [[nodiscard]] bool check_m2_value_abi(
         TypeHandle type, ValueAbiContext context, const base::SourceRange& range) const;

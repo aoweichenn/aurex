@@ -83,6 +83,24 @@ void mix_dyn_coercion(StableHashBuilder& builder, const DynCoercionAbiDescriptor
     builder.mix_string(descriptor.object_type_name);
 }
 
+void mix_dyn_upcast(StableHashBuilder& builder, const DynUpcastAbiDescriptor& descriptor) noexcept
+{
+    builder.mix_u64(descriptor.upcast.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.upcast));
+    builder.mix_u64(descriptor.source_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.source_object));
+    builder.mix_u64(descriptor.target_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.target_object));
+    builder.mix_fingerprint(descriptor.edge_path);
+    builder.mix_u8(stable_dyn_borrow_kind_value(descriptor.borrow_kind));
+    builder.mix_u8(stable_dyn_abi_policy_value(descriptor.abi_policy));
+    builder.mix_u8(stable_dyn_metadata_policy_value(descriptor.metadata_policy));
+    builder.mix_string(descriptor.source_reference_type_name);
+    builder.mix_string(descriptor.target_reference_type_name);
+    builder.mix_string(descriptor.source_object_type_name);
+    builder.mix_string(descriptor.target_object_type_name);
+}
+
 void mix_dyn_dispatch(StableHashBuilder& builder, const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     builder.mix_u64(descriptor.layout.global_id);
@@ -141,6 +159,8 @@ std::string_view dyn_metadata_policy_name(const DynMetadataPolicy policy) noexce
     switch (policy) {
         case DynMetadataPolicy::borrowed_methods_only_v1:
             return "borrowed_methods_only_v1";
+        case DynMetadataPolicy::supertrait_vptr_metadata_v1:
+            return "supertrait_vptr_metadata_v1";
     }
     return "invalid";
 }
@@ -163,7 +183,8 @@ bool is_valid(const DynAbiPolicy policy) noexcept
 
 bool is_valid(const DynMetadataPolicy policy) noexcept
 {
-    return policy == DynMetadataPolicy::borrowed_methods_only_v1;
+    return policy == DynMetadataPolicy::borrowed_methods_only_v1
+        || policy == DynMetadataPolicy::supertrait_vptr_metadata_v1;
 }
 
 bool is_valid(const DynBorrowKind kind) noexcept
@@ -198,6 +219,18 @@ bool is_valid(const DynCoercionAbiDescriptor& descriptor) noexcept
         && descriptor.coercion.borrow_kind == dyn_borrow_kind_to_key(descriptor.borrow_kind);
 }
 
+bool is_valid(const DynUpcastAbiDescriptor& descriptor) noexcept
+{
+    return is_valid(descriptor.upcast) && is_valid(descriptor.source_object) && is_valid(descriptor.target_object)
+        && is_valid(descriptor.borrow_kind) && is_valid(descriptor.abi_policy) && is_valid(descriptor.metadata_policy)
+        && descriptor.upcast.source_object_type == descriptor.source_object
+        && descriptor.upcast.target_object_type == descriptor.target_object
+        && descriptor.upcast.supertrait_edge_path == descriptor.edge_path
+        && descriptor.upcast.borrow_kind == dyn_borrow_kind_to_key(descriptor.borrow_kind)
+        && descriptor.abi_policy == DynAbiPolicy::borrowed_view_v1
+        && descriptor.metadata_policy == DynMetadataPolicy::supertrait_vptr_metadata_v1;
+}
+
 bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     if (is_valid(descriptor.layout)) {
@@ -216,6 +249,8 @@ bool is_valid(const FunctionDynAbiFacts& facts) noexcept
     }) && std::all_of(facts.vtables.begin(), facts.vtables.end(), [](const DynVTableAbiDescriptor& descriptor) {
         return is_valid(descriptor);
     }) && std::all_of(facts.coercions.begin(), facts.coercions.end(), [](const DynCoercionAbiDescriptor& descriptor) {
+        return is_valid(descriptor);
+    }) && std::all_of(facts.upcasts.begin(), facts.upcasts.end(), [](const DynUpcastAbiDescriptor& descriptor) {
         return is_valid(descriptor);
     }) && std::all_of(facts.dispatches.begin(), facts.dispatches.end(),
              [](const DynDispatchAbiDescriptor& descriptor) {
@@ -237,6 +272,8 @@ DynMetadataPolicy dyn_metadata_policy_from_key(const TraitObjectMetadataPolicyKe
     switch (policy) {
         case TraitObjectMetadataPolicyKey::borrowed_methods_only_v1:
             return DynMetadataPolicy::borrowed_methods_only_v1;
+        case TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1:
+            return DynMetadataPolicy::supertrait_vptr_metadata_v1;
     }
     return DynMetadataPolicy::borrowed_methods_only_v1;
 }
@@ -283,6 +320,13 @@ void record_dyn_coercion_abi_descriptor(FunctionDynAbiFacts& facts, DynCoercionA
     facts.summary.coercion_count = facts.coercions.size();
 }
 
+void record_dyn_upcast_abi_descriptor(FunctionDynAbiFacts& facts, DynUpcastAbiDescriptor descriptor)
+{
+    count_borrow_kind(facts.summary, descriptor.borrow_kind);
+    facts.upcasts.push_back(std::move(descriptor));
+    facts.summary.upcast_count = facts.upcasts.size();
+}
+
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor)
 {
     facts.dispatches.push_back(std::move(descriptor));
@@ -325,11 +369,13 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     builder.mix_u64(facts.objects.size());
     builder.mix_u64(facts.vtables.size());
     builder.mix_u64(facts.coercions.size());
+    builder.mix_u64(facts.upcasts.size());
     builder.mix_u64(facts.dispatches.size());
     builder.mix_u64(facts.summary.object_count);
     builder.mix_u64(facts.summary.vtable_count);
     builder.mix_u64(facts.summary.slot_count);
     builder.mix_u64(facts.summary.coercion_count);
+    builder.mix_u64(facts.summary.upcast_count);
     builder.mix_u64(facts.summary.dispatch_count);
     builder.mix_u64(facts.summary.shared_borrow_count);
     builder.mix_u64(facts.summary.mut_borrow_count);
@@ -341,6 +387,9 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     }
     for (const DynCoercionAbiDescriptor& descriptor : facts.coercions) {
         mix_dyn_coercion(builder, descriptor);
+    }
+    for (const DynUpcastAbiDescriptor& descriptor : facts.upcasts) {
+        mix_dyn_upcast(builder, descriptor);
     }
     for (const DynDispatchAbiDescriptor& descriptor : facts.dispatches) {
         mix_dyn_dispatch(builder, descriptor);
@@ -355,9 +404,12 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
           << " vtables=" << facts.vtables.size()
           << " slots=" << facts.summary.slot_count
           << " coercions=" << facts.coercions.size()
+          << " upcasts=" << facts.upcasts.size()
           << " dispatches=" << facts.dispatches.size()
           << " abi=" << dyn_abi_policy_name(DynAbiPolicy::borrowed_view_v1)
-          << " metadata=" << dyn_metadata_policy_name(DynMetadataPolicy::borrowed_methods_only_v1);
+          << " metadata=" << dyn_metadata_policy_name(facts.upcasts.empty()
+                     ? DynMetadataPolicy::borrowed_methods_only_v1
+                     : DynMetadataPolicy::supertrait_vptr_metadata_v1);
     if (!facts.dispatches.empty()) {
         label << " first_dispatch=vtable_slot slot=" << facts.dispatches.front().slot;
     } else if (!facts.vtables.empty() && !facts.vtables.front().slots.empty()) {
@@ -375,6 +427,7 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
            << " vtables=" << facts.vtables.size()
            << " slots=" << facts.summary.slot_count
            << " coercions=" << facts.coercions.size()
+           << " upcasts=" << facts.upcasts.size()
            << " dispatches=" << facts.dispatches.size()
            << " fingerprint=" << debug_string(function_dyn_abi_facts_fingerprint(facts)) << '\n';
     for (base::usize index = 0; index < facts.objects.size(); ++index) {
@@ -416,6 +469,23 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
                << " object=" << (coercion.object_type_name.empty() ? "<unknown>" : coercion.object_type_name)
                << " borrow=" << dyn_borrow_kind_name(coercion.borrow_kind)
                << " key=" << debug_string(stable_key_fingerprint(coercion.coercion)) << '\n';
+    }
+    for (base::usize index = 0; index < facts.upcasts.size(); ++index) {
+        const DynUpcastAbiDescriptor& upcast = facts.upcasts[index];
+        stream << "  dyn_upcast #" << index
+               << " " << (upcast.source_reference_type_name.empty() ? "<unknown>"
+                                                                     : upcast.source_reference_type_name)
+               << " -> "
+               << (upcast.target_reference_type_name.empty() ? "<unknown>"
+                                                             : upcast.target_reference_type_name)
+               << " source_object=" << (upcast.source_object_type_name.empty() ? "<unknown>"
+                                                                               : upcast.source_object_type_name)
+               << " target_object=" << (upcast.target_object_type_name.empty() ? "<unknown>"
+                                                                               : upcast.target_object_type_name)
+               << " borrow=" << dyn_borrow_kind_name(upcast.borrow_kind)
+               << " abi=" << dyn_abi_policy_name(upcast.abi_policy)
+               << " metadata=" << dyn_metadata_policy_name(upcast.metadata_policy)
+               << " key=" << debug_string(stable_key_fingerprint(upcast.upcast)) << '\n';
     }
     for (base::usize index = 0; index < facts.dispatches.size(); ++index) {
         const DynDispatchAbiDescriptor& dispatch = facts.dispatches[index];

@@ -139,7 +139,7 @@ TypeHandle SemanticTypeService::resolve_type(const syntax::TypeId type)
 }
 
 bool SemanticTypeService::can_assign(
-    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
+    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const
 {
     return this->validator().can_assign(dst, src, value);
 }

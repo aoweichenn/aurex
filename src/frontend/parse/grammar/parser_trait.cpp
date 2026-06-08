@@ -1,5 +1,6 @@
 #include <aurex/frontend/parse/parser_item_part.hpp>
 #include <aurex/frontend/parse/parser_messages.hpp>
+#include <aurex/frontend/parse/recovery.hpp>
 
 #include <utility>
 
@@ -19,11 +20,59 @@ using syntax::TokenKind;
 
 } // namespace
 
+std::vector<syntax::TraitSupertraitDecl> ItemParser::parse_optional_supertraits()
+{
+    std::vector<syntax::TraitSupertraitDecl> supertraits;
+    if (!this->match(TokenKind::colon)) {
+        return supertraits;
+    }
+    if (this->check(TokenKind::kw_where) || this->check(TokenKind::l_brace)) {
+        this->report_here(std::string(PARSER_EXPECT_SUPERTRAIT));
+        return supertraits;
+    }
+
+    while (!this->is_eof() && !this->check(TokenKind::kw_where) && !this->check(TokenKind::l_brace)) {
+        const syntax::TypeId trait_type = this->parse_type();
+        syntax::TraitSupertraitDecl supertrait;
+        supertrait.trait_type = trait_type;
+        supertrait.range = this->type_range_or(trait_type, this->previous().range);
+        supertrait.ordinal = base::checked_u32(supertraits.size(), syntax::SYNTAX_ITEM_NODE_ID_CONTEXT);
+        supertraits.push_back(supertrait);
+        this->reset_panic();
+        if (!this->recover_supertrait_separator()) {
+            break;
+        }
+    }
+    return supertraits;
+}
+
+bool ItemParser::recover_supertrait_separator() const
+{
+    if (this->check(TokenKind::kw_where) || this->check(TokenKind::l_brace)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::kw_where) && !this->check(TokenKind::l_brace);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_SUPERTRAIT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::item)) {
+        this->synchronize(RecoveryContext::item);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::kw_where) && !this->check(TokenKind::l_brace);
+    }
+    return false;
+}
+
 syntax::ItemId ItemParser::parse_trait_decl()
 {
     const syntax::Token& begin = this->expect(TokenKind::kw_trait, std::string(PARSER_EXPECT_TRAIT_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TRAIT_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
+    std::vector<syntax::TraitSupertraitDecl> supertraits = this->parse_optional_supertraits();
     std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
     this->expect_item_container_start(std::string(PARSER_EXPECT_TRAIT_BODY));
 
@@ -31,6 +80,7 @@ syntax::ItemId ItemParser::parse_trait_decl()
     trait.kind = syntax::ItemKind::trait_decl;
     trait.name = name.text();
     trait.generic_params = std::move(generic_params);
+    trait.trait_supertraits = std::move(supertraits);
     trait.where_constraints = std::move(where_constraints);
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {

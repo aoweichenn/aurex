@@ -10,6 +10,7 @@ namespace {
 constexpr base::u64 QUERY_TRAIT_OBJECT_TYPE_KEY_MARKER = 0x51544f4254593031ULL;
 constexpr base::u64 QUERY_VTABLE_LAYOUT_KEY_MARKER = 0x515654424c303131ULL;
 constexpr base::u64 QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER = 0x5154434f45524331ULL;
+constexpr base::u64 QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_MARKER = 0x5154555043415331ULL;
 
 [[nodiscard]] base::u64 global_id_from_fingerprint(
     const base::u64 marker, const StableFingerprint128 fingerprint) noexcept
@@ -42,7 +43,8 @@ constexpr base::u64 QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER = 0x5154434f45524331U
 
 [[nodiscard]] bool is_valid_metadata_policy(const TraitObjectMetadataPolicyKey policy) noexcept
 {
-    return policy == TraitObjectMetadataPolicyKey::borrowed_methods_only_v1;
+    return policy == TraitObjectMetadataPolicyKey::borrowed_methods_only_v1
+        || policy == TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1;
 }
 
 [[nodiscard]] bool is_valid_borrow_kind(const TraitObjectBorrowKindKey borrow_kind) noexcept
@@ -121,6 +123,16 @@ void append_trait_object_coercion_payload(StableKeyWriter& writer, const TraitOb
     append_stable_key(writer, key.vtable_layout);
 }
 
+void append_trait_object_upcast_coercion_payload(StableKeyWriter& writer, const TraitObjectUpcastCoercionKey& key)
+{
+    writer.write_u32(key.schema);
+    writer.write_u8(static_cast<base::u8>(key.borrow_kind));
+    append_stable_key(writer, key.source_object_type);
+    writer.write_fingerprint(key.source_origin);
+    append_stable_key(writer, key.target_object_type);
+    writer.write_fingerprint(key.supertrait_edge_path);
+}
+
 template <typename Key>
 [[nodiscard]] StableFingerprint128 payload_fingerprint(void (*append_payload)(StableKeyWriter&, const Key&),
     const Key& key)
@@ -170,6 +182,19 @@ bool operator!=(const TraitObjectCoercionKey& lhs, const TraitObjectCoercionKey&
     return !(lhs == rhs);
 }
 
+bool operator==(const TraitObjectUpcastCoercionKey& lhs, const TraitObjectUpcastCoercionKey& rhs) noexcept
+{
+    return lhs.source_object_type == rhs.source_object_type && lhs.source_origin == rhs.source_origin
+        && lhs.target_object_type == rhs.target_object_type
+        && lhs.supertrait_edge_path == rhs.supertrait_edge_path && lhs.borrow_kind == rhs.borrow_kind
+        && lhs.schema == rhs.schema && lhs.global_id == rhs.global_id;
+}
+
+bool operator!=(const TraitObjectUpcastCoercionKey& lhs, const TraitObjectUpcastCoercionKey& rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
 bool is_valid(const TraitObjectAssociatedTypeEqualityKey& key) noexcept
 {
     return is_associated_type_member_key(key.associated_type) && is_valid(key.value_type);
@@ -201,6 +226,16 @@ bool is_valid(const TraitObjectCoercionKey& key) noexcept
         && key.target_object_type.object_origin == key.source_origin
         && key.vtable_layout.object_type == key.target_object_type
         && key.vtable_layout.concrete_type == key.source_type && key.global_id != 0;
+}
+
+bool is_valid(const TraitObjectUpcastCoercionKey& key) noexcept
+{
+    return key.schema == QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_SCHEMA_VERSION
+        && is_valid_borrow_kind(key.borrow_kind) && is_valid(key.source_object_type)
+        && is_nonempty_fingerprint(key.source_origin) && is_valid(key.target_object_type)
+        && is_nonempty_fingerprint(key.supertrait_edge_path)
+        && key.source_object_type.principal_trait != key.target_object_type.principal_trait
+        && key.source_object_type.abi_policy == key.target_object_type.abi_policy && key.global_id != 0;
 }
 
 TraitObjectTypeKey trait_object_type_key(const DefKey principal_trait,
@@ -284,6 +319,33 @@ TraitObjectCoercionKey trait_object_coercion_key(CanonicalTypeKey source_type,
     return key;
 }
 
+TraitObjectUpcastCoercionKey trait_object_upcast_coercion_key(TraitObjectTypeKey source_object_type,
+    const StableFingerprint128 source_origin,
+    TraitObjectTypeKey target_object_type,
+    const StableFingerprint128 supertrait_edge_path,
+    const TraitObjectBorrowKindKey borrow_kind)
+{
+    TraitObjectUpcastCoercionKey key;
+    key.source_object_type = std::move(source_object_type);
+    key.source_origin = source_origin;
+    key.target_object_type = std::move(target_object_type);
+    key.supertrait_edge_path = supertrait_edge_path;
+    key.borrow_kind = borrow_kind;
+    key.schema = QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_SCHEMA_VERSION;
+    if (key.schema == QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_SCHEMA_VERSION
+        && is_valid_borrow_kind(key.borrow_kind) && is_valid(key.source_object_type)
+        && is_nonempty_fingerprint(key.source_origin) && is_valid(key.target_object_type)
+        && is_nonempty_fingerprint(key.supertrait_edge_path)
+        && key.source_object_type.principal_trait != key.target_object_type.principal_trait
+        && key.source_object_type.abi_policy == key.target_object_type.abi_policy) {
+        key.global_id =
+            global_id_from_fingerprint(QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_MARKER,
+                payload_fingerprint<TraitObjectUpcastCoercionKey>(
+                    append_trait_object_upcast_coercion_payload, key));
+    }
+    return key;
+}
+
 void append_stable_key(StableKeyWriter& writer, const TraitObjectTypeKey& key)
 {
     writer.write_u64(QUERY_TRAIT_OBJECT_TYPE_KEY_MARKER);
@@ -302,6 +364,13 @@ void append_stable_key(StableKeyWriter& writer, const TraitObjectCoercionKey& ke
 {
     writer.write_u64(QUERY_TRAIT_OBJECT_COERCION_KEY_MARKER);
     append_trait_object_coercion_payload(writer, key);
+    writer.write_u64(key.global_id);
+}
+
+void append_stable_key(StableKeyWriter& writer, const TraitObjectUpcastCoercionKey& key)
+{
+    writer.write_u64(QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_MARKER);
+    append_trait_object_upcast_coercion_payload(writer, key);
     writer.write_u64(key.global_id);
 }
 
@@ -326,6 +395,13 @@ std::string stable_serialize(const TraitObjectCoercionKey& key)
     return writer.storage();
 }
 
+std::string stable_serialize(const TraitObjectUpcastCoercionKey& key)
+{
+    StableKeyWriter writer;
+    append_stable_key(writer, key);
+    return writer.storage();
+}
+
 StableFingerprint128 stable_key_fingerprint(const TraitObjectTypeKey& key)
 {
     StableKeyWriter writer;
@@ -341,6 +417,13 @@ StableFingerprint128 stable_key_fingerprint(const VTableLayoutKey& key)
 }
 
 StableFingerprint128 stable_key_fingerprint(const TraitObjectCoercionKey& key)
+{
+    StableKeyWriter writer;
+    append_stable_key(writer, key);
+    return writer.fingerprint();
+}
+
+StableFingerprint128 stable_key_fingerprint(const TraitObjectUpcastCoercionKey& key)
 {
     StableKeyWriter writer;
     append_stable_key(writer, key);
@@ -373,6 +456,14 @@ std::string debug_string(const TraitObjectCoercionKey& key)
     return out.str();
 }
 
+std::string debug_string(const TraitObjectUpcastCoercionKey& key)
+{
+    std::ostringstream out;
+    out << "TraitObjectUpcastCoercionKey{global=" << key.global_id
+        << ",fingerprint=" << debug_string(stable_key_fingerprint(key)) << '}';
+    return out.str();
+}
+
 std::size_t TraitObjectTypeKeyHash::operator()(const TraitObjectTypeKey& key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
@@ -384,6 +475,11 @@ std::size_t VTableLayoutKeyHash::operator()(const VTableLayoutKey& key) const
 }
 
 std::size_t TraitObjectCoercionKeyHash::operator()(const TraitObjectCoercionKey& key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t TraitObjectUpcastCoercionKeyHash::operator()(const TraitObjectUpcastCoercionKey& key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
 }

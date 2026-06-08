@@ -813,7 +813,7 @@ compiler-owned `Copy`、内部 resource summary、whole-local move analysis、cl
 ### 类型系统未完成
 
 - tuple struct / anonymous record。
-- owning dyn / `Box<dyn Trait>` / allocator / trait-object Drop dispatch / supertrait upcasting / 多 trait object composition。
+- owning dyn / `Box<dyn Trait>` / allocator / trait-object Drop dispatch / supertrait upcasting runtime lowering / 多 trait object composition。
 - `Drop` 用户 bound 和 generic Drop impl 仍暂缓；`Copy` 已作为 compiler-owned capability 进入 M6-WP2，destructor body identity、drop-glue key 和窄 `impl Drop for T` custom destructor lowering 已进入 M7 基线。
 - generic associated type。
 - associated const。
@@ -857,7 +857,7 @@ compiler-owned `Copy`、内部 resource summary、whole-local move analysis、cl
 ### 高级能力暂缓
 
 - class / inheritance / dynamic dispatch。
-- owning dyn / supertrait upcasting / 多 trait object composition。
+- owning dyn / supertrait upcasting runtime lowering / 多 trait object composition。
 - macro / derive。
 - comptime。
 - async / coroutine。
@@ -1042,7 +1042,7 @@ let all = bytes[:];
 - octal / hex float。
 - doc comment。
 - user destructor syntax / custom destructor lowering / partial aggregate rollback codegen。
-- owning dyn / trait-object Drop dispatch / supertrait upcasting / 多 trait object composition。
+- owning dyn / trait-object Drop dispatch / supertrait upcasting runtime lowering / 多 trait object composition。
 - specialization / default associated type / minimal implementation annotation / 更强 trait solver。
 - borrow checker。
 - package。
@@ -1055,8 +1055,8 @@ let all = bytes[:];
 建议按这个顺序开工：
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
-2. 继续保持 `where` capability / trait predicate 和 borrowed dyn trait 的文档、测试和诊断同步；M9 dyn ABI / tooling release closure 已完成，M10a 已选择 supertrait upcasting 并固定设计基线，下一步应进入 M10b
-   frontend/query/sema 实现；owning dyn、trait-object Drop dispatch、allocator、multi trait composition 和完整
+2. 继续保持 `where` capability / trait predicate 和 borrowed dyn trait 的文档、测试和诊断同步；M9 dyn ABI / tooling release closure 已完成，M10a 已选择 supertrait upcasting 并固定设计基线，M10b 已完成
+   frontend/query/sema check-only 实现，下一步应进入 M10c IR/backend runtime；owning dyn、trait-object Drop dispatch、allocator、multi trait composition 和完整
    Rust-style lifetime surface 继续作为独立后续包。
 3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block；FFI ownership adoption 等资源 unsafe API 等 M6 后续专门设计。

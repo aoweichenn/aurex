@@ -67,6 +67,8 @@ private:
     [[nodiscard]] syntax::ItemId parse_enum_decl();
     [[nodiscard]] std::optional<syntax::EnumCaseDecl> parse_enum_case_decl();
     [[nodiscard]] bool recover_enum_case_separator() const;
+    [[nodiscard]] std::vector<syntax::TraitSupertraitDecl> parse_optional_supertraits();
+    [[nodiscard]] bool recover_supertrait_separator() const;
     [[nodiscard]] syntax::ItemId parse_trait_decl();
     [[nodiscard]] syntax::ItemId parse_impl_block();
     [[nodiscard]] syntax::ItemId parse_extern_block();

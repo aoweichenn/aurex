@@ -11,6 +11,7 @@ namespace aurex::query {
 inline constexpr base::u32 QUERY_TRAIT_OBJECT_TYPE_KEY_SCHEMA_VERSION = 1;
 inline constexpr base::u32 QUERY_VTABLE_LAYOUT_KEY_SCHEMA_VERSION = 1;
 inline constexpr base::u32 QUERY_TRAIT_OBJECT_COERCION_KEY_SCHEMA_VERSION = 1;
+inline constexpr base::u32 QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_SCHEMA_VERSION = 1;
 
 enum class TraitObjectAbiPolicyKey : base::u8 {
     borrowed_view_v1 = 1,
@@ -18,6 +19,7 @@ enum class TraitObjectAbiPolicyKey : base::u8 {
 
 enum class TraitObjectMetadataPolicyKey : base::u8 {
     borrowed_methods_only_v1 = 1,
+    supertrait_vptr_metadata_v1 = 2,
 };
 
 enum class TraitObjectBorrowKindKey : base::u8 {
@@ -67,6 +69,16 @@ struct TraitObjectCoercionKey {
     base::u64 global_id = 0;
 };
 
+struct TraitObjectUpcastCoercionKey {
+    TraitObjectTypeKey source_object_type;
+    StableFingerprint128 source_origin;
+    TraitObjectTypeKey target_object_type;
+    StableFingerprint128 supertrait_edge_path;
+    TraitObjectBorrowKindKey borrow_kind = TraitObjectBorrowKindKey::shared;
+    base::u32 schema = QUERY_TRAIT_OBJECT_UPCAST_COERCION_KEY_SCHEMA_VERSION;
+    base::u64 global_id = 0;
+};
+
 [[nodiscard]] bool operator==(
     const TraitObjectTypeKey& lhs, const TraitObjectTypeKey& rhs) noexcept;
 [[nodiscard]] bool operator!=(
@@ -77,11 +89,16 @@ struct TraitObjectCoercionKey {
     const TraitObjectCoercionKey& lhs, const TraitObjectCoercionKey& rhs) noexcept;
 [[nodiscard]] bool operator!=(
     const TraitObjectCoercionKey& lhs, const TraitObjectCoercionKey& rhs) noexcept;
+[[nodiscard]] bool operator==(
+    const TraitObjectUpcastCoercionKey& lhs, const TraitObjectUpcastCoercionKey& rhs) noexcept;
+[[nodiscard]] bool operator!=(
+    const TraitObjectUpcastCoercionKey& lhs, const TraitObjectUpcastCoercionKey& rhs) noexcept;
 
 [[nodiscard]] bool is_valid(const TraitObjectAssociatedTypeEqualityKey& key) noexcept;
 [[nodiscard]] bool is_valid(const TraitObjectTypeKey& key) noexcept;
 [[nodiscard]] bool is_valid(const VTableLayoutKey& key) noexcept;
 [[nodiscard]] bool is_valid(const TraitObjectCoercionKey& key) noexcept;
+[[nodiscard]] bool is_valid(const TraitObjectUpcastCoercionKey& key) noexcept;
 
 [[nodiscard]] TraitObjectTypeKey trait_object_type_key(DefKey principal_trait,
     std::span<const CanonicalTypeKey> trait_args,
@@ -101,20 +118,29 @@ struct TraitObjectCoercionKey {
     TraitObjectTypeKey target_object_type,
     VTableLayoutKey vtable_layout,
     TraitObjectBorrowKindKey borrow_kind);
+[[nodiscard]] TraitObjectUpcastCoercionKey trait_object_upcast_coercion_key(TraitObjectTypeKey source_object_type,
+    StableFingerprint128 source_origin,
+    TraitObjectTypeKey target_object_type,
+    StableFingerprint128 supertrait_edge_path,
+    TraitObjectBorrowKindKey borrow_kind);
 
 void append_stable_key(StableKeyWriter& writer, const TraitObjectTypeKey& key);
 void append_stable_key(StableKeyWriter& writer, const VTableLayoutKey& key);
 void append_stable_key(StableKeyWriter& writer, const TraitObjectCoercionKey& key);
+void append_stable_key(StableKeyWriter& writer, const TraitObjectUpcastCoercionKey& key);
 
 [[nodiscard]] std::string stable_serialize(const TraitObjectTypeKey& key);
 [[nodiscard]] std::string stable_serialize(const VTableLayoutKey& key);
 [[nodiscard]] std::string stable_serialize(const TraitObjectCoercionKey& key);
+[[nodiscard]] std::string stable_serialize(const TraitObjectUpcastCoercionKey& key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(const TraitObjectTypeKey& key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(const VTableLayoutKey& key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(const TraitObjectCoercionKey& key);
+[[nodiscard]] StableFingerprint128 stable_key_fingerprint(const TraitObjectUpcastCoercionKey& key);
 [[nodiscard]] std::string debug_string(const TraitObjectTypeKey& key);
 [[nodiscard]] std::string debug_string(const VTableLayoutKey& key);
 [[nodiscard]] std::string debug_string(const TraitObjectCoercionKey& key);
+[[nodiscard]] std::string debug_string(const TraitObjectUpcastCoercionKey& key);
 
 struct TraitObjectTypeKeyHash {
     [[nodiscard]] std::size_t operator()(const TraitObjectTypeKey& key) const;
@@ -126,6 +152,10 @@ struct VTableLayoutKeyHash {
 
 struct TraitObjectCoercionKeyHash {
     [[nodiscard]] std::size_t operator()(const TraitObjectCoercionKey& key) const;
+};
+
+struct TraitObjectUpcastCoercionKeyHash {
+    [[nodiscard]] std::size_t operator()(const TraitObjectUpcastCoercionKey& key) const;
 };
 
 } // namespace aurex::query

@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M8 borrowed dyn trait runtime dispatch closure。M2 已移除标准库层：
+当前架构基线是 M10b Supertrait Frontend / Query / Sema Implementation。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -33,7 +33,10 @@
   default method body 已进入稳定 baseline。
 - `&dyn Trait` / `&mut dyn Trait` borrowed erased view 已接入 frontend/sema、checked vtable facts、IR verifier、
   LLVM vtable global 和 indirect call；这是 borrowed-only dynamic dispatch，不是 owning object model。
-- owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、supertrait upcasting、多 trait object
+- `trait Child: Parent` direct supertrait declaration、checked supertrait graph、borrowed dyn-to-dyn upcast facts、
+  `TraitObjectUpcastCoercionKey` 和 `DynUpcastAbiDescriptor` 已接入 frontend/query/sema；runtime upcast lowering
+  仍留给 M10c。
+- owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、supertrait upcasting runtime lowering、多 trait object
   composition、specialization、default associated type、associated const 和 generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向

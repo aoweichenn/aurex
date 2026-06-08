@@ -50,6 +50,28 @@ constexpr std::string_view SEMA_DYN_ABI_FACTS_MODULE_SYMBOL = "<checked-module>"
     };
 }
 
+[[nodiscard]] query::DynObjectAbiDescriptor make_source_object_descriptor(
+    const CheckedModule& checked, const TraitObjectUpcastCoercionFact& fact)
+{
+    return query::DynObjectAbiDescriptor{
+        fact.upcast_key.source_object_type,
+        query::dyn_abi_policy_from_key(fact.upcast_key.source_object_type.abi_policy),
+        type_name(checked, fact.source_object_type),
+        {},
+    };
+}
+
+[[nodiscard]] query::DynObjectAbiDescriptor make_target_object_descriptor(
+    const CheckedModule& checked, const TraitObjectUpcastCoercionFact& fact)
+{
+    return query::DynObjectAbiDescriptor{
+        fact.upcast_key.target_object_type,
+        query::dyn_abi_policy_from_key(fact.upcast_key.target_object_type.abi_policy),
+        type_name(checked, fact.target_object_type),
+        {},
+    };
+}
+
 [[nodiscard]] query::DynVTableSlotAbiDescriptor make_slot_descriptor(
     const CheckedModule& checked, const VTableMethodSlotFact& slot)
 {
@@ -104,6 +126,24 @@ constexpr std::string_view SEMA_DYN_ABI_FACTS_MODULE_SYMBOL = "<checked-module>"
         type_name(checked, fact.target_reference_type),
         type_name(checked, fact.source_type),
         type_name(checked, fact.object_type),
+    };
+}
+
+[[nodiscard]] query::DynUpcastAbiDescriptor make_upcast_descriptor(
+    const CheckedModule& checked, const TraitObjectUpcastCoercionFact& fact)
+{
+    return query::DynUpcastAbiDescriptor{
+        fact.upcast_key,
+        fact.upcast_key.source_object_type,
+        fact.upcast_key.target_object_type,
+        fact.edge_fingerprint,
+        query::dyn_borrow_kind_from_key(fact.borrow_kind),
+        query::dyn_abi_policy_from_key(fact.upcast_key.source_object_type.abi_policy),
+        query::DynMetadataPolicy::supertrait_vptr_metadata_v1,
+        type_name(checked, fact.source_reference_type),
+        type_name(checked, fact.target_reference_type),
+        type_name(checked, fact.source_object_type),
+        type_name(checked, fact.target_object_type),
     };
 }
 
@@ -177,6 +217,19 @@ void push_unique_coercion_descriptor(query::FunctionDynAbiFacts& facts, query::D
     }
 }
 
+void push_unique_upcast_descriptor(query::FunctionDynAbiFacts& facts, query::DynUpcastAbiDescriptor descriptor)
+{
+    if (!query::is_valid(descriptor)) {
+        return;
+    }
+    const auto found = std::ranges::find_if(facts.upcasts, [&descriptor](const query::DynUpcastAbiDescriptor& upcast) {
+        return upcast.upcast == descriptor.upcast;
+    });
+    if (found == facts.upcasts.end()) {
+        query::record_dyn_upcast_abi_descriptor(facts, std::move(descriptor));
+    }
+}
+
 void push_dispatch_descriptor(query::FunctionDynAbiFacts& facts, query::DynDispatchAbiDescriptor descriptor)
 {
     if (query::is_valid(descriptor)) {
@@ -190,9 +243,11 @@ query::FunctionDynAbiFacts checked_dyn_abi_facts(const CheckedModule& checked)
 {
     query::FunctionDynAbiFacts facts;
     facts.symbol = std::string(SEMA_DYN_ABI_FACTS_MODULE_SYMBOL);
-    facts.objects.reserve(checked.trait_object_callability.size() + checked.vtable_layouts.size());
+    facts.objects.reserve(checked.trait_object_callability.size() + checked.vtable_layouts.size()
+        + (checked.trait_object_upcast_coercions.size() * 2U));
     facts.vtables.reserve(checked.vtable_layouts.size());
     facts.coercions.reserve(checked.trait_object_coercions.size());
+    facts.upcasts.reserve(checked.trait_object_upcast_coercions.size());
     facts.dispatches.reserve(checked.trait_method_calls.size());
 
     for (const TraitObjectCallabilityFact& fact : checked.trait_object_callability) {
@@ -205,6 +260,11 @@ query::FunctionDynAbiFacts checked_dyn_abi_facts(const CheckedModule& checked)
     for (const TraitObjectCoercionFact& fact : checked.trait_object_coercions) {
         push_unique_object_descriptor(facts, make_object_descriptor(checked, fact));
         push_unique_coercion_descriptor(facts, make_coercion_descriptor(checked, fact));
+    }
+    for (const TraitObjectUpcastCoercionFact& fact : checked.trait_object_upcast_coercions) {
+        push_unique_object_descriptor(facts, make_source_object_descriptor(checked, fact));
+        push_unique_object_descriptor(facts, make_target_object_descriptor(checked, fact));
+        push_unique_upcast_descriptor(facts, make_upcast_descriptor(checked, fact));
     }
     for (const TraitMethodCallBinding& binding : checked.trait_method_calls) {
         if (binding.dispatch != TraitMethodDispatchKind::vtable_slot) {
@@ -225,6 +285,10 @@ query::FunctionDynAbiFacts checked_dyn_abi_facts(const CheckedModule& checked)
                                           const query::DynCoercionAbiDescriptor& rhs) noexcept {
         return lhs.coercion.global_id < rhs.coercion.global_id;
     });
+    std::ranges::sort(facts.upcasts, [](const query::DynUpcastAbiDescriptor& lhs,
+                                        const query::DynUpcastAbiDescriptor& rhs) noexcept {
+        return lhs.upcast.global_id < rhs.upcast.global_id;
+    });
     std::ranges::sort(facts.dispatches, [](const query::DynDispatchAbiDescriptor& lhs,
                                            const query::DynDispatchAbiDescriptor& rhs) noexcept {
         if (lhs.layout.global_id != rhs.layout.global_id) {
@@ -238,6 +302,7 @@ query::FunctionDynAbiFacts checked_dyn_abi_facts(const CheckedModule& checked)
     facts.summary.object_count = facts.objects.size();
     facts.summary.vtable_count = facts.vtables.size();
     facts.summary.coercion_count = facts.coercions.size();
+    facts.summary.upcast_count = facts.upcasts.size();
     facts.summary.dispatch_count = facts.dispatches.size();
     facts.fingerprint = query::function_dyn_abi_facts_fingerprint(facts);
     return facts;

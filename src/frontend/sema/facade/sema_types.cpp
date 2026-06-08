@@ -456,7 +456,7 @@ TypeHandle SemanticAnalyzerCore::resolve_type_alias(const TypeAliasInfo& alias, 
 }
 
 bool SemanticAnalyzerCore::can_assign(
-    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
+    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const
 {
     return this->type_validator().can_assign(dst, src, value);
 }
@@ -483,6 +483,29 @@ bool SemanticAnalyzerCore::can_borrowed_dyn_trait_coerce(const TypeHandle dst, c
     }
     SemanticAnalyzerCore& mutable_core = const_cast<SemanticAnalyzerCore&>(*this);
     return mutable_core.find_trait_object_impl(src_ref.pointee, object_info, {}, false) != nullptr;
+}
+
+bool SemanticAnalyzerCore::can_borrowed_dyn_trait_upcast(const TypeHandle dst, const TypeHandle src) const
+{
+    if (!this->state_.checked.types.is_reference(dst) || !this->state_.checked.types.is_reference(src)) {
+        return false;
+    }
+    const TypeInfo& dst_ref = this->state_.checked.types.get(dst);
+    const TypeInfo& src_ref = this->state_.checked.types.get(src);
+    if (dst_ref.pointer_mutability == PointerMutability::mut
+        && src_ref.pointer_mutability != PointerMutability::mut) {
+        return false;
+    }
+    if (!is_valid(dst_ref.pointee) || dst_ref.pointee.value >= this->state_.checked.types.size()
+        || !is_valid(src_ref.pointee) || src_ref.pointee.value >= this->state_.checked.types.size()) {
+        return false;
+    }
+    const TypeInfo& target_object = this->state_.checked.types.get(dst_ref.pointee);
+    const TypeInfo& source_object = this->state_.checked.types.get(src_ref.pointee);
+    if (target_object.kind != TypeKind::trait_object || source_object.kind != TypeKind::trait_object) {
+        return false;
+    }
+    return this->find_supertrait_edge_path(source_object, target_object) != nullptr;
 }
 
 void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const syntax::ExprId expr,
@@ -536,6 +559,57 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const sy
         ? this->item_part_index(this->state_.flow.current_item)
         : 0U;
     this->state_.checked.trait_object_coercions.push_back(fact);
+}
+
+void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const syntax::ExprId expr,
+    const TypeHandle from_type,
+    const TypeHandle to_type,
+    const base::SourceRange& range)
+{
+    if (!syntax::is_valid(expr) || !this->can_borrowed_dyn_trait_upcast(to_type, from_type)) {
+        return;
+    }
+    const TypeInfo& source_ref = this->state_.checked.types.get(from_type);
+    const TypeInfo& target_ref = this->state_.checked.types.get(to_type);
+    const TypeHandle source_object_type = source_ref.pointee;
+    const TypeHandle target_object_type = target_ref.pointee;
+    const TypeInfo& source_object = this->state_.checked.types.get(source_object_type);
+    const TypeInfo& target_object = this->state_.checked.types.get(target_object_type);
+    const TraitSupertraitEdgeFact* const edge = this->find_supertrait_edge_path(source_object, target_object);
+    if (edge == nullptr) {
+        return;
+    }
+    const query::TraitObjectBorrowKindKey borrow_kind = target_ref.pointer_mutability == PointerMutability::mut
+        ? query::TraitObjectBorrowKindKey::mut
+        : query::TraitObjectBorrowKindKey::shared;
+    const query::TraitObjectUpcastCoercionKey upcast_key = query::trait_object_upcast_coercion_key(
+        source_object.trait_object_key, source_object.trait_object_key.object_origin,
+        target_object.trait_object_key, edge->edge_fingerprint, borrow_kind);
+    if (!query::is_valid(upcast_key)) {
+        this->report_internal_contract(range, "failed to create borrowed dyn trait upcast key");
+        return;
+    }
+
+    this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
+    for (const TraitObjectUpcastCoercionFact& existing : this->state_.checked.trait_object_upcast_coercions) {
+        if (existing.expr.value == expr.value && existing.upcast_key == upcast_key) {
+            return;
+        }
+    }
+    TraitObjectUpcastCoercionFact fact = this->state_.checked.make_trait_object_upcast_coercion_fact();
+    fact.upcast_key = upcast_key;
+    fact.expr = expr;
+    fact.source_reference_type = from_type;
+    fact.target_reference_type = to_type;
+    fact.source_object_type = source_object_type;
+    fact.target_object_type = target_object_type;
+    fact.edge_fingerprint = edge->edge_fingerprint;
+    fact.borrow_kind = borrow_kind;
+    fact.range = range;
+    fact.part_index = syntax::is_valid(this->state_.flow.current_item)
+        ? this->item_part_index(this->state_.flow.current_item)
+        : 0U;
+    this->state_.checked.trait_object_upcast_coercions.push_back(fact);
 }
 
 bool SemanticAnalyzerCore::is_valid_storage_type(const TypeHandle type) const

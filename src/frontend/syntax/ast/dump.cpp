@@ -1177,6 +1177,14 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.kind == ItemKind::impl_block && is_valid(item.trait_type) && is_valid(item.impl_type)) {
         out << " " << type_label(module, item.trait_type) << " for " << type_label(module, item.impl_type);
+    } else if (item.kind == ItemKind::trait_decl && !item.trait_supertraits.empty()) {
+        out << " : ";
+        for (base::usize index = 0; index < item.trait_supertraits.size(); ++index) {
+            if (index != 0) {
+                out << ", ";
+            }
+            out << type_label(module, item.trait_supertraits[index].trait_type);
+        }
     } else if (is_valid(item.trait_type) && is_valid(item.impl_type)) {
         out << " for " << type_label(module, item.impl_type) << " in " << type_label(module, item.trait_type);
     } else if (is_valid(item.impl_type)) {

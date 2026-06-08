@@ -148,6 +148,11 @@ inline constexpr std::string_view PARSER_EXPECT_TRAIT_NAME = "expected trait nam
 
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_BODY = "expected '{' after trait name";
 
+inline constexpr std::string_view PARSER_EXPECT_SUPERTRAIT = "expected supertrait name after ':'";
+
+inline constexpr std::string_view PARSER_EXPECT_SUPERTRAIT_SEPARATOR =
+    "expected ',' or trait body after supertrait";
+
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_REQUIREMENT =
     "expected function requirement or associated type in trait declaration";
 

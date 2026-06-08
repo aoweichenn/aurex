@@ -130,6 +130,15 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(
             this->core_.record_expr_expected_type(expr_id, expected_type);
             return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
         }
+        if (this->core_.can_borrowed_dyn_trait_upcast(expected_type, analyzed)) {
+            const TypeHandle intrinsic =
+                is_valid(this->core_.cached_expr_intrinsic_type(expr_id))
+                ? this->core_.cached_expr_intrinsic_type(expr_id)
+                : analyzed;
+            this->core_.record_borrowed_dyn_trait_upcast_if_needed(expr_id, analyzed, expected_type, range);
+            this->core_.record_expr_expected_type(expr_id, expected_type);
+            return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
+        }
         static_cast<void>(this->report_failed_borrowed_dyn_trait_coercion(expected_type, analyzed, range));
     }
     if (!is_valid(this->core_.cached_expr_intrinsic_type(expr_id))) {
@@ -163,8 +172,11 @@ bool SemanticAnalyzerCore::ExpressionAnalyzer::report_failed_borrowed_dyn_trait_
     }
     const TypeInfo& object_info = types.get(expected_ref.pointee);
     const TypeInfo& source_info = types.get(analyzed_ref.pointee);
-    if (object_info.kind != TypeKind::trait_object || source_info.kind == TypeKind::trait_object) {
+    if (object_info.kind != TypeKind::trait_object) {
         return false;
+    }
+    if (source_info.kind == TypeKind::trait_object) {
+        return this->core_.find_supertrait_edge_path(source_info, object_info) == nullptr;
     }
     return this->core_.find_trait_object_impl(analyzed_ref.pointee, object_info, range, true) == nullptr;
 }

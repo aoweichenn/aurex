@@ -22,6 +22,7 @@ if(BUILD_TESTING)
         tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
         tests/gtest/infrastructure/query/query_key_tests.cpp
         tests/gtest/infrastructure/query/query_robustness_tests.cpp
+        tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
     )
     target_link_libraries(aurex_query_tests PRIVATE
         GTest::gtest_main
@@ -59,6 +60,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/lex/lexer_tests.cpp
         tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
         tests/gtest/frontend/parse/parser_tests.cpp
+        tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
         tests/gtest/frontend/sema/identifier_tests.cpp
         tests/gtest/frontend/sema/lifetime_tests.cpp
         tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
@@ -72,6 +74,8 @@ if(BUILD_TESTING)
         tests/gtest/frontend/sema/sema_whitebox_tests.cpp
         tests/gtest/frontend/sema/statement_tests.cpp
         tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
+        tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
+        tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
         tests/gtest/application/tooling/ide_tooling_tests.cpp
         tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
     )
@@ -111,6 +115,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/lex/lexer_tests.cpp
             tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
             tests/gtest/frontend/parse/parser_tests.cpp
+            tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
             tests/gtest/integration/documentation_tests.cpp
             tests/gtest/integration/examples_tests.cpp
             tests/gtest/integration/native_execution_tests.cpp
@@ -130,6 +135,7 @@ if(BUILD_TESTING)
             tests/gtest/infrastructure/query/query_key_tests.cpp
             tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
             tests/gtest/infrastructure/query/query_robustness_tests.cpp
+            tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
             tests/gtest/frontend/sema/block_expression_tests.cpp
             tests/gtest/frontend/sema/error_handling_tests.cpp
             tests/gtest/frontend/sema/functions_tests.cpp
@@ -150,7 +156,9 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/sema_whitebox_tests.cpp
             tests/gtest/frontend/sema/statement_tests.cpp
             tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
+            tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
             tests/gtest/frontend/sema/trait_tests.cpp
+            tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
             tests/gtest/frontend/sema/type_alias_tests.cpp
             tests/gtest/application/tooling/ide_tooling_tests.cpp
             tests/gtest/application/tooling/session_lsp_tooling_tests.cpp

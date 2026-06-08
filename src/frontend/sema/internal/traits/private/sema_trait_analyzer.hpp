@@ -31,6 +31,8 @@ public:
     void record_trait_object_callability(TypeHandle object_type, const TraitSignature& trait,
         std::span<const TypeHandle> trait_args,
         std::span<const TraitImplAssociatedTypeInfo> associated_equalities, const base::SourceRange& range);
+    [[nodiscard]] const TraitSupertraitEdgeFact* find_supertrait_edge_path(
+        const TypeInfo& source_object, const TypeInfo& target_object) const;
     [[nodiscard]] const TraitImplInfo* find_trait_object_impl(
         TypeHandle concrete_type, const TypeInfo& object_info, const base::SourceRange& range, bool report_failure);
     [[nodiscard]] query::VTableLayoutKey record_vtable_layout(
@@ -78,6 +80,20 @@ private:
         TypeHandle base_type, const TraitAssociatedTypeRequirement& requirement) const;
     [[nodiscard]] ResolvedTraitReference resolve_trait_reference(
         const syntax::ItemNode& impl_block, syntax::ItemId impl_id);
+    [[nodiscard]] ResolvedTraitReference resolve_supertrait_reference(const syntax::ItemNode& trait_item,
+        const syntax::TraitSupertraitDecl& supertrait, syntax::ItemId trait_id, GenericContext& context);
+    [[nodiscard]] TraitSupertraitInfo make_supertrait_info(const TraitSignature& child,
+        const TraitSignature& parent,
+        std::span<const TypeHandle> parent_args,
+        const syntax::TraitSupertraitDecl& supertrait) const;
+    [[nodiscard]] TraitSupertraitEdgeFact make_supertrait_edge_fact(const TraitSupertraitInfo& info) const;
+    [[nodiscard]] bool supertrait_edge_matches_target_object(
+        const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object, const TypeInfo& target_object) const;
+    [[nodiscard]] TypeHandle instantiate_supertrait_arg(
+        TypeHandle arg, const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object) const;
+    void append_supertrait_fact_if_new(const TraitSupertraitInfo& info);
+    void validate_supertrait_graph();
+    void validate_supertrait_impl_obligations();
     void validate_trait_impl_block(const syntax::ItemNode& impl_block, syntax::ItemId impl_id);
     [[nodiscard]] TraitImplLookupKey make_trait_impl_lookup_key(
         const TraitSignature& trait, TypeHandle self_type, std::span<const TypeHandle> trait_args) const;

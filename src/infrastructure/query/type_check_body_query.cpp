@@ -76,6 +76,8 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.trait_object_callability_count);
     builder.mix_u64(authority.vtable_layout_count);
     builder.mix_u64(authority.trait_object_coercion_count);
+    builder.mix_u64(authority.trait_supertrait_edge_count);
+    builder.mix_u64(authority.trait_object_upcast_coercion_count);
     builder.mix_u64(authority.borrow_summary_origin_count);
     builder.mix_u64(authority.borrow_summary_dependency_count);
     builder.mix_u64(authority.borrow_summary_storage_escape_count);

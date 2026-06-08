@@ -765,7 +765,7 @@ SemanticTypeValidator::SemanticTypeValidator(const SemanticAnalyzerCore& core) n
 }
 
 bool SemanticTypeValidator::can_assign(
-    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
+    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const
 {
     if (!is_valid(dst) || !is_valid(src)) {
         return is_valid(dst) && this->core_.is_null_literal(value) && this->core_.state_.checked.types.is_pointer(dst);
@@ -794,6 +794,9 @@ bool SemanticTypeValidator::can_assign(
         const TypeInfo& dst_info = this->core_.state_.checked.types.get(dst);
         const TypeInfo& src_info = this->core_.state_.checked.types.get(src);
         if (this->core_.can_borrowed_dyn_trait_coerce(dst, src)) {
+            return true;
+        }
+        if (this->core_.can_borrowed_dyn_trait_upcast(dst, src)) {
             return true;
         }
         if (!this->core_.state_.checked.types.same(dst_info.pointee, src_info.pointee)) {

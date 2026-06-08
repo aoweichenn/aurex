@@ -29,6 +29,8 @@ struct TypeCheckBodyAuthority {
     base::u64 trait_object_callability_count = 0;
     base::u64 vtable_layout_count = 0;
     base::u64 trait_object_coercion_count = 0;
+    base::u64 trait_supertrait_edge_count = 0;
+    base::u64 trait_object_upcast_coercion_count = 0;
     base::u64 borrow_summary_origin_count = 0;
     base::u64 borrow_summary_dependency_count = 0;
     base::u64 borrow_summary_storage_escape_count = 0;

@@ -31,6 +31,8 @@ constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL
 constexpr base::u64 SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER = 0x53454d4154525346ULL;
 constexpr std::string_view SEMA_DYN_TRAIT_SLOT_SCHEMA_TAG = "dyn-trait-slot-schema:v1";
 constexpr base::u32 SEMA_DYN_TRAIT_RECEIVER_PARAM_COUNT = 1;
+constexpr std::string_view SEMA_SUPERTRAIT_EDGE_FINGERPRINT_TAG = "supertrait-edge:v1";
+constexpr std::string_view SEMA_SUPERTRAIT_ENDPOINT_FINGERPRINT_TAG = "supertrait-endpoint:v1";
 
 enum class TraitTypeSubstitutionActionKind {
     visit,
@@ -295,6 +297,46 @@ void append_checked_canonical_type_or_display(SemanticAnalyzerCore& core,
     }
 }
 
+void append_supertrait_args_to_writer(SemanticAnalyzerCore& core,
+    query::StableKeyWriter& writer,
+    const std::span<const TypeHandle> args)
+{
+    writer.write_u64(static_cast<base::u64>(args.size()));
+    for (const TypeHandle arg : args) {
+        append_checked_canonical_type_or_display(core, writer, arg);
+    }
+}
+
+[[nodiscard]] query::StableFingerprint128 make_supertrait_endpoint_fingerprint(SemanticAnalyzerCore& core,
+    const query::DefKey child_trait,
+    const query::DefKey parent_trait,
+    const std::span<const TypeHandle> parent_args)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_SUPERTRAIT_ENDPOINT_FINGERPRINT_TAG);
+    query::append_stable_key(writer, child_trait);
+    query::append_stable_key(writer, parent_trait);
+    append_supertrait_args_to_writer(core, writer, parent_args);
+    return writer.fingerprint();
+}
+
+[[nodiscard]] query::StableFingerprint128 make_supertrait_edge_fingerprint(SemanticAnalyzerCore& core,
+    const query::DefKey child_trait,
+    const query::DefKey parent_trait,
+    const base::u32 direct_edge_ordinal,
+    const base::u32 closure_depth,
+    const std::span<const TypeHandle> parent_args)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_SUPERTRAIT_EDGE_FINGERPRINT_TAG);
+    query::append_stable_key(writer, child_trait);
+    query::append_stable_key(writer, parent_trait);
+    writer.write_u32(direct_edge_ordinal);
+    writer.write_u32(closure_depth);
+    append_supertrait_args_to_writer(core, writer, parent_args);
+    return writer.fingerprint();
+}
+
 [[nodiscard]] bool dyn_trait_type_is_self_param(const TypeTable& types, const TypeHandle type) noexcept
 {
     if (!is_valid(type) || type.value >= types.size()) {
@@ -422,6 +464,11 @@ void append_checked_canonical_type_or_display(SemanticAnalyzerCore& core,
         }
     }
     return true;
+}
+
+[[nodiscard]] bool trait_keys_match(const query::DefKey lhs, const query::DefKey rhs) noexcept
+{
+    return query::is_valid(lhs) && query::is_valid(rhs) && lhs.global_id == rhs.global_id;
 }
 
 [[nodiscard]] base::u32 dyn_trait_method_slot_count(const CheckedModule& checked,
@@ -556,6 +603,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::register_trait_name(
     signature.incremental_key = this->core_.stable_incremental_key(signature.stable_id,
         std::string(item.name) + std::string(SEMA_TRAIT_INCREMENTAL_TAG) + "|"
             + std::to_string(type_generic_param_count(item.generic_params)) + "|"
+            + std::to_string(item.trait_supertraits.size()) + "|"
             + std::to_string(item.trait_items.size()));
     signature.generic_params.reserve(type_generic_param_count(item.generic_params));
     for (const syntax::GenericParamDecl& param : item.generic_params) {
@@ -1007,6 +1055,42 @@ void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature
     GenericContext context = this->make_trait_generic_context(trait);
     TraitAnalysisScope scope(this->core_, signature.module, signature.item, &context);
 
+    std::unordered_map<base::u64, base::SourceRange> seen_supertraits;
+    seen_supertraits.reserve(trait.trait_supertraits.size());
+    signature.supertraits.clear();
+    signature.supertraits.reserve(trait.trait_supertraits.size());
+    for (const syntax::TraitSupertraitDecl& supertrait : trait.trait_supertraits) {
+        const ResolvedTraitReference parent_reference =
+            this->resolve_supertrait_reference(trait, supertrait, signature.item, context);
+        if (!parent_reference.ok || parent_reference.signature == nullptr) {
+            continue;
+        }
+        const TraitSignature& parent = *parent_reference.signature;
+        const query::DefKey parent_key = this->trait_query_key(parent);
+        const auto inserted = seen_supertraits.emplace(parent_key.global_id, supertrait.range);
+        if (!inserted.second) {
+            this->core_.report_duplicate(supertrait.range,
+                "duplicate supertrait `" + std::string(parent.name) + "` in trait `" + std::string(signature.name)
+                    + "`");
+            this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(parent.name));
+            continue;
+        }
+        if (trait_keys_match(this->trait_query_key(signature), parent_key)) {
+            this->core_.report_type(supertrait.range,
+                "supertrait cycle detected: trait `" + std::string(signature.name) + "` inherits itself");
+            continue;
+        }
+        if (syntax::visibility_rank(signature.visibility) > syntax::visibility_rank(parent.visibility)) {
+            this->core_.report_visibility(supertrait.range,
+                "public trait exposes private supertrait `" + std::string(parent.name) + "`");
+        }
+        TraitSupertraitInfo info =
+            this->make_supertrait_info(signature, parent, parent_reference.trait_args, supertrait);
+        signature.supertraits.push_back(this->core_.state_.checked.clone_trait_supertrait_info(info));
+        this->append_supertrait_fact_if_new(info);
+    }
+
     std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_items;
     seen_items.reserve(trait.trait_items.size());
     signature.associated_types.clear();
@@ -1083,6 +1167,326 @@ TraitAssociatedTypeRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trai
         this->core_.report_general(requirement.range, "trait associated type requirement must not have a target type");
     }
     return info;
+}
+
+SemanticAnalyzerCore::TraitAnalyzer::ResolvedTraitReference
+SemanticAnalyzerCore::TraitAnalyzer::resolve_supertrait_reference(const syntax::ItemNode&,
+    const syntax::TraitSupertraitDecl& supertrait,
+    const syntax::ItemId trait_id,
+    GenericContext& context)
+{
+    ResolvedTraitReference result;
+    if (!syntax::is_valid(supertrait.trait_type)
+        || supertrait.trait_type.value >= this->core_.ctx_.module.types.size()) {
+        this->core_.report_lookup(supertrait.range, "supertrait must name a trait");
+        return result;
+    }
+    const syntax::TypeNode& supertrait_type = this->core_.ctx_.module.types[supertrait.trait_type.value];
+    if (supertrait_type.kind != syntax::TypeKind::named) {
+        this->core_.report_lookup(supertrait_type.range, "supertrait must name a trait");
+        return result;
+    }
+
+    const std::vector<std::string_view> scope_parts = this->core_.type_scope_parts(supertrait_type);
+    const bool qualified = !scope_parts.empty();
+    const TraitSignature* parent = nullptr;
+    TraitAnalysisScope scope(this->core_, this->core_.item_module(trait_id), trait_id, &context);
+    if (qualified) {
+        const syntax::ModuleId module = this->core_.resolve_type_scope(supertrait_type, true);
+        parent = this->find_trait_in_module(
+            module, supertrait_type.name_id, supertrait_type.name, supertrait_type.range, true);
+    } else {
+        parent = this->find_trait_in_visible_modules(
+            supertrait_type.name_id, supertrait_type.name, supertrait_type.range, true);
+    }
+    if (parent == nullptr) {
+        return result;
+    }
+
+    if (supertrait_type.type_args.empty() && !parent->generic_params.empty()) {
+        this->core_.report_type(supertrait_type.range,
+            sema_generic_argument_count_message(
+                "supertrait type arguments", parent->name, 0, parent->generic_params.size()));
+        return result;
+    }
+    if (!supertrait_type.type_args.empty() && parent->generic_params.empty()) {
+        this->core_.report_type(supertrait_type.range, sema_trait_not_generic_message(parent->name));
+        return result;
+    }
+    if (supertrait_type.type_args.size() != parent->generic_params.size()) {
+        this->core_.report_type(supertrait_type.range,
+            sema_generic_argument_count_message("supertrait type arguments", parent->name,
+                supertrait_type.type_args.size(), parent->generic_params.size()));
+        return result;
+    }
+
+    result.trait_args.reserve(supertrait_type.type_args.size());
+    for (const syntax::TypeId arg : supertrait_type.type_args) {
+        result.trait_args.push_back(this->core_.resolve_type(arg));
+    }
+    result.signature = parent;
+    result.ok = true;
+    return result;
+}
+
+TraitSupertraitInfo SemanticAnalyzerCore::TraitAnalyzer::make_supertrait_info(const TraitSignature& child,
+    const TraitSignature& parent,
+    const std::span<const TypeHandle> parent_args,
+    const syntax::TraitSupertraitDecl& supertrait) const
+{
+    TraitSupertraitInfo info = this->core_.state_.checked.make_trait_supertrait_info();
+    info.child_trait_key = this->trait_query_key(child);
+    info.parent_trait_key = this->trait_query_key(parent);
+    info.child_trait_name = this->core_.state_.checked.intern_text(child.name);
+    info.child_trait_name_id = child.name_id;
+    info.child_trait_module = child.module;
+    info.parent_trait_name = this->core_.state_.checked.intern_text(parent.name);
+    info.parent_trait_name_id = parent.name_id;
+    info.parent_trait_module = parent.module;
+    info.parent_trait_args = this->core_.state_.checked.copy_type_handle_list(parent_args);
+    info.direct_edge_ordinal = supertrait.ordinal;
+    info.closure_depth = 1U;
+    info.range = supertrait.range;
+    info.part_index = child.part_index;
+
+    info.edge_fingerprint = make_supertrait_edge_fingerprint(this->core_, info.child_trait_key, info.parent_trait_key,
+        info.direct_edge_ordinal, info.closure_depth, parent_args);
+    return info;
+}
+
+TraitSupertraitEdgeFact SemanticAnalyzerCore::TraitAnalyzer::make_supertrait_edge_fact(
+    const TraitSupertraitInfo& info) const
+{
+    TraitSupertraitEdgeFact fact = this->core_.state_.checked.make_trait_supertrait_edge_fact();
+    fact.child_trait_key = info.child_trait_key;
+    fact.parent_trait_key = info.parent_trait_key;
+    fact.child_trait_name = this->core_.state_.checked.intern_text(info.child_trait_name);
+    fact.child_trait_name_id = info.child_trait_name_id;
+    fact.child_trait_module = info.child_trait_module;
+    fact.parent_trait_name = this->core_.state_.checked.intern_text(info.parent_trait_name);
+    fact.parent_trait_name_id = info.parent_trait_name_id;
+    fact.parent_trait_module = info.parent_trait_module;
+    fact.parent_trait_args = this->core_.state_.checked.copy_type_handle_list(info.parent_trait_args);
+    fact.edge_fingerprint = info.edge_fingerprint;
+    fact.direct_edge_ordinal = info.direct_edge_ordinal;
+    fact.closure_depth = info.closure_depth;
+    fact.range = info.range;
+    fact.part_index = info.part_index;
+    return fact;
+}
+
+TypeHandle SemanticAnalyzerCore::TraitAnalyzer::instantiate_supertrait_arg(
+    const TypeHandle arg, const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object) const
+{
+    const auto child_trait = std::ranges::find_if(this->core_.state_.checked.traits,
+        [&](const auto& entry) {
+            return trait_keys_match(this->trait_query_key(entry.second), edge.child_trait_key);
+        });
+    if (child_trait == this->core_.state_.checked.traits.end()) {
+        return arg;
+    }
+    return this->substitute_requirement_type(
+        arg, INVALID_TYPE_HANDLE, source_object.trait_object_args, child_trait->second, {});
+}
+
+bool SemanticAnalyzerCore::TraitAnalyzer::supertrait_edge_matches_target_object(
+    const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object, const TypeInfo& target_object) const
+{
+    if (edge.parent_trait_args.size() != target_object.trait_object_args.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < edge.parent_trait_args.size(); ++index) {
+        const TypeHandle instantiated =
+            this->instantiate_supertrait_arg(edge.parent_trait_args[index], edge, source_object);
+        if (!this->core_.state_.checked.types.same(instantiated, target_object.trait_object_args[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::append_supertrait_fact_if_new(const TraitSupertraitInfo& info)
+{
+    const auto found =
+        std::ranges::find_if(this->core_.state_.checked.trait_supertrait_edges,
+            [&](const TraitSupertraitEdgeFact& fact) {
+                return fact.edge_fingerprint == info.edge_fingerprint
+                    && trait_keys_match(fact.child_trait_key, info.child_trait_key)
+                    && trait_keys_match(fact.parent_trait_key, info.parent_trait_key);
+            });
+    if (found == this->core_.state_.checked.trait_supertrait_edges.end()) {
+        this->core_.state_.checked.trait_supertrait_edges.push_back(this->make_supertrait_edge_fact(info));
+    }
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::validate_supertrait_graph()
+{
+    struct PendingEdge {
+        TraitSupertraitInfo info;
+        const TraitSignature* current_parent = nullptr;
+        base::u32 depth = 1;
+        std::vector<base::u64> path_trait_keys;
+    };
+
+    for (auto& entry : this->core_.state_.checked.traits) {
+        TraitSignature& child = entry.second;
+        std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash> recorded_endpoints;
+        recorded_endpoints.reserve(child.supertraits.size());
+        std::vector<PendingEdge> pending;
+        pending.reserve(child.supertraits.size());
+        const query::DefKey child_key = this->trait_query_key(child);
+        for (const TraitSupertraitInfo& direct : child.supertraits) {
+            const TraitSignature* parent_signature = nullptr;
+            for (const auto& candidate : this->core_.state_.checked.traits) {
+                if (trait_keys_match(this->trait_query_key(candidate.second), direct.parent_trait_key)) {
+                    parent_signature = &candidate.second;
+                    break;
+                }
+            }
+            PendingEdge pending_edge;
+            pending_edge.info = direct;
+            pending_edge.current_parent = parent_signature;
+            pending_edge.depth = direct.closure_depth;
+            pending_edge.path_trait_keys.push_back(child_key.global_id);
+            pending.push_back(std::move(pending_edge));
+        }
+
+        while (!pending.empty()) {
+            PendingEdge edge = std::move(pending.back());
+            pending.pop_back();
+            if (!query::is_valid(edge.info.parent_trait_key)) {
+                continue;
+            }
+            if (trait_keys_match(edge.info.child_trait_key, edge.info.parent_trait_key)) {
+                this->core_.report_type(edge.info.range,
+                    "supertrait cycle detected: trait `" + std::string(edge.info.child_trait_name.view())
+                        + "` reaches itself");
+                continue;
+            }
+            if (std::ranges::find(edge.path_trait_keys, edge.info.parent_trait_key.global_id)
+                != edge.path_trait_keys.end()) {
+                continue;
+            }
+
+            edge.info.closure_depth = edge.depth;
+            const query::StableFingerprint128 endpoint_fingerprint = make_supertrait_endpoint_fingerprint(
+                this->core_, edge.info.child_trait_key, edge.info.parent_trait_key, edge.info.parent_trait_args);
+            if (!recorded_endpoints.insert(endpoint_fingerprint).second) {
+                continue;
+            }
+            if (edge.depth > 1U) {
+                edge.info.edge_fingerprint =
+                    make_supertrait_edge_fingerprint(this->core_, edge.info.child_trait_key, edge.info.parent_trait_key,
+                        edge.info.direct_edge_ordinal, edge.info.closure_depth, edge.info.parent_trait_args);
+                this->append_supertrait_fact_if_new(edge.info);
+            }
+
+            if (edge.current_parent == nullptr) {
+                continue;
+            }
+            for (const TraitSupertraitInfo& parent_edge : edge.current_parent->supertraits) {
+                const TraitSignature* next_parent = nullptr;
+                for (const auto& candidate : this->core_.state_.checked.traits) {
+                    if (trait_keys_match(this->trait_query_key(candidate.second), parent_edge.parent_trait_key)) {
+                        next_parent = &candidate.second;
+                        break;
+                    }
+                }
+                TraitSupertraitInfo inherited = parent_edge;
+                inherited.child_trait_key = this->trait_query_key(child);
+                inherited.child_trait_name = this->core_.state_.checked.intern_text(child.name);
+                inherited.child_trait_name_id = child.name_id;
+                inherited.child_trait_module = child.module;
+                inherited.direct_edge_ordinal = edge.info.direct_edge_ordinal;
+                inherited.closure_depth = edge.depth + 1U;
+                inherited.parent_trait_args.clear();
+                inherited.parent_trait_args.reserve(parent_edge.parent_trait_args.size());
+                for (const TypeHandle arg : parent_edge.parent_trait_args) {
+                    inherited.parent_trait_args.push_back(this->substitute_requirement_type(
+                        arg, INVALID_TYPE_HANDLE, edge.info.parent_trait_args, *edge.current_parent, {}));
+                }
+                inherited.part_index = child.part_index;
+                PendingEdge inherited_edge;
+                inherited_edge.info = std::move(inherited);
+                inherited_edge.current_parent = next_parent;
+                inherited_edge.depth = edge.depth + 1U;
+                inherited_edge.path_trait_keys = edge.path_trait_keys;
+                inherited_edge.path_trait_keys.push_back(edge.info.parent_trait_key.global_id);
+                pending.push_back(std::move(inherited_edge));
+            }
+        }
+    }
+}
+
+const TraitSupertraitEdgeFact* SemanticAnalyzerCore::TraitAnalyzer::find_supertrait_edge_path(
+    const TypeInfo& source_object, const TypeInfo& target_object) const
+{
+    if (source_object.kind != TypeKind::trait_object || target_object.kind != TypeKind::trait_object
+        || !query::is_valid(source_object.trait_object_key) || !query::is_valid(target_object.trait_object_key)) {
+        return nullptr;
+    }
+    const query::DefKey source_trait = source_object.trait_object_key.principal_trait;
+    const query::DefKey target_trait = target_object.trait_object_key.principal_trait;
+    const TraitSupertraitEdgeFact* best = nullptr;
+    bool ambiguous = false;
+    for (const TraitSupertraitEdgeFact& fact : this->core_.state_.checked.trait_supertrait_edges) {
+        if (!trait_keys_match(fact.child_trait_key, source_trait)
+            || !trait_keys_match(fact.parent_trait_key, target_trait)) {
+            continue;
+        }
+        if (!this->supertrait_edge_matches_target_object(fact, source_object, target_object)) {
+            continue;
+        }
+        if (best == nullptr || fact.closure_depth < best->closure_depth) {
+            best = &fact;
+            ambiguous = false;
+            continue;
+        }
+        if (fact.closure_depth == best->closure_depth && fact.edge_fingerprint != best->edge_fingerprint) {
+            ambiguous = true;
+        }
+    }
+    return ambiguous ? nullptr : best;
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::validate_supertrait_impl_obligations()
+{
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        const TraitSignature* const child_trait = this->trait_signature_for_impl(impl);
+        if (child_trait == nullptr || child_trait->supertraits.empty()) {
+            continue;
+        }
+        for (const TraitSupertraitInfo& parent : child_trait->supertraits) {
+            const TraitSignature* parent_signature = nullptr;
+            for (const auto& trait_entry : this->core_.state_.checked.traits) {
+                if (trait_keys_match(this->trait_query_key(trait_entry.second), parent.parent_trait_key)) {
+                    parent_signature = &trait_entry.second;
+                    break;
+                }
+            }
+            if (parent_signature == nullptr) {
+                continue;
+            }
+            std::vector<TypeHandle> instantiated_parent_args;
+            instantiated_parent_args.reserve(parent.parent_trait_args.size());
+            for (const TypeHandle arg : parent.parent_trait_args) {
+                instantiated_parent_args.push_back(
+                    this->substitute_requirement_type(arg, INVALID_TYPE_HANDLE, impl.trait_args, *child_trait, {}));
+            }
+            const TraitImplLookupKey parent_key =
+                this->make_trait_impl_lookup_key(*parent_signature, impl.self_type, instantiated_parent_args);
+            if (this->core_.state_.checked.trait_impls.contains(parent_key)) {
+                continue;
+            }
+            this->core_.report_type(impl.range,
+                "impl `" + std::string(child_trait->name) + "` requires supertrait evidence `"
+                    + std::string(parent.parent_trait_name.view()) + "` for "
+                    + this->core_.state_.checked.types.display_name(impl.self_type));
+            this->core_.report_note(parent.range, SemanticDiagnosticKind::type_mismatch,
+                "supertrait declared here");
+        }
+    }
 }
 
 TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requirement(const TraitSignature& trait,
@@ -1166,6 +1570,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::register_trait_signatures()
     for (auto& entry : this->core_.state_.checked.traits) {
         this->resolve_trait_signature(entry.second);
     }
+    this->validate_supertrait_graph();
 }
 
 FunctionSignature SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_signature(
@@ -2411,7 +2816,9 @@ TypeHandle SemanticAnalyzerCore::TraitAnalyzer::substitute_requirement_type(cons
 {
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> substitutions;
     substitutions.reserve(trait_args.size() + 1U);
-    substitutions.emplace(generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME), self_type);
+    if (is_valid(self_type)) {
+        substitutions.emplace(generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME), self_type);
+    }
     for (base::usize index = 0; index < trait_args.size() && index < trait.generic_params.size(); ++index) {
         const std::string_view name = this->core_.ctx_.module.identifier_text(trait.generic_params[index]);
         substitutions.emplace(generic_param_identity_from_text(name), trait_args[index]);
@@ -2712,6 +3119,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impls()
             this->validate_trait_impl_block(item, syntax::ItemId{item_index});
         }
     }
+    this->validate_supertrait_impl_obligations();
 }
 
 void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_borrow_contracts()
@@ -2799,6 +3207,13 @@ void SemanticAnalyzerCore::record_trait_object_callability(const TypeHandle obje
     const base::SourceRange& range)
 {
     TraitAnalyzer(*this).record_trait_object_callability(object_type, trait, trait_args, associated_equalities, range);
+}
+
+const TraitSupertraitEdgeFact* SemanticAnalyzerCore::find_supertrait_edge_path(
+    const TypeInfo& source_object, const TypeInfo& target_object) const
+{
+    return TraitAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).find_supertrait_edge_path(
+        source_object, target_object);
 }
 
 const TraitImplInfo* SemanticAnalyzerCore::find_trait_object_impl(const TypeHandle concrete_type,

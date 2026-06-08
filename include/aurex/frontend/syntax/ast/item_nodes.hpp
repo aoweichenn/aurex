@@ -58,6 +58,12 @@ struct EnumCaseDecl {
     IdentId name_id = INVALID_IDENT_ID;
 };
 
+struct TraitSupertraitDecl {
+    TypeId trait_type = INVALID_TYPE_ID;
+    base::SourceRange range{};
+    base::u32 ordinal = 0;
+};
+
 enum class ItemKind {
     const_decl,
     type_alias,
@@ -97,6 +103,7 @@ struct ItemNode {
     bool is_trait_default_method = false;
     std::string_view abi_name;
     BorrowContractDecl borrow_contract;
+    std::vector<TraitSupertraitDecl> trait_supertraits;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
     std::vector<ItemId> impl_items;
@@ -153,6 +160,7 @@ struct TraitItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
     AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<TraitSupertraitDecl> supertraits;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     AstArenaVector<ItemId> items;
 };

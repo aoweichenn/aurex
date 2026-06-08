@@ -524,6 +524,13 @@ void AstModule::intern_item_node(ItemNode& node)
 {
     this->intern_identifier_text(node.name, node.name_id);
     this->intern_generic_params(node.generic_params);
+    for (TraitSupertraitDecl& supertrait : node.trait_supertraits) {
+        if (is_valid(supertrait.trait_type) && supertrait.trait_type.value < this->types.size()) {
+            TypeNode supertrait_type = this->types.take(supertrait.trait_type.value);
+            this->intern_type_node(supertrait_type);
+            this->types.set(supertrait.trait_type.value, std::move(supertrait_type));
+        }
+    }
     this->intern_generic_constraints(node.where_constraints);
     this->intern_field_decls(node.fields);
     this->intern_enum_case_decls(node.enum_cases);

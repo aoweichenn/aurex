@@ -176,7 +176,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M10b Supertrait Frontend / Query / Sema Implementation");
+        "docs/zh/next-steps.md", "当前最高优先级：M10c Supertrait IR / Backend Runtime Implementation");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -268,21 +268,21 @@ TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M10a Supertrait Upcasting Design Baseline");
+    expect_document_contains("docs/zh/README.md", "M10b Supertrait Frontend / Query / Sema Implementation");
     expect_document_contains("docs/zh/README.md", "Aurex M10 Supertrait Upcasting 设计基线");
-    expect_document_contains("docs/zh/progress.md", "阶段：M10a Supertrait Upcasting Design Baseline");
+    expect_document_contains("docs/zh/progress.md", "阶段：M10b Supertrait Frontend / Query / Sema Implementation");
     expect_document_contains("docs/zh/progress.md", "borrowed dyn-to-dyn coercion");
     expect_document_contains("docs/zh/progress.md", "supertrait_vptr_metadata_v1");
-    expect_document_contains("docs/zh/version.md", "## M10a Supertrait Upcasting Design Baseline");
+    expect_document_contains("docs/zh/version.md", "## M10b Supertrait Frontend / Query / Sema Implementation");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M10b Supertrait Frontend / Query / Sema Implementation");
+        "docs/zh/next-steps.md", "当前最高优先级：M10c Supertrait IR / Backend Runtime Implementation");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectUpcastCoercionKey`");
     expect_document_contains("docs/zh/next-steps.md", "`VTableSupertraitEdgeDescriptor`");
-    expect_document_contains("docs/zh/next-steps.md", "M10b frontend/query/sema");
-    expect_document_contains("docs/zh/language-feature-inventory.md", "M10a 已选择 supertrait upcasting");
+    expect_document_contains("docs/zh/next-steps.md", "M10b frontend/query/sema 已完成");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "M10b 已完成");
 
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md",
-        "M10a Supertrait Upcasting Design Baseline");
+        "M10b Supertrait Frontend / Query / Sema Implementation");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "supertrait_vptr_metadata_v1");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "TraitSupertraitEdgeFact");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "TraitObjectUpcastCoercionKey");
@@ -301,6 +301,8 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "borrowed_view_v1");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "trait Child: Parent");
     expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "trait_object_upcast");
+    expect_document_contains("docs/zh/m10-supertrait-upcasting-design.md", "check-only");
+    expect_document_contains("docs/zh/language-manual.md", "Borrowed dyn supertrait upcast");
 }
 
 } // namespace aurex::test

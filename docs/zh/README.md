@@ -1,15 +1,16 @@
 # Aurex 文档
 
-文档基线：**M9 Dyn ABI / Tooling Design Baseline**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M9c Advanced Dyn Design Gate Baseline**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
 user surface 实现收口基线之上。M7 Hardening Performance Closure 和 M7d-K Array Repeat Resource Safety Closure
 也已完成；M8 已完成 borrowed dyn trait / erased view 的 query 地基、frontend syntax/sema、borrowed dyn
 coercion、checked vtable facts、IR/backend runtime dynamic dispatch、M8e hardening 和 sample / release polish
-收口。M8 已正式封口；M9 已从 `m9` 分支开启 dyn ABI / tooling 设计基线，第一包只固化 borrowed dyn 的
-ABI DTO、metadata/fingerprint schema、query/cache、tooling projection 和 verifier/backend negative matrix，
-不实现标准库或 owning dyn。
+收口。M8 已正式封口；M9 已从 `m9` 分支开启 dyn ABI / tooling 设计基线，当前已经完成 borrowed dyn 的 ABI
+DTO、metadata/fingerprint schema、query/cache、tooling projection、verifier/backend negative matrix 和 M9c
+Advanced Dyn Design Gate。M9c 只做 compiler/query 侧设计准入，不实现标准库、owning dyn runtime、dynamic Drop
+dispatch runtime、supertrait upcasting runtime 或多 trait object composition runtime。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

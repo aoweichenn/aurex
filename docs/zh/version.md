@@ -1,17 +1,20 @@
 # 版本文档
 
-## M9b Dyn ABI / Tooling Implementation Baseline
+## M9c Advanced Dyn Design Gate Baseline
 
 M9 已从 `m9` 分支开启。M8 release closure 已完成；当前版本在
-[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md) 之上完成 M9b implementation baseline，
-把 M8 已经能运行的 borrowed dyn runtime dispatch 固化为可查询、可 fingerprint、可 dump、可投影到 IDE/tooling
-的 ABI facts，而不是继续增加 M8 语言语义。
+[Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md) 之上完成 M9c advanced dyn design gate
+baseline。M9b 已把 M8 已经能运行的 borrowed dyn runtime dispatch 固化为可查询、可 fingerprint、可 dump、可投影到
+IDE/tooling 的 ABI facts；M9c 则把 supertrait upcasting、owning dyn、dynamic Drop dispatch、allocator policy
+和 multi trait composition 的后续准入条件固化为 query-facing design gate，而不是继续增加 M8 语言语义。
 
 当前新增设计内容包括：
 
 - 将 M9a 明确为 design baseline：不改变 `&dyn Trait` / `&mut dyn Trait` 当前语义，不实现新 runtime feature。
 - 将 M9b 明确为 implementation baseline：实现 query-facing dyn ABI facts DTO、checked adapter、IR adapter、
   lower-function-IR query/cache invalidation 和 IDE semantic fact / hover projection。
+- 将 M9c 明确为 advanced dyn design gate baseline：实现 `DynAdvancedDesignGate` /
+  `DynAdvancedDesignCandidate` DTO、validation、stable fingerprint、summary、dump 和 focused query tests。
 - 固定 M9 第一包非目标：不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、
   supertrait upcasting 或多 trait object composition。
 - 基于现有代码事实整理 M9 输入：`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`、checked
@@ -28,10 +31,14 @@ M9 已从 `m9` 分支开启。M8 release closure 已完成；当前版本在
   slot ordinal、dispatch kind 和 coercion relation。
 - 固定 M9b verifier/backend negative matrix：layout duplicate、slot mismatch、receiver ABI mismatch、fat view type
   mismatch、missing vtable layout 和 invalid slot pointer type 等。
+- 固定 M9c advanced dyn gate：`supertrait_upcasting` 和 `multi_trait_composition` 要求新 metadata policy；
+  `owning_dyn` 和 `allocator_policy` 要求后续标准库阶段；`dynamic_drop_dispatch` 要求后续 runtime 阶段。
+- 固定 policy 分离规则：advanced dyn candidate 不能把 `borrowed_view_v1` 或 `borrowed_methods_only_v1` 当成
+  required policy 复用。
 
-下一步是 M9c advanced dyn design gate：预计新增/修改 2,500-4,500 行设计/原型/测试，重点评估 supertrait
-upcasting、owning dyn、dynamic Drop dispatch、allocator/metadata policy 和多 trait object composition 是否进入
-后续阶段。M9c 仍不自动实现标准库。
+下一步是 M9d 或 M9 release closure：优先把 M9a-M9c 的 ABI facts、tooling projection 和 advanced gate 做一致性
+收口。若继续推进 advanced dyn，必须先在独立阶段为对应 capability 增加 policy/schema、sema/IR/runtime 或标准库
+设计；M9c 本身仍不自动实现标准库。
 
 ## M8 Dyn Trait、Erased View 与动态派发 Release Closure
 

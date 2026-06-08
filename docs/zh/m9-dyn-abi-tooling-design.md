@@ -2,10 +2,10 @@
 
 日期：2026-06-07
 
-状态：M9b implementation baseline 已完成。M8 release closure 已完成；M9 从 `m9` 分支开始，第一包只做 dyn ABI、
-metadata、query/cache、tooling 和 verifier/backend negative matrix 的设计/实现基线，不实现标准库、
-`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting 或多 trait object
-composition。
+状态：M9c Advanced Dyn Design Gate Baseline 已完成。M8 release closure 已完成；M9 从 `m9` 分支开始，第一包已
+完成 borrowed dyn ABI/tooling facts 和 advanced dyn 设计准入 gate。当前仍不实现标准库、`Box<dyn Trait>`、
+owning dyn、allocator、dynamic Drop dispatch、supertrait upcasting runtime 或多 trait object composition
+runtime。
 
 ## 0. 结论
 
@@ -32,7 +32,9 @@ M9a 选择的方向是 **facts-first dyn ABI DTO**：
   `borrowed_methods_only_v1`；后续 advanced dyn 只能通过明确的 policy/schema gate 进入。
 
 M9a 不改语言语义。M9b 已实现 DTO / tooling projection / invalidation tests / verifier negative tests 的第一包。
-M9c 才研究 advanced dyn design，而且仍必须单独 gate。
+M9c 已把 advanced dyn design review 固化为 query-facing design gate：每个高级方向必须先声明 ABI/metadata
+policy、borrow/drop/resource/tooling impact、required facts、blockers 和 non-goals，不能复用
+`borrowed_view_v1` / `borrowed_methods_only_v1` 偷偷扩展。
 
 ## 1. 当前代码事实
 
@@ -561,13 +563,74 @@ M9b 的用户可见 diagnostics 不需要新增大量文案，但内部错误必
 - backend 不吞掉 verifier 能发现的问题。
 - tooling fact 缺失时显示 unsupported/unknown，不伪造可用 dyn ABI。
 
-## 14. M9a 到 M9c 路线
+## 14. M9c Advanced Dyn Design Gate Baseline
+
+M9c 的实现边界是 **advanced dyn design gate**，不是 advanced dyn runtime。代码层新增
+`DynAdvancedDesignGate` / `DynAdvancedDesignCandidate`，位于
+`include/aurex/infrastructure/query/dyn_advanced_design_gate.hpp` 和
+`src/infrastructure/query/dyn_advanced_design_gate.cpp`。该 DTO 不依赖 sema arena、IR module、LLVM 类型或标准库
+runtime；它只表达 design gate 的稳定事实、validation、fingerprint、summary 和 dump。
+
+M9c gate 固定以下字段：
+
+- capability：`supertrait_upcasting`、`owning_dyn`、`dynamic_drop_dispatch`、`allocator_policy`、
+  `multi_trait_composition`。
+- stage：`research_only`、`design_gate`、`prototype_blocked`、`ready_for_future_stage`。M9c baseline 中不允许
+  任何候选直接进入 `ready_for_future_stage`。
+- decision：`rejected_for_m9c`、`requires_new_abi_policy`、`requires_new_metadata_policy`、
+  `requires_standard_library_stage`、`requires_runtime_stage`。
+- impact summary：必须分别声明 ABI policy、metadata policy、borrow model、drop model、resource model、
+  tooling/cache、standard library 和 runtime 的影响。
+- required policies：如果 impact 声明需要新 ABI 或 metadata policy，对应 policy 名称必须非空；如果不需要，则必须为空。
+- blockers、required facts、non-goals：每个候选都必须有结构化阻塞原因、后续必须补的事实层，以及 M9c 的明确非目标。
+
+M9c baseline 的五个候选结论如下：
+
+| capability | M9c stage | decision | 必需 policy | 当前结论 |
+| --- | --- | --- | --- | --- |
+| `supertrait_upcasting` | `design_gate` | `requires_new_metadata_policy` | `supertrait_vptr_metadata_v1` | 可进入后续 metadata-policy 设计，但不能复用 `borrowed_methods_only_v1`。 |
+| `owning_dyn` | `prototype_blocked` | `requires_standard_library_stage` | `owning_dyn_container_v1` / `owning_dyn_metadata_v1` | 需要 owning container、allocation、move/destroy/ownership transfer policy，必须等标准库阶段。 |
+| `dynamic_drop_dispatch` | `prototype_blocked` | `requires_runtime_stage` | `dynamic_drop_metadata_v1` | 需要 destructor slot、drop glue metadata 和 cleanup runtime policy，不能把析构 slot 塞进现有 borrowed metadata。 |
+| `allocator_policy` | `prototype_blocked` | `requires_standard_library_stage` | `allocator_placement_policy_v1` / `allocator_metadata_v1` | allocator selection、placement 和资源转移属于后续标准库资源阶段，borrowed dyn view 不分配。 |
+| `multi_trait_composition` | `design_gate` | `requires_new_metadata_policy` | `multi_trait_metadata_v1` | 需要 principal set、method namespace 和 associated equality merge schema，不能把多个 principal 偷偷合到单 trait metadata。 |
+
+M9c validation 的关键规则：
+
+- advanced candidate 不能使用 `borrowed_view_v1` 作为 required ABI policy。
+- advanced candidate 不能使用 `borrowed_methods_only_v1` 作为 required metadata policy。
+- `standard_library_required=true` 的 candidate 必须给出 `requires_standard_library_stage`。
+- `runtime_required=true` 的 candidate 必须给出 `requires_runtime_stage` 或被标准库阶段整体阻塞。
+- 每个 candidate 必须包含 `standard_library_runtime_not_in_m9c` non-goal，防止后续实现把标准库 runtime 混入 M9c。
+- `ready_for_future_stage` 在 M9c baseline 中一律无效；真正进入后续实现前必须再单独设计、测试和估算。
+
+M9c 当前能做的事情：
+
+- query/cache/tooling 层可以读取一个稳定、可 fingerprint、可 dump 的 advanced dyn gate。
+- 设计评审可以用同一份 DTO 判断某个高级 dyn 方向是否需要新 ABI policy、新 metadata policy、标准库阶段或 runtime
+  阶段。
+- 后续文档、IDE 或规划工具可以展示 `owning_dyn`、`dynamic_drop_dispatch` 等方向为什么当前阻塞。
+- 测试可以固定“不复用 borrowed policies 扩高级 dyn”的工程约束。
+
+M9c 当前仍不会新增：
+
+- 新语法或新用户可用 dyn surface。
+- 标准库、`Box`、allocator API 或 owning container。
+- owning dyn runtime。
+- dynamic Drop dispatch runtime。
+- supertrait upcasting runtime。
+- 多 trait object composition runtime。
+
+M9c 实际代码量低于早期 `2,500-4,500` 行粗估，是因为本轮选择了更窄、更正确的 gate baseline：先把 advanced dyn
+准入条件做成稳定 query DTO、文档和测试，而不是在同一轮实现 runtime prototype、sema surface 或标准库容器。
+这不是缩减质量门槛，而是避免把尚未通过 ABI/metadata policy 评审的高级 dyn 功能提前混进 M9。
+
+## 15. M9a 到 M9c 路线
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
 | M9a design baseline | 本文档、progress/next-steps/version/README 更新、documentation tests | 500-900 行 |
 | M9b ABI/tooling implementation | query-facing DTO、checked/IR adapter、dump/fingerprint、tooling projection、invalidation tests、verifier/backend negative tests；已完成 | 1,000-2,000 行 |
-| M9c advanced dyn design | owning dyn / dynamic Drop / supertrait upcasting / trait-object composition 的独立设计与小原型 gate；继续不实现标准库 | 2,500-4,500 行 |
+| M9c advanced dyn design gate | `DynAdvancedDesignGate` query DTO、validation、fingerprint、summary/dump、focused tests、docs；已完成，继续不实现标准库 | 700-1,300 行 |
 
 M9b 实际实现的主要代码量来源：
 
@@ -588,7 +651,7 @@ M9b 实际实现的主要代码量来源：
 如果实际代码量低于预估，通常意味着 M9b 只实现 query/IR DTO，没有完成 tooling projection 或 invalidation matrix；
 这种情况不能算 M9b 完整收口。
 
-## 15. 验收门槛
+## 16. 验收门槛
 
 M9a：
 
@@ -608,13 +671,16 @@ M9b：
 
 M9c：
 
-- 先写 design review，不默认实现。
-- 每个 advanced dyn 方向必须有独立非目标、ABI impact、borrow/drop/resource impact、tooling/cache impact 和 tests。
+- 先写 design review，不默认实现 runtime 或标准库。已完成。
+- 每个 advanced dyn 方向必须有独立非目标、ABI impact、borrow/drop/resource impact、tooling/cache impact 和 tests。已完成。
+- `DynAdvancedDesignGate` 必须有 validation、stable fingerprint、summary 和 dump。已完成。
+- tests 必须覆盖 baseline 五个候选、invalid enum fallback、policy drift、stage drift、fingerprint drift 和 dump
+  关键文案。已完成。
 - 标准库仍是独立阶段，不在 M9c 自动实现。
 
-## 16. 当前阶段能做什么
+## 17. 当前阶段能做什么
 
-M9b 完成后，仓库具备：
+M9c 完成后，仓库具备：
 
 - M8 release closure 的正式封口状态。
 - M9 dyn ABI / tooling 的正式设计入口和第一包实现基线。
@@ -628,9 +694,12 @@ M9b 完成后，仓库具备：
 - lower-function-IR result fingerprint 会混入 cleanup facts 与 dyn ABI facts。
 - IDE semantic facts / hover 可显示 `abi=borrowed_view_v1`、`metadata=borrowed_methods_only_v1` 和
   `dispatch=vtable_slot slot=N`。
+- `DynAdvancedDesignGate` DTO：对 supertrait upcasting、owning dyn、dynamic Drop dispatch、allocator policy 和
+  multi trait composition 给出稳定 gate 结论。
+- M9c gate 的 summary/dump/fingerprint 可用于 query/cache/tooling 与后续规划，不需要扫描文档文本。
 - 文档测试防漂移。
 
-M9b 完成后，仓库仍不会新增：
+M9c 完成后，仓库仍不会新增：
 
 - 新语言语法。
 - 新标准库 API。

@@ -1,9 +1,23 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M9b Dyn ABI / Tooling Implementation Baseline
+阶段：M9c Advanced Dyn Design Gate Baseline
 
 ## 总体状态
+
+2026-06-08：M9c Advanced Dyn Design Gate Baseline 已完成。本阶段没有实现标准库、`Box<dyn Trait>`、owning
+dyn runtime、allocator API、dynamic Drop dispatch runtime、supertrait upcasting runtime 或多 trait object
+composition runtime；实现边界是 compiler/query 侧的 advanced dyn 设计准入 gate。query 层新增
+`DynAdvancedDesignGate` / `DynAdvancedDesignCandidate` DTO，覆盖 `supertrait_upcasting`、`owning_dyn`、
+`dynamic_drop_dispatch`、`allocator_policy` 和 `multi_trait_composition` 五个候选方向，并提供 validation、
+stable fingerprint、summary 和 dump。
+
+M9c gate 的核心结论是：advanced dyn 不能复用当前 borrowed baseline 的 `borrowed_view_v1` /
+`borrowed_methods_only_v1` 偷偷扩展。supertrait upcasting 和 multi trait composition 只能进入后续
+metadata-policy design gate；owning dyn 和 allocator policy 被标准库阶段阻塞；dynamic Drop dispatch 被 runtime
+阶段阻塞。每个候选都记录 required policy、blockers、required facts、borrow/drop/resource/tooling/cache impact
+和 `standard_library_runtime_not_in_m9c` non-goal。新增 focused query tests 固定五个候选、invalid enum fallback、
+policy drift、stage drift、fingerprint drift 和 dump 关键文案。
 
 2026-06-07：M9b Dyn ABI / Tooling implementation baseline 已完成。M8 release closure 已完成，当前主线不再
 给 M8 追加语言语义，而是把 M8 已经能运行的 borrowed dyn runtime dispatch 固化成可跨 backend、query/cache、

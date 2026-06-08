@@ -213,6 +213,30 @@ inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE =
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE =
     "dyn trait vtable layout does not match concrete/object types";
 
+inline constexpr std::string_view IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT =
+    "dyn trait principal-set metadata layout is invalid or missing";
+
+inline constexpr std::string_view IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS =
+    "dyn trait principal-set metadata witness is invalid";
+
+inline constexpr std::string_view IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT_TYPE =
+    "dyn trait principal-set metadata layout does not match concrete/composition types";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PACK_RESULT =
+    "dyn composition pack result must be a reference to a principal-set dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PACK_DATA =
+    "dyn composition pack data must be a pointer or reference to the concrete type";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_OBJECT =
+    "dyn composition project object must be a reference to a principal-set dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_RESULT =
+    "dyn composition project result must be a reference to a selected principal dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL =
+    "dyn composition project principal is not present in the metadata layout";
+
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT =
     "dyn data object must be a reference to dyn trait";
 

@@ -4,8 +4,10 @@
 #include <aurex/frontend/sema/type.hpp>
 #include <aurex/infrastructure/base/bump_allocator.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
 #include <aurex/infrastructure/query/trait_object_key.hpp>
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -50,6 +52,7 @@ inline constexpr FunctionId INVALID_FUNCTION_ID{FunctionId::INVALID_VALUE};
 inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID{GlobalConstantId::INVALID_VALUE};
 inline constexpr base::u32 IR_INVALID_VTABLE_SLOT = std::numeric_limits<base::u32>::max();
 inline constexpr base::u32 IR_INVALID_VTABLE_SUPERTRAIT_EDGE = std::numeric_limits<base::u32>::max();
+inline constexpr base::u32 IR_INVALID_PRINCIPAL_INDEX = std::numeric_limits<base::u32>::max();
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept
 {
@@ -119,6 +122,8 @@ enum class ValueKind {
     str_slice_checked,
     str_from_bytes_unchecked,
     trait_object_pack,
+    trait_object_composition_pack,
+    trait_object_composition_project,
     trait_object_upcast,
     trait_object_data,
     trait_object_vtable,
@@ -248,6 +253,42 @@ struct TraitObjectVTableLayout {
     IrVector<TraitObjectVTableSupertraitEdge> supertrait_edges;
 };
 
+struct PrincipalSetMetadataWitness {
+    base::u32 principal_index = IR_INVALID_PRINCIPAL_INDEX;
+    query::TraitObjectTypeKey principal_object;
+    query::VTableLayoutKey vtable_layout;
+    sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
+};
+
+struct PrincipalSetMetadataLayout {
+    PrincipalSetMetadataLayout();
+    explicit PrincipalSetMetadataLayout(base::BumpAllocator& arena);
+
+    query::StableFingerprint128 principal_set_identity;
+    query::PrincipalSetMetadataPolicy metadata_policy =
+        query::PrincipalSetMetadataPolicy::principal_set_metadata_v1;
+    sema::TypeHandle concrete_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
+    IrTextId symbol = INVALID_IR_TEXT_ID;
+    IrVector<PrincipalSetMetadataWitness> witnesses;
+};
+
+struct PrincipalSetMetadataLayoutKey {
+    query::StableFingerprint128 principal_set_identity;
+    sema::TypeHandle concrete_type = sema::INVALID_TYPE_HANDLE;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const PrincipalSetMetadataLayoutKey lhs, const PrincipalSetMetadataLayoutKey rhs) noexcept
+    {
+        return lhs.principal_set_identity == rhs.principal_set_identity
+            && lhs.concrete_type.value == rhs.concrete_type.value;
+    }
+};
+
+struct PrincipalSetMetadataLayoutKeyHash {
+    [[nodiscard]] std::size_t operator()(PrincipalSetMetadataLayoutKey key) const noexcept;
+};
+
 struct Value {
     Value();
     explicit Value(base::BumpAllocator& arena);
@@ -274,6 +315,9 @@ struct Value {
     query::VTableLayoutKey vtable_layout;
     query::VTableLayoutKey target_vtable_layout;
     query::TraitObjectUpcastCoercionKey upcast_key;
+    query::StableFingerprint128 principal_set_identity;
+    query::TraitObjectTypeKey principal_object;
+    base::u32 principal_index = IR_INVALID_PRINCIPAL_INDEX;
     base::u32 vtable_slot = IR_INVALID_VTABLE_SLOT;
     base::u32 vtable_supertrait_edge = IR_INVALID_VTABLE_SUPERTRAIT_EDGE;
 };
@@ -362,6 +406,9 @@ public:
     [[nodiscard]] RecordLayout clone_record_layout(const RecordLayout& other);
     [[nodiscard]] TraitObjectVTableLayout make_trait_object_vtable_layout();
     [[nodiscard]] TraitObjectVTableLayout clone_trait_object_vtable_layout(const TraitObjectVTableLayout& other);
+    [[nodiscard]] PrincipalSetMetadataLayout make_principal_set_metadata_layout();
+    [[nodiscard]] PrincipalSetMetadataLayout clone_principal_set_metadata_layout(
+        const PrincipalSetMetadataLayout& other);
 
     template <typename T>
     [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> source_values)
@@ -380,6 +427,7 @@ public:
     IrVector<GlobalConstant> constants;
     IrVector<RecordLayout> records;
     IrVector<TraitObjectVTableLayout> trait_object_vtables;
+    IrVector<PrincipalSetMetadataLayout> principal_set_metadata_layouts;
     IrVector<Value> values;
     IrVector<Function> functions;
     RecordIndexMap record_indices;

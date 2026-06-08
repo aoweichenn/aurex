@@ -206,6 +206,10 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value)
         }
         case ValueKind::trait_object_pack:
             return this->emit_trait_object_pack(value);
+        case ValueKind::trait_object_composition_pack:
+            return this->emit_trait_object_composition_pack(value);
+        case ValueKind::trait_object_composition_project:
+            return this->emit_trait_object_composition_project(value);
         case ValueKind::trait_object_upcast:
             return this->emit_trait_object_upcast(value);
         case ValueKind::trait_object_data:
@@ -640,6 +644,61 @@ llvm::Value* LlvmEmitter::emit_trait_object_pack(const Value& value)
     llvm::GlobalVariable* vtable = this->trait_object_vtables_.at(value.vtable_layout.global_id);
     result = this->builder_.CreateInsertValue(
         result, vtable, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    return result;
+}
+
+llvm::Value* LlvmEmitter::emit_trait_object_composition_pack(const Value& value)
+{
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+    result = this->builder_.CreateInsertValue(
+        result, this->get(value.lhs), {LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_DATA_NAME);
+    const sema::TypeHandle concrete_type = this->pointee_type(value.lhs);
+    llvm::GlobalVariable* metadata = this->principal_set_metadata_.at(
+        this->principal_set_metadata_layout_key(value.principal_set_identity, concrete_type));
+    result = this->builder_.CreateInsertValue(
+        result, metadata, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    return result;
+}
+
+llvm::Value* LlvmEmitter::emit_trait_object_composition_project(const Value& value)
+{
+    llvm::Value* source = this->get(value.object);
+    llvm::Value* data = this->builder_.CreateExtractValue(
+        source, {LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_DATA_NAME);
+    llvm::Value* metadata = this->builder_.CreateExtractValue(
+        source, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+
+    const PrincipalSetMetadataLayout* const layout =
+        this->principal_set_metadata_layout(value.principal_set_identity, value.principal_index + 1U);
+    llvm::StructType* metadata_type = nullptr;
+    if (layout == nullptr) {
+        std::vector<llvm::Type*> fields;
+        fields.push_back(llvm::ArrayType::get(
+            llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE),
+            value.principal_index + 1U));
+        metadata_type = llvm::StructType::get(this->context_, fields);
+    } else {
+        metadata_type = this->llvm_principal_set_metadata_type(*layout);
+    }
+
+    llvm::Value* zero =
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* principal_index =
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), value.principal_index);
+    llvm::Value* vtable_pointer = this->builder_.CreateInBoundsGEP(metadata_type, metadata,
+        {zero,
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_VTABLE_METHODS_FIELD_INDEX),
+            principal_index},
+        LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    llvm::Value* target_vtable = this->builder_.CreateLoad(
+        llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE), vtable_pointer,
+        LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+    result = this->builder_.CreateInsertValue(
+        result, data, {LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_DATA_NAME);
+    result = this->builder_.CreateInsertValue(
+        result, target_vtable, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
     return result;
 }
 

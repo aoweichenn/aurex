@@ -227,8 +227,10 @@ struct FunctionUseInfo {
                     }
                     break;
                 case ValueKind::trait_object_pack:
+                case ValueKind::trait_object_composition_pack:
                     record_slot_use(value.lhs, block_index, false);
                     break;
+                case ValueKind::trait_object_composition_project:
                 case ValueKind::trait_object_upcast:
                     record_slot_use(value.object, block_index, false);
                     break;

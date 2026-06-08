@@ -1,5 +1,7 @@
 #include <aurex/midend/ir/ir.hpp>
 
+#include <aurex/infrastructure/query/stable_hash.hpp>
+
 #include <utility>
 
 namespace aurex::ir {
@@ -48,6 +50,21 @@ TraitObjectVTableLayout::TraitObjectVTableLayout(base::BumpAllocator& arena)
 {
 }
 
+PrincipalSetMetadataLayout::PrincipalSetMetadataLayout() = default;
+
+PrincipalSetMetadataLayout::PrincipalSetMetadataLayout(base::BumpAllocator& arena)
+    : witnesses(base::BumpAllocatorAdapter<PrincipalSetMetadataWitness>{arena})
+{
+}
+
+std::size_t PrincipalSetMetadataLayoutKeyHash::operator()(const PrincipalSetMetadataLayoutKey key) const noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_fingerprint(key.principal_set_identity);
+    builder.mix_u32(key.concrete_type.value);
+    return query::stable_hash_value(builder.finish());
+}
+
 Value::Value() = default;
 
 Value::Value(base::BumpAllocator& arena)
@@ -73,6 +90,7 @@ Function::Function(base::BumpAllocator& arena)
 Module::Module()
     : arena_(std::make_unique<base::BumpAllocator>()), constants(this->make_vector<GlobalConstant>()),
       records(this->make_vector<RecordLayout>()), trait_object_vtables(this->make_vector<TraitObjectVTableLayout>()),
+      principal_set_metadata_layouts(this->make_vector<PrincipalSetMetadataLayout>()),
       values(this->make_vector<Value>()), functions(this->make_vector<Function>()),
       record_indices(this->make_map<base::u32, base::u32>())
 {
@@ -96,8 +114,9 @@ Module& Module::operator=(const Module& other)
 Module::Module(Module&& other) noexcept
     : arena_(std::move(other.arena_)), types(std::move(other.types)), identifiers(std::move(other.identifiers)),
       constants(std::move(other.constants)), records(std::move(other.records)),
-      trait_object_vtables(std::move(other.trait_object_vtables)), values(std::move(other.values)),
-      functions(std::move(other.functions)),
+      trait_object_vtables(std::move(other.trait_object_vtables)),
+      principal_set_metadata_layouts(std::move(other.principal_set_metadata_layouts)),
+      values(std::move(other.values)), functions(std::move(other.functions)),
       record_indices(std::move(other.record_indices))
 {
     other.ensure_arena();
@@ -181,6 +200,9 @@ Value Module::clone_value(const Value& other)
     copy.vtable_layout = other.vtable_layout;
     copy.target_vtable_layout = other.target_vtable_layout;
     copy.upcast_key = other.upcast_key;
+    copy.principal_set_identity = other.principal_set_identity;
+    copy.principal_object = other.principal_object;
+    copy.principal_index = other.principal_index;
     copy.vtable_slot = other.vtable_slot;
     copy.vtable_supertrait_edge = other.vtable_supertrait_edge;
     return copy;
@@ -247,6 +269,25 @@ TraitObjectVTableLayout Module::clone_trait_object_vtable_layout(const TraitObje
     return copy;
 }
 
+PrincipalSetMetadataLayout Module::make_principal_set_metadata_layout()
+{
+    this->ensure_arena();
+    return PrincipalSetMetadataLayout{*this->arena_};
+}
+
+PrincipalSetMetadataLayout Module::clone_principal_set_metadata_layout(const PrincipalSetMetadataLayout& other)
+{
+    PrincipalSetMetadataLayout copy = this->make_principal_set_metadata_layout();
+    copy.principal_set_identity = other.principal_set_identity;
+    copy.metadata_policy = other.metadata_policy;
+    copy.concrete_type = other.concrete_type;
+    copy.object_type = other.object_type;
+    copy.symbol = other.symbol;
+    copy.witnesses =
+        this->copy_vector<PrincipalSetMetadataWitness>({other.witnesses.data(), other.witnesses.size()});
+    return copy;
+}
+
 void Module::reserve(const base::usize value_count, const base::usize function_count, const base::usize record_count,
     const base::usize constant_count)
 {
@@ -255,6 +296,7 @@ void Module::reserve(const base::usize value_count, const base::usize function_c
     this->records.reserve(record_count);
     this->constants.reserve(constant_count);
     this->trait_object_vtables.reserve(function_count);
+    this->principal_set_metadata_layouts.reserve(function_count);
     this->record_indices.reserve(record_count);
     this->identifiers.reserve(value_count + function_count + record_count + constant_count);
 }
@@ -267,6 +309,7 @@ void Module::swap(Module& other) noexcept
     this->constants.swap(other.constants);
     this->records.swap(other.records);
     this->trait_object_vtables.swap(other.trait_object_vtables);
+    this->principal_set_metadata_layouts.swap(other.principal_set_metadata_layouts);
     this->values.swap(other.values);
     this->functions.swap(other.functions);
     this->record_indices.swap(other.record_indices);
@@ -296,6 +339,12 @@ void Module::copy_from(const Module& other)
         this->trait_object_vtables.push_back(this->clone_trait_object_vtable_layout(layout));
     }
 
+    this->principal_set_metadata_layouts.clear();
+    this->principal_set_metadata_layouts.reserve(other.principal_set_metadata_layouts.size());
+    for (const PrincipalSetMetadataLayout& layout : other.principal_set_metadata_layouts) {
+        this->principal_set_metadata_layouts.push_back(this->clone_principal_set_metadata_layout(layout));
+    }
+
     this->values.clear();
     this->values.reserve(other.values.size());
     for (const Value& value : other.values) {
@@ -323,6 +372,8 @@ void Module::ensure_arena()
     this->arena_ = std::make_unique<base::BumpAllocator>();
     this->constants = this->make_vector<GlobalConstant>();
     this->records = this->make_vector<RecordLayout>();
+    this->trait_object_vtables = this->make_vector<TraitObjectVTableLayout>();
+    this->principal_set_metadata_layouts = this->make_vector<PrincipalSetMetadataLayout>();
     this->values = this->make_vector<Value>();
     this->functions = this->make_vector<Function>();
     this->record_indices = this->make_map<base::u32, base::u32>();

@@ -130,6 +130,16 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(
             this->core_.record_expr_expected_type(expr_id, expected_type);
             return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
         }
+        if (this->core_.can_borrowed_dyn_trait_composition_project(expected_type, analyzed)) {
+            const TypeHandle intrinsic =
+                is_valid(this->core_.cached_expr_intrinsic_type(expr_id))
+                ? this->core_.cached_expr_intrinsic_type(expr_id)
+                : analyzed;
+            this->core_.record_borrowed_dyn_trait_composition_projection_if_needed(
+                expr_id, analyzed, expected_type, range);
+            this->core_.record_expr_expected_type(expr_id, expected_type);
+            return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
+        }
         if (this->core_.can_borrowed_dyn_trait_upcast(expected_type, analyzed)) {
             const TypeHandle intrinsic =
                 is_valid(this->core_.cached_expr_intrinsic_type(expr_id))

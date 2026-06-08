@@ -77,6 +77,14 @@ void mix_type(query::StableHashBuilder& builder, const Module& module, const sem
     builder.mix_string(info.name.view());
     builder.mix_string(info.c_name.view());
     builder.mix_string(info.generic_origin_key.view());
+    builder.mix_fingerprint(info.trait_object_principal_set_identity);
+    builder.mix_u64(static_cast<base::u64>(info.trait_object_principal_types.size()));
+    for (const sema::TypeHandle principal : info.trait_object_principal_types) {
+        builder.mix_u32(principal.value);
+        if (sema::is_valid(principal) && principal.value < module.types.size()) {
+            builder.mix_string(module.types.display_name(principal));
+        }
+    }
 
     builder.mix_u64(info.tuple_elements.size());
     for (const sema::TypeHandle element : info.tuple_elements) {
@@ -154,6 +162,25 @@ void mix_trait_object_vtable_layout(
     }
 }
 
+void mix_principal_set_metadata_layout(
+    query::StableHashBuilder& builder, const Module& module, const PrincipalSetMetadataLayout& layout)
+{
+    builder.mix_fingerprint(layout.principal_set_identity);
+    builder.mix_u8(static_cast<base::u8>(layout.metadata_policy));
+    mix_type(builder, module, layout.concrete_type);
+    mix_type(builder, module, layout.object_type);
+    mix_text(builder, module, layout.symbol);
+    builder.mix_u64(static_cast<base::u64>(layout.witnesses.size()));
+    for (const PrincipalSetMetadataWitness& witness : layout.witnesses) {
+        builder.mix_u32(witness.principal_index);
+        builder.mix_u64(witness.principal_object.global_id);
+        builder.mix_fingerprint(query::stable_key_fingerprint(witness.principal_object));
+        builder.mix_u64(witness.vtable_layout.global_id);
+        builder.mix_fingerprint(query::stable_key_fingerprint(witness.vtable_layout));
+        mix_type(builder, module, witness.object_type);
+    }
+}
+
 void mix_function_signature(query::StableHashBuilder& builder, const Module& module, const Function& function)
 {
     mix_text(builder, module, function.name);
@@ -209,6 +236,10 @@ void mix_value(query::StableHashBuilder& builder, const Module& module, const Va
     builder.mix_u64(value.vtable_layout.global_id);
     builder.mix_u64(value.target_vtable_layout.global_id);
     builder.mix_u64(value.upcast_key.global_id);
+    builder.mix_fingerprint(value.principal_set_identity);
+    builder.mix_u64(value.principal_object.global_id);
+    builder.mix_fingerprint(query::stable_key_fingerprint(value.principal_object));
+    builder.mix_u32(value.principal_index);
     builder.mix_u32(value.vtable_slot);
     builder.mix_u32(value.vtable_supertrait_edge);
 
@@ -306,6 +337,10 @@ query::QueryResultFingerprint layout_abi_fingerprint(const Module& module)
     builder.mix_u64(module.trait_object_vtables.size());
     for (const TraitObjectVTableLayout& layout : module.trait_object_vtables) {
         mix_trait_object_vtable_layout(builder, module, layout);
+    }
+    builder.mix_u64(module.principal_set_metadata_layouts.size());
+    for (const PrincipalSetMetadataLayout& layout : module.principal_set_metadata_layouts) {
+        mix_principal_set_metadata_layout(builder, module, layout);
     }
     builder.mix_u64(module.functions.size());
     for (const Function& function : module.functions) {

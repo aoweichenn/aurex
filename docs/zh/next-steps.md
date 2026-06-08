@@ -1,10 +1,10 @@
 # 下一步计划
 
-## 当前最高优先级：M11d Principal-Set Composition IR / Backend Runtime
+## 当前最高优先级：M11e Principal-Set Composition Hardening / Release Closure
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
-Composition Frontend / Sema Check-Only 均已完成。当前状态入口：
+Composition Frontend / Sema Check-Only、M11d Principal-Set Composition IR / Backend Runtime 均已完成。当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
 - [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
@@ -35,8 +35,16 @@ associated equality merge、projection 保持 data pointer/origin 和 aggregate 
 M11c 也已结束。M11c 固定当前用户可写 borrowed composition spelling 为 `dyn (A + B)`，并接入
 parser/AST/type identity、borrowed concrete-to-composition coercion check、checked vtable layout recording、
 `CompositionWitnessSetFact` / `CompositionProjectionFact`、associated equality merge diagnostics、method-call
-guard、checked dump/fingerprint 和 `TypeCheckBodyAuthority` principal-set counts。M11c 仍是 check-only：
-`ir::lower_ast` 会拒绝包含 principal-set composition type 的 checked module，避免误生成 runtime。
+guard、checked dump/fingerprint 和 `TypeCheckBodyAuthority` principal-set counts。M11c 是 check-only gate；
+M11d 已移除该 runtime guard 并接入 composition pack/project lowering。
+
+M11d 也已结束。M11d 新增 `trait_object_composition_pack` / `trait_object_composition_project` IR value、
+`PrincipalSetMetadataLayout` / `PrincipalSetMetadataWitness`、IR verifier metadata/projection invariants、
+LLVM `principal_set_metadata_v1` global emission 和 native execution coverage。当前 runtime representation 是 borrowed
+`{data*, metadata*}` composition view；metadata global shape 为 `{ [N x ptr] }`，每个 entry 是 canonical principal
+顺序上的 single-trait vtable witness。显式 projection `let draw: &dyn Draw = combo;` 会按 principal index 从
+metadata 取出 vtable，并构造普通 `{data*, vtable*}` single dyn view。Direct `combo.draw()` 仍被 M11c/M11d 的
+method-call guard 拒绝，等待 principal-qualified syntax/dispatch 设计。
 
 已完成基线摘要：
 
@@ -51,21 +59,22 @@ guard、checked dump/fingerprint 和 `TypeCheckBodyAuthority` principal-set coun
   dyn、dynamic Drop dispatch 或 allocator policy 作为当前阶段主线。
 - M11b Principal-Set Composition Query Prototype Gate 已完成；query facts 地基已固定。
 - M11c Principal-Set Composition Frontend / Sema Check-Only 已完成；`dyn (A + B)` borrowed annotation/coercion
-  和 checked facts 可用，但没有 runtime lowering。
+  和 checked facts 可用。
+- M11d Principal-Set Composition IR / Backend Runtime 已完成；显式 composition-to-principal projection 可降低到
+  IR/LLVM 并 native execution。
 
-当前下一步应进入 **M11d Principal-Set Composition IR / Backend Runtime**。M11d 仍不直接实现标准库、owning
-dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。M11d 的目标是把 M11c 已验证的 borrowed
-principal-set facts 贯通到 IR/backend runtime：
+当前下一步应进入 **M11e Principal-Set Composition Hardening / Release Closure**。M11e 仍不直接实现标准库、
+owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。M11e 的目标是把 M11a-M11d 的 borrowed
+principal-set composition 子集收口成 release baseline：
 
-- 设计并新增 IR composition/projection value，明确 `{data*, principal-set-metadata*}` 或等价 layout，不能复用
-  single-trait `{data*, vtable*}`。
-- IR verifier 固定 principal-set metadata policy、principal witness coverage、projection target、borrow kind、
-  data pointer/origin preserved 和 method slot namespace invariants。
-- LLVM backend 生成 `principal_set_metadata_v1` runtime metadata，全量覆盖每个 principal 的 vtable witness。
-- 实现 principal-qualified slot dispatch 或先固定显式 runtime projection 入口；没有 principal selection 时仍拒绝普通 method call。
-- `FunctionDynAbiFacts` / lower-IR query / IDE tooling 投影新增 composition runtime descriptors。
-- Native runtime tests 覆盖 shared/mut borrowed composition、多个 concrete impl、associated equality composition
-  和 principal projection。
+- 补齐 `FunctionDynAbiFacts` / lower-IR query / IDE tooling 的 composition runtime descriptors 或明确 release
+  边界，确保 cache invalidation 和 hover 不需要反推 IR dump。
+- 扩展 verifier/backend negative matrix：metadata policy mismatch、missing/duplicate witness、wrong canonical
+  principal index、invalid projection target、layout/concrete mismatch、错误 flatten slot namespace 等。
+- 增加 stress/perf gates 和多 concrete / generic / associated equality regression matrix，确认显式 projection runtime
+  不引入额外分配、不改变 data pointer、不改变 borrow kind。
+- 统一 README、progress、version、usage、language manual、feature inventory、architecture、requirements 和 documentation tests。
+- 分析 M11d 实际代码量与早期 1,600-2,800 行预估差异，记录复用 M8/M10/M11b/M11c 地基带来的偏差。
 - 继续固定 “当前仍不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、不实现 allocator、不实现 dynamic Drop dispatch”。
 
 近期代码量粗估：
@@ -76,7 +85,7 @@ principal-set facts 贯通到 IR/backend runtime：
 | M11a design baseline | 已完成。advanced dyn 后续选择、`principal_set_metadata_v1` policy/schema 设计、非目标、documentation tests 和测试计划 | 实际以本次 diffstat 为准 |
 | M11b query/prototype gate | 已完成。principal-set composition DTO、validation、fingerprint、summary/dump、focused query tests | 实际以本次 diffstat 为准 |
 | M11c frontend/sema check-only | 已完成。`dyn (A + B)` parser/AST spelling、type identity、coercion check、method-call guard、associated equality merge check、checked dump/fingerprint、negative samples | 实际以本次 diffstat 为准 |
-| M11d IR/backend runtime | IR composition/projection value、verifier、LLVM metadata layout、principal-qualified slot dispatch、native runtime tests | 1,600-2,800 行 |
+| M11d IR/backend runtime | 已完成。IR composition/projection value、verifier、LLVM metadata layout、显式 principal projection、native runtime tests；direct principal-qualified method dispatch 未打开 | 实际以本次 diffstat 为准 |
 | M11e hardening/release | query/cache/tooling polish、IDE hover/workspace index、stress/perf gates、docs/tests release closure、代码量偏差分析 | 700-1,300 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 

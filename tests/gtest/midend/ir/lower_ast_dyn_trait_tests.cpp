@@ -847,36 +847,153 @@ TEST(CoreUnit, LlvmBackendDynTraitSupertraitUpcastProjectsParentVtable)
         });
 }
 
-TEST(CoreUnit, LowerAstDynTraitCompositionRemainsCheckOnly)
+TEST(CoreUnit, LowerAstDynTraitCompositionProjectionLowersToMetadataPackAndProject)
 {
     const std::string_view source =
-        "module dyn_trait_composition_ir_check_only;\n"
+        "module dyn_trait_composition_ir_runtime;\n"
         "trait Draw { fn draw(self: &Self) -> i32; }\n"
         "trait Debug { fn debug(self: &Self) -> i32; }\n"
         "struct File { value: i32; }\n"
         "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
         "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
-        "fn consume(view: &dyn (Draw + Debug)) -> i32 { return 0; }\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 13 };\n"
-        "  let view: &dyn (Draw + Debug) = &file;\n"
-        "  return consume(view);\n"
+        "  let combo: &dyn (Draw + Debug) = &file;\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  let debug: &dyn Debug = combo;\n"
+        "  return draw.draw() + debug.debug();\n"
         "}\n";
 
-    DynTraitLoweringFixture fixture;
-    fixture.ast = parse_dyn_trait_lowering_source(source);
-    base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(fixture.ast, diagnostics);
-    auto checked = analyzer.analyze();
-    ASSERT_TRUE(checked) << checked.error().message;
-    fixture.checked = checked.take_value();
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
     ASSERT_EQ(fixture.checked.principal_set_composition_facts.summary.principal_set_count, 1U);
+    ASSERT_EQ(fixture.checked.principal_set_composition_facts.summary.projection_count, 4U);
+    ASSERT_EQ(fixture.ir.trait_object_vtables.size(), 2U);
+    ASSERT_EQ(fixture.ir.principal_set_metadata_layouts.size(), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 2U);
 
-    auto lowered = ir::lower_ast(fixture.ast, fixture.checked);
-    ASSERT_FALSE(lowered);
-    EXPECT_EQ(lowered.error().code, base::ErrorCode::codegen_error);
-    EXPECT_NE(lowered.error().message.find("dyn trait principal-set composition is check-only in M11c"),
-        std::string::npos);
+    const ir::PrincipalSetMetadataLayout& metadata = fixture.ir.principal_set_metadata_layouts.front();
+    EXPECT_EQ(metadata.witnesses.size(), 2U);
+    EXPECT_EQ(fixture.ir.types.display_name(metadata.concrete_type), "dyn_trait_composition_ir_runtime.File");
+    EXPECT_NE(metadata.principal_set_identity.byte_count, 0U);
+    for (base::usize index = 0; index < metadata.witnesses.size(); ++index) {
+        EXPECT_EQ(metadata.witnesses[index].principal_index, index);
+        EXPECT_TRUE(query::is_valid(metadata.witnesses[index].vtable_layout));
+    }
+
+    const Value* pack = find_value_of_kind(fixture.ir, ValueKind::trait_object_composition_pack);
+    ASSERT_NE(pack, nullptr);
+    EXPECT_EQ(pack->principal_set_identity, metadata.principal_set_identity);
+
+    base::usize projected_principal_count = 0;
+    for (const Value& value : fixture.ir.values) {
+        if (value.kind != ValueKind::trait_object_composition_project) {
+            continue;
+        }
+        ++projected_principal_count;
+        EXPECT_EQ(value.principal_set_identity, metadata.principal_set_identity);
+        EXPECT_LT(value.principal_index, metadata.witnesses.size());
+        EXPECT_TRUE(query::is_valid(value.principal_object));
+    }
+    EXPECT_EQ(projected_principal_count, 2U);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+    const std::string dump = ir::dump_module(fixture.ir);
+    expect_contains_all(dump,
+        {
+            "principal_set_metadata @__aurex_principal_set_metadata_",
+            "dyn_trait_composition_ir_runtime.File as dyn (",
+            "witness 0",
+            "witness 1",
+            "dyn.composition.pack",
+            "dyn.composition.project",
+        });
+}
+
+TEST(CoreUnit, LowerAstDynTraitCompositionMetadataLayoutsCoverEachConcreteType)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_multi_concrete;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Draw for Socket { fn draw(self: &Socket) -> i32 { return self.value + 10; } }\n"
+        "impl Debug for Socket { fn debug(self: &Socket) -> i32 { return self.value + 100; } }\n"
+        "fn score(combo: &dyn (Debug + Draw)) -> i32 {\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  let debug: &dyn Debug = combo;\n"
+        "  return draw.draw() + debug.debug();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let socket: Socket = Socket { value: 17 };\n"
+        "  return score(&file) + score(&socket);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.ir.principal_set_metadata_layouts.size(), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 2U);
+
+    std::vector<std::string> concrete_types;
+    for (const ir::PrincipalSetMetadataLayout& metadata : fixture.ir.principal_set_metadata_layouts) {
+        concrete_types.push_back(fixture.ir.types.display_name(metadata.concrete_type));
+        ASSERT_EQ(metadata.witnesses.size(), 2U);
+        const sema::TypeInfo& principal_set = fixture.ir.types.get(metadata.object_type);
+        ASSERT_EQ(principal_set.trait_object_principal_types.size(), metadata.witnesses.size());
+        for (base::usize index = 0; index < metadata.witnesses.size(); ++index) {
+            const ir::PrincipalSetMetadataWitness& witness = metadata.witnesses[index];
+            ASSERT_EQ(witness.principal_index, index);
+            ASSERT_LT(witness.principal_index, principal_set.trait_object_principal_types.size());
+            const sema::TypeInfo& principal =
+                fixture.ir.types.get(principal_set.trait_object_principal_types[witness.principal_index]);
+            EXPECT_EQ(witness.principal_object, principal.trait_object_key);
+            EXPECT_TRUE(query::is_valid(witness.vtable_layout));
+        }
+    }
+    std::ranges::sort(concrete_types);
+    ASSERT_EQ(concrete_types.size(), 2U);
+    EXPECT_EQ(concrete_types[0], "dyn_trait_composition_ir_multi_concrete.File");
+    EXPECT_EQ(concrete_types[1], "dyn_trait_composition_ir_multi_concrete.Socket");
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, LlvmBackendDynTraitCompositionProjectionLoadsPrincipalVtable)
+{
+    const std::string_view source =
+        "module llvm_dyn_trait_composition_projection;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let combo: &dyn (Draw + Debug) = &file;\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  return draw.draw();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    auto output = backend::emit_llvm_ir({&fixture.ir, "llvm_dyn_trait_composition_projection_whitebox"});
+    ASSERT_TRUE(output) << output.error().message;
+    expect_contains_all(output.value().text,
+        {
+            "@__aurex_principal_set_metadata_",
+            "internal unnamed_addr constant { [2 x ptr] }",
+            "insertvalue { ptr, ptr }",
+            "extractvalue { ptr, ptr }",
+            "getelementptr inbounds { [2 x ptr] }",
+            "load ptr, ptr",
+            "call i32 %",
+        });
 }
 
 TEST(CoreUnit, IrDynTraitVtableParticipatesInLayoutFingerprint)

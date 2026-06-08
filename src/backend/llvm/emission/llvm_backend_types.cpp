@@ -205,6 +205,19 @@ llvm::StructType* LlvmEmitter::llvm_vtable_type(const TraitObjectVTableLayout& l
         this->context_, {this->llvm_vtable_array_type(layout), this->llvm_vtable_supertrait_array_type(layout)});
 }
 
+llvm::ArrayType* LlvmEmitter::llvm_principal_set_vtable_array_type(const PrincipalSetMetadataLayout& layout)
+{
+    return llvm::ArrayType::get(
+        llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE), layout.witnesses.size());
+}
+
+llvm::StructType* LlvmEmitter::llvm_principal_set_metadata_type(const PrincipalSetMetadataLayout& layout)
+{
+    std::vector<llvm::Type*> fields;
+    fields.push_back(this->llvm_principal_set_vtable_array_type(layout));
+    return llvm::StructType::get(this->context_, fields);
+}
+
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type)
 {
     if (!this->source_.types.is_pointer(pointer_type) && !this->source_.types.is_reference(pointer_type)) {

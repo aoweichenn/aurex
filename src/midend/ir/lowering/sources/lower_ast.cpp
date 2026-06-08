@@ -14,13 +14,18 @@ namespace aurex::ir::detail {
 namespace {
 
 constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
-constexpr std::string_view IR_LOWER_PRINCIPAL_SET_COMPOSITION_UNSUPPORTED =
-    "dyn trait principal-set composition is check-only in M11c; IR/backend runtime lowering is not implemented";
+constexpr base::usize IR_LOWER_PRINCIPAL_SET_MIN_WITNESS_COUNT = 2;
 
 [[nodiscard]] bool trait_object_vtable_slot_less(
     const TraitObjectVTableMethodSlot& lhs, const TraitObjectVTableMethodSlot& rhs) noexcept
 {
     return lhs.slot < rhs.slot;
+}
+
+[[nodiscard]] bool principal_set_metadata_witness_less(
+    const PrincipalSetMetadataWitness& lhs, const PrincipalSetMetadataWitness& rhs) noexcept
+{
+    return lhs.principal_index < rhs.principal_index;
 }
 
 [[nodiscard]] bool stable_fingerprint_less(
@@ -74,6 +79,25 @@ template <typename Layouts>
         return sema::PointerMutability::const_;
     }
     return types.get(receiver_type).pointer_mutability;
+}
+
+[[nodiscard]] base::u32 principal_set_index_for_object(
+    const sema::TypeTable& types,
+    const sema::TypeHandle principal_set_object_type,
+    const sema::TypeHandle object_type)
+{
+    if (!sema::is_valid(principal_set_object_type) || principal_set_object_type.value >= types.size()
+        || !sema::is_valid(object_type) || object_type.value >= types.size()) {
+        return IR_INVALID_PRINCIPAL_INDEX;
+    }
+    const sema::TypeInfo& principal_set = types.get(principal_set_object_type);
+    for (base::usize index = 0; index < principal_set.trait_object_principal_types.size(); ++index) {
+        const sema::TypeHandle principal = principal_set.trait_object_principal_types[index];
+        if (sema::is_valid(principal) && principal.value < types.size() && types.same(principal, object_type)) {
+            return base::checked_u32(index, "ir principal-set metadata principal index");
+        }
+    }
+    return IR_INVALID_PRINCIPAL_INDEX;
 }
 
 [[nodiscard]] Linkage item_linkage(const syntax::ItemNode& item) noexcept
@@ -178,16 +202,6 @@ template <typename Layouts>
     return true;
 }
 
-[[nodiscard]] bool contains_principal_set_trait_object_type(const sema::TypeTable& types) noexcept
-{
-    for (base::u32 index = 0; index < types.size(); ++index) {
-        if (types.is_principal_set_trait_object(sema::TypeHandle{index})) {
-            return true;
-        }
-    }
-    return false;
-}
-
 } // namespace
 
 Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked)
@@ -221,6 +235,7 @@ Module Lowerer::lower()
     this->declare_global_constants();
     this->lower_function_declarations();
     this->lower_trait_object_vtable_layouts();
+    this->lower_principal_set_metadata_layouts();
     this->lower_global_constant_initializers();
     for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
         if (this->ast_.items.kind(index) != syntax::ItemKind::fn_decl) {
@@ -585,6 +600,75 @@ void Lowerer::lower_trait_object_vtable_layouts()
     }
 }
 
+void Lowerer::lower_principal_set_metadata_layouts()
+{
+    this->module_.principal_set_metadata_layouts.reserve(
+        this->checked_.principal_set_composition_facts.witness_sets.size());
+    for (const query::CompositionWitnessSetFact& witness_set :
+        this->checked_.principal_set_composition_facts.witness_sets) {
+        if (witness_set.witnesses.size() < IR_LOWER_PRINCIPAL_SET_MIN_WITNESS_COUNT
+            || witness_set.principal_set_identity.byte_count == 0) {
+            continue;
+        }
+        const query::CompositionWitnessDescriptor& first_witness = witness_set.witnesses.front();
+        const TraitObjectVTableLayout* const first_layout =
+            this->trait_object_vtable_layout(first_witness.vtable_layout);
+        if (first_layout == nullptr) {
+            continue;
+        }
+
+        PrincipalSetMetadataLayout layout = this->module_.make_principal_set_metadata_layout();
+        layout.principal_set_identity = witness_set.principal_set_identity;
+        layout.metadata_policy = witness_set.metadata_policy;
+        layout.concrete_type = first_layout->concrete_type;
+        layout.object_type = sema::INVALID_TYPE_HANDLE;
+        for (base::u32 type_index = 0; type_index < this->module_.types.size(); ++type_index) {
+            const sema::TypeHandle candidate{type_index};
+            if (this->module_.types.is_principal_set_trait_object(candidate)
+                && this->module_.types.get(candidate).trait_object_principal_set_identity
+                    == witness_set.principal_set_identity) {
+                layout.object_type = candidate;
+                break;
+            }
+        }
+        if (!sema::is_valid(layout.object_type)) {
+            continue;
+        }
+
+        layout.symbol = this->module_.intern("__aurex_principal_set_metadata_"
+            + std::to_string(witness_set.principal_set_identity.primary)
+            + "_" + std::to_string(witness_set.principal_set_identity.secondary)
+            + "_" + std::to_string(this->module_.principal_set_metadata_layouts.size()));
+        layout.witnesses.reserve(witness_set.witnesses.size());
+        bool complete = true;
+        for (base::usize witness_index = 0; witness_index < witness_set.witnesses.size(); ++witness_index) {
+            const query::CompositionWitnessDescriptor& witness = witness_set.witnesses[witness_index];
+            const TraitObjectVTableLayout* const vtable_layout = this->trait_object_vtable_layout(witness.vtable_layout);
+            if (vtable_layout == nullptr
+                || !this->module_.types.same(vtable_layout->concrete_type, layout.concrete_type)) {
+                complete = false;
+                break;
+            }
+            const base::u32 principal_index =
+                principal_set_index_for_object(this->module_.types, layout.object_type, vtable_layout->object_type);
+            if (principal_index == IR_INVALID_PRINCIPAL_INDEX) {
+                complete = false;
+                break;
+            }
+            layout.witnesses.push_back(PrincipalSetMetadataWitness{
+                principal_index,
+                witness.principal_object,
+                witness.vtable_layout,
+                vtable_layout->object_type,
+            });
+        }
+        if (complete) {
+            std::ranges::sort(layout.witnesses, principal_set_metadata_witness_less);
+            this->module_.principal_set_metadata_layouts.push_back(std::move(layout));
+        }
+    }
+}
+
 void Lowerer::lower_global_constant_initializers()
 {
     const bool previous_constant_initializer = this->lowering_constant_initializer_;
@@ -672,10 +756,6 @@ base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::Checked
     if (!detail::trait_default_method_instance_body_views_are_valid(ast, checked)) {
         return base::Result<Module>::fail({base::ErrorCode::internal_error,
             "trait default method instance body missing retained sema view for IR lowering"});
-    }
-    if (detail::contains_principal_set_trait_object_type(checked.types)) {
-        return base::Result<Module>::fail(
-            {base::ErrorCode::codegen_error, std::string(detail::IR_LOWER_PRINCIPAL_SET_COMPOSITION_UNSUPPORTED)});
     }
     detail::Lowerer lowerer(ast, checked);
     return base::Result<Module>::ok(lowerer.lower());

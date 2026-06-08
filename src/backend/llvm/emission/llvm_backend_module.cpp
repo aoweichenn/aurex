@@ -46,6 +46,23 @@ std::string LlvmEmitter::suffixed_name(const IrTextId id, const std::string_view
     return result;
 }
 
+PrincipalSetMetadataLayoutKey LlvmEmitter::principal_set_metadata_layout_key(
+    const query::StableFingerprint128 identity, const sema::TypeHandle concrete_type) const noexcept
+{
+    return PrincipalSetMetadataLayoutKey{identity, concrete_type};
+}
+
+const PrincipalSetMetadataLayout* LlvmEmitter::principal_set_metadata_layout(
+    const query::StableFingerprint128 identity, const base::u32 minimum_witness_count) const noexcept
+{
+    for (const PrincipalSetMetadataLayout& layout : this->source_.principal_set_metadata_layouts) {
+        if (layout.principal_set_identity == identity && layout.witnesses.size() >= minimum_witness_count) {
+            return &layout;
+        }
+    }
+    return nullptr;
+}
+
 base::Result<LlvmIrOutput> LlvmEmitter::run()
 {
     if (const auto verified = verify_module(source_); !verified) {
@@ -59,6 +76,7 @@ base::Result<LlvmIrOutput> LlvmEmitter::run()
     declare_constants();
     declare_functions();
     declare_trait_object_vtables();
+    declare_principal_set_metadata();
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
         if (function.linkage != Linkage::extern_c) {
@@ -169,6 +187,42 @@ void LlvmEmitter::declare_trait_object_vtables()
             {llvm::ConstantArray::get(method_array_type, entries),
                 llvm::ConstantArray::get(supertrait_array_type, supertrait_entries)});
         this->trait_object_vtables_.at(layout.layout_key.global_id)->setInitializer(initializer);
+    }
+}
+
+void LlvmEmitter::declare_principal_set_metadata()
+{
+    for (const PrincipalSetMetadataLayout& layout : this->source_.principal_set_metadata_layouts) {
+        llvm::StructType* metadata_type = this->llvm_principal_set_metadata_type(layout);
+        llvm::GlobalVariable* global = new llvm::GlobalVariable(*this->module_, metadata_type, true,
+            llvm::GlobalValue::InternalLinkage, nullptr, this->text(layout.symbol));
+        global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        this->principal_set_metadata_[this->principal_set_metadata_layout_key(
+            layout.principal_set_identity, layout.concrete_type)] = global;
+    }
+
+    for (const PrincipalSetMetadataLayout& layout : this->source_.principal_set_metadata_layouts) {
+        llvm::ArrayType* vtable_array_type = this->llvm_principal_set_vtable_array_type(layout);
+        std::vector<llvm::Constant*> entries(
+            layout.witnesses.size(),
+            llvm::ConstantPointerNull::get(
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE)));
+        for (const ir::PrincipalSetMetadataWitness& witness : layout.witnesses) {
+            if (witness.principal_index >= entries.size()) {
+                continue;
+            }
+            const auto vtable = this->trait_object_vtables_.find(witness.vtable_layout.global_id);
+            if (vtable == this->trait_object_vtables_.end()) {
+                continue;
+            }
+            entries[witness.principal_index] = llvm::ConstantExpr::getBitCast(vtable->second,
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE));
+        }
+        llvm::Constant* initializer = llvm::ConstantStruct::get(this->llvm_principal_set_metadata_type(layout),
+            {llvm::ConstantArray::get(vtable_array_type, entries)});
+        this->principal_set_metadata_
+            .at(this->principal_set_metadata_layout_key(layout.principal_set_identity, layout.concrete_type))
+            ->setInitializer(initializer);
     }
 }
 

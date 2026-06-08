@@ -232,6 +232,7 @@ public:
     void declare_global_constants();
     void lower_function_declarations();
     void lower_trait_object_vtable_layouts();
+    void lower_principal_set_metadata_layouts();
     void lower_global_constant_initializers();
     void index_enum_cases();
 
@@ -419,6 +420,10 @@ public:
         const query::VTableLayoutKey& source_layout,
         const query::VTableLayoutKey& target_layout,
         const query::TraitObjectUpcastCoercionKey& upcast_key) const noexcept;
+    [[nodiscard]] const PrincipalSetMetadataLayout* principal_set_metadata_layout(
+        query::StableFingerprint128 identity, sema::TypeHandle source_type) const noexcept;
+    [[nodiscard]] const PrincipalSetMetadataWitness* principal_set_metadata_witness(
+        const PrincipalSetMetadataLayout& layout, sema::TypeHandle target_object_type) const noexcept;
     [[nodiscard]] sema::TypeHandle vtable_pointer_type() noexcept;
     [[nodiscard]] sema::TypeHandle erased_trait_object_receiver_type(
         const sema::TraitMethodCallBinding& binding) noexcept;

@@ -1122,6 +1122,9 @@ bool SemanticTypeValidator::can_assign(
         if (this->core_.can_borrowed_dyn_trait_coerce(dst, src)) {
             return true;
         }
+        if (this->core_.can_borrowed_dyn_trait_composition_project(dst, src)) {
+            return true;
+        }
         if (this->core_.can_borrowed_dyn_trait_upcast(dst, src)) {
             return true;
         }

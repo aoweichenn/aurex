@@ -44,6 +44,9 @@ using aurex::ir::is_valid;
 using aurex::ir::Linkage;
 using aurex::ir::Module;
 using aurex::ir::PhiInput;
+using aurex::ir::PrincipalSetMetadataLayout;
+using aurex::ir::PrincipalSetMetadataLayoutKey;
+using aurex::ir::PrincipalSetMetadataLayoutKeyHash;
 using aurex::ir::record_field_index;
 using aurex::ir::RecordField;
 using aurex::ir::RecordLayout;
@@ -68,6 +71,7 @@ public:
     void declare_constants();
     void declare_functions();
     void declare_trait_object_vtables();
+    void declare_principal_set_metadata();
     [[nodiscard]] llvm::Function* declare_function(FunctionId function_id, const Function& function);
     void declare_main_wrapper();
     void emit_function(FunctionId function_id, const Function& function);
@@ -92,6 +96,8 @@ public:
     [[nodiscard]] llvm::Value* emit_index_addr(const Value& value);
     [[nodiscard]] llvm::Value* emit_aggregate(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_pack(const Value& value);
+    [[nodiscard]] llvm::Value* emit_trait_object_composition_pack(const Value& value);
+    [[nodiscard]] llvm::Value* emit_trait_object_composition_project(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_upcast(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_data(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_vtable(const Value& value);
@@ -121,8 +127,14 @@ public:
     [[nodiscard]] llvm::ArrayType* llvm_vtable_array_type(const TraitObjectVTableLayout& layout);
     [[nodiscard]] llvm::ArrayType* llvm_vtable_supertrait_array_type(const TraitObjectVTableLayout& layout);
     [[nodiscard]] llvm::StructType* llvm_vtable_type(const TraitObjectVTableLayout& layout);
+    [[nodiscard]] llvm::ArrayType* llvm_principal_set_vtable_array_type(const PrincipalSetMetadataLayout& layout);
+    [[nodiscard]] llvm::StructType* llvm_principal_set_metadata_type(const PrincipalSetMetadataLayout& layout);
     [[nodiscard]] llvm::Type* pointee_llvm_type(sema::TypeHandle pointer_type);
     [[nodiscard]] sema::TypeHandle pointee_type(ValueId value) const noexcept;
+    [[nodiscard]] PrincipalSetMetadataLayoutKey principal_set_metadata_layout_key(
+        query::StableFingerprint128 identity, sema::TypeHandle concrete_type) const noexcept;
+    [[nodiscard]] const PrincipalSetMetadataLayout* principal_set_metadata_layout(
+        query::StableFingerprint128 identity, base::u32 minimum_witness_count) const noexcept;
     [[nodiscard]] bool is_unsigned_integer(sema::TypeHandle type) const noexcept;
     [[nodiscard]] const llvm::DataLayout& data_layout() const;
     [[nodiscard]] llvm::Value* get(ValueId id) const;
@@ -139,6 +151,8 @@ public:
     std::unordered_map<base::u32, llvm::GlobalVariable*> constants_;
     std::unordered_map<base::u32, llvm::Function*> functions_;
     std::unordered_map<base::u64, llvm::GlobalVariable*> trait_object_vtables_;
+    std::unordered_map<PrincipalSetMetadataLayoutKey, llvm::GlobalVariable*, PrincipalSetMetadataLayoutKeyHash>
+        principal_set_metadata_;
     std::unordered_map<IrTextId, llvm::Function*, sema::IdentIdHash> extern_functions_;
     std::unordered_map<base::u32, llvm::BasicBlock*> blocks_;
     std::unordered_map<base::u32, llvm::Value*> values_;

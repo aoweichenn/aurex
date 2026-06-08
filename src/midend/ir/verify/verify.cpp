@@ -1,6 +1,7 @@
 #include <aurex/midend/ir/ir_messages.hpp>
 #include <aurex/midend/ir/verify.hpp>
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -52,6 +53,7 @@ struct StorageTypeWorkItem {
 
 constexpr base::usize IR_VERIFIER_ENTRY_ARGC_ARGV_PARAM_COUNT = 2;
 constexpr base::usize IR_VERIFIER_STR_FROM_BYTES_UNCHECKED_ARGUMENT_COUNT = 2;
+constexpr base::usize IR_PRINCIPAL_SET_METADATA_MIN_WITNESS_COUNT = 2;
 
 class Verifier final {
 public:
@@ -66,6 +68,7 @@ public:
             this->verify_constant(GlobalConstantId{i}, constant_stack);
         }
         this->verify_trait_object_vtables();
+        this->verify_principal_set_metadata_layouts();
         for (base::usize i = 0; i < this->module_.functions.size(); ++i) {
             this->verify_function(FunctionId{static_cast<base::u32>(i)}, this->module_.functions[i]);
         }
@@ -443,6 +446,12 @@ private:
                 break;
             case ValueKind::trait_object_pack:
                 this->verify_trait_object_pack(*value);
+                break;
+            case ValueKind::trait_object_composition_pack:
+                this->verify_trait_object_composition_pack(*value);
+                break;
+            case ValueKind::trait_object_composition_project:
+                this->verify_trait_object_composition_project(*value);
                 break;
             case ValueKind::trait_object_upcast:
                 this->verify_trait_object_upcast(*value);
@@ -1098,7 +1107,7 @@ private:
             }
             this->verify_type(layout.concrete_type, "vtable concrete type");
             this->verify_type(layout.object_type, "vtable object type");
-            if (!this->is_trait_object_type(layout.object_type)) {
+            if (!this->is_single_trait_object_type(layout.object_type)) {
                 this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
             }
             if (layout.supertrait_edges.size() > 0
@@ -1136,6 +1145,72 @@ private:
         }
     }
 
+    void verify_principal_set_metadata_layouts()
+    {
+        std::unordered_set<PrincipalSetMetadataLayoutKey, PrincipalSetMetadataLayoutKeyHash> seen_layouts;
+        seen_layouts.reserve(this->module_.principal_set_metadata_layouts.size());
+        for (const PrincipalSetMetadataLayout& layout : this->module_.principal_set_metadata_layouts) {
+            const PrincipalSetMetadataLayoutKey layout_key{layout.principal_set_identity, layout.concrete_type};
+            if (layout.principal_set_identity.byte_count == 0
+                || !seen_layouts.insert(layout_key).second
+                || !query::is_valid(layout.metadata_policy)) {
+                this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
+            }
+            this->verify_type(layout.concrete_type, "principal-set metadata concrete type");
+            this->verify_type(layout.object_type, "principal-set metadata object type");
+            if (!this->is_principal_set_trait_object_type(layout.object_type)
+                || this->module_.types.get(layout.object_type).trait_object_principal_set_identity
+                    != layout.principal_set_identity) {
+                this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT_TYPE));
+            }
+            if (layout.witnesses.size() < IR_PRINCIPAL_SET_METADATA_MIN_WITNESS_COUNT) {
+                this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
+                continue;
+            }
+            std::unordered_set<base::u32> seen_indices;
+            seen_indices.reserve(layout.witnesses.size());
+            std::unordered_set<base::u64> seen_witnesses;
+            seen_witnesses.reserve(layout.witnesses.size());
+            for (const PrincipalSetMetadataWitness& witness : layout.witnesses) {
+                this->verify_principal_set_metadata_witness(layout, witness, seen_indices, seen_witnesses);
+            }
+        }
+    }
+
+    void verify_principal_set_metadata_witness(const PrincipalSetMetadataLayout& layout,
+        const PrincipalSetMetadataWitness& witness, std::unordered_set<base::u32>& seen_indices,
+        std::unordered_set<base::u64>& seen_witnesses)
+    {
+        if (witness.principal_index >= layout.witnesses.size()
+            || !seen_indices.insert(witness.principal_index).second
+            || !query::is_valid(witness.principal_object)
+            || !query::is_valid(witness.vtable_layout)
+            || !seen_witnesses.insert(witness.vtable_layout.global_id).second) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS));
+            return;
+        }
+        const TraitObjectVTableLayout* const vtable_layout = this->find_vtable_layout(witness.vtable_layout);
+        if (vtable_layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        this->verify_type(witness.object_type, "principal-set metadata witness object");
+        if (!this->is_single_trait_object_type(witness.object_type)
+            || !this->module_.types.same(witness.object_type, vtable_layout->object_type)
+            || !this->module_.types.same(layout.concrete_type, vtable_layout->concrete_type)) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS));
+        }
+        const sema::TypeInfo& witness_object = this->module_.types.get(witness.object_type);
+        if (witness_object.trait_object_key != witness.principal_object
+            || !this->principal_set_contains_object(layout.object_type, witness.object_type)) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS));
+        }
+        if (!this->principal_set_projection_index_matches(
+                layout.object_type, witness.object_type, witness.principal_index)) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS));
+        }
+    }
+
     void verify_vtable_supertrait_edge(const TraitObjectVTableLayout& layout,
         const TraitObjectVTableSupertraitEdge& edge, std::unordered_set<base::u32>& seen_edges)
     {
@@ -1160,8 +1235,8 @@ private:
             || !this->module_.types.same(edge.target_object_type, target_layout->object_type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
         }
-        if (!this->is_trait_object_reference(edge.source_reference_type)
-            || !this->is_trait_object_reference(edge.target_reference_type)
+        if (!this->is_single_trait_object_reference(edge.source_reference_type)
+            || !this->is_single_trait_object_reference(edge.target_reference_type)
             || !this->module_.types.same(this->module_.types.get(edge.source_reference_type).pointee,
                 edge.source_object_type)
             || !this->module_.types.same(this->module_.types.get(edge.target_reference_type).pointee,
@@ -1179,7 +1254,7 @@ private:
     void verify_trait_object_pack(const Value& value)
     {
         this->verify_type(value.type, "dyn pack result");
-        if (!this->is_trait_object_reference(value.type)) {
+        if (!this->is_single_trait_object_reference(value.type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_PACK_RESULT));
             return;
         }
@@ -1198,16 +1273,79 @@ private:
         }
     }
 
+    void verify_trait_object_composition_pack(const Value& value)
+    {
+        this->verify_type(value.type, "dyn composition pack result");
+        if (!this->is_principal_set_trait_object_reference(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PACK_RESULT));
+            return;
+        }
+        this->verify_pointer_like_value(value.lhs, "dyn composition pack data");
+        const sema::TypeHandle object_type = this->module_.types.get(value.type).pointee;
+        const sema::TypeHandle source = this->pointee_type(value.lhs);
+        const PrincipalSetMetadataLayout* const layout =
+            this->find_principal_set_metadata_layout(value.principal_set_identity, source);
+        if (layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
+            return;
+        }
+        if (!this->module_.types.same(object_type, layout->object_type)
+            || value.principal_set_identity != layout->principal_set_identity) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT_TYPE));
+        }
+        if (!sema::is_valid(source) || !this->module_.types.same(source, layout->concrete_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PACK_DATA));
+        }
+    }
+
+    void verify_trait_object_composition_project(const Value& value)
+    {
+        this->verify_type(value.type, "dyn composition project result");
+        if (!this->is_single_trait_object_reference(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_RESULT));
+            return;
+        }
+        this->verify_value_id(value.object, "dyn composition project object");
+        const Value* object = this->get(value.object);
+        if (object == nullptr || !this->is_principal_set_trait_object_reference(object->type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_OBJECT));
+            return;
+        }
+        const sema::TypeHandle source_object_type = this->module_.types.get(object->type).pointee;
+        if (value.principal_set_identity
+            != this->module_.types.get(source_object_type).trait_object_principal_set_identity) {
+            this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
+            return;
+        }
+        const sema::TypeHandle target_object_type = this->module_.types.get(value.type).pointee;
+        if (!this->principal_set_projection_index_matches(source_object_type, target_object_type,
+                value.principal_index)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL));
+            return;
+        }
+        if (query::is_valid(value.principal_object)
+            && this->module_.types.get(target_object_type).trait_object_key != value.principal_object) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL));
+        }
+        if (query::is_valid(value.target_vtable_layout)) {
+            const TraitObjectVTableLayout* const target_layout = this->find_vtable_layout(value.target_vtable_layout);
+            if (target_layout == nullptr
+                || !this->module_.types.same(target_object_type, target_layout->object_type)) {
+                this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL));
+            }
+        }
+    }
+
     void verify_trait_object_upcast(const Value& value)
     {
         this->verify_type(value.type, "dyn upcast result");
-        if (!this->is_trait_object_reference(value.type)) {
+        if (!this->is_single_trait_object_reference(value.type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_RESULT));
             return;
         }
         this->verify_value_id(value.object, "dyn upcast object");
         const Value* object = this->get(value.object);
-        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+        if (object == nullptr || !this->is_single_trait_object_reference(object->type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_OBJECT));
             return;
         }
@@ -1244,7 +1382,7 @@ private:
         }
         this->verify_value_id(value.object, "dyn data object");
         const Value* object = this->get(value.object);
-        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+        if (object == nullptr || !this->is_single_trait_object_reference(object->type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT));
             return;
         }
@@ -1269,7 +1407,7 @@ private:
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_VTABLE_RESULT));
         }
         const Value* object = this->get(value.object);
-        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+        if (object == nullptr || !this->is_single_trait_object_reference(object->type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_DATA_OBJECT));
             return;
         }
@@ -1551,18 +1689,80 @@ private:
         return nullptr;
     }
 
+    [[nodiscard]] const PrincipalSetMetadataLayout* find_principal_set_metadata_layout(
+        const query::StableFingerprint128 identity, const sema::TypeHandle concrete_type) const noexcept
+    {
+        for (const PrincipalSetMetadataLayout& layout : this->module_.principal_set_metadata_layouts) {
+            if (layout.principal_set_identity == identity
+                && this->module_.types.same(layout.concrete_type, concrete_type)) {
+                return &layout;
+            }
+        }
+        return nullptr;
+    }
+
     [[nodiscard]] bool is_trait_object_type(const sema::TypeHandle type) const noexcept
     {
         return sema::is_valid(type) && type.value < this->module_.types.size()
             && this->module_.types.get(type).kind == sema::TypeKind::trait_object;
     }
 
-    [[nodiscard]] bool is_trait_object_reference(const sema::TypeHandle type) const noexcept
+    [[nodiscard]] bool is_single_trait_object_type(const sema::TypeHandle type) const noexcept
+    {
+        return this->is_trait_object_type(type)
+            && this->module_.types.get(type).trait_object_principal_types.empty();
+    }
+
+    [[nodiscard]] bool is_principal_set_trait_object_type(const sema::TypeHandle type) const noexcept
+    {
+        return this->is_trait_object_type(type)
+            && !this->module_.types.get(type).trait_object_principal_types.empty()
+            && this->module_.types.get(type).trait_object_principal_set_identity.byte_count != 0;
+    }
+
+    [[nodiscard]] bool is_single_trait_object_reference(const sema::TypeHandle type) const noexcept
     {
         if (!this->module_.types.is_reference(type)) {
             return false;
         }
-        return this->is_trait_object_type(this->module_.types.get(type).pointee);
+        return this->is_single_trait_object_type(this->module_.types.get(type).pointee);
+    }
+
+    [[nodiscard]] bool is_principal_set_trait_object_reference(const sema::TypeHandle type) const noexcept
+    {
+        if (!this->module_.types.is_reference(type)) {
+            return false;
+        }
+        return this->is_principal_set_trait_object_type(this->module_.types.get(type).pointee);
+    }
+
+    [[nodiscard]] bool principal_set_contains_object(
+        const sema::TypeHandle principal_set_object_type, const sema::TypeHandle object_type) const noexcept
+    {
+        if (!this->is_principal_set_trait_object_type(principal_set_object_type)
+            || !this->is_single_trait_object_type(object_type)) {
+            return false;
+        }
+        const sema::TypeInfo& principal_set = this->module_.types.get(principal_set_object_type);
+        return std::ranges::any_of(principal_set.trait_object_principal_types, [&](const sema::TypeHandle principal) {
+            return sema::is_valid(principal) && principal.value < this->module_.types.size()
+                && this->module_.types.same(principal, object_type);
+        });
+    }
+
+    [[nodiscard]] bool principal_set_projection_index_matches(const sema::TypeHandle principal_set_object_type,
+        const sema::TypeHandle target_object_type, const base::u32 principal_index) const noexcept
+    {
+        if (!this->is_principal_set_trait_object_type(principal_set_object_type)
+            || !this->is_single_trait_object_type(target_object_type)) {
+            return false;
+        }
+        const sema::TypeInfo& principal_set = this->module_.types.get(principal_set_object_type);
+        if (principal_index >= principal_set.trait_object_principal_types.size()) {
+            return false;
+        }
+        return this->module_.types.same(
+            principal_set.trait_object_principal_types[principal_index], target_object_type);
     }
 
     [[nodiscard]] bool is_const_u8_pointer(const sema::TypeHandle type) const noexcept

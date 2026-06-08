@@ -280,6 +280,17 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             out << "dyn.pack " << value_ref(value.lhs)
                 << ", vtable=" << value.vtable_layout.global_id;
             break;
+        case ValueKind::trait_object_composition_pack:
+            out << "dyn.composition.pack " << value_ref(value.lhs)
+                << ", identity=" << value.principal_set_identity.primary
+                << ":" << value.principal_set_identity.secondary;
+            break;
+        case ValueKind::trait_object_composition_project:
+            out << "dyn.composition.project " << value_ref(value.object)
+                << ", principal_index=" << value.principal_index
+                << ", principal=" << value.principal_object.global_id
+                << ", target_layout=" << value.target_vtable_layout.global_id;
+            break;
         case ValueKind::trait_object_upcast:
             out << "dyn.upcast " << value_ref(value.object)
                 << ", source_layout=" << value.vtable_layout.global_id
@@ -375,6 +386,23 @@ std::string dump_module(const Module& module)
                 << " " << module.types.display_name(edge.source_object_type)
                 << " -> " << module.types.display_name(edge.target_object_type)
                 << " borrow=" << query::dyn_borrow_kind_name(query::dyn_borrow_kind_from_key(edge.borrow_kind))
+                << "\n";
+        }
+        out << "}\n";
+    }
+    for (const PrincipalSetMetadataLayout& layout : module.principal_set_metadata_layouts) {
+        out << "principal_set_metadata @" << module.text(layout.symbol)
+            << " " << module.types.display_name(layout.concrete_type)
+            << " as " << module.types.display_name(layout.object_type)
+            << " identity=" << layout.principal_set_identity.primary
+            << ":" << layout.principal_set_identity.secondary
+            << " policy=" << query::principal_set_metadata_policy_name(layout.metadata_policy)
+            << " {\n";
+        for (const PrincipalSetMetadataWitness& witness : layout.witnesses) {
+            out << "  witness " << witness.principal_index
+                << " principal=" << witness.principal_object.global_id
+                << " object=" << module.types.display_name(witness.object_type)
+                << " vtable=" << witness.vtable_layout.global_id
                 << "\n";
         }
         out << "}\n";

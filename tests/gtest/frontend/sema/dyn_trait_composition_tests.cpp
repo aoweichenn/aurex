@@ -156,6 +156,87 @@ TEST(CoreUnit, DynTraitCompositionMutableBorrowAndCanonicalOrderAreStable)
     }
 }
 
+TEST(CoreUnit, DynTraitCompositionProjectsToExplicitPrincipalView)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_projection_whitebox;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 7 };\n"
+        "  let combo: &dyn (Debug + Draw) = &file;\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  let debug: &dyn Debug = combo;\n"
+        "  return draw.draw() + debug.debug();\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.principal_set_composition_facts.identity_facts.size(), 1U);
+    ASSERT_EQ(checked.principal_set_composition_facts.witness_sets.size(), 1U);
+    ASSERT_EQ(checked.principal_set_composition_facts.projections.size(), 4U);
+    EXPECT_EQ(checked.principal_set_composition_facts.summary.projection_count, 4U);
+    EXPECT_EQ(checked.principal_set_composition_facts.summary.shared_borrow_projection_count, 4U);
+    EXPECT_TRUE(query::is_valid(checked.principal_set_composition_facts));
+
+    const query::PrincipalSetIdentityFact& identity =
+        checked.principal_set_composition_facts.identity_facts.front();
+    ASSERT_EQ(identity.principals.size(), 2U);
+    const std::string canonical_composition_display =
+        "dyn (" + identity.principals[0].principal_name + " + " + identity.principals[1].principal_name + ")";
+
+    base::usize composition_to_principal_count = 0;
+    std::vector<std::string> projected_targets;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind != query::PrincipalSetProjectionKind::composition_to_principal) {
+            continue;
+        }
+        ++composition_to_principal_count;
+        projected_targets.push_back(projection.target_view_name);
+        EXPECT_EQ(projection.borrow_kind, query::DynBorrowKind::shared);
+        EXPECT_EQ(projection.source_view_name, canonical_composition_display);
+    }
+    std::ranges::sort(projected_targets);
+    ASSERT_EQ(composition_to_principal_count, 2U);
+    ASSERT_EQ(projected_targets.size(), 2U);
+    EXPECT_EQ(projected_targets[0], "dyn Debug");
+    EXPECT_EQ(projected_targets[1], "dyn Draw");
+}
+
+TEST(CoreUnit, DynTraitCompositionMutableProjectionKeepsBorrowKind)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_mut_projection_whitebox;\n"
+        "trait Draw { fn draw(self: &mut Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &mut Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &mut File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &mut File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  var file: File = File { value: 7 };\n"
+        "  let combo: &mut dyn (Debug + Draw) = &mut file;\n"
+        "  let draw: &mut dyn Draw = combo;\n"
+        "  return 0;\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.principal_set_composition_facts.projections.size(), 3U);
+    base::usize mutable_projection_count = 0;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind == query::PrincipalSetProjectionKind::composition_to_principal) {
+            ++mutable_projection_count;
+            EXPECT_EQ(projection.borrow_kind, query::DynBorrowKind::mut);
+            EXPECT_EQ(projection.target_view_name, "dyn Draw");
+        }
+    }
+    EXPECT_EQ(mutable_projection_count, 1U);
+    EXPECT_EQ(checked.principal_set_composition_facts.summary.mut_borrow_projection_count, 3U);
+}
+
 TEST(CoreUnit, DynTraitCompositionRejectsInvalidPrincipalSets)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases{

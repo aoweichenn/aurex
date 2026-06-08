@@ -910,8 +910,11 @@ public:
         const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle target_type) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const;
     [[nodiscard]] bool can_borrowed_dyn_trait_coerce(TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] bool can_borrowed_dyn_trait_composition_project(TypeHandle dst, TypeHandle src) const noexcept;
     [[nodiscard]] bool can_borrowed_dyn_trait_upcast(TypeHandle dst, TypeHandle src) const;
     void record_borrowed_dyn_trait_coercion_if_needed(
+        syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
+    void record_borrowed_dyn_trait_composition_projection_if_needed(
         syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
     void bind_dyn_trait_upcast_vtable_layouts_for_coercion(const TraitObjectCoercionFact& source_coercion);
     void record_borrowed_dyn_trait_upcast_if_needed(

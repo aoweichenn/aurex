@@ -1668,6 +1668,34 @@ const TraitObjectVTableSupertraitEdge* Lowerer::trait_object_vtable_supertrait_e
     return nullptr;
 }
 
+const PrincipalSetMetadataLayout* Lowerer::principal_set_metadata_layout(
+    const query::StableFingerprint128 identity, const sema::TypeHandle source_type) const noexcept
+{
+    if (identity.byte_count == 0 || !sema::is_valid(source_type)) {
+        return nullptr;
+    }
+    for (const PrincipalSetMetadataLayout& layout : this->module_.principal_set_metadata_layouts) {
+        if (layout.principal_set_identity == identity && this->module_.types.same(layout.concrete_type, source_type)) {
+            return &layout;
+        }
+    }
+    return nullptr;
+}
+
+const PrincipalSetMetadataWitness* Lowerer::principal_set_metadata_witness(
+    const PrincipalSetMetadataLayout& layout, const sema::TypeHandle target_object_type) const noexcept
+{
+    if (!sema::is_valid(target_object_type)) {
+        return nullptr;
+    }
+    for (const PrincipalSetMetadataWitness& witness : layout.witnesses) {
+        if (this->module_.types.same(witness.object_type, target_object_type)) {
+            return &witness;
+        }
+    }
+    return nullptr;
+}
+
 sema::TypeHandle Lowerer::vtable_pointer_type() noexcept
 {
     return this->module_.types.pointer(
@@ -1714,6 +1742,72 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     if (!sema::is_valid(target_type) || !sema::is_valid(source_type)
         || this->module_.types.same(source_type, target_type)) {
         return value_id;
+    }
+    if (this->module_.types.is_reference(source_type) && this->module_.types.is_reference(target_type)) {
+        const sema::TypeInfo& source_ref = this->module_.types.get(source_type);
+        const sema::TypeInfo& target_ref = this->module_.types.get(target_type);
+        if (sema::is_valid(source_ref.pointee) && sema::is_valid(target_ref.pointee)
+            && this->module_.types.is_principal_set_trait_object(source_ref.pointee)
+            && this->module_.types.is_trait_object(target_ref.pointee)
+            && !this->module_.types.is_principal_set_trait_object(target_ref.pointee)) {
+            const sema::TypeInfo& source_object = this->module_.types.get(source_ref.pointee);
+            const sema::TypeInfo& target_object = this->module_.types.get(target_ref.pointee);
+            for (base::usize principal_index = 0; principal_index < source_object.trait_object_principal_types.size();
+                 ++principal_index) {
+                if (!this->module_.types.same(
+                        source_object.trait_object_principal_types[principal_index], target_ref.pointee)) {
+                    continue;
+                }
+                Value value = this->module_.make_value();
+                value.kind = ValueKind::trait_object_composition_project;
+                value.type = target_type;
+                value.object = value_id;
+                value.principal_set_identity = source_object.trait_object_principal_set_identity;
+                value.principal_object = target_object.trait_object_key;
+                value.principal_index = base::checked_u32(principal_index, "ir principal-set projection index");
+
+                const Value& source_value = this->module_.values[value_id.value];
+                if (source_value.kind == ValueKind::trait_object_composition_pack
+                    && is_valid(source_value.lhs) && source_value.lhs.value < this->module_.values.size()) {
+                    const sema::TypeHandle lhs_type = this->module_.values[source_value.lhs.value].type;
+                    if (this->module_.types.is_pointer(lhs_type) || this->module_.types.is_reference(lhs_type)) {
+                        const sema::TypeHandle concrete_type = this->module_.types.get(lhs_type).pointee;
+                        const PrincipalSetMetadataLayout* const layout =
+                            this->principal_set_metadata_layout(
+                                source_object.trait_object_principal_set_identity, concrete_type);
+                        if (layout != nullptr) {
+                            if (const PrincipalSetMetadataWitness* const witness =
+                                    this->principal_set_metadata_witness(*layout, target_ref.pointee);
+                                witness != nullptr) {
+                                value.target_vtable_layout = witness->vtable_layout;
+                            }
+                        }
+                    }
+                }
+                return this->append_value(value);
+            }
+        }
+    }
+    if ((this->module_.types.is_pointer(source_type) || this->module_.types.is_reference(source_type))
+        && this->module_.types.is_reference(target_type)) {
+        const sema::TypeInfo& source_ref = this->module_.types.get(source_type);
+        const sema::TypeInfo& target_ref = this->module_.types.get(target_type);
+        if (sema::is_valid(source_ref.pointee) && sema::is_valid(target_ref.pointee)
+            && !this->module_.types.is_trait_object(source_ref.pointee)
+            && this->module_.types.is_principal_set_trait_object(target_ref.pointee)) {
+            const sema::TypeInfo& target_object = this->module_.types.get(target_ref.pointee);
+            const PrincipalSetMetadataLayout* const layout =
+                this->principal_set_metadata_layout(target_object.trait_object_principal_set_identity,
+                    source_ref.pointee);
+            if (layout != nullptr) {
+                Value value = this->module_.make_value();
+                value.kind = ValueKind::trait_object_composition_pack;
+                value.type = target_type;
+                value.lhs = value_id;
+                value.principal_set_identity = target_object.trait_object_principal_set_identity;
+                return this->append_value(value);
+            }
+        }
     }
     if (const sema::TraitObjectUpcastCoercionFact* const upcast =
             this->trait_object_upcast_coercion(source_type, target_type);

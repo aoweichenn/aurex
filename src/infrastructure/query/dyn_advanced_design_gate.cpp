@@ -1,6 +1,7 @@
 #include <aurex/infrastructure/query/dyn_advanced_design_gate.hpp>
 
 #include <algorithm>
+#include <array>
 #include <sstream>
 #include <utility>
 
@@ -10,9 +11,12 @@ namespace {
 constexpr std::string_view QUERY_DYN_ADVANCED_GATE_FINGERPRINT_MARKER =
     "query.dyn_advanced_design_gate.v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_M9C_GATE_NAME = "M9c Advanced Dyn Design Gate";
+constexpr std::string_view QUERY_DYN_ADVANCED_M11A_GATE_NAME = "M11a Advanced Dyn Design Baseline";
 constexpr std::string_view QUERY_DYN_ADVANCED_BORROWED_ABI_POLICY = "borrowed_view_v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_BORROWED_METADATA_POLICY = "borrowed_methods_only_v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_SUPERTRAIT_METADATA_POLICY = "supertrait_vptr_metadata_v1";
+constexpr std::string_view QUERY_DYN_ADVANCED_PRINCIPAL_SET_METADATA_POLICY =
+    "principal_set_metadata_v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_OWNING_ABI_POLICY = "owning_dyn_container_v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_OWNING_METADATA_POLICY = "owning_dyn_metadata_v1";
 constexpr std::string_view QUERY_DYN_ADVANCED_DROP_METADATA_POLICY = "dynamic_drop_metadata_v1";
@@ -25,6 +29,13 @@ constexpr std::string_view QUERY_DYN_ADVANCED_M9C_NO_RUNTIME_NON_GOAL =
     "runtime_dispatch_not_in_m9c";
 constexpr std::string_view QUERY_DYN_ADVANCED_M9C_NO_OWNING_NON_GOAL =
     "owning_dyn_runtime_not_in_m9c";
+constexpr std::string_view QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL =
+    "standard_library_runtime_not_in_m11a";
+constexpr std::string_view QUERY_DYN_ADVANCED_M11A_NO_RUNTIME_NON_GOAL =
+    "runtime_dispatch_not_in_m11a";
+constexpr std::string_view QUERY_DYN_ADVANCED_M11A_NO_OWNING_NON_GOAL =
+    "owning_dyn_runtime_not_in_m11a";
+constexpr base::usize QUERY_DYN_ADVANCED_REQUIRED_CAPABILITY_COUNT = 5;
 constexpr base::u8 QUERY_DYN_ADVANCED_INVALID_CAPABILITY_VALUE = 255U;
 constexpr base::u8 QUERY_DYN_ADVANCED_INVALID_STAGE_VALUE = 255U;
 constexpr base::u8 QUERY_DYN_ADVANCED_INVALID_DECISION_VALUE = 255U;
@@ -122,6 +133,82 @@ constexpr base::u8 QUERY_DYN_ADVANCED_INVALID_DECISION_VALUE = 255U;
                 && candidate.impact.tooling_cache_impact && !candidate.impact.standard_library_required
                 && !candidate.impact.runtime_required
                 && candidate.decision == DynAdvancedPolicyDecision::requires_new_metadata_policy;
+    }
+    return false;
+}
+
+[[nodiscard]] bool candidate_shape_is_valid(const DynAdvancedDesignCandidate& candidate) noexcept
+{
+    return is_valid(candidate.capability) && is_valid(candidate.stage) && is_valid(candidate.decision)
+        && has_policy_when_required(candidate.impact.abi_policy_required, candidate.required_abi_policy)
+        && has_policy_when_required(candidate.impact.metadata_policy_required,
+            candidate.required_metadata_policy)
+        && std::string_view(candidate.required_abi_policy) != QUERY_DYN_ADVANCED_BORROWED_ABI_POLICY
+        && std::string_view(candidate.required_metadata_policy) != QUERY_DYN_ADVANCED_BORROWED_METADATA_POLICY
+        && has_required_detail_vectors(candidate) && decision_matches_impact(candidate);
+}
+
+[[nodiscard]] bool gate_has_each_advanced_capability_once(const DynAdvancedDesignGate& gate) noexcept
+{
+    if (gate.candidates.size() != QUERY_DYN_ADVANCED_REQUIRED_CAPABILITY_COUNT) {
+        return false;
+    }
+
+    std::array<bool, QUERY_DYN_ADVANCED_REQUIRED_CAPABILITY_COUNT> seen = {};
+    for (const DynAdvancedDesignCandidate& candidate : gate.candidates) {
+        if (!is_valid(candidate.capability)) {
+            return false;
+        }
+        const base::usize index = static_cast<base::usize>(candidate.capability) - 1U;
+        if (index >= seen.size() || seen[index]) {
+            return false;
+        }
+        seen[index] = true;
+    }
+    return std::all_of(seen.begin(), seen.end(), [](const bool present) {
+        return present;
+    });
+}
+
+[[nodiscard]] bool m11a_capability_gate_is_valid(
+    const DynAdvancedDesignCandidate& candidate) noexcept
+{
+    switch (candidate.capability) {
+        case DynAdvancedCapability::supertrait_upcasting:
+            return candidate.stage == DynAdvancedGateStage::completed_release_baseline
+                && candidate.impact.metadata_policy_required && candidate.impact.borrow_model_impact
+                && candidate.impact.tooling_cache_impact && !candidate.impact.standard_library_required
+                && !candidate.impact.runtime_required
+                && candidate.decision == DynAdvancedPolicyDecision::requires_new_metadata_policy
+                && std::string_view(candidate.required_metadata_policy)
+                    == QUERY_DYN_ADVANCED_SUPERTRAIT_METADATA_POLICY;
+        case DynAdvancedCapability::owning_dyn:
+            return candidate.stage == DynAdvancedGateStage::prototype_blocked
+                && candidate.impact.abi_policy_required && candidate.impact.metadata_policy_required
+                && candidate.impact.borrow_model_impact && candidate.impact.drop_model_impact
+                && candidate.impact.resource_model_impact && candidate.impact.tooling_cache_impact
+                && candidate.impact.standard_library_required && candidate.impact.runtime_required
+                && candidate.decision == DynAdvancedPolicyDecision::requires_standard_library_stage;
+        case DynAdvancedCapability::dynamic_drop_dispatch:
+            return candidate.stage == DynAdvancedGateStage::prototype_blocked
+                && candidate.impact.metadata_policy_required && candidate.impact.drop_model_impact
+                && candidate.impact.resource_model_impact && candidate.impact.tooling_cache_impact
+                && candidate.impact.runtime_required
+                && candidate.decision == DynAdvancedPolicyDecision::requires_runtime_stage;
+        case DynAdvancedCapability::allocator_policy:
+            return candidate.stage == DynAdvancedGateStage::prototype_blocked
+                && candidate.impact.abi_policy_required && candidate.impact.metadata_policy_required
+                && candidate.impact.resource_model_impact && candidate.impact.tooling_cache_impact
+                && candidate.impact.standard_library_required
+                && candidate.decision == DynAdvancedPolicyDecision::requires_standard_library_stage;
+        case DynAdvancedCapability::multi_trait_composition:
+            return candidate.stage == DynAdvancedGateStage::ready_for_future_stage
+                && candidate.impact.metadata_policy_required && candidate.impact.borrow_model_impact
+                && candidate.impact.tooling_cache_impact && !candidate.impact.standard_library_required
+                && !candidate.impact.runtime_required
+                && candidate.decision == DynAdvancedPolicyDecision::requires_new_metadata_policy
+                && std::string_view(candidate.required_metadata_policy)
+                    == QUERY_DYN_ADVANCED_PRINCIPAL_SET_METADATA_POLICY;
     }
     return false;
 }
@@ -347,6 +434,99 @@ DynAdvancedDesignCandidate make_multi_trait_composition_candidate()
     };
 }
 
+DynAdvancedDesignCandidate make_completed_supertrait_upcasting_candidate()
+{
+    DynAdvancedDesignCandidate candidate = make_supertrait_upcasting_candidate();
+    candidate.stage = DynAdvancedGateStage::completed_release_baseline;
+    candidate.blockers = {
+        "completed_in_m10_release_baseline",
+        "future composition must project through M10 supertrait metadata instead of replacing it",
+    };
+    candidate.required_facts = {
+        "trait_supertrait_edge_fact",
+        "trait_object_upcast_coercion_fact",
+        "dyn_upcast_abi_descriptor",
+    };
+    candidate.non_goals = {
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL),
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_RUNTIME_NON_GOAL),
+        "do_not_reopen_m10_supertrait_runtime_in_m11a",
+    };
+    return candidate;
+}
+
+DynAdvancedDesignCandidate make_principal_set_composition_candidate()
+{
+    return DynAdvancedDesignCandidate{
+        DynAdvancedCapability::multi_trait_composition,
+        DynAdvancedGateStage::ready_for_future_stage,
+        DynAdvancedPolicyDecision::requires_new_metadata_policy,
+        "",
+        std::string(QUERY_DYN_ADVANCED_PRINCIPAL_SET_METADATA_POLICY),
+        DynAdvancedImpactSummary{
+            false,
+            true,
+            true,
+            false,
+            false,
+            true,
+            false,
+            false,
+        },
+        {
+            "principal trait identity is singular before M11",
+            "method namespace must be principal-qualified to avoid flattened-slot ambiguity",
+            "associated equality requirements from multiple principals need deterministic merge facts",
+        },
+        {
+            "principal_set_identity_fact",
+            "composition_witness_set_fact",
+            "principal_method_namespace_fact",
+            "associated_equality_merge_fact",
+            "composition_projection_fact",
+        },
+        {
+            std::string(QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL),
+            std::string(QUERY_DYN_ADVANCED_M11A_NO_RUNTIME_NON_GOAL),
+            "do_not_encode_principal_set_as_single_trait_object",
+            "do_not_flatten_method_slots_without_principal_namespace",
+        },
+    };
+}
+
+DynAdvancedDesignCandidate make_m11_owning_dyn_candidate()
+{
+    DynAdvancedDesignCandidate candidate = make_owning_dyn_candidate();
+    candidate.non_goals = {
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL),
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_OWNING_NON_GOAL),
+        "do_not_reuse_borrowed_view_v1_for_owning_dyn",
+    };
+    return candidate;
+}
+
+DynAdvancedDesignCandidate make_m11_dynamic_drop_candidate()
+{
+    DynAdvancedDesignCandidate candidate = make_dynamic_drop_candidate();
+    candidate.non_goals = {
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL),
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_RUNTIME_NON_GOAL),
+        "do_not_add_destructor_slot_to_principal_set_metadata_v1",
+    };
+    return candidate;
+}
+
+DynAdvancedDesignCandidate make_m11_allocator_candidate()
+{
+    DynAdvancedDesignCandidate candidate = make_allocator_candidate();
+    candidate.non_goals = {
+        std::string(QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL),
+        "do_not_encode_allocator_in_borrowed_view_v1",
+        "do_not_allocate_for_principal_set_dyn_view",
+    };
+    return candidate;
+}
+
 } // namespace
 
 std::string_view dyn_advanced_capability_name(const DynAdvancedCapability capability) noexcept
@@ -377,6 +557,8 @@ std::string_view dyn_advanced_gate_stage_name(const DynAdvancedGateStage stage) 
             return "prototype_blocked";
         case DynAdvancedGateStage::ready_for_future_stage:
             return "ready_for_future_stage";
+        case DynAdvancedGateStage::completed_release_baseline:
+            return "completed_release_baseline";
     }
     return "invalid";
 }
@@ -418,6 +600,7 @@ bool is_valid(const DynAdvancedGateStage stage) noexcept
         case DynAdvancedGateStage::design_gate:
         case DynAdvancedGateStage::prototype_blocked:
         case DynAdvancedGateStage::ready_for_future_stage:
+        case DynAdvancedGateStage::completed_release_baseline:
             return true;
     }
     return false;
@@ -438,24 +621,34 @@ bool is_valid(const DynAdvancedPolicyDecision decision) noexcept
 
 bool is_valid(const DynAdvancedDesignCandidate& candidate) noexcept
 {
-    return is_valid(candidate.capability) && is_valid(candidate.stage) && is_valid(candidate.decision)
+    return candidate_shape_is_valid(candidate)
         && candidate.stage != DynAdvancedGateStage::ready_for_future_stage
-        && has_policy_when_required(candidate.impact.abi_policy_required, candidate.required_abi_policy)
-        && has_policy_when_required(candidate.impact.metadata_policy_required,
-            candidate.required_metadata_policy)
-        && std::string_view(candidate.required_abi_policy) != QUERY_DYN_ADVANCED_BORROWED_ABI_POLICY
-        && std::string_view(candidate.required_metadata_policy) != QUERY_DYN_ADVANCED_BORROWED_METADATA_POLICY
-        && has_required_detail_vectors(candidate) && decision_matches_impact(candidate)
+        && candidate.stage != DynAdvancedGateStage::completed_release_baseline
         && baseline_capability_gate_is_valid(candidate)
         && contains_text(candidate.non_goals, QUERY_DYN_ADVANCED_M9C_NO_STD_NON_GOAL);
 }
 
 bool is_valid(const DynAdvancedDesignGate& gate) noexcept
 {
-    return !gate.name.empty() && !gate.candidates.empty()
+    if (std::string_view(gate.name) == QUERY_DYN_ADVANCED_M11A_GATE_NAME) {
+        return is_valid_m11a_dyn_advanced_design_gate(gate);
+    }
+    return std::string_view(gate.name) == QUERY_DYN_ADVANCED_M9C_GATE_NAME
+        && gate_has_each_advanced_capability_once(gate)
         && std::all_of(gate.candidates.begin(), gate.candidates.end(),
             [](const DynAdvancedDesignCandidate& candidate) {
                 return is_valid(candidate);
+            });
+}
+
+bool is_valid_m11a_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate) noexcept
+{
+    return std::string_view(gate.name) == QUERY_DYN_ADVANCED_M11A_GATE_NAME
+        && gate_has_each_advanced_capability_once(gate)
+        && std::all_of(gate.candidates.begin(), gate.candidates.end(),
+            [](const DynAdvancedDesignCandidate& candidate) {
+                return candidate_shape_is_valid(candidate) && m11a_capability_gate_is_valid(candidate)
+                    && contains_text(candidate.non_goals, QUERY_DYN_ADVANCED_M11A_NO_STD_NON_GOAL);
             });
 }
 
@@ -484,6 +677,8 @@ std::string summarize_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate
     base::u64 runtime_blocked_count = 0;
     base::u64 metadata_policy_count = 0;
     base::u64 abi_policy_count = 0;
+    base::u64 ready_for_future_stage_count = 0;
+    base::u64 completed_release_count = 0;
     for (const DynAdvancedDesignCandidate& candidate : gate.candidates) {
         if (candidate.impact.standard_library_required) {
             ++standard_library_blocked_count;
@@ -497,6 +692,12 @@ std::string summarize_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate
         if (candidate.impact.abi_policy_required) {
             ++abi_policy_count;
         }
+        if (candidate.stage == DynAdvancedGateStage::ready_for_future_stage) {
+            ++ready_for_future_stage_count;
+        }
+        if (candidate.stage == DynAdvancedGateStage::completed_release_baseline) {
+            ++completed_release_count;
+        }
     }
 
     std::ostringstream label;
@@ -507,6 +708,8 @@ std::string summarize_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate
           << " metadata_policy_candidates=" << metadata_policy_count
           << " standard_library_blocked=" << standard_library_blocked_count
           << " runtime_blocked=" << runtime_blocked_count
+          << " ready_for_future_stage=" << ready_for_future_stage_count
+          << " completed_release=" << completed_release_count
           << " baseline_abi=" << QUERY_DYN_ADVANCED_BORROWED_ABI_POLICY
           << " baseline_metadata=" << QUERY_DYN_ADVANCED_BORROWED_METADATA_POLICY
           << " fingerprint=" << debug_string(dyn_advanced_design_gate_fingerprint(gate));
@@ -558,6 +761,19 @@ DynAdvancedDesignGate m9c_dyn_advanced_design_gate_baseline()
     record_dyn_advanced_design_candidate(gate, make_dynamic_drop_candidate());
     record_dyn_advanced_design_candidate(gate, make_allocator_candidate());
     record_dyn_advanced_design_candidate(gate, make_multi_trait_composition_candidate());
+    gate.fingerprint = dyn_advanced_design_gate_fingerprint(gate);
+    return gate;
+}
+
+DynAdvancedDesignGate m11a_dyn_advanced_design_gate_baseline()
+{
+    DynAdvancedDesignGate gate;
+    gate.name = std::string(QUERY_DYN_ADVANCED_M11A_GATE_NAME);
+    record_dyn_advanced_design_candidate(gate, make_completed_supertrait_upcasting_candidate());
+    record_dyn_advanced_design_candidate(gate, make_m11_owning_dyn_candidate());
+    record_dyn_advanced_design_candidate(gate, make_m11_dynamic_drop_candidate());
+    record_dyn_advanced_design_candidate(gate, make_m11_allocator_candidate());
+    record_dyn_advanced_design_candidate(gate, make_principal_set_composition_candidate());
     gate.fingerprint = dyn_advanced_design_gate_fingerprint(gate);
     return gate;
 }

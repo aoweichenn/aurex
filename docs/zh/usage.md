@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M10d Supertrait Hardening / Release Closure** 的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait 和 borrowed dyn supertrait upcast 表面本身展开。
+本文描述当前 **M11a Advanced Dyn Design Baseline** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait 和 borrowed dyn supertrait upcast 表面本身展开。M11a 新增的是 principal-set borrowed dyn composition 的 design/query gate，不新增用户可写 `dyn A + B` 语法。
 
 ## 构建
 
@@ -145,7 +145,11 @@ M10d release baseline 支持 borrowed dyn supertrait upcast runtime：`trait Chi
 call 会先投影到 parent vtable，再按 parent slot 动态派发。IDE/query tooling 会把 upcast 投影到
 `FunctionDynAbiFacts::upcasts`、lower-IR query invalidation、semantic fact 和 hover。
 
-当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、多 trait object composition、
+M11a 已把后续 advanced dyn 主线选为 principal-set borrowed dyn composition，并固定
+`m11a_dyn_advanced_design_gate_baseline`、`principal_set_metadata_v1`、`principal_set_identity_fact`、
+`composition_witness_set_fact`、`principal_method_namespace_fact`、`associated_equality_merge_fact` 和
+`composition_projection_fact`。这些目前只属于设计/query gate；当前仍不实现 owning dyn、`Box<dyn Trait>`、
+allocator、标准库、dynamic Drop dispatch、用户可写多 trait object composition、`dyn A + B` parser syntax、
 specialization、default associated type、generic associated type 或 associated const。
 
 ## import

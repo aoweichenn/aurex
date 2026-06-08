@@ -2,14 +2,17 @@
 
 ## 当前分支目标
 
-当前实现基线是 M10d Supertrait Hardening / Release Closure。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
+当前实现基线是 M11a Advanced Dyn Design Baseline。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
 analysis、cleanup obligation lowering、drop-glue identity/planning、tooling projection 和 release closure；
 M7 已完成 CFG-sensitive borrow/lifetime/resource hardening；M8 已完成 borrowed dyn trait frontend/sema、
 checked vtable facts、IR/backend dynamic dispatch 和 hardening closure；M9 已完成 dyn ABI/tooling release
 closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upcast facts、`trait_object_upcast` IR、
-`supertrait_vptr_metadata_v1` runtime projection、query/cache/tooling polish 和 release closure。
+`supertrait_vptr_metadata_v1` runtime projection、query/cache/tooling polish 和 release closure；M11a 已选择
+principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固定 `principal_set_metadata_v1`、
+`principal_set_identity_fact`、`composition_witness_set_fact`、`principal_method_namespace_fact`、
+`associated_equality_merge_fact` 和 `composition_projection_fact` 的 design/query gate。
 历史基线说明：当前实现基线是 M6 Resource And Access Semantics 这条旧 release baseline 仍作为资源语义
-设计入口保留，但当前分支已经继续推进到 M10d。
+设计入口保留，但当前分支已经继续推进到 M11a。
 较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
@@ -31,6 +34,8 @@ closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upca
   `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、`trait_object_upcast` IR、
   `supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection、query/cache invalidation 和 IDE
   hover/tooling projection。
+- M11a advanced dyn design/query gate：`m11a_dyn_advanced_design_gate_baseline`、`principal_set_metadata_v1` 和
+  principal-set composition required facts 已固定，但仍不是用户可写 composition 语法。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。
@@ -44,9 +49,9 @@ closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upca
 - 标准库 API、容器、文件、目录、进程、console。
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
-- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、多 trait object
-  composition、associated const、default associated type、generic associated type、specialization、minimal implementation
-  annotation、完整 Rust-style lifetime surface、async drop 和标准库重建。
+- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、用户可写多 trait object
+  composition、`dyn A + B` parser syntax、associated const、default associated type、generic associated type、
+  specialization、minimal implementation annotation、完整 Rust-style lifetime surface、async drop 和标准库重建。
 
 M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求。M6 不复活这套 ad hoc surface，而是按
 `Copy`、`Discard`、`NeedsDrop`、future `MustConsume` 四维模型重新推进资源语义。

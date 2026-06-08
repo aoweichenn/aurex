@@ -1,7 +1,8 @@
 # Aurex 语言参考手册
 
 日期：2026-06-08
-阶段：M10d Supertrait Hardening / Release Closure，建立在 M10b Supertrait Frontend / Query / Sema Implementation、
+阶段：M11a Advanced Dyn Design Baseline，建立在 M10d Supertrait Hardening / Release Closure、
+M10b Supertrait Frontend / Query / Sema Implementation、
 M10a supertrait upcasting design baseline、
 M9 dyn ABI / tooling release closure、M8a query foundation、M8b syntax/sema、
 M8c borrowed dyn coercion / checked vtable facts、M8d/M8e borrowed dyn runtime dispatch、M7d-K array repeat resource safety、M7d-J cleanup marker
@@ -68,6 +69,9 @@ A | B         表示二选一
   query authority 和 IDE/tooling 使用。
 - 使用 M7d-K array repeat resource safety：`[expr; 0]` 类型检查 repeat value 但运行期不求值/consume；
   `[expr; 1]` 允许非 `Copy` 资源转移一次；`[expr; N]` 且 `N > 1` 要求元素类型满足 `Copy`。
+- 查询 M11a advanced dyn design gate：`m11a_dyn_advanced_design_gate_baseline` 固定 principal-set borrowed dyn
+  composition 作为下一条主线、`principal_set_metadata_v1` 作为 future metadata policy、M10 supertrait upcasting
+  作为 `completed_release_baseline`。这不是用户可写语法。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -76,8 +80,8 @@ A | B         表示二选一
 - 没有标准库级拥有型 `String`、容器库、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
-- 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、多 trait object
-  composition、generic associated type、associated const、specialization、const generic 或 `<T>` 风格泛型。
+- 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、用户可写多 trait object composition、
+  `dyn A + B` parser syntax、generic associated type、associated const、specialization、const generic 或 `<T>` 风格泛型。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
 - 本阶段明确不实现任何标准库 API 或标准库拥有型资源 wrapper；资源语义收口只发生在 compiler facts、IR marker、
@@ -1735,6 +1739,18 @@ fn score(value: &dyn Child) -> i32 {
   仍保留 concrete receiver type，用于验证 erased receiver ABI 与 concrete impl 签名兼容。
 - 对 `fn render(x: &dyn Draw)` 这类只有 dyn object type 的 call site，slot schema 来自同 object type 的
   checked vtable layout；runtime vtable 仍来自传入的 fat view，所以不同 concrete impl 会 late bind 到不同函数。
+
+M11a advanced dyn design gate：
+
+- M11a 已选择 principal-set borrowed dyn composition 作为后续主线，但当前不新增用户可写 composition 语法。
+- Future composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
+  `principal_set_metadata_v1`。
+- Future composition method lookup 必须有 principal-qualified namespace，不能把 slots flatten 到一个未命名
+  namespace。
+- Future composition 仍保持 borrowed view：不拥有对象、不分配、不复制、不延长 origin、不放宽 loan。
+- `m11a_dyn_advanced_design_gate_baseline`、`principal_set_identity_fact`、`composition_witness_set_fact`、
+  `principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact` 已作为
+  design/query gate 固定。
 
 当前不支持：
 

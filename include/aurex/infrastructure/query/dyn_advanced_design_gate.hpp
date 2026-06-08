@@ -22,6 +22,7 @@ enum class DynAdvancedGateStage : base::u8 {
     design_gate,
     prototype_blocked,
     ready_for_future_stage,
+    completed_release_baseline,
 };
 
 enum class DynAdvancedPolicyDecision : base::u8 {
@@ -70,6 +71,8 @@ struct DynAdvancedDesignGate {
 [[nodiscard]] bool is_valid(DynAdvancedPolicyDecision decision) noexcept;
 [[nodiscard]] bool is_valid(const DynAdvancedDesignCandidate& candidate) noexcept;
 [[nodiscard]] bool is_valid(const DynAdvancedDesignGate& gate) noexcept;
+[[nodiscard]] bool is_valid_m11a_dyn_advanced_design_gate(
+    const DynAdvancedDesignGate& gate) noexcept;
 
 void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvancedDesignCandidate candidate);
 
@@ -78,5 +81,6 @@ void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvanc
 [[nodiscard]] std::string summarize_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate);
 [[nodiscard]] std::string dump_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate);
 [[nodiscard]] DynAdvancedDesignGate m9c_dyn_advanced_design_gate_baseline();
+[[nodiscard]] DynAdvancedDesignGate m11a_dyn_advanced_design_gate_baseline();
 
 } // namespace aurex::query

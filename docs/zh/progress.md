@@ -1,9 +1,32 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M10d Supertrait Hardening / Release Closure
+阶段：M11a Advanced Dyn Design Baseline
 
 ## 总体状态
+
+2026-06-08：M11a Advanced Dyn Design Baseline 已完成。M11 已从 `m11` 分支开启，并从 M9c/M10
+advanced dyn 剩余候选中选择 **principal-set borrowed dyn composition** 作为下一条主线。新增设计文档见
+[Aurex M11 Advanced Dyn Design Baseline](m11-advanced-dyn-design.md)。
+
+M11a 是 design/query gate baseline，不新增 parser/sema/IR/backend runtime 或标准库代码。当前稳定可用的
+用户语言能力仍是 M8 borrowed dyn trait、M9 dyn ABI/tooling facts 和 M10 borrowed dyn supertrait upcast；
+M11a 新增的是 query-facing gate：`m11a_dyn_advanced_design_gate_baseline()`、
+`is_valid_m11a_dyn_advanced_design_gate()`、`completed_release_baseline` stage、`ready_for_future_stage`
+selection、summary/dump/fingerprint 以及 documentation tests。
+
+M11a 的核心结论是：下一条 advanced dyn 主线不做 owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop
+dispatch，而是先设计 origin-bound borrowed dyn principal-set view。该路线要求新的 metadata policy
+`principal_set_metadata_v1`，并固定 `principal_set_identity_fact`、`composition_witness_set_fact`、
+`principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact`。composition
+不能编码成单 trait object，也不能把多个 principal 的 method slots flatten 到一个未命名 namespace。
+
+M11a 仍明确不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
+allocator policy、不实现 `dyn A + B` parser syntax、不实现 principal-set sema coercion、不实现 IR/backend
+runtime dispatch。M10 supertrait upcasting 被标记为 `completed_release_baseline`，M11a 不重开
+`supertrait_vptr_metadata_v1` runtime。下一步应进入 **M11b Principal-Set Composition Query Prototype Gate**：
+先把 principal-set identity、composition witness set、method namespace、associated equality merge 和 projection facts
+做成稳定 query DTO，而不是直接实现标准库或 runtime。
 
 2026-06-08：M10d Supertrait Hardening / Release Closure 已完成。M10 现在收口为完整 borrowed dyn supertrait
 upcasting release baseline：M10a 固定设计，M10b 完成 frontend/query/sema facts，M10c 完成 IR/backend runtime，

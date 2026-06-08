@@ -1,21 +1,28 @@
 # 下一步计划
 
-## 当前最高优先级：M11 Advanced Dyn Design Baseline
+## 当前最高优先级：M11b Principal-Set Composition Query Prototype Gate
 
-M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure 和 M10 supertrait upcasting release closure
-均已完成。当前状态入口：
+M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
+M11a Advanced Dyn Design Baseline 均已完成。当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
 - [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
 - [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)
 - [Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)
 - [Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)
+- [Aurex M11 Advanced Dyn Design Baseline](m11-advanced-dyn-design.md)
 
 M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
 method call 会通过 `trait_object_upcast` IR 和 `supertrait_vptr_metadata_v1` parent vtable projection runtime dispatch。
 M10d 已补齐 query/cache/tooling projection、negative sample matrix、documentation tests、coverage gate 和 M10c
 实际代码量偏差分析。
+
+M11a 也已结束。M11a 选择 **principal-set borrowed dyn composition** 作为下一条 advanced dyn 主线，并通过
+`m11a_dyn_advanced_design_gate_baseline` 固定 `principal_set_metadata_v1`、`principal_set_identity_fact`、
+`composition_witness_set_fact`、`principal_method_namespace_fact`、`associated_equality_merge_fact` 和
+`composition_projection_fact`。M10 supertrait upcasting 在 gate 中标记为 `completed_release_baseline`；M11a 不重开
+M10 runtime。
 
 已完成基线摘要：
 
@@ -26,36 +33,40 @@ M10d 已补齐 query/cache/tooling projection、negative sample matrix、documen
   advanced dyn。
 - M10a / post-M9 advanced dyn policy selection 已完成；M10 选择 supertrait upcasting 并最终收口到 M10d release
   baseline。
+- M11a Advanced Dyn Design Baseline 已完成；M11 选择 origin-bound borrowed dyn principal-set view，不选择 owning
+  dyn、dynamic Drop dispatch 或 allocator policy 作为当前阶段主线。
 
-当前下一步应进入 **M11 Advanced Dyn Design Baseline**。M11 先做设计和小范围 query gate，不直接实现标准库、
-owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。M11 必须从 M9c `DynAdvancedDesignGate` 剩余候选中
-重新选择主线，明确新的 ABI policy / metadata policy / query DTO / verifier surface，而不是复用
-`borrowed_view_v1` 或 `borrowed_methods_only_v1` 偷偷扩展。
+当前下一步应进入 **M11b Principal-Set Composition Query Prototype Gate**。M11b 仍保持 compiler/query/tooling
+范围，不直接实现标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、`dyn A + B` parser
+syntax 或 IR/backend runtime dispatch。M11b 的目标是把 M11a 选择的 principal-set model 做成稳定 query 原型：
 
-M11 候选主线：
+- principal-set identity DTO：canonical principal order、trait args、associated equality fingerprint 和 duplicate/conflict
+  validation。
+- composition witness set DTO：每个 principal 的 checked vtable witness、method slot schema、supertrait projection relation
+  和 metadata policy。
+- principal-qualified method namespace DTO：不把 multiple principals flatten 到一个 slot namespace。
+- associated equality merge facts：记录 equality merge、conflict、unknown/unconstrained associated type。
+- composition projection facts：记录 concrete-to-composition、composition-to-principal 和 composition-to-supertrait projection。
+- summary/dump/fingerprint/tooling projection 和 focused query tests。
 
-- multi trait composition：可能形如 borrowed `dyn A + B` 或显式 composition object，但需要新的 composition
-  metadata policy、object identity、method slot namespace 和 ambiguity diagnostics。
-- dynamic Drop dispatch：需要 destructor ABI、drop metadata、runtime dispatch 和 dropck/tooling facts；不能混入
-  M10 的 supertrait vptr metadata。
-- owning dyn / `Box<dyn Trait>` / allocator policy：需要标准库或 runtime ownership policy 的独立阶段，当前不应直接实现。
+M11b 的退出标准：
 
-M11a 设计阶段的退出标准：
-
-- 选定一个主线候选，并明确为什么它是当前最适合 Aurex 的下一步。
-- 写清 semantic model、borrow/ownership/drop/resource 边界、ABI metadata、query/cache/tooling 投影、diagnostics、
-  verifier/backend negative matrix 和非目标。
-- 更新 documentation tests，固定 “M11 只是设计 baseline，不实现标准库” 的阶段边界。
-- 给出 M11b/M11c 的代码量估算，并说明哪些能力必须后移。
+- `principal_set_metadata_v1` 有独立 query DTO / validation / fingerprint / dump。
+- `principal_set_identity_fact`、`composition_witness_set_fact`、`principal_method_namespace_fact`、
+  `associated_equality_merge_fact` 和 `composition_projection_fact` 都有稳定测试。
+- Gate/documentation tests 继续固定 “M11b 仍不实现标准库、不实现 owning dyn、不实现 dynamic Drop dispatch”。
+- 给出 M11c parser/sema check-only 的具体 source spelling 决策和代码量修正。
 
 近期代码量粗估：
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
 | M10d hardening/release | 已完成。query/cache/tooling projection、negative samples、docs/tests/coverage、M10c diffstat 分析 | 实际以本次 diffstat 为准 |
-| M11a design baseline | advanced dyn 后续选择、policy/schema 设计、非目标、documentation tests 和测试计划 | 600-1,000 行文档/测试 |
-| M11b query/prototype gate | 新候选 DTO、validation、fingerprint、summary/dump、focused query tests | 700-1,300 行 |
-| M11c implementation package | 取决于 M11a 选定主线；multi trait composition、dynamic Drop dispatch 或 owning dyn 都必须单独估算 | 待 M11a 后估算 |
+| M11a design baseline | 已完成。advanced dyn 后续选择、`principal_set_metadata_v1` policy/schema 设计、非目标、documentation tests 和测试计划 | 实际以本次 diffstat 为准 |
+| M11b query/prototype gate | principal-set composition DTO、validation、fingerprint、summary/dump、focused query/tooling tests | 800-1,400 行 |
+| M11c frontend/sema check-only | parser/AST spelling、type identity、coercion check、method namespace diagnostics、associated equality merge check、checked dump/fingerprint、negative samples | 1,800-3,200 行 |
+| M11d IR/backend runtime | IR composition/projection value、verifier、LLVM metadata layout、principal-qualified slot dispatch、native runtime tests | 1,600-2,800 行 |
+| M11e hardening/release | query/cache/tooling polish、IDE hover/workspace index、stress/perf gates、docs/tests release closure、代码量偏差分析 | 700-1,300 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

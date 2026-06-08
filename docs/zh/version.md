@@ -1,5 +1,35 @@
 # 版本文档
 
+## M11a Advanced Dyn Design Baseline
+
+M11a 已完成 advanced dyn 后续主线选择。M11 现在进入 principal-set borrowed dyn composition 设计流：该路线继续
+复用 M8 origin-bound erased view、M9 dyn ABI/tooling facts 和 M10 `supertrait_vptr_metadata_v1` supertrait
+projection，但必须新增 composition 专用 metadata policy `principal_set_metadata_v1`。新增设计入口见
+[Aurex M11 Advanced Dyn Design Baseline](m11-advanced-dyn-design.md)。
+
+M11a 当前新增或固定的实现包括：
+
+- Query 层新增 `completed_release_baseline` stage，用来表示 M10 supertrait upcasting 已完成 release baseline。
+- 新增 `m11a_dyn_advanced_design_gate_baseline()`，把 `multi_trait_composition` 标记为
+  `ready_for_future_stage`，并选择 `principal_set_metadata_v1`。
+- 新增 `is_valid_m11a_dyn_advanced_design_gate()`，固定 M11a gate name、candidate shape、capability-specific
+  policy、stage、decision、impact summary 和 non-goals。
+- Gate validation 要求五个 advanced capability 各出现一次，拒绝 capability 缺失或重复。
+- Summary/dump 现在暴露 `ready_for_future_stage=N` 和 `completed_release=N`，documentation tests 固定
+  `principal_set_identity_fact`、`composition_witness_set_fact`、`principal_method_namespace_fact`、
+  `associated_equality_merge_fact` 和 `composition_projection_fact`。
+
+M11a 仍不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
+allocator policy、不实现 `dyn A + B` parser syntax、不实现 principal-set sema coercion、不实现 IR/backend runtime
+dispatch。M11a 也不把 composition 偷偷编码成单 trait object，不把 method slots flatten 到未命名 namespace，
+不往 `principal_set_metadata_v1` 塞 destructor slot。
+
+M11a 之后的下一步是 **M11b Principal-Set Composition Query Prototype Gate**：把 principal-set identity、
+composition witness set、principal-qualified method namespace、associated equality merge 和 composition projection
+做成稳定 query DTO / fingerprint / summary / dump / tooling facts。M11b 预计 800-1,400 行；M11c frontend/sema
+check-only 预计 1,800-3,200 行；M11d IR/backend runtime 预计 1,600-2,800 行；M11e hardening/release 预计
+700-1,300 行。标准库、owning dyn、allocator 和 dynamic Drop dispatch 进入独立后续阶段。
+
 ## M10d Supertrait Hardening / Release Closure
 
 M10d 已完成 supertrait upcasting 的 hardening / release closure。M10 现在完整收口为 borrowed dyn supertrait

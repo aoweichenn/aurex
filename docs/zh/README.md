@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M11a Advanced Dyn Design Baseline**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M11b Principal-Set Composition Query Prototype Gate**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -18,8 +18,11 @@ M11a 已从剩余 advanced dyn 候选中选择
 principal-set borrowed dyn composition 作为下一条主线，并通过 `m11a_dyn_advanced_design_gate_baseline` 固定
 `principal_set_metadata_v1`、`principal_set_identity_fact`、`composition_witness_set_fact`、
 `principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact`。
-M11a 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、allocator policy 或多 trait object
-composition runtime；下一步是 M11b principal-set composition query prototype gate。
+M11b 已把该模型落成 `PrincipalSetCompositionFacts` query 原型，覆盖 principal-set identity、composition witness
+set、principal-qualified method namespace、associated equality merge、composition projection、validation、
+summary/dump/fingerprint 和 focused query tests。M11b 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch
+runtime、allocator policy、`dyn A + B` parser syntax、composition sema 或多 trait object composition runtime；
+下一步是 M11c principal-set composition frontend/sema check-only。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

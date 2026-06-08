@@ -1,5 +1,35 @@
 # 版本文档
 
+## M11b Principal-Set Composition Query Prototype Gate
+
+M11b 已完成 principal-set composition 的 query facts 原型。该阶段继续保持 compiler/query facts 边界，不实现
+标准库、不实现 `dyn A + B` parser syntax、不实现 parser/AST/sema、不实现 IR/backend runtime、不实现 owning dyn、
+不实现 `Box<dyn Trait>`、不实现 allocator API/policy、不实现 dynamic Drop dispatch。
+
+M11b 当前新增或固定的实现包括：
+
+- 新增 `PrincipalSetCompositionFacts` aggregate DTO，记录 subject、identity facts、witness sets、method
+  namespaces、associated equality merges、projections、summary 和 fingerprint。
+- 新增 `PrincipalSetIdentityFact` / `PrincipalSetPrincipalDescriptor`，由 `principal_set_identity_fact()` 对
+  principal descriptors 做 canonical order、same-origin、duplicate validation 和稳定 identity 生成。
+- 新增 `CompositionWitnessSetFact` / `CompositionWitnessDescriptor`，把 principal object、`VTableLayoutKey` 和
+  witness fingerprint 组成 composition witness set。
+- 新增 `PrincipalMethodNamespaceFact` / `PrincipalMethodNamespaceEntry`，明确同名 method 冲突必须使用
+  `ambiguous_requires_principal`，不能 flatten 到未命名 slot namespace。
+- 新增 `AssociatedEqualityMergeFact`，记录 `satisfied`、`conflict` 和 `unconstrained` associated equality merge 状态。
+- 新增 `CompositionProjectionFact`，记录 `concrete_to_composition`、`composition_to_principal` 和
+  `composition_to_supertrait` projection，并要求 data pointer 与 origin preserved。
+- 新增 `principal_set_composition_facts_fingerprint()`、`summarize_principal_set_composition_facts()` 和
+  `dump_principal_set_composition_facts()`。
+- Focused query tests 覆盖 enum fallback、identity canonicalization、boundary drift、flattened namespace rejection、
+  summary/dump/fingerprint 和 stale fact rejection。
+
+M11b 之后的下一步是 **M11c Principal-Set Composition Frontend / Sema Check-Only**：在不实现标准库和 runtime 的
+前提下，选择 source spelling，接入 parser/AST、type identity、coercion check、method namespace diagnostics、
+associated equality merge check、checked dump/fingerprint 和 negative samples。M11c 预计 1,800-3,200 行；
+M11d IR/backend runtime 预计 1,600-2,800 行；M11e hardening/release 预计 700-1,300 行。标准库、owning dyn、
+allocator 和 dynamic Drop dispatch 仍进入独立后续阶段。
+
 ## M11a Advanced Dyn Design Baseline
 
 M11a 已完成 advanced dyn 后续主线选择。M11 现在进入 principal-set borrowed dyn composition 设计流：该路线继续

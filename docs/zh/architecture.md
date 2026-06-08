@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M11a Advanced Dyn Design Baseline。M2 已移除标准库层：
+当前架构基线是 M11b Principal-Set Composition Query Prototype Gate。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -36,9 +36,10 @@
 - `trait Child: Parent` direct supertrait declaration、checked supertrait graph、borrowed dyn-to-dyn upcast facts、
   `TraitObjectUpcastCoercionKey` 和 `DynUpcastAbiDescriptor` 已接入 frontend/query/sema；`trait_object_upcast` IR、
   `supertrait_vptr_metadata_v1` vtable metadata 和 LLVM parent vtable projection 已接入 runtime。
-- M11a 已把下一条 advanced dyn 主线选为 principal-set borrowed dyn composition；当前只落地
-  `m11a_dyn_advanced_design_gate_baseline`、`principal_set_metadata_v1` 和 required facts 的 query/design gate，
-  不新增 parser/sema/runtime。
+- M11a 已把下一条 advanced dyn 主线选为 principal-set borrowed dyn composition；M11b 已把该模型落成
+  `PrincipalSetCompositionFacts` query prototype，覆盖 principal-set identity、composition witness set、
+  principal-qualified method namespace、associated equality merge、composition projection、validation、
+  summary/dump/fingerprint 和 focused query tests。当前仍不新增用户可写 parser/sema/runtime。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
   composition、specialization、default associated type、associated const 和 generic associated type 仍是后续独立设计流。
 

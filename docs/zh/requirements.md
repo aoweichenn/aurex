@@ -2,7 +2,7 @@
 
 ## 当前分支目标
 
-当前实现基线是 M11a Advanced Dyn Design Baseline。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
+当前实现基线是 M11b Principal-Set Composition Query Prototype Gate。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
 analysis、cleanup obligation lowering、drop-glue identity/planning、tooling projection 和 release closure；
 M7 已完成 CFG-sensitive borrow/lifetime/resource hardening；M8 已完成 borrowed dyn trait frontend/sema、
 checked vtable facts、IR/backend dynamic dispatch 和 hardening closure；M9 已完成 dyn ABI/tooling release
@@ -10,9 +10,10 @@ closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upca
 `supertrait_vptr_metadata_v1` runtime projection、query/cache/tooling polish 和 release closure；M11a 已选择
 principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固定 `principal_set_metadata_v1`、
 `principal_set_identity_fact`、`composition_witness_set_fact`、`principal_method_namespace_fact`、
-`associated_equality_merge_fact` 和 `composition_projection_fact` 的 design/query gate。
+`associated_equality_merge_fact` 和 `composition_projection_fact` 的 design/query gate；M11b 已新增
+`PrincipalSetCompositionFacts`、`principal_set_identity_fact()`、summary/dump/fingerprint 和 focused validation tests。
 历史基线说明：当前实现基线是 M6 Resource And Access Semantics 这条旧 release baseline 仍作为资源语义
-设计入口保留，但当前分支已经继续推进到 M11a。
+设计入口保留，但当前分支已经继续推进到 M11b。
 较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
@@ -34,8 +35,9 @@ principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固
   `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、`trait_object_upcast` IR、
   `supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection、query/cache invalidation 和 IDE
   hover/tooling projection。
-- M11a advanced dyn design/query gate：`m11a_dyn_advanced_design_gate_baseline`、`principal_set_metadata_v1` 和
-  principal-set composition required facts 已固定，但仍不是用户可写 composition 语法。
+- M11a/M11b advanced dyn design/query facts：`m11a_dyn_advanced_design_gate_baseline`、
+  `principal_set_metadata_v1`、`PrincipalSetCompositionFacts` 和 principal-set composition required facts 已固定，
+  但仍不是用户可写 composition 语法。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。

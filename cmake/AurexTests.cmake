@@ -20,6 +20,7 @@ if(BUILD_TESTING)
 
     add_executable(aurex_query_tests
         tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
+        tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
         tests/gtest/infrastructure/query/query_key_tests.cpp
         tests/gtest/infrastructure/query/query_robustness_tests.cpp
         tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
@@ -134,6 +135,7 @@ if(BUILD_TESTING)
             tests/gtest/midend/ir/type_table_tests.cpp
             tests/gtest/infrastructure/query/query_key_tests.cpp
             tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
+            tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
             tests/gtest/infrastructure/query/query_robustness_tests.cpp
             tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
             tests/gtest/frontend/sema/block_expression_tests.cpp

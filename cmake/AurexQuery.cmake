@@ -14,6 +14,7 @@ add_library(aurex_query
     src/infrastructure/query/cleanup_marker_facts.cpp
     src/infrastructure/query/dyn_advanced_design_gate.cpp
     src/infrastructure/query/dyn_abi_facts.cpp
+    src/infrastructure/query/principal_set_composition_facts.cpp
     src/infrastructure/query/project_graph_query.cpp
     src/infrastructure/query/source_file_query.cpp
     src/infrastructure/query/diagnostics_query.cpp

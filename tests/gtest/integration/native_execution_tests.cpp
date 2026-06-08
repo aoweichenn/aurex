@@ -158,4 +158,36 @@ TEST_F(AurexIntegrationTest, NativeDynTraitDefaultMethodAndAssociatedEqualityDis
     EXPECT_EQ(require_success(q(binary)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, NativeDynTraitSupertraitUpcastDispatchUsesParentVtable)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_dyn_trait_supertrait_upcast.ax",
+        "module native_dyn_trait_supertrait_upcast;\n"
+        "trait Parent {\n"
+        "  fn parent(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Child: Parent {\n"
+        "  fn child(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 100; } }\n"
+        "impl Parent for Socket { fn parent(self: &Socket) -> i32 { return self.value + 20; } }\n"
+        "impl Child for Socket { fn child(self: &Socket) -> i32 { return self.value + 200; } }\n"
+        "fn score(child: &dyn Child) -> i32 {\n"
+        "  return child.parent() + child.child();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 3 };\n"
+        "  let socket: Socket = Socket { value: 4 };\n"
+        "  let total: i32 = score(&file) + score(&socket);\n"
+        "  if total == 334 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_dyn_trait_supertrait_upcast";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
 } // namespace aurex::test

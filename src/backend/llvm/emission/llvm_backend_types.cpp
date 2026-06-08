@@ -193,6 +193,18 @@ llvm::ArrayType* LlvmEmitter::llvm_vtable_array_type(const TraitObjectVTableLayo
         llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE), layout.method_slots.size());
 }
 
+llvm::ArrayType* LlvmEmitter::llvm_vtable_supertrait_array_type(const TraitObjectVTableLayout& layout)
+{
+    return llvm::ArrayType::get(
+        llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE), layout.supertrait_edges.size());
+}
+
+llvm::StructType* LlvmEmitter::llvm_vtable_type(const TraitObjectVTableLayout& layout)
+{
+    return llvm::StructType::get(
+        this->context_, {this->llvm_vtable_array_type(layout), this->llvm_vtable_supertrait_array_type(layout)});
+}
+
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type)
 {
     if (!this->source_.types.is_pointer(pointer_type) && !this->source_.types.is_reference(pointer_type)) {

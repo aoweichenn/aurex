@@ -413,8 +413,16 @@ public:
         sema::TypeHandle object_type, base::u32 slot) const noexcept;
     [[nodiscard]] const sema::TraitObjectCoercionFact* trait_object_coercion(
         sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
+    [[nodiscard]] const sema::TraitObjectUpcastCoercionFact* trait_object_upcast_coercion(
+        sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
+    [[nodiscard]] const TraitObjectVTableSupertraitEdge* trait_object_vtable_supertrait_edge(
+        const query::VTableLayoutKey& source_layout,
+        const query::VTableLayoutKey& target_layout,
+        const query::TraitObjectUpcastCoercionKey& upcast_key) const noexcept;
     [[nodiscard]] sema::TypeHandle vtable_pointer_type() noexcept;
     [[nodiscard]] sema::TypeHandle erased_trait_object_receiver_type(
+        const sema::TraitMethodCallBinding& binding) noexcept;
+    [[nodiscard]] sema::TypeHandle dispatch_trait_object_receiver_type(
         const sema::TraitMethodCallBinding& binding) noexcept;
 
     [[nodiscard]] ValueId coerce_value(ValueId value_id, sema::TypeHandle target_type);

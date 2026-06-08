@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M8 borrowed dyn trait runtime dispatch closure** 的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait 和 borrowed dyn trait 表面本身展开。
+本文描述当前 **M10c Supertrait IR / Backend Runtime Implementation** 的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait 和 borrowed dyn supertrait upcast 表面本身展开。
 
 ## 构建
 
@@ -139,12 +139,13 @@ fn main() -> i32 {
 dyn 用例：`&dyn Source[Item = i32]` shared dispatch、`&mut dyn Accumulate` mutable receiver 写回、default
 method slot 和 associated equality 在同一个程序中运行。
 
-M10b 还支持 check-only borrowed dyn supertrait upcast：`trait Child: Parent` 会进入 checked supertrait graph，
-`&dyn Child` 可以在需要 `&dyn Parent` 的 contextual coercion 中记录 upcast fact。该能力当前只到 parser/sema/query
-事实层，不生成 `trait_object_upcast` IR 或 runtime parent vtable projection。
+M10c 还支持 borrowed dyn supertrait upcast runtime：`trait Child: Parent` 会进入 checked supertrait graph，
+`&dyn Child` 可以在需要 `&dyn Parent` 的 contextual coercion 中记录 upcast fact，并 lowering 为
+`trait_object_upcast` IR 和 LLVM parent vtable projection。`dyn Child` receiver 上 inherited parent method
+call 会先投影到 parent vtable，再按 parent slot 动态派发。
 
-当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、supertrait upcasting runtime lowering、
-多 trait object composition、specialization、default associated type、generic associated type 或 associated const。
+当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、多 trait object composition、
+specialization、default associated type、generic associated type 或 associated const。
 
 ## import
 

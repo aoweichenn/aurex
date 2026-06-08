@@ -192,8 +192,23 @@ inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_PACK_RESULT =
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_PACK_DATA =
     "dyn pack data must be a pointer or reference to the concrete type";
 
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_UPCAST_OBJECT =
+    "dyn upcast object must be a reference to source dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_UPCAST_RESULT =
+    "dyn upcast result must be a reference to target dyn trait";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_UPCAST_EDGE =
+    "dyn upcast supertrait edge is invalid or missing";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_UPCAST_LAYOUT =
+    "dyn upcast source and target layouts do not match the supertrait edge";
+
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_LAYOUT =
     "dyn trait vtable layout is invalid or missing";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE =
+    "dyn trait vtable supertrait edge is invalid";
 
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE =
     "dyn trait vtable layout does not match concrete/object types";

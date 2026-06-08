@@ -25,9 +25,9 @@ checked vtable facts、IR/backend dynamic dispatch 和 hardening closure。
   trait default method body。
 - borrowed dyn trait view：`&dyn Trait` / `&mut dyn Trait`、`dyn Trait[Assoc = Type]`、checked vtable witness、
   IR/backend indirect dispatch。
-- direct supertrait declaration 和 check-only borrowed dyn upcast facts：`trait Child: Parent`、checked
-  `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey` 和 `DynUpcastAbiDescriptor`；runtime upcast lowering
-  后移到 M10c。
+- direct supertrait declaration 和 borrowed dyn supertrait upcast runtime：`trait Child: Parent`、checked
+  `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、`trait_object_upcast` IR、
+  `supertrait_vptr_metadata_v1` vtable metadata 和 LLVM parent vtable projection。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。
@@ -41,7 +41,7 @@ checked vtable facts、IR/backend dynamic dispatch 和 hardening closure。
 - 标准库 API、容器、文件、目录、进程、console。
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
-- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、supertrait upcasting runtime lowering、多 trait object
+- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、多 trait object
   composition、associated const、default associated type、generic associated type、specialization、minimal implementation
   annotation、完整 Rust-style lifetime surface、async drop 和标准库重建。
 

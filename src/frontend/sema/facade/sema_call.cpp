@@ -699,8 +699,9 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         }
         this->validate_unsafe_call(*call_signature, callee.range);
         const base::u32 receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
-        const bool trait_receiver_valid =
-            !has_receiver || this->method_receiver_matches(*call_signature, receiver_type, callee.object);
+        const bool trait_receiver_valid = !has_receiver
+            || resolution.dispatch == TraitMethodDispatchKind::vtable_slot
+            || this->method_receiver_matches(*call_signature, receiver_type, callee.object);
         if (!trait_receiver_valid || resolution.param_types.size() < receiver_count) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
@@ -731,6 +732,8 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             binding.requirement_ordinal = resolution.requirement->ordinal;
         }
         binding.receiver_type = receiver_type;
+        binding.dispatch_receiver_type =
+            is_valid(resolution.dispatch_receiver_type) ? resolution.dispatch_receiver_type : receiver_type;
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;
         const ReceiverAccessFacts access = receiver_access_facts(
@@ -792,11 +795,34 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
                 this->resolve_dyn_trait_method_call(owner_type, callee.field_name_id, callee.field_name, callee.range,
                     false);
             if (dyn_resolution.found) {
-                for (const TraitObjectCoercionFact& fact : this->state_.checked.trait_object_coercions) {
-                    if (fact.target_reference_type.value == receiver_type.value
-                        && fact.object_type.value == owner_type.value) {
-                        dyn_resolution.vtable_layout = fact.vtable_layout;
-                        break;
+                TypeHandle dispatch_receiver_type = dyn_resolution.dispatch_receiver_type;
+                if (!is_valid(dispatch_receiver_type)) {
+                    dispatch_receiver_type = owner_type;
+                }
+                TypeHandle dispatch_reference_type = receiver_type;
+                if (dispatch_receiver_type.value != owner_type.value
+                    && this->state_.checked.types.is_reference(receiver_type)) {
+                    dispatch_reference_type = this->state_.checked.types.reference(
+                        this->state_.checked.types.get(receiver_type).pointer_mutability, dispatch_receiver_type);
+                    this->record_borrowed_dyn_trait_upcast_if_needed(
+                        callee.object, receiver_type, dispatch_reference_type, callee.range);
+                    for (const TraitObjectUpcastCoercionFact& fact :
+                        this->state_.checked.trait_object_upcast_coercions) {
+                        if (fact.expr.value == callee.object.value
+                            && fact.source_reference_type.value == receiver_type.value
+                            && fact.target_reference_type.value == dispatch_reference_type.value
+                            && fact.target_object_type.value == dispatch_receiver_type.value) {
+                            dyn_resolution.vtable_layout = fact.target_vtable_layout;
+                            break;
+                        }
+                    }
+                } else {
+                    for (const TraitObjectCoercionFact& fact : this->state_.checked.trait_object_coercions) {
+                        if (fact.target_reference_type.value == receiver_type.value
+                            && fact.object_type.value == owner_type.value) {
+                            dyn_resolution.vtable_layout = fact.vtable_layout;
+                            break;
+                        }
                     }
                 }
                 return finish_trait_method_call(dyn_resolution, owner_type);

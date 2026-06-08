@@ -1,9 +1,35 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M10b Supertrait Frontend / Query / Sema Implementation
+阶段：M10c Supertrait IR / Backend Runtime Implementation
 
 ## 总体状态
+
+2026-06-08：M10c Supertrait IR / Backend Runtime Implementation 已完成。M10c 继续保持 compiler/runtime
+core 范围，不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
+allocator policy、不实现 multi trait composition，也不新增 trait-object Drop metadata。当前新增能力是把 M10b
+已经验证的 borrowed dyn-to-dyn upcast facts 贯通到 IR、verifier、LLVM backend 和 native execution。
+
+Sema 现在可以把 `dyn Child` receiver 上 inherited parent method call 绑定为 runtime-ready parent dispatch：
+`child.parent()` 会设置 `dispatch_receiver_type=dyn Parent`，记录 `TraitObjectUpcastCoercionFact`，并在后续
+concrete-to-child coercion 出现时回填 source/target vtable layout。Checked facts 仍保留 upcast 是 coercion、
+不是普通子类型的边界；它不创建 ownership、不复制对象、不延长 origin、不放宽 loan、不把 shared borrow 升级成
+mutable。
+
+IR 侧新增 `trait_object_upcast` value，`TraitObjectVTableLayout` 新增 `supertrait_edges`。Lowering 会从
+checked upcast fact 生成 runtime upcast，并保证每个 concrete `dyn Child` vtable 都有同序 parent edge；同一个
+`score(child: &dyn Child)` 在 File/Socket 等不同 concrete impl 上会 late bind 到各自 parent vtable。IR dump、
+fingerprint、pass pipeline、`FunctionDynAbiFacts` 和 verifier 均已纳入 upcast / supertrait edge invariants。
+
+LLVM backend 现在用 `supertrait_vptr_metadata_v1` 表达带 parent vtable pointer metadata 的 vtable global：
+global shape 为 `{ [methods x ptr], [supertraits x ptr] }`。`trait_object_upcast` lowering 复用 data pointer，
+从 source vtable 的 supertrait table 加载 target parent vtable pointer，再构造 target `{data*, vtable*}`
+borrowed dyn view。Native execution 已覆盖 inherited parent dispatch、多 concrete child vtable 和 parent vtable
+projection。
+
+M10c 完成后，下一步应进入 M10d Supertrait Hardening / Release Closure：补 query/cache/tooling projection polish、
+negative sample matrix、文档收口、coverage/release gate 和实际代码量偏差分析。标准库、owning dyn、
+`Box<dyn Trait>`、allocator、dynamic Drop dispatch 和 multi trait composition 仍是独立后续阶段，不进入 M10d。
 
 2026-06-08：M10b Supertrait Frontend / Query / Sema Implementation 已完成。M10b 仍然是 compiler-only /
 check-only 子集，不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
@@ -26,8 +52,8 @@ Query / ABI facts 侧新增 `TraitObjectMetadataPolicyKey::supertrait_vptr_metad
 `TraitObjectUpcastCoercionKey`、`DynMetadataPolicy::supertrait_vptr_metadata_v1` 和 `DynUpcastAbiDescriptor`。
 `FunctionDynAbiFacts` 可以投影 upcast descriptors、summary、fingerprint 和 dump。M10b 的 query key validation
 只验证 source/target object、origin、edge fingerprint、borrow kind 和 policy 形状；target 是 source supertrait 的证明来自
-sema checked fact。M10c 下一步再实现 `trait_object_upcast` IR、`VTableSupertraitEdgeDescriptor`、LLVM
-`supertrait_vptr_metadata_v1` vtable global 和 runtime projection。
+sema checked fact。`trait_object_upcast` IR、`VTableSupertraitEdgeDescriptor` 等价 IR fact、LLVM
+`supertrait_vptr_metadata_v1` vtable global 和 runtime projection 已由 M10c 完成。
 
 2026-06-08：M10a Supertrait Upcasting Design Baseline 已完成。M10 已从 `m10` 分支开启，并从 M9c
 `DynAdvancedDesignGate` 的 advanced dyn 候选中选择 supertrait upcasting 作为第一条后续主线。新增
@@ -44,7 +70,7 @@ tests 的分层计划和代码量预估写入文档。
 M10a 不新增 parser/sema/IR lowering/LLVM backend runtime 或标准库代码。本阶段继续不实现标准库、不实现
 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现 multi trait composition，也不把 runtime
 feature 藏进 `borrowed_view_v1` / `borrowed_methods_only_v1`。M10a 的下一步已由 M10b frontend/query/sema
-承接；M10b 完成后，下一步应进入 M10c IR/backend runtime，而不是提前做标准库。
+承接，M10b 的下一步也已由 M10c IR/backend runtime 承接；标准库仍不属于 M10。
 
 2026-06-08：M9 Dyn ABI / Tooling release closure 已完成。M9a-M9c 已收成
 [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)：M9a 固定 facts-first dyn ABI / tooling

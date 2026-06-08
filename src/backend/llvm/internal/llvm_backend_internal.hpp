@@ -51,6 +51,7 @@ using aurex::ir::Terminator;
 using aurex::ir::TerminatorKind;
 using aurex::ir::TraitObjectVTableLayout;
 using aurex::ir::TraitObjectVTableMethodSlot;
+using aurex::ir::TraitObjectVTableSupertraitEdge;
 using aurex::ir::UnaryOp;
 using aurex::ir::Value;
 using aurex::ir::ValueId;
@@ -91,6 +92,7 @@ public:
     [[nodiscard]] llvm::Value* emit_index_addr(const Value& value);
     [[nodiscard]] llvm::Value* emit_aggregate(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_pack(const Value& value);
+    [[nodiscard]] llvm::Value* emit_trait_object_upcast(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_data(const Value& value);
     [[nodiscard]] llvm::Value* emit_trait_object_vtable(const Value& value);
     [[nodiscard]] llvm::Value* emit_vtable_slot(const Value& value);
@@ -117,6 +119,8 @@ public:
     [[nodiscard]] llvm::Type* llvm_type(sema::TypeHandle type);
     [[nodiscard]] llvm::Type* llvm_trait_object_view_type();
     [[nodiscard]] llvm::ArrayType* llvm_vtable_array_type(const TraitObjectVTableLayout& layout);
+    [[nodiscard]] llvm::ArrayType* llvm_vtable_supertrait_array_type(const TraitObjectVTableLayout& layout);
+    [[nodiscard]] llvm::StructType* llvm_vtable_type(const TraitObjectVTableLayout& layout);
     [[nodiscard]] llvm::Type* pointee_llvm_type(sema::TypeHandle pointer_type);
     [[nodiscard]] sema::TypeHandle pointee_type(ValueId value) const noexcept;
     [[nodiscard]] bool is_unsigned_integer(sema::TypeHandle type) const noexcept;

@@ -139,6 +139,19 @@ void mix_trait_object_vtable_layout(
         mix_type(builder, module, slot.return_type);
         mix_text(builder, module, slot.method_name);
     }
+    builder.mix_u64(static_cast<base::u64>(layout.supertrait_edges.size()));
+    for (const TraitObjectVTableSupertraitEdge& edge : layout.supertrait_edges) {
+        builder.mix_u32(edge.edge_index);
+        builder.mix_u64(edge.upcast_key.global_id);
+        builder.mix_fingerprint(edge.edge_fingerprint);
+        builder.mix_u64(edge.source_layout.global_id);
+        builder.mix_u64(edge.target_layout.global_id);
+        mix_type(builder, module, edge.source_reference_type);
+        mix_type(builder, module, edge.target_reference_type);
+        mix_type(builder, module, edge.source_object_type);
+        mix_type(builder, module, edge.target_object_type);
+        builder.mix_u8(static_cast<base::u8>(edge.borrow_kind));
+    }
 }
 
 void mix_function_signature(query::StableHashBuilder& builder, const Module& module, const Function& function)
@@ -194,7 +207,10 @@ void mix_value(query::StableHashBuilder& builder, const Module& module, const Va
     mix_type(builder, module, value.target_type);
     builder.mix_u8(static_cast<base::u8>(value.cleanup_policy));
     builder.mix_u64(value.vtable_layout.global_id);
+    builder.mix_u64(value.target_vtable_layout.global_id);
+    builder.mix_u64(value.upcast_key.global_id);
     builder.mix_u32(value.vtable_slot);
+    builder.mix_u32(value.vtable_supertrait_edge);
 
     builder.mix_u64(value.args.size());
     for (const ValueId arg : value.args) {

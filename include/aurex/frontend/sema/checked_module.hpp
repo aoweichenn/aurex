@@ -425,6 +425,7 @@ struct TraitMethodCallBinding {
     base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     base::u32 vtable_slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle dispatch_receiver_type = INVALID_TYPE_HANDLE;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
@@ -532,6 +533,8 @@ struct TraitObjectUpcastCoercionFact {
     TypeHandle target_reference_type = INVALID_TYPE_HANDLE;
     TypeHandle source_object_type = INVALID_TYPE_HANDLE;
     TypeHandle target_object_type = INVALID_TYPE_HANDLE;
+    query::VTableLayoutKey source_vtable_layout;
+    query::VTableLayoutKey target_vtable_layout;
     query::StableFingerprint128 edge_fingerprint;
     query::TraitObjectBorrowKindKey borrow_kind = query::TraitObjectBorrowKindKey::shared;
     base::SourceRange range{};

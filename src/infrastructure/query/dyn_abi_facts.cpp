@@ -208,7 +208,7 @@ bool is_valid(const DynVTableAbiDescriptor& descriptor) noexcept
 {
     return is_valid(descriptor.layout) && is_valid(descriptor.abi_policy) && is_valid(descriptor.metadata_policy)
         && descriptor.layout.abi_policy == TraitObjectAbiPolicyKey::borrowed_view_v1
-        && descriptor.layout.metadata_policy == TraitObjectMetadataPolicyKey::borrowed_methods_only_v1
+        && descriptor.metadata_policy == dyn_metadata_policy_from_key(descriptor.layout.metadata_policy)
         && descriptor.layout.method_slot_count == descriptor.slots.size() && dyn_vtable_slots_are_valid(descriptor);
 }
 

@@ -229,6 +229,9 @@ struct FunctionUseInfo {
                 case ValueKind::trait_object_pack:
                     record_slot_use(value.lhs, block_index, false);
                     break;
+                case ValueKind::trait_object_upcast:
+                    record_slot_use(value.object, block_index, false);
+                    break;
                 case ValueKind::trait_object_data:
                 case ValueKind::trait_object_vtable:
                 case ValueKind::vtable_slot:

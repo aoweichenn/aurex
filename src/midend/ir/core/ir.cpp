@@ -43,7 +43,8 @@ RecordLayout::RecordLayout(base::BumpAllocator& arena) : fields(base::BumpAlloca
 TraitObjectVTableLayout::TraitObjectVTableLayout() = default;
 
 TraitObjectVTableLayout::TraitObjectVTableLayout(base::BumpAllocator& arena)
-    : method_slots(base::BumpAllocatorAdapter<TraitObjectVTableMethodSlot>{arena})
+    : method_slots(base::BumpAllocatorAdapter<TraitObjectVTableMethodSlot>{arena}),
+      supertrait_edges(base::BumpAllocatorAdapter<TraitObjectVTableSupertraitEdge>{arena})
 {
 }
 
@@ -178,7 +179,10 @@ Value Module::clone_value(const Value& other)
     copy.target_type = other.target_type;
     copy.cleanup_policy = other.cleanup_policy;
     copy.vtable_layout = other.vtable_layout;
+    copy.target_vtable_layout = other.target_vtable_layout;
+    copy.upcast_key = other.upcast_key;
     copy.vtable_slot = other.vtable_slot;
+    copy.vtable_supertrait_edge = other.vtable_supertrait_edge;
     return copy;
 }
 
@@ -238,6 +242,8 @@ TraitObjectVTableLayout Module::clone_trait_object_vtable_layout(const TraitObje
     copy.symbol = other.symbol;
     copy.method_slots =
         this->copy_vector<TraitObjectVTableMethodSlot>({other.method_slots.data(), other.method_slots.size()});
+    copy.supertrait_edges = this->copy_vector<TraitObjectVTableSupertraitEdge>(
+        {other.supertrait_edges.data(), other.supertrait_edges.size()});
     return copy;
 }
 

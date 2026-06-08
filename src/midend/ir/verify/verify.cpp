@@ -444,6 +444,9 @@ private:
             case ValueKind::trait_object_pack:
                 this->verify_trait_object_pack(*value);
                 break;
+            case ValueKind::trait_object_upcast:
+                this->verify_trait_object_upcast(*value);
+                break;
             case ValueKind::trait_object_data:
                 this->verify_trait_object_data(*value);
                 break;
@@ -1098,6 +1101,11 @@ private:
             if (!this->is_trait_object_type(layout.object_type)) {
                 this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
             }
+            if (layout.supertrait_edges.size() > 0
+                && layout.layout_key.metadata_policy
+                    != query::TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1) {
+                this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
+            }
             if (layout.method_slots.size() != layout.layout_key.method_slot_count) {
                 this->fail(std::string(IR_VERIFY_VTABLE_SLOT_RANGE));
             }
@@ -1120,6 +1128,51 @@ private:
                 this->verify_type(slot.receiver_type, "vtable slot receiver type");
                 this->verify_type(slot.return_type, "vtable slot return type");
             }
+            std::unordered_set<base::u32> seen_edges;
+            seen_edges.reserve(layout.supertrait_edges.size());
+            for (const TraitObjectVTableSupertraitEdge& edge : layout.supertrait_edges) {
+                this->verify_vtable_supertrait_edge(layout, edge, seen_edges);
+            }
+        }
+    }
+
+    void verify_vtable_supertrait_edge(const TraitObjectVTableLayout& layout,
+        const TraitObjectVTableSupertraitEdge& edge, std::unordered_set<base::u32>& seen_edges)
+    {
+        if (edge.edge_index >= layout.supertrait_edges.size() || !seen_edges.insert(edge.edge_index).second
+            || !query::is_valid(edge.upcast_key) || !query::is_valid(edge.source_layout)
+            || !query::is_valid(edge.target_layout)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
+        }
+        if (edge.source_layout != layout.layout_key) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
+        }
+        const TraitObjectVTableLayout* const target_layout = this->find_vtable_layout(edge.target_layout);
+        if (target_layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        this->verify_type(edge.source_reference_type, "vtable supertrait source reference");
+        this->verify_type(edge.target_reference_type, "vtable supertrait target reference");
+        this->verify_type(edge.source_object_type, "vtable supertrait source object");
+        this->verify_type(edge.target_object_type, "vtable supertrait target object");
+        if (!this->module_.types.same(edge.source_object_type, layout.object_type)
+            || !this->module_.types.same(edge.target_object_type, target_layout->object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
+        }
+        if (!this->is_trait_object_reference(edge.source_reference_type)
+            || !this->is_trait_object_reference(edge.target_reference_type)
+            || !this->module_.types.same(this->module_.types.get(edge.source_reference_type).pointee,
+                edge.source_object_type)
+            || !this->module_.types.same(this->module_.types.get(edge.target_reference_type).pointee,
+                edge.target_object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
+        }
+        if (edge.upcast_key.source_object_type != layout.layout_key.object_type
+            || edge.upcast_key.target_object_type != target_layout->layout_key.object_type
+            || edge.upcast_key.supertrait_edge_path != edge.edge_fingerprint
+            || edge.upcast_key.borrow_kind != edge.borrow_kind) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_SUPERTRAIT_EDGE));
         }
     }
 
@@ -1142,6 +1195,43 @@ private:
         }
         if (!this->module_.types.same(this->module_.types.get(value.type).pointee, layout->object_type)) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
+        }
+    }
+
+    void verify_trait_object_upcast(const Value& value)
+    {
+        this->verify_type(value.type, "dyn upcast result");
+        if (!this->is_trait_object_reference(value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_RESULT));
+            return;
+        }
+        this->verify_value_id(value.object, "dyn upcast object");
+        const Value* object = this->get(value.object);
+        if (object == nullptr || !this->is_trait_object_reference(object->type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_OBJECT));
+            return;
+        }
+        const TraitObjectVTableLayout* const source_layout = this->find_vtable_layout(value.vtable_layout);
+        const TraitObjectVTableLayout* const target_layout = this->find_vtable_layout(value.target_vtable_layout);
+        if (source_layout == nullptr || target_layout == nullptr) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT));
+            return;
+        }
+        if (!this->module_.types.same(this->module_.types.get(object->type).pointee, source_layout->object_type)
+            || !this->module_.types.same(this->module_.types.get(value.type).pointee, target_layout->object_type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_LAYOUT));
+        }
+        if (value.vtable_supertrait_edge >= source_layout->supertrait_edges.size()) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_EDGE));
+            return;
+        }
+        const TraitObjectVTableSupertraitEdge& edge =
+            source_layout->supertrait_edges[value.vtable_supertrait_edge];
+        if (edge.source_layout != value.vtable_layout || edge.target_layout != value.target_vtable_layout
+            || edge.upcast_key != value.upcast_key
+            || !this->module_.types.same(edge.source_reference_type, object->type)
+            || !this->module_.types.same(edge.target_reference_type, value.type)) {
+            this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_UPCAST_LAYOUT));
         }
     }
 

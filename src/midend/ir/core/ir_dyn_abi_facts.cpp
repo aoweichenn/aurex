@@ -129,6 +129,24 @@ namespace {
     };
 }
 
+[[nodiscard]] query::DynUpcastAbiDescriptor make_upcast_descriptor(const Module& module,
+    const TraitObjectVTableSupertraitEdge& edge)
+{
+    return query::DynUpcastAbiDescriptor{
+        edge.upcast_key,
+        edge.upcast_key.source_object_type,
+        edge.upcast_key.target_object_type,
+        edge.edge_fingerprint,
+        query::dyn_borrow_kind_from_key(edge.borrow_kind),
+        query::dyn_abi_policy_from_key(edge.upcast_key.source_object_type.abi_policy),
+        query::DynMetadataPolicy::supertrait_vptr_metadata_v1,
+        type_name(module, edge.source_reference_type),
+        type_name(module, edge.target_reference_type),
+        type_name(module, edge.source_object_type),
+        type_name(module, edge.target_object_type),
+    };
+}
+
 void push_unique_object_descriptor(query::FunctionDynAbiFacts& facts, query::DynObjectAbiDescriptor descriptor)
 {
     if (!query::is_valid(descriptor)) {
@@ -170,6 +188,19 @@ void push_unique_dispatch_descriptor(query::FunctionDynAbiFacts& facts, query::D
     }
 }
 
+void push_unique_upcast_descriptor(query::FunctionDynAbiFacts& facts, query::DynUpcastAbiDescriptor descriptor)
+{
+    if (!query::is_valid(descriptor)) {
+        return;
+    }
+    const auto found = std::ranges::find_if(facts.upcasts, [&descriptor](const query::DynUpcastAbiDescriptor& upcast) {
+        return upcast.upcast == descriptor.upcast;
+    });
+    if (found == facts.upcasts.end()) {
+        query::record_dyn_upcast_abi_descriptor(facts, std::move(descriptor));
+    }
+}
+
 void include_layout(query::FunctionDynAbiFacts& facts, const Module& module, const TraitObjectVTableLayout& layout)
 {
     push_unique_object_descriptor(facts, make_object_descriptor(module, layout));
@@ -190,6 +221,19 @@ void include_value_dyn_abi(query::FunctionDynAbiFacts& facts, const Module& modu
     if (value.kind == ValueKind::trait_object_pack || value.kind == ValueKind::trait_object_data
         || value.kind == ValueKind::trait_object_vtable) {
         include_layout_by_key(facts, module, value.vtable_layout);
+        return;
+    }
+    if (value.kind == ValueKind::trait_object_upcast) {
+        const TraitObjectVTableLayout* const source_layout = find_layout(module, value.vtable_layout);
+        const TraitObjectVTableLayout* const target_layout = find_layout(module, value.target_vtable_layout);
+        if (source_layout == nullptr || target_layout == nullptr
+            || value.vtable_supertrait_edge >= source_layout->supertrait_edges.size()) {
+            return;
+        }
+        include_layout(facts, module, *source_layout);
+        include_layout(facts, module, *target_layout);
+        push_unique_upcast_descriptor(facts,
+            make_upcast_descriptor(module, source_layout->supertrait_edges[value.vtable_supertrait_edge]));
         return;
     }
     if (value.kind != ValueKind::vtable_slot) {
@@ -213,6 +257,7 @@ query::FunctionDynAbiFacts function_dyn_abi_facts(const Module& module, const Fu
     const std::vector<ValueId> values = collect_function_value_closure(module, function);
     facts.objects.reserve(values.size());
     facts.vtables.reserve(values.size());
+    facts.upcasts.reserve(values.size());
     facts.dispatches.reserve(values.size());
     for (const ValueId id : values) {
         include_value_dyn_abi(facts, module, module.values[id.value]);

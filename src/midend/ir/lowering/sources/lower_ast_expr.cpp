@@ -257,13 +257,15 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
 
 ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const ExprView& expr)
 {
-    const ValueId lhs = lower_expr(expr.binary_lhs);
-    const BlockId lhs_block = current_block_;
+    const ValueId lhs = this->lower_expr(expr.binary_lhs);
+    const BlockId lhs_block = this->current_block_;
 
     const BlockId rhs_block =
-        add_block(this->module_, *current_function_, "logical.rhs" + std::to_string(current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_,
+            "logical.rhs" + std::to_string(this->current_function_->blocks.size()));
     const BlockId exit_block =
-        add_block(this->module_, *current_function_, "logical.exit" + std::to_string(current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_,
+            "logical.exit" + std::to_string(this->current_function_->blocks.size()));
 
     Terminator cond;
     cond.kind = TerminatorKind::cond_branch;
@@ -275,25 +277,25 @@ ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const Ex
         cond.then_target = exit_block;
         cond.else_target = rhs_block;
     }
-    set_terminator(current_block_, cond);
+    this->set_terminator(this->current_block_, cond);
 
-    current_block_ = rhs_block;
-    const ValueId rhs = lower_expr(expr.binary_rhs);
-    const BlockId rhs_tail_block = current_block_;
-    append_branch_if_open(exit_block);
+    this->current_block_ = rhs_block;
+    const ValueId rhs = this->lower_expr(expr.binary_rhs);
+    const BlockId rhs_tail_block = this->current_block_;
+    this->append_branch_if_open(exit_block);
 
-    current_block_ = exit_block;
+    this->current_block_ = exit_block;
     Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
-    result.type = expr_type(expr_id);
+    result.type = this->expr_type(expr_id);
     result.incoming.push_back(PhiInput{lhs_block, lhs});
     result.incoming.push_back(PhiInput{rhs_tail_block, rhs});
-    return append_value(result);
+    return this->append_value(result);
 }
 
 ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& expr)
 {
-    if (current_function_ == nullptr || !is_valid(current_block_)) {
+    if (this->current_function_ == nullptr || !is_valid(this->current_block_)) {
         return INVALID_VALUE_ID;
     }
     ValueId condition = INVALID_VALUE_ID;
@@ -304,44 +306,47 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& exp
         this->append_store(condition_slot, this->lower_expr(expr.condition));
         condition = this->append_pattern_condition(expr.condition_pattern, condition_slot, condition_type);
     } else {
-        condition = lower_expr(expr.condition);
+        condition = this->lower_expr(expr.condition);
     }
     const BlockId then_block =
-        add_block(this->module_, *current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_,
+            "if.expr.then" + std::to_string(this->current_function_->blocks.size()));
     const BlockId else_block =
-        add_block(this->module_, *current_function_, "if.expr.else" + std::to_string(current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_,
+            "if.expr.else" + std::to_string(this->current_function_->blocks.size()));
     const BlockId join_block =
-        add_block(this->module_, *current_function_, "if.expr.join" + std::to_string(current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_,
+            "if.expr.join" + std::to_string(this->current_function_->blocks.size()));
 
     Terminator cond;
     cond.kind = TerminatorKind::cond_branch;
     cond.condition = condition;
     cond.then_target = then_block;
     cond.else_target = else_block;
-    set_terminator(current_block_, cond);
+    this->set_terminator(this->current_block_, cond);
 
-    current_block_ = then_block;
+    this->current_block_ = then_block;
     this->push_local_scope();
     if (syntax::is_valid(expr.condition_pattern)) {
         this->bind_pattern_locals(expr.condition_pattern, condition_slot, condition_type);
     }
-    const ValueId then_value = lower_expr(expr.then_expr, expr_type(expr_id));
+    const ValueId then_value = this->lower_expr(expr.then_expr, this->expr_type(expr_id));
     this->pop_local_scope();
-    const BlockId then_tail_block = current_block_;
-    append_branch_if_open(join_block);
+    const BlockId then_tail_block = this->current_block_;
+    this->append_branch_if_open(join_block);
 
-    current_block_ = else_block;
-    const ValueId else_value = lower_expr(expr.else_expr, expr_type(expr_id));
-    const BlockId else_tail_block = current_block_;
-    append_branch_if_open(join_block);
+    this->current_block_ = else_block;
+    const ValueId else_value = this->lower_expr(expr.else_expr, this->expr_type(expr_id));
+    const BlockId else_tail_block = this->current_block_;
+    this->append_branch_if_open(join_block);
 
-    current_block_ = join_block;
+    this->current_block_ = join_block;
     Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
-    result.type = expr_type(expr_id);
+    result.type = this->expr_type(expr_id);
     result.incoming.push_back(PhiInput{then_tail_block, then_value});
     result.incoming.push_back(PhiInput{else_tail_block, else_value});
-    return append_value(result);
+    return this->append_value(result);
 }
 
 ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& expr)
@@ -677,7 +682,7 @@ ValueId Lowerer::lower_dyn_trait_call_expr(
         syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
         ? this->ast_.exprs.field_payload(receiver_callee.value)
         : nullptr;
-    const sema::TypeHandle dyn_receiver_type = this->erased_trait_object_receiver_type(binding);
+    const sema::TypeHandle dyn_receiver_type = this->dispatch_trait_object_receiver_type(binding);
     const sema::TypeHandle dyn_object_type =
         sema::is_valid(dyn_receiver_type) && this->module_.types.is_reference(dyn_receiver_type)
         ? this->module_.types.get(dyn_receiver_type).pointee
@@ -706,7 +711,8 @@ ValueId Lowerer::lower_dyn_trait_call_expr(
     }
 
     const sema::TypeInfo& function = this->module_.types.get(slot->function_type);
-    const ValueId receiver = this->lower_expr(callee_field->object, dyn_receiver_type);
+    const ValueId receiver =
+        this->coerce_value(this->lower_expr(callee_field->object, dyn_receiver_type), dyn_receiver_type);
     Value data = this->module_.make_value();
     data.kind = ValueKind::trait_object_data;
     data.type = function.function_params.empty() ? slot->receiver_type : function.function_params.front();
@@ -1407,10 +1413,10 @@ IrTextId Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& exp
 
 sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const base::usize index) const noexcept
 {
-    if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
+    if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    const Function& function = module_.functions[function_id.value];
+    const Function& function = this->module_.functions[function_id.value];
     if (index >= function.signature_params.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
@@ -1422,7 +1428,7 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
     if (!sema::is_valid(source_type)) {
         return source_type;
     }
-    const sema::TypeInfo& info = module_.types.get(source_type);
+    const sema::TypeInfo& info = this->module_.types.get(source_type);
     if (info.kind != sema::TypeKind::builtin) {
         return source_type;
     }
@@ -1432,9 +1438,9 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
         case sema::BuiltinType::u8:
         case sema::BuiltinType::i16:
         case sema::BuiltinType::u16:
-            return module_.types.builtin(sema::BuiltinType::i32);
+            return this->module_.types.builtin(sema::BuiltinType::i32);
         case sema::BuiltinType::f32:
-            return module_.types.builtin(sema::BuiltinType::f64);
+            return this->module_.types.builtin(sema::BuiltinType::f64);
         default:
             return source_type;
     }
@@ -1545,15 +1551,15 @@ sema::TypeHandle Lowerer::aggregate_field_type(
 
 sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept
 {
-    if (!is_valid(slot) || slot.value >= module_.values.size()) {
+    if (!is_valid(slot) || slot.value >= this->module_.values.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    const sema::TypeHandle slot_type = module_.values[slot.value].type;
+    const sema::TypeHandle slot_type = this->module_.values[slot.value].type;
     if (!sema::is_valid(slot_type)
-        || (!module_.types.is_pointer(slot_type) && !module_.types.is_reference(slot_type))) {
+        || (!this->module_.types.is_pointer(slot_type) && !this->module_.types.is_reference(slot_type))) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    return module_.types.get(slot_type).pointee;
+    return this->module_.types.get(slot_type).pointee;
 }
 
 const TraitObjectVTableLayout* Lowerer::trait_object_vtable_layout(
@@ -1627,6 +1633,41 @@ const sema::TraitObjectCoercionFact* Lowerer::trait_object_coercion(
     return nullptr;
 }
 
+const sema::TraitObjectUpcastCoercionFact* Lowerer::trait_object_upcast_coercion(
+    const sema::TypeHandle source_type, const sema::TypeHandle target_type) const noexcept
+{
+    if (!sema::is_valid(source_type) || !sema::is_valid(target_type)) {
+        return nullptr;
+    }
+    for (const sema::TraitObjectUpcastCoercionFact& fact : this->checked_.trait_object_upcast_coercions) {
+        if (this->module_.types.same(fact.source_reference_type, source_type)
+            && this->module_.types.same(fact.target_reference_type, target_type)
+            && this->trait_object_vtable_supertrait_edge(
+                   fact.source_vtable_layout, fact.target_vtable_layout, fact.upcast_key)
+                != nullptr) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+const TraitObjectVTableSupertraitEdge* Lowerer::trait_object_vtable_supertrait_edge(
+    const query::VTableLayoutKey& source_layout,
+    const query::VTableLayoutKey& target_layout,
+    const query::TraitObjectUpcastCoercionKey& upcast_key) const noexcept
+{
+    const TraitObjectVTableLayout* const layout = this->trait_object_vtable_layout(source_layout);
+    if (layout == nullptr) {
+        return nullptr;
+    }
+    for (const TraitObjectVTableSupertraitEdge& edge : layout->supertrait_edges) {
+        if (edge.target_layout == target_layout && edge.upcast_key == upcast_key) {
+            return &edge;
+        }
+    }
+    return nullptr;
+}
+
 sema::TypeHandle Lowerer::vtable_pointer_type() noexcept
 {
     return this->module_.types.pointer(
@@ -1644,20 +1685,52 @@ sema::TypeHandle Lowerer::erased_trait_object_receiver_type(const sema::TraitMet
     return sema::INVALID_TYPE_HANDLE;
 }
 
+sema::TypeHandle Lowerer::dispatch_trait_object_receiver_type(
+    const sema::TraitMethodCallBinding& binding) noexcept
+{
+    const sema::TypeHandle receiver = this->erased_trait_object_receiver_type(binding);
+    if (!sema::is_valid(receiver) || !this->module_.types.is_reference(receiver)
+        || !sema::is_valid(binding.dispatch_receiver_type)) {
+        return receiver;
+    }
+    const sema::TypeInfo& receiver_info = this->module_.types.get(receiver);
+    if (receiver_info.pointee.value == binding.dispatch_receiver_type.value) {
+        return receiver;
+    }
+    return this->module_.types.reference(receiver_info.pointer_mutability, binding.dispatch_receiver_type);
+}
+
 ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle target_type)
 {
-    if (!is_valid(value_id) || value_id.value >= module_.values.size()) {
+    if (!is_valid(value_id) || value_id.value >= this->module_.values.size()) {
         return value_id;
     }
-    const sema::TypeHandle source_type = module_.values[value_id.value].type;
-    if (!sema::is_valid(source_type) && module_.values[value_id.value].kind == ValueKind::null_literal
-        && sema::is_valid(target_type) && module_.types.is_pointer(target_type)) {
-        module_.values[value_id.value].type = target_type;
+    const sema::TypeHandle source_type = this->module_.values[value_id.value].type;
+    if (!sema::is_valid(source_type) && this->module_.values[value_id.value].kind == ValueKind::null_literal
+        && sema::is_valid(target_type) && this->module_.types.is_pointer(target_type)) {
+        this->module_.values[value_id.value].type = target_type;
         return value_id;
     }
     if (!sema::is_valid(target_type) || !sema::is_valid(source_type)
         || this->module_.types.same(source_type, target_type)) {
         return value_id;
+    }
+    if (const sema::TraitObjectUpcastCoercionFact* const upcast =
+            this->trait_object_upcast_coercion(source_type, target_type);
+        upcast != nullptr) {
+        const TraitObjectVTableSupertraitEdge* const edge = this->trait_object_vtable_supertrait_edge(
+            upcast->source_vtable_layout, upcast->target_vtable_layout, upcast->upcast_key);
+        if (edge != nullptr) {
+            Value value = this->module_.make_value();
+            value.kind = ValueKind::trait_object_upcast;
+            value.type = target_type;
+            value.object = value_id;
+            value.vtable_layout = upcast->source_vtable_layout;
+            value.target_vtable_layout = upcast->target_vtable_layout;
+            value.upcast_key = upcast->upcast_key;
+            value.vtable_supertrait_edge = edge->edge_index;
+            return this->append_value(value);
+        }
     }
     if (const sema::TraitObjectCoercionFact* const coercion =
             this->trait_object_coercion(source_type, target_type);
@@ -1745,10 +1818,12 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
             return this->append_value(value);
         }
     }
-    const bool source_numeric = module_.types.is_integer(source_type) || module_.types.is_float(source_type)
-        || module_.types.is_bool(source_type);
-    const bool target_numeric = module_.types.is_integer(target_type) || module_.types.is_float(target_type)
-        || module_.types.is_bool(target_type);
+    const bool source_numeric = this->module_.types.is_integer(source_type)
+        || this->module_.types.is_float(source_type)
+        || this->module_.types.is_bool(source_type);
+    const bool target_numeric = this->module_.types.is_integer(target_type)
+        || this->module_.types.is_float(target_type)
+        || this->module_.types.is_bool(target_type);
     if (source_numeric && target_numeric) {
         Value value = this->module_.make_value();
         value.kind = ValueKind::cast;
@@ -1756,25 +1831,25 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
         value.target_type = target_type;
         value.lhs = value_id;
         value.cast_kind = CastKind::numeric;
-        return append_value(value);
+        return this->append_value(value);
     }
-    if (is_local_slot_type(source_type) && module_.types.is_pointer(target_type)) {
+    if (is_local_slot_type(source_type) && this->module_.types.is_pointer(target_type)) {
         Value value = this->module_.make_value();
         value.kind = ValueKind::cast;
         value.type = target_type;
         value.target_type = target_type;
         value.lhs = value_id;
         value.cast_kind = CastKind::pointer;
-        return append_value(value);
+        return this->append_value(value);
     }
     return value_id;
 }
 
 ValueId Lowerer::append_value(const Value& value)
 {
-    const ValueId id = add_value(module_, value);
-    if (current_function_ != nullptr && is_valid(current_block_)) {
-        current_function_->blocks[current_block_.value].values.push_back(id);
+    const ValueId id = add_value(this->module_, value);
+    if (this->current_function_ != nullptr && is_valid(this->current_block_)) {
+        this->current_function_->blocks[this->current_block_.value].values.push_back(id);
     }
     return id;
 }
@@ -1783,37 +1858,39 @@ void Lowerer::append_store(const ValueId target, const ValueId source)
 {
     Value value = this->module_.make_value();
     value.kind = ValueKind::store;
-    value.type = module_.types.builtin(sema::BuiltinType::void_);
+    value.type = this->module_.types.builtin(sema::BuiltinType::void_);
     value.object = target;
-    value.lhs = coerce_value(source, local_load_type(target));
-    static_cast<void>(append_value(value));
+    value.lhs = this->coerce_value(source, this->local_load_type(target));
+    static_cast<void>(this->append_value(value));
 }
 
 void Lowerer::append_branch_if_open(const BlockId target)
 {
-    if (has_terminator(current_block_)) {
+    if (this->has_terminator(this->current_block_)) {
         return;
     }
     Terminator term;
     term.kind = TerminatorKind::branch;
     term.target = target;
-    set_terminator(current_block_, term);
+    this->set_terminator(this->current_block_, term);
 }
 
 bool Lowerer::has_terminator(const BlockId block) const
 {
-    if (current_function_ == nullptr || !is_valid(block) || block.value >= current_function_->blocks.size()) {
+    if (this->current_function_ == nullptr || !is_valid(block)
+        || block.value >= this->current_function_->blocks.size()) {
         return true;
     }
-    return current_function_->blocks[block.value].terminator.kind != TerminatorKind::none;
+    return this->current_function_->blocks[block.value].terminator.kind != TerminatorKind::none;
 }
 
 void Lowerer::set_terminator(const BlockId block, const Terminator& terminator) const
 {
-    if (current_function_ == nullptr || !is_valid(block) || block.value >= current_function_->blocks.size()) {
+    if (this->current_function_ == nullptr || !is_valid(block)
+        || block.value >= this->current_function_->blocks.size()) {
         return;
     }
-    current_function_->blocks[block.value].terminator = terminator;
+    this->current_function_->blocks[block.value].terminator = terminator;
 }
 
 } // namespace aurex::ir::detail

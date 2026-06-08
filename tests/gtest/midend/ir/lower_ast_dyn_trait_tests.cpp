@@ -20,6 +20,7 @@ namespace aurex::test {
 namespace {
 
 using namespace irtest;
+using ir::TraitObjectVTableLayout;
 
 constexpr base::SourceId LOWER_AST_DYN_TRAIT_SOURCE_ID{811};
 
@@ -519,6 +520,156 @@ TEST(CoreUnit, LowerAstDynTraitDefaultMethodSlotBindsInstantiatedFunction)
     ASSERT_TRUE(verified) << verified.error().message;
 }
 
+TEST(CoreUnit, LowerAstDynTraitSupertraitUpcastEmitsRuntimeProjection)
+{
+    const std::string_view source =
+        "module lower_ast_dyn_trait_supertrait_upcast;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 21 };\n"
+        "  let child: &dyn Child = &file;\n"
+        "  let parent: &dyn Parent = child;\n"
+        "  return parent.parent();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+    ASSERT_EQ(fixture.ir.trait_object_vtables.size(), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    const Value* upcast = find_value_of_kind(fixture.ir, ValueKind::trait_object_upcast);
+    ASSERT_NE(upcast, nullptr);
+    EXPECT_TRUE(query::is_valid(upcast->vtable_layout));
+    EXPECT_TRUE(query::is_valid(upcast->target_vtable_layout));
+    EXPECT_TRUE(query::is_valid(upcast->upcast_key));
+    EXPECT_EQ(upcast->vtable_supertrait_edge, 0U);
+
+    const TraitObjectVTableLayout* child_layout = nullptr;
+    const TraitObjectVTableLayout* parent_layout = nullptr;
+    for (const TraitObjectVTableLayout& layout : fixture.ir.trait_object_vtables) {
+        if (fixture.ir.types.display_name(layout.object_type) == "dyn Child") {
+            child_layout = &layout;
+        }
+        if (fixture.ir.types.display_name(layout.object_type) == "dyn Parent") {
+            parent_layout = &layout;
+        }
+    }
+    ASSERT_NE(child_layout, nullptr);
+    ASSERT_NE(parent_layout, nullptr);
+    ASSERT_EQ(child_layout->supertrait_edges.size(), 1U);
+    EXPECT_EQ(child_layout->supertrait_edges.front().target_layout, parent_layout->layout_key);
+    EXPECT_EQ(child_layout->layout_key.metadata_policy,
+        query::TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+    const std::string dump = ir::dump_module(fixture.ir);
+    expect_contains_all(dump,
+        {
+            "supertrait_edge 0",
+            "dyn Child -> dyn Parent",
+            "dyn.upcast",
+            "source_layout=",
+            "target_layout=",
+        });
+}
+
+TEST(CoreUnit, LowerAstDynTraitInheritedSupertraitDispatchUpcastsReceiver)
+{
+    const std::string_view source =
+        "module lower_ast_dyn_trait_inherited_dispatch;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn render(child: &dyn Child) -> i32 { return child.parent(); }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 34 };\n"
+        "  let child: &dyn Child = &file;\n"
+        "  return render(child);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+    const sema::TraitMethodCallBinding* parent_call = nullptr;
+    for (const sema::TraitMethodCallBinding& call : fixture.checked.trait_method_calls) {
+        if (call.method_name == "parent" && call.dispatch == sema::TraitMethodDispatchKind::vtable_slot) {
+            parent_call = &call;
+            break;
+        }
+    }
+    ASSERT_NE(parent_call, nullptr);
+    EXPECT_EQ(fixture.checked.types.display_name(parent_call->receiver_type), "&dyn Child");
+    EXPECT_EQ(fixture.checked.types.display_name(parent_call->dispatch_receiver_type), "dyn Parent");
+    EXPECT_TRUE(query::is_valid(parent_call->vtable_layout));
+
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 1U);
+    const Value* slot = find_value_of_kind(fixture.ir, ValueKind::vtable_slot);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->vtable_slot, 0U);
+
+    const std::vector<query::FunctionDynAbiFacts> all_facts = ir::function_dyn_abi_facts(fixture.ir);
+    const std::optional<query::FunctionDynAbiFacts> render_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "render");
+    ASSERT_TRUE(render_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*render_facts));
+    EXPECT_EQ(render_facts->upcasts.size(), 1U);
+    ASSERT_EQ(render_facts->dispatches.size(), 1U);
+    EXPECT_EQ(render_facts->dispatches.front().method_name, "parent");
+    EXPECT_EQ(render_facts->upcasts.front().metadata_policy, query::DynMetadataPolicy::supertrait_vptr_metadata_v1);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, LowerAstDynTraitSupertraitEdgesCoverEveryConcreteChildVtable)
+{
+    const std::string_view source =
+        "module lower_ast_dyn_trait_supertrait_multi_concrete;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 100; } }\n"
+        "impl Parent for Socket { fn parent(self: &Socket) -> i32 { return self.value + 20; } }\n"
+        "impl Child for Socket { fn child(self: &Socket) -> i32 { return self.value + 200; } }\n"
+        "fn score(child: &dyn Child) -> i32 { return child.parent() + child.child(); }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 3 };\n"
+        "  let socket: Socket = Socket { value: 4 };\n"
+        "  return score(&file) + score(&socket);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.vtable_layouts.size(), 4U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+
+    base::usize child_layout_count = 0;
+    for (const TraitObjectVTableLayout& layout : fixture.ir.trait_object_vtables) {
+        if (fixture.ir.types.display_name(layout.object_type) != "dyn Child") {
+            continue;
+        }
+        ++child_layout_count;
+        ASSERT_EQ(layout.supertrait_edges.size(), 1U);
+        EXPECT_EQ(layout.supertrait_edges.front().edge_index, 0U);
+
+        const auto target = std::ranges::find_if(fixture.ir.trait_object_vtables,
+            [&](const TraitObjectVTableLayout& candidate) {
+                return candidate.layout_key == layout.supertrait_edges.front().target_layout;
+            });
+        ASSERT_NE(target, fixture.ir.trait_object_vtables.end());
+        EXPECT_EQ(fixture.ir.types.display_name(target->object_type), "dyn Parent");
+        EXPECT_EQ(target->concrete_type.value, layout.concrete_type.value);
+    }
+    EXPECT_EQ(child_layout_count, 2U);
+}
+
 TEST(CoreUnit, IrVerifierCoversDynTraitVtableAndValueInvariants)
 {
     {
@@ -606,6 +757,29 @@ TEST(CoreUnit, IrVerifierCoversDynTraitVtableAndValueInvariants)
         append_function(fixture.module, bad);
         expect_error_contains(ir::verify_module(fixture.module), "dyn pack data must be a pointer or reference");
     }
+    {
+        DynTraitLoweringFixture fixture = lower_dyn_trait_source(
+            "module verifier_dyn_supertrait_edge;\n"
+            "trait Parent { fn parent(self: &Self) -> i32; }\n"
+            "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+            "struct File { value: i32; }\n"
+            "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+            "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+            "fn main() -> i32 {\n"
+            "  let file: File = File { value: 1 };\n"
+            "  let child: &dyn Child = &file;\n"
+            "  let parent: &dyn Parent = child;\n"
+            "  return parent.parent();\n"
+            "}\n");
+        ASSERT_EQ(fixture.ir.trait_object_vtables.size(), 2U);
+        for (TraitObjectVTableLayout& layout : fixture.ir.trait_object_vtables) {
+            if (!layout.supertrait_edges.empty()) {
+                layout.supertrait_edges.front().target_layout = {};
+                break;
+            }
+        }
+        expect_error_contains(ir::verify_module(fixture.ir), "dyn trait vtable supertrait edge is invalid");
+    }
 }
 
 TEST(CoreUnit, LlvmBackendDynTraitDispatchEmitsFatViewVtableGlobalAndIndirectCall)
@@ -634,11 +808,41 @@ TEST(CoreUnit, LlvmBackendDynTraitDispatchEmitsFatViewVtableGlobalAndIndirectCal
     expect_contains_all(output.value().text,
         {
             "@__aurex_vtable_",
-            "internal unnamed_addr constant [1 x ptr] [ptr @m0_llvm_dyn_trait_dispatch_File_trait_impl_Draw__draw]",
+            "internal unnamed_addr constant { [1 x ptr], [0 x ptr] }",
             "insertvalue { ptr, ptr }",
             "extractvalue { ptr, ptr }",
-            "getelementptr inbounds [1 x ptr]",
+            "getelementptr inbounds { [1 x ptr], [0 x ptr] }",
             "load ptr, ptr",
+            "call i32 %",
+        });
+}
+
+TEST(CoreUnit, LlvmBackendDynTraitSupertraitUpcastProjectsParentVtable)
+{
+    const std::string_view source =
+        "module llvm_dyn_trait_supertrait_upcast;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn render(child: &dyn Child) -> i32 { return child.parent(); }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let child: &dyn Child = &file;\n"
+        "  return render(child);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    auto output = backend::emit_llvm_ir({&fixture.ir, "llvm_dyn_trait_supertrait_upcast_whitebox"});
+    ASSERT_TRUE(output) << output.error().message;
+    expect_contains_all(output.value().text,
+        {
+            "{ [1 x ptr], [1 x ptr] }",
+            "ptr @__aurex_vtable_",
+            "getelementptr inbounds { [1 x ptr], [1 x ptr] }",
+            "load ptr, ptr",
+            "insertvalue { ptr, ptr }",
             "call i32 %",
         });
 }

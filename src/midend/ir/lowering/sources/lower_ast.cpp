@@ -21,6 +21,50 @@ constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
     return lhs.slot < rhs.slot;
 }
 
+[[nodiscard]] bool stable_fingerprint_less(
+    const query::StableFingerprint128 lhs, const query::StableFingerprint128 rhs) noexcept
+{
+    if (lhs.primary != rhs.primary) {
+        return lhs.primary < rhs.primary;
+    }
+    if (lhs.secondary != rhs.secondary) {
+        return lhs.secondary < rhs.secondary;
+    }
+    return lhs.byte_count < rhs.byte_count;
+}
+
+[[nodiscard]] bool trait_object_supertrait_edge_less(
+    const TraitObjectVTableSupertraitEdge& lhs, const TraitObjectVTableSupertraitEdge& rhs) noexcept
+{
+    if (lhs.upcast_key.global_id != rhs.upcast_key.global_id) {
+        return lhs.upcast_key.global_id < rhs.upcast_key.global_id;
+    }
+    if (lhs.edge_fingerprint != rhs.edge_fingerprint) {
+        return stable_fingerprint_less(lhs.edge_fingerprint, rhs.edge_fingerprint);
+    }
+    return lhs.target_layout.global_id < rhs.target_layout.global_id;
+}
+
+template <typename Layouts>
+[[nodiscard]] bool checked_vtable_layout_exists(const Layouts& layouts, const query::VTableLayoutKey& key) noexcept
+{
+    return std::ranges::any_of(layouts, [&](const sema::VTableLayoutFact& layout) {
+        return layout.layout_key == key;
+    });
+}
+
+template <typename Layouts>
+[[nodiscard]] const sema::VTableLayoutFact* checked_vtable_layout_for_concrete_object(
+    const Layouts& layouts,
+    const sema::TypeHandle concrete_type,
+    const sema::TypeHandle object_type) noexcept
+{
+    const auto found = std::ranges::find_if(layouts, [&](const sema::VTableLayoutFact& layout) {
+        return layout.concrete_type.value == concrete_type.value && layout.object_type.value == object_type.value;
+    });
+    return found == layouts.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] sema::PointerMutability vtable_receiver_mutability(
     const sema::TypeTable& types, const sema::TypeHandle receiver_type) noexcept
 {
@@ -428,7 +472,27 @@ void Lowerer::lower_function_declarations()
 void Lowerer::lower_trait_object_vtable_layouts()
 {
     this->module_.trait_object_vtables.reserve(this->checked_.vtable_layouts.size());
+    std::vector<sema::VTableLayoutFact> checked_layouts;
+    checked_layouts.reserve(this->checked_.vtable_layouts.size() + this->checked_.trait_object_upcast_coercions.size());
     for (const sema::VTableLayoutFact& checked_layout : this->checked_.vtable_layouts) {
+        checked_layouts.push_back(checked_layout);
+    }
+    for (const sema::TraitObjectUpcastCoercionFact& upcast : this->checked_.trait_object_upcast_coercions) {
+        if (!query::is_valid(upcast.source_vtable_layout) || query::is_valid(upcast.target_vtable_layout)) {
+            continue;
+        }
+        for (const sema::VTableLayoutFact& child_layout : checked_layouts) {
+            if (child_layout.layout_key != upcast.source_vtable_layout) {
+                continue;
+            }
+            const sema::VTableLayoutFact* const parent_layout = checked_vtable_layout_for_concrete_object(
+                this->checked_.vtable_layouts, child_layout.concrete_type, upcast.target_object_type);
+            if (parent_layout != nullptr && !checked_vtable_layout_exists(checked_layouts, parent_layout->layout_key)) {
+                checked_layouts.push_back(*parent_layout);
+            }
+        }
+    }
+    for (const sema::VTableLayoutFact& checked_layout : checked_layouts) {
         TraitObjectVTableLayout layout = this->module_.make_trait_object_vtable_layout();
         layout.layout_key = checked_layout.layout_key;
         layout.concrete_type = checked_layout.concrete_type;
@@ -469,6 +533,42 @@ void Lowerer::lower_trait_object_vtable_layouts()
             });
         }
         std::ranges::sort(layout.method_slots, trait_object_vtable_slot_less);
+        for (const sema::TraitObjectUpcastCoercionFact& upcast : this->checked_.trait_object_upcast_coercions) {
+            if (checked_layout.object_type.value != upcast.source_object_type.value) {
+                continue;
+            }
+            const sema::VTableLayoutFact* const target_layout = checked_vtable_layout_for_concrete_object(
+                checked_layouts, checked_layout.concrete_type, upcast.target_object_type);
+            if (target_layout == nullptr || !query::is_valid(target_layout->layout_key)) {
+                continue;
+            }
+            const query::VTableLayoutKey source_layout = checked_layout.layout_key;
+            layout.supertrait_edges.push_back(TraitObjectVTableSupertraitEdge{
+                IR_INVALID_VTABLE_SUPERTRAIT_EDGE,
+                upcast.upcast_key,
+                upcast.edge_fingerprint,
+                source_layout,
+                target_layout->layout_key,
+                upcast.source_reference_type,
+                upcast.target_reference_type,
+                upcast.source_object_type,
+                upcast.target_object_type,
+                upcast.borrow_kind,
+            });
+        }
+        std::ranges::sort(layout.supertrait_edges, trait_object_supertrait_edge_less);
+        auto duplicate_edge = std::ranges::unique(layout.supertrait_edges,
+            [](const TraitObjectVTableSupertraitEdge& lhs,
+                const TraitObjectVTableSupertraitEdge& rhs) noexcept {
+                return lhs.upcast_key == rhs.upcast_key && lhs.target_layout == rhs.target_layout
+                    && lhs.source_reference_type.value == rhs.source_reference_type.value
+                    && lhs.target_reference_type.value == rhs.target_reference_type.value;
+            });
+        layout.supertrait_edges.erase(duplicate_edge.begin(), duplicate_edge.end());
+        for (base::usize edge_index = 0; edge_index < layout.supertrait_edges.size(); ++edge_index) {
+            layout.supertrait_edges[edge_index].edge_index =
+                base::checked_u32(edge_index, "ir dyn vtable supertrait edge index");
+        }
         this->module_.trait_object_vtables.push_back(std::move(layout));
     }
 }

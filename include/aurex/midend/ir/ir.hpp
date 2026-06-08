@@ -49,6 +49,7 @@ inline constexpr BlockId INVALID_BLOCK_ID{BlockId::INVALID_VALUE};
 inline constexpr FunctionId INVALID_FUNCTION_ID{FunctionId::INVALID_VALUE};
 inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID{GlobalConstantId::INVALID_VALUE};
 inline constexpr base::u32 IR_INVALID_VTABLE_SLOT = std::numeric_limits<base::u32>::max();
+inline constexpr base::u32 IR_INVALID_VTABLE_SUPERTRAIT_EDGE = std::numeric_limits<base::u32>::max();
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept
 {
@@ -118,6 +119,7 @@ enum class ValueKind {
     str_slice_checked,
     str_from_bytes_unchecked,
     trait_object_pack,
+    trait_object_upcast,
     trait_object_data,
     trait_object_vtable,
     vtable_slot,
@@ -221,6 +223,19 @@ struct TraitObjectVTableMethodSlot {
     IrTextId method_name = INVALID_IR_TEXT_ID;
 };
 
+struct TraitObjectVTableSupertraitEdge {
+    base::u32 edge_index = IR_INVALID_VTABLE_SUPERTRAIT_EDGE;
+    query::TraitObjectUpcastCoercionKey upcast_key;
+    query::StableFingerprint128 edge_fingerprint;
+    query::VTableLayoutKey source_layout;
+    query::VTableLayoutKey target_layout;
+    sema::TypeHandle source_reference_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle target_reference_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle source_object_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle target_object_type = sema::INVALID_TYPE_HANDLE;
+    query::TraitObjectBorrowKindKey borrow_kind = query::TraitObjectBorrowKindKey::shared;
+};
+
 struct TraitObjectVTableLayout {
     TraitObjectVTableLayout();
     explicit TraitObjectVTableLayout(base::BumpAllocator& arena);
@@ -230,6 +245,7 @@ struct TraitObjectVTableLayout {
     sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
     IrTextId symbol = INVALID_IR_TEXT_ID;
     IrVector<TraitObjectVTableMethodSlot> method_slots;
+    IrVector<TraitObjectVTableSupertraitEdge> supertrait_edges;
 };
 
 struct Value {
@@ -256,7 +272,10 @@ struct Value {
     sema::TypeHandle target_type = sema::INVALID_TYPE_HANDLE;
     CleanupAbiPolicy cleanup_policy = CleanupAbiPolicy::none;
     query::VTableLayoutKey vtable_layout;
+    query::VTableLayoutKey target_vtable_layout;
+    query::TraitObjectUpcastCoercionKey upcast_key;
     base::u32 vtable_slot = IR_INVALID_VTABLE_SLOT;
+    base::u32 vtable_supertrait_edge = IR_INVALID_VTABLE_SUPERTRAIT_EDGE;
 };
 
 enum class TerminatorKind {

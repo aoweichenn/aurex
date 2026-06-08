@@ -166,6 +166,7 @@ public:
         base::u32 vtable_slot = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
         std::vector<TypeHandle> param_types;
         TypeHandle return_type = INVALID_TYPE_HANDLE;
+        TypeHandle dispatch_receiver_type = INVALID_TYPE_HANDLE;
         TraitMethodDispatchKind dispatch = TraitMethodDispatchKind::param_env;
         bool found = false;
         bool reported_failure = false;
@@ -912,6 +913,7 @@ public:
     [[nodiscard]] bool can_borrowed_dyn_trait_upcast(TypeHandle dst, TypeHandle src) const;
     void record_borrowed_dyn_trait_coercion_if_needed(
         syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
+    void bind_dyn_trait_upcast_vtable_layouts_for_coercion(const TraitObjectCoercionFact& source_coercion);
     void record_borrowed_dyn_trait_upcast_if_needed(
         syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;

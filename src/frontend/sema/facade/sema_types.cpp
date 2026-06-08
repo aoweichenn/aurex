@@ -559,6 +559,41 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const sy
         ? this->item_part_index(this->state_.flow.current_item)
         : 0U;
     this->state_.checked.trait_object_coercions.push_back(fact);
+    this->bind_dyn_trait_upcast_vtable_layouts_for_coercion(this->state_.checked.trait_object_coercions.back());
+}
+
+void SemanticAnalyzerCore::bind_dyn_trait_upcast_vtable_layouts_for_coercion(
+    const TraitObjectCoercionFact& source_coercion)
+{
+    if (!query::is_valid(source_coercion.vtable_layout) || !is_valid(source_coercion.source_type)
+        || !is_valid(source_coercion.object_type)) {
+        return;
+    }
+    for (TraitObjectUpcastCoercionFact& upcast : this->state_.checked.trait_object_upcast_coercions) {
+        if (upcast.source_object_type.value != source_coercion.object_type.value) {
+            continue;
+        }
+        if (!query::is_valid(upcast.source_vtable_layout)) {
+            upcast.source_vtable_layout = source_coercion.vtable_layout;
+        }
+        const query::VTableLayoutKey target_layout =
+            this->record_vtable_layout(source_coercion.source_type, upcast.target_object_type, upcast.range);
+        if (query::is_valid(target_layout) && !query::is_valid(upcast.target_vtable_layout)) {
+            upcast.target_vtable_layout = target_layout;
+        }
+        if (!query::is_valid(upcast.target_vtable_layout)) {
+            continue;
+        }
+        for (TraitMethodCallBinding& binding : this->state_.checked.trait_method_calls) {
+            if (binding.dispatch != TraitMethodDispatchKind::vtable_slot
+                || query::is_valid(binding.vtable_layout)
+                || binding.receiver_type.value != upcast.source_reference_type.value
+                || binding.dispatch_receiver_type.value != upcast.target_object_type.value) {
+                continue;
+            }
+            binding.vtable_layout = upcast.target_vtable_layout;
+        }
+    }
 }
 
 void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const syntax::ExprId expr,
@@ -579,6 +614,24 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const synt
     if (edge == nullptr) {
         return;
     }
+    query::VTableLayoutKey source_vtable_layout;
+    query::VTableLayoutKey target_vtable_layout;
+    TypeHandle concrete_type = INVALID_TYPE_HANDLE;
+    for (const TraitObjectCoercionFact& coercion : this->state_.checked.trait_object_coercions) {
+        if (coercion.target_reference_type.value == from_type.value
+            && coercion.object_type.value == source_object_type.value
+            && query::is_valid(coercion.vtable_layout)) {
+            source_vtable_layout = coercion.vtable_layout;
+            concrete_type = coercion.source_type;
+            break;
+        }
+    }
+    if (is_valid(concrete_type)) {
+        target_vtable_layout = this->record_vtable_layout(concrete_type, target_object_type, range);
+    }
+    if (query::is_valid(source_vtable_layout) && !query::is_valid(target_vtable_layout)) {
+        return;
+    }
     const query::TraitObjectBorrowKindKey borrow_kind = target_ref.pointer_mutability == PointerMutability::mut
         ? query::TraitObjectBorrowKindKey::mut
         : query::TraitObjectBorrowKindKey::shared;
@@ -591,8 +644,14 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const synt
     }
 
     this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
-    for (const TraitObjectUpcastCoercionFact& existing : this->state_.checked.trait_object_upcast_coercions) {
+    for (TraitObjectUpcastCoercionFact& existing : this->state_.checked.trait_object_upcast_coercions) {
         if (existing.expr.value == expr.value && existing.upcast_key == upcast_key) {
+            if (!query::is_valid(existing.source_vtable_layout)) {
+                existing.source_vtable_layout = source_vtable_layout;
+            }
+            if (!query::is_valid(existing.target_vtable_layout)) {
+                existing.target_vtable_layout = target_vtable_layout;
+            }
             return;
         }
     }
@@ -603,6 +662,8 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const synt
     fact.target_reference_type = to_type;
     fact.source_object_type = source_object_type;
     fact.target_object_type = target_object_type;
+    fact.source_vtable_layout = source_vtable_layout;
+    fact.target_vtable_layout = target_vtable_layout;
     fact.edge_fingerprint = edge->edge_fingerprint;
     fact.borrow_kind = borrow_kind;
     fact.range = range;
@@ -610,6 +671,9 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_upcast_if_needed(const synt
         ? this->item_part_index(this->state_.flow.current_item)
         : 0U;
     this->state_.checked.trait_object_upcast_coercions.push_back(fact);
+    for (const TraitObjectCoercionFact& coercion : this->state_.checked.trait_object_coercions) {
+        this->bind_dyn_trait_upcast_vtable_layouts_for_coercion(coercion);
+    }
 }
 
 bool SemanticAnalyzerCore::is_valid_storage_type(const TypeHandle type) const

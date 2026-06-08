@@ -91,6 +91,20 @@ private:
         const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object, const TypeInfo& target_object) const;
     [[nodiscard]] TypeHandle instantiate_supertrait_arg(
         TypeHandle arg, const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object) const;
+    [[nodiscard]] TypeHandle instantiate_supertrait_object_type(
+        const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object, const TraitSignature& parent_trait) const;
+    [[nodiscard]] TraitMethodCallResolution resolve_direct_dyn_trait_method_call(TypeHandle object_type,
+        const TypeInfo& object_info,
+        const TraitSignature& trait,
+        IdentId name_id,
+        std::string_view name,
+        const base::SourceRange& range,
+        bool report_failure) const;
+    [[nodiscard]] TraitMethodCallResolution resolve_supertrait_dyn_trait_method_call(TypeHandle object_type,
+        const TypeInfo& object_info,
+        IdentId name_id,
+        std::string_view name,
+        const base::SourceRange& range);
     void append_supertrait_fact_if_new(const TraitSupertraitInfo& info);
     void validate_supertrait_graph();
     void validate_supertrait_impl_obligations();

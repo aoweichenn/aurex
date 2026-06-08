@@ -1923,6 +1923,8 @@ query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& 
         builder.mix_u32(fact.target_reference_type.value);
         builder.mix_u32(fact.source_object_type.value);
         builder.mix_u32(fact.target_object_type.value);
+        builder.mix_u64(fact.source_vtable_layout.global_id);
+        builder.mix_u64(fact.target_vtable_layout.global_id);
         builder.mix_fingerprint(fact.edge_fingerprint);
         builder.mix_u8(static_cast<base::u8>(fact.borrow_kind));
     }
@@ -3000,6 +3002,10 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
             << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
             << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
+        if (is_valid(binding.dispatch_receiver_type)
+            && binding.dispatch_receiver_type.value != binding.receiver_type.value) {
+            out << " dispatch_receiver=" << checked.types.display_name(binding.dispatch_receiver_type);
+        }
         append_part_origin(out, show_parts, binding.part_index);
         out << "\n";
     }
@@ -3111,6 +3117,8 @@ std::string dump_checked_module(const CheckedModule& checked)
             << checked.types.display_name(fact.target_reference_type)
             << " source_object=" << checked.types.display_name(fact.source_object_type)
             << " target_object=" << checked.types.display_name(fact.target_object_type)
+            << " source_layout=" << fact.source_vtable_layout.global_id
+            << " target_layout=" << fact.target_vtable_layout.global_id
             << " borrow=" << (fact.borrow_kind == query::TraitObjectBorrowKindKey::mut ? "mut" : "shared")
             << " key=" << query::debug_string(query::stable_key_fingerprint(fact.upcast_key));
         append_part_origin(out, show_parts, fact.part_index);

@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M10b Supertrait Frontend / Query / Sema Implementation**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M10c Supertrait IR / Backend Runtime Implementation**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -10,12 +10,11 @@ coercion、checked vtable facts、IR/backend runtime dynamic dispatch、M8e hard
 收口。M8 已正式封口；M9 Dyn ABI / Tooling Release Closure 也已完成，当前已经完成 borrowed dyn 的 ABI
 DTO、metadata/fingerprint schema、query/cache、tooling projection、verifier/backend negative matrix、
 M9c Advanced Dyn Design Gate 和 M9 release baseline。M10a 已从 M9c gate 中选择 supertrait upcasting 作为 M10
-第一条 advanced dyn 主线；M10b 已把 frontend/query/sema 的 check-only 子集落到代码：parser/AST 接受
-`trait Child: Parent` direct supertrait clause，checked module 记录 `TraitSupertraitEdgeFact` 和
-`TraitObjectUpcastCoercionFact`，query 层提供 `TraitObjectUpcastCoercionKey` 与
-`DynUpcastAbiDescriptor`，sema 支持 borrowed dyn-to-dyn contextual coercion 的事实记录。
-M10b 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、supertrait upcasting runtime lowering
-或多 trait object composition runtime；下一步是 M10c IR/backend runtime implementation。
+第一条 advanced dyn 主线；M10b 已把 frontend/query/sema 的 check-only 子集落到代码；M10c 已继续完成
+`trait_object_upcast` IR、`supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection 和
+native inherited supertrait dispatch。
+M10c 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、allocator policy 或多 trait object
+composition runtime；下一步是 M10d hardening / release closure。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

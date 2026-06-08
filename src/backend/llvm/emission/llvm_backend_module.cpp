@@ -129,7 +129,15 @@ void LlvmEmitter::declare_functions()
 void LlvmEmitter::declare_trait_object_vtables()
 {
     for (const TraitObjectVTableLayout& layout : this->source_.trait_object_vtables) {
-        llvm::ArrayType* array_type = this->llvm_vtable_array_type(layout);
+        llvm::StructType* vtable_type = this->llvm_vtable_type(layout);
+        llvm::GlobalVariable* global = new llvm::GlobalVariable(*this->module_, vtable_type, true,
+            llvm::GlobalValue::InternalLinkage, nullptr, this->text(layout.symbol));
+        global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        this->trait_object_vtables_[layout.layout_key.global_id] = global;
+    }
+
+    for (const TraitObjectVTableLayout& layout : this->source_.trait_object_vtables) {
+        llvm::ArrayType* method_array_type = this->llvm_vtable_array_type(layout);
         std::vector<llvm::Constant*> entries(
             layout.method_slots.size(),
             llvm::ConstantPointerNull::get(
@@ -141,11 +149,26 @@ void LlvmEmitter::declare_trait_object_vtables()
             entries[slot.slot] = llvm::ConstantExpr::getBitCast(this->functions_.at(slot.function.value),
                 llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE));
         }
-        llvm::Constant* initializer = llvm::ConstantArray::get(array_type, entries);
-        llvm::GlobalVariable* global = new llvm::GlobalVariable(*this->module_, array_type, true,
-            llvm::GlobalValue::InternalLinkage, initializer, this->text(layout.symbol));
-        global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-        this->trait_object_vtables_[layout.layout_key.global_id] = global;
+        llvm::ArrayType* supertrait_array_type = this->llvm_vtable_supertrait_array_type(layout);
+        std::vector<llvm::Constant*> supertrait_entries(
+            layout.supertrait_edges.size(),
+            llvm::ConstantPointerNull::get(
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE)));
+        for (const TraitObjectVTableSupertraitEdge& edge : layout.supertrait_edges) {
+            if (edge.edge_index >= supertrait_entries.size()) {
+                continue;
+            }
+            const auto target = this->trait_object_vtables_.find(edge.target_layout.global_id);
+            if (target == this->trait_object_vtables_.end()) {
+                continue;
+            }
+            supertrait_entries[edge.edge_index] = llvm::ConstantExpr::getBitCast(target->second,
+                llvm::PointerType::get(this->context_, LLVM_BACKEND_MODULE_DEFAULT_ADDRESS_SPACE));
+        }
+        llvm::Constant* initializer = llvm::ConstantStruct::get(this->llvm_vtable_type(layout),
+            {llvm::ConstantArray::get(method_array_type, entries),
+                llvm::ConstantArray::get(supertrait_array_type, supertrait_entries)});
+        this->trait_object_vtables_.at(layout.layout_key.global_id)->setInitializer(initializer);
     }
 }
 

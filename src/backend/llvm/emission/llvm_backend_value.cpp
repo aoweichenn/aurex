@@ -68,6 +68,8 @@ constexpr unsigned LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX = 1U;
+constexpr unsigned LLVM_BACKEND_VALUE_VTABLE_METHODS_FIELD_INDEX = 0U;
+constexpr unsigned LLVM_BACKEND_VALUE_VTABLE_SUPERTRAITS_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_ZERO_INTEGER = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER = 1U;
@@ -204,6 +206,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value)
         }
         case ValueKind::trait_object_pack:
             return this->emit_trait_object_pack(value);
+        case ValueKind::trait_object_upcast:
+            return this->emit_trait_object_upcast(value);
         case ValueKind::trait_object_data:
             return this->emit_trait_object_data(value);
         case ValueKind::trait_object_vtable:
@@ -639,6 +643,39 @@ llvm::Value* LlvmEmitter::emit_trait_object_pack(const Value& value)
     return result;
 }
 
+llvm::Value* LlvmEmitter::emit_trait_object_upcast(const Value& value)
+{
+    const auto layout = std::ranges::find_if(this->source_.trait_object_vtables,
+        [&](const TraitObjectVTableLayout& candidate) { return candidate.layout_key == value.vtable_layout; });
+    if (layout == this->source_.trait_object_vtables.end()) {
+        return llvm::UndefValue::get(this->llvm_type(value.type));
+    }
+    llvm::Value* source = this->get(value.object);
+    llvm::Value* data = this->builder_.CreateExtractValue(
+        source, {LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_DATA_NAME);
+    llvm::Value* source_vtable = this->builder_.CreateExtractValue(
+        source, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    llvm::Value* zero =
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* edge_index =
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), value.vtable_supertrait_edge);
+    llvm::Value* supertrait_pointer = this->builder_.CreateInBoundsGEP(this->llvm_vtable_type(*layout), source_vtable,
+        {zero,
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_VTABLE_SUPERTRAITS_FIELD_INDEX),
+            edge_index},
+        LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    llvm::Value* target_vtable = this->builder_.CreateLoad(
+        llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE), supertrait_pointer,
+        LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+    result = this->builder_.CreateInsertValue(
+        result, data, {LLVM_BACKEND_VALUE_DYN_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_DATA_NAME);
+    result = this->builder_.CreateInsertValue(
+        result, target_vtable, {LLVM_BACKEND_VALUE_DYN_VTABLE_FIELD_INDEX}, LLVM_BACKEND_VALUE_DYN_VTABLE_NAME);
+    return result;
+}
+
 llvm::Value* LlvmEmitter::emit_trait_object_data(const Value& value)
 {
     return this->builder_.CreateExtractValue(
@@ -655,16 +692,24 @@ llvm::Value* LlvmEmitter::emit_vtable_slot(const Value& value)
 {
     const auto layout = std::ranges::find_if(this->source_.trait_object_vtables,
         [&](const TraitObjectVTableLayout& candidate) { return candidate.layout_key == value.vtable_layout; });
-    llvm::ArrayType* array_type = layout == this->source_.trait_object_vtables.end()
-        ? llvm::ArrayType::get(llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE),
-              0)
-        : this->llvm_vtable_array_type(*layout);
+    llvm::StructType* vtable_type = layout == this->source_.trait_object_vtables.end()
+        ? llvm::StructType::get(this->context_,
+              {llvm::ArrayType::get(
+                   llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE), 0),
+                  llvm::ArrayType::get(
+                      llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE), 0)})
+        : this->llvm_vtable_type(*layout);
     llvm::Value* zero =
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_ZERO_INTEGER);
     llvm::Value* slot_index =
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), value.vtable_slot);
     llvm::Value* slot_pointer = this->builder_.CreateInBoundsGEP(
-        array_type, this->get(value.object), {zero, slot_index}, LLVM_BACKEND_VALUE_DYN_SLOT_NAME);
+        vtable_type, this->get(value.object),
+        {zero,
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_VTABLE_METHODS_FIELD_INDEX),
+            slot_index},
+        LLVM_BACKEND_VALUE_DYN_SLOT_NAME);
     return this->builder_.CreateLoad(
         llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE), slot_pointer,
         LLVM_BACKEND_VALUE_DYN_SLOT_NAME);

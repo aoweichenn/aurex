@@ -1,24 +1,26 @@
 # 下一步计划
 
-## 当前最高优先级：M10c Supertrait IR / Backend Runtime Implementation
+## 当前最高优先级：M10d Supertrait Hardening / Release Closure
 
 M8 主线已经在 `m8` 分支完成 release closure，设计和实现基线记录在
 [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)。M9 已从 `m9` 分支开启，第一阶段
 记录在 [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)。M9 release closure 已完成，收口记录在
 [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)。M10 已从 `m10` 分支开启，M10a 已完成
 [Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)，M10b 已完成
-Supertrait Frontend / Query / Sema Implementation。当前下一步应进入 M10c Supertrait IR / Backend Runtime
-Implementation，而不是继续在 M8/M9 中追加语言语义，也不是把标准库塞进 M10。
+Supertrait Frontend / Query / Sema Implementation，M10c 已完成 Supertrait IR / Backend Runtime Implementation。
+当前下一步应进入 M10d Supertrait Hardening / Release Closure，而不是继续在 M8/M9 中追加语言语义，也不是把
+标准库塞进 M10。
 
 M10a 已经从 M9c `DynAdvancedDesignGate` 的候选中选择 supertrait upcasting 作为第一条 advanced dyn 主线。M10b
 已经完成 check-only frontend/query/sema：`trait Child: Parent` syntax/AST、direct/transitive
 `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、borrowed dyn-to-dyn
 contextual coercion facts、cycle/duplicate/private leak diagnostics 和 impl parent evidence checking 都已落地。
-M10b 固定的语义仍是 borrowed dyn-to-dyn coercion：`&dyn Child -> &dyn Parent`、
+M10c 已把这些 checked facts 贯通到 `trait_object_upcast` IR、`supertrait_vptr_metadata_v1` vtable metadata、
+LLVM parent vtable projection 和 native inherited parent dispatch。M10 固定的语义仍是 borrowed dyn-to-dyn coercion：
+`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；upcast 是 coercion，**不是普通子类型**，
-不创建 ownership，不延长 origin，不放宽 loan，不把 shared borrow 升级成 mutable。当前 `borrowed_view_v1` 仍是
-borrowed fat view ABI，当前 `borrowed_methods_only_v1` 不能承载 runtime supertrait edge metadata，M10c 必须使用
-`supertrait_vptr_metadata_v1`。
+不创建 ownership，不延长 origin，不放宽 loan，不把 shared borrow 升级成 mutable。`borrowed_view_v1` 仍是
+borrowed fat view ABI；带 supertrait edge 的 vtable 使用 `supertrait_vptr_metadata_v1`。
 
 M8 不照抄 Rust / Swift / Go / C++ 的任一套对象模型。Aurex 的方向是 **origin-bound erased view**：
 第一版只做 `&dyn Trait` / `&mut dyn Trait` 这种 borrowed dyn view，复用 M7 origin / loan / lifetime facts，
@@ -102,18 +104,31 @@ M10b frontend/query/sema 已完成：
   diagnostics、impl parent evidence obligation 和 borrowed dyn-to-dyn contextual coercion fact recording。
 - Query / ABI 层已新增 `TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor` 和
   `supertrait_vptr_metadata_v1` policy enum value。
-- M10b 明确不生成 `trait_object_upcast` IR，不生成 LLVM parent vtable projection，不做 standard library runtime。
+- M10b 明确只做到 checked/query/sema，不做 standard library runtime；`trait_object_upcast` IR 和 LLVM parent
+  vtable projection 已由 M10c 完成。
 
-M10c 当前要做：
+M10c IR/backend runtime 已完成：
 
 - 新增 target-independent `trait_object_upcast` IR value / operation，并从 M10b checked upcast fact lowering。
-- 新增 `VTableSupertraitEdgeDescriptor` 或等价 IR/backend layout fact，表达 source child vtable 到 target parent
-  vtable 的 edge path。
-- 让 IR verifier 覆盖 source/target object、borrow kind、origin、edge target、metadata policy 和 parent vtable
-  pointer type negative matrix。
-- 让 LLVM backend 支持 `supertrait_vptr_metadata_v1` explicit metadata shape，并在 upcast lowering 中复用 data
-  pointer、投影 parent vtable pointer。
-- 补 runtime samples / negative samples；继续保持无标准库、无 owning dyn、无 dynamic Drop dispatch。
+- 新增 IR/backend supertrait edge layout fact，表达 source child vtable 到 target parent vtable 的 edge path。
+- IR verifier 已覆盖 source/target object、borrow kind、edge target、metadata policy、upcast key 和 layout mismatch
+  negative matrix。
+- LLVM backend 已支持 `supertrait_vptr_metadata_v1` explicit metadata shape，并在 upcast lowering 中复用 data pointer、
+  投影 parent vtable pointer。
+- Native execution 已覆盖 inherited parent dispatch、多 concrete child vtable 和 runtime parent vtable projection。
+- 继续保持无标准库、无 owning dyn、无 dynamic Drop dispatch。
+
+M10d 当前要做：
+
+- 补 query/cache/tooling projection polish，确保 checked/IR `FunctionDynAbiFacts`、hover、dump 和 fingerprint 对
+  supertrait upcast 的展示一致。
+- 补 negative sample matrix：invalid target、borrow mutability upgrade、missing parent evidence、layout/edge mismatch
+  和 associated equality edge ambiguity 文案。
+- 收口 language manual、usage、progress、version、README、requirements 和 documentation tests，防止 M10b check-only
+  wording 回流。
+- 跑完整 tests、90% coverage gate、diff check 和 release self-review。
+- 分析 M10c 实际代码量与 1,600-2,800 行预估的偏差，记录原因；标准库、owning dyn、`Box<dyn Trait>`、
+  allocator、dynamic Drop dispatch 和 multi trait composition 继续作为独立后续阶段。
 
 当前建议路线：
 
@@ -134,7 +149,7 @@ M10c 当前要做：
 | M9d / M9 release closure | M9 docs/version/progress 收口、非目标一致性审计、coverage/release gate；已完成，不实现标准库或 runtime | 300-700 行 |
 | M10a supertrait upcasting design baseline | 已完成。选择 supertrait upcasting，固定 `supertrait_vptr_metadata_v1`、query/ABI facts、IR/backend plan 和非目标 | 700-1,100 行文档/测试 |
 | M10b frontend/query/sema | 已完成。`trait Child: Parent` syntax/AST、supertrait graph facts、cycle/visibility diagnostics、impl parent evidence、`TraitObjectUpcastCoercionKey`、checked dump/fingerprint facts；associated equality edge mapping 留后续 | 1,800-3,000 行，实际以 M10b diffstat 为准 |
-| M10c IR/backend runtime | `supertrait_vptr_metadata_v1` vtable layout、`VTableSupertraitEdgeDescriptor`、`trait_object_upcast` IR、verifier、LLVM lowering、runtime samples | 1,600-2,800 行 |
+| M10c IR/backend runtime | 已完成。`supertrait_vptr_metadata_v1` vtable layout、`VTableSupertraitEdgeDescriptor` 等价 IR fact、`trait_object_upcast` IR、verifier、LLVM lowering、runtime native coverage | 1,600-2,800 行，实际以 M10c diffstat 为准 |
 | M10d hardening/release | negative matrix、query/cache invalidation、IDE hover polish、coverage closure、language manual/sample/release docs | 700-1,300 行 |
 | 标准库阶段 | `Box`、拥有型容器、资源 wrapper、标准库 Drop helper 等库层 API；必须独立估算 | 待独立设计后估算 |
 

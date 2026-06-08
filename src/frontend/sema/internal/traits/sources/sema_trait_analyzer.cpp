@@ -452,6 +452,23 @@ void append_supertrait_args_to_writer(SemanticAnalyzerCore& core,
     return found == associated_equalities.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] std::vector<TraitImplAssociatedTypeInfo> dyn_trait_object_equalities_as_impl_equalities(
+    const CheckedModule& checked,
+    const TypeInfo& object_info)
+{
+    std::vector<TraitImplAssociatedTypeInfo> associated_equalities;
+    associated_equalities.reserve(object_info.trait_object_associated_equalities.size());
+    for (const TraitObjectAssociatedTypeEquality& equality : object_info.trait_object_associated_equalities) {
+        TraitImplAssociatedTypeInfo info = checked.make_trait_impl_associated_type_info();
+        info.name = equality.name;
+        info.name_id = equality.name.id;
+        info.value_type = equality.value_type;
+        info.member_key = equality.associated_member;
+        associated_equalities.push_back(info);
+    }
+    return associated_equalities;
+}
+
 [[nodiscard]] bool dyn_trait_associated_equalities_match(const TypeTable& types,
     const std::span<const TraitImplAssociatedTypeInfo> object_equalities,
     const std::span<const TraitImplAssociatedTypeInfo> impl_equalities)
@@ -481,6 +498,17 @@ void append_supertrait_args_to_writer(SemanticAnalyzerCore& core,
         }
     }
     return count;
+}
+
+[[nodiscard]] query::TraitObjectMetadataPolicyKey dyn_trait_vtable_metadata_policy(
+    const CheckedModule& checked, const query::TraitObjectTypeKey& object_key) noexcept
+{
+    for (const TraitSupertraitEdgeFact& edge : checked.trait_supertrait_edges) {
+        if (trait_keys_match(edge.child_trait_key, object_key.principal_trait)) {
+            return query::TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1;
+        }
+    }
+    return query::TraitObjectMetadataPolicyKey::borrowed_methods_only_v1;
 }
 
 [[nodiscard]] const TraitObjectMethodSlotFact* dyn_trait_method_slot_fact(const CheckedModule& checked,
@@ -1287,6 +1315,43 @@ TypeHandle SemanticAnalyzerCore::TraitAnalyzer::instantiate_supertrait_arg(
     }
     return this->substitute_requirement_type(
         arg, INVALID_TYPE_HANDLE, source_object.trait_object_args, child_trait->second, {});
+}
+
+TypeHandle SemanticAnalyzerCore::TraitAnalyzer::instantiate_supertrait_object_type(
+    const TraitSupertraitEdgeFact& edge, const TypeInfo& source_object, const TraitSignature& parent_trait) const
+{
+    std::vector<TypeHandle> parent_args;
+    parent_args.reserve(edge.parent_trait_args.size());
+    for (const TypeHandle arg : edge.parent_trait_args) {
+        parent_args.push_back(this->instantiate_supertrait_arg(arg, edge, source_object));
+    }
+    std::vector<query::CanonicalTypeKey> canonical_args;
+    canonical_args.reserve(parent_args.size());
+    for (const TypeHandle arg : parent_args) {
+        base::Result<query::CanonicalTypeKey> canonical_arg = this->core_.checked_canonical_type_key(arg);
+        if (!canonical_arg) {
+            return INVALID_TYPE_HANDLE;
+        }
+        canonical_args.push_back(canonical_arg.take_value());
+    }
+    const std::span<const TraitImplAssociatedTypeInfo> associated_equalities{};
+    const query::StableFingerprint128 slot_schema =
+        this->trait_object_slot_schema(parent_trait, parent_args, associated_equalities);
+    query::StableKeyWriter origin_writer;
+    origin_writer.write_string("dyn-trait-object-origin:v1");
+    query::append_stable_key(origin_writer, this->trait_query_key(parent_trait));
+    origin_writer.write_u64(static_cast<base::u64>(canonical_args.size()));
+    for (const query::CanonicalTypeKey& arg : canonical_args) {
+        query::append_stable_key(origin_writer, arg);
+    }
+    origin_writer.write_u64(0U);
+    origin_writer.write_fingerprint(slot_schema);
+
+    const query::TraitObjectTypeKey key = query::trait_object_type_key(
+        this->trait_query_key(parent_trait), canonical_args,
+        std::span<const query::TraitObjectAssociatedTypeEqualityKey>{}, origin_writer.fingerprint(), slot_schema);
+    return this->core_.state_.checked.types.trait_object(
+        key, parent_trait.name, parent_trait.module, parent_trait.name_id, parent_args, {});
 }
 
 bool SemanticAnalyzerCore::TraitAnalyzer::supertrait_edge_matches_target_object(
@@ -2622,16 +2687,8 @@ const TraitImplInfo* SemanticAnalyzerCore::TraitAnalyzer::find_trait_object_impl
         if (!args_match) {
             continue;
         }
-        std::vector<TraitImplAssociatedTypeInfo> object_equalities;
-        object_equalities.reserve(object_info.trait_object_associated_equalities.size());
-        for (const TraitObjectAssociatedTypeEquality& equality : object_info.trait_object_associated_equalities) {
-            TraitImplAssociatedTypeInfo info = this->core_.state_.checked.make_trait_impl_associated_type_info();
-            info.name = equality.name;
-            info.name_id = equality.name.id;
-            info.value_type = equality.value_type;
-            info.member_key = equality.associated_member;
-            object_equalities.push_back(info);
-        }
+        const std::vector<TraitImplAssociatedTypeInfo> object_equalities =
+            dyn_trait_object_equalities_as_impl_equalities(this->core_.state_.checked, object_info);
         if (!dyn_trait_associated_equalities_match(
                 this->core_.state_.checked.types, object_equalities, impl.associated_types)) {
             continue;
@@ -2682,9 +2739,11 @@ query::VTableLayoutKey SemanticAnalyzerCore::TraitAnalyzer::record_vtable_layout
     }
     const base::u32 slot_count =
         dyn_trait_method_slot_count(this->core_.state_.checked, object_info.trait_object_key);
+    const query::TraitObjectMetadataPolicyKey metadata_policy =
+        dyn_trait_vtable_metadata_policy(this->core_.state_.checked, object_info.trait_object_key);
     const query::VTableLayoutKey layout = query::vtable_layout_key(concrete_key.take_value(),
         object_info.trait_object_key, object_info.trait_object_key.object_callability_schema,
-        impl->coherence_fingerprint, slot_count);
+        impl->coherence_fingerprint, slot_count, metadata_policy);
     if (!query::is_valid(layout)) {
         this->core_.report_internal_contract(range, "failed to create dyn trait vtable layout key");
         return {};
@@ -2736,6 +2795,109 @@ query::VTableLayoutKey SemanticAnalyzerCore::TraitAnalyzer::record_vtable_layout
 }
 
 SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::resolve_direct_dyn_trait_method_call(const TypeHandle object_type,
+    const TypeInfo& object_info,
+    const TraitSignature& trait,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange& range,
+    const bool report_failure) const
+{
+    TraitMethodCallResolution resolution;
+    const TraitMethodRequirement* const requirement = this->find_trait_method_requirement(trait, name_id, true);
+    if (requirement == nullptr) {
+        if (report_failure) {
+            this->core_.report_lookup(range,
+                sema_trait_method_impl_missing_message(
+                    this->core_.state_.checked.types.display_name(object_type), name));
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
+    const TraitObjectMethodSlotFact* const slot_fact =
+        dyn_trait_method_slot_fact(this->core_.state_.checked, object_info.trait_object_key, name_id);
+    if (slot_fact == nullptr) {
+        if (report_failure) {
+            this->core_.report_type(range, sema_dyn_trait_receiver_message(trait.name, requirement->name));
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
+    const std::vector<TraitImplAssociatedTypeInfo> associated_equalities =
+        dyn_trait_object_equalities_as_impl_equalities(this->core_.state_.checked, object_info);
+    resolution.trait = &trait;
+    resolution.requirement = requirement;
+    resolution.return_type =
+        this->substitute_requirement_type(requirement->return_type, object_type, object_info.trait_object_args, trait,
+            associated_equalities);
+    resolution.param_types.reserve(requirement->param_types.size());
+    for (const TypeHandle param : requirement->param_types) {
+        resolution.param_types.push_back(
+            this->substitute_requirement_type(param, object_type, object_info.trait_object_args, trait,
+                associated_equalities));
+    }
+    resolution.dispatch = TraitMethodDispatchKind::vtable_slot;
+    resolution.vtable_slot = slot_fact->slot;
+    resolution.dispatch_receiver_type = object_type;
+    resolution.found = true;
+    return resolution;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::resolve_supertrait_dyn_trait_method_call(const TypeHandle object_type,
+    const TypeInfo& object_info,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange& range)
+{
+    TraitMethodCallResolution result;
+    for (const TraitSupertraitEdgeFact& edge : this->core_.state_.checked.trait_supertrait_edges) {
+        if (!trait_keys_match(edge.child_trait_key, object_info.trait_object_key.principal_trait)) {
+            continue;
+        }
+        const TraitSignature* parent_trait = nullptr;
+        for (const auto& entry : this->core_.state_.checked.traits) {
+            if (trait_keys_match(this->trait_query_key(entry.second), edge.parent_trait_key)) {
+                parent_trait = &entry.second;
+                break;
+            }
+        }
+        if (parent_trait == nullptr || this->find_trait_method_requirement(*parent_trait, name_id, true) == nullptr) {
+            continue;
+        }
+        const TypeHandle parent_object_type =
+            this->instantiate_supertrait_object_type(edge, object_info, *parent_trait);
+        if (!is_valid(parent_object_type)) {
+            continue;
+        }
+        const TypeInfo& parent_object_info = this->core_.state_.checked.types.get(parent_object_type);
+        if (!this->supertrait_edge_matches_target_object(edge, object_info, parent_object_info)) {
+            continue;
+        }
+        const std::vector<TraitImplAssociatedTypeInfo> associated_equalities =
+            dyn_trait_object_equalities_as_impl_equalities(this->core_.state_.checked, parent_object_info);
+        this->record_trait_object_callability(
+            parent_object_type, *parent_trait, parent_object_info.trait_object_args, associated_equalities, range);
+        TraitMethodCallResolution candidate = this->resolve_direct_dyn_trait_method_call(
+            parent_object_type, parent_object_info, *parent_trait, name_id, name, range, false);
+        if (!candidate.found) {
+            continue;
+        }
+        if (result.found) {
+            TraitMethodCallResolution ambiguous;
+            ambiguous.reported_failure = true;
+            this->core_.report_lookup(range,
+                "ambiguous supertrait dyn method `" + std::string(name) + "` on `"
+                    + this->core_.state_.checked.types.display_name(object_type) + "`");
+            return ambiguous;
+        }
+        candidate.dispatch_receiver_type = parent_object_type;
+        result = std::move(candidate);
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
 SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHandle object_type,
     const IdentId name_id,
     const std::string_view name,
@@ -2758,49 +2920,19 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHan
         return resolution;
     }
     const TraitSignature& trait = trait_found->second;
-    const TraitMethodRequirement* const requirement = this->find_trait_method_requirement(trait, name_id, true);
-    if (requirement == nullptr) {
-        if (report_failure) {
-            this->core_.report_lookup(range,
-                sema_trait_method_impl_missing_message(
-                    this->core_.state_.checked.types.display_name(object_type), name));
-        }
-        resolution.reported_failure = report_failure;
+    resolution = this->resolve_direct_dyn_trait_method_call(
+        object_type, object_info, trait, name_id, name, range, false);
+    if (resolution.found) {
         return resolution;
     }
-    const TraitObjectMethodSlotFact* const slot_fact =
-        dyn_trait_method_slot_fact(this->core_.state_.checked, object_info.trait_object_key, name_id);
-    if (slot_fact == nullptr) {
-        if (report_failure) {
-            this->core_.report_type(range, sema_dyn_trait_receiver_message(trait.name, requirement->name));
-        }
-        resolution.reported_failure = report_failure;
+    resolution = this->resolve_supertrait_dyn_trait_method_call(object_type, object_info, name_id, name, range);
+    if (resolution.found || resolution.reported_failure) {
         return resolution;
     }
-    std::vector<TraitImplAssociatedTypeInfo> associated_equalities;
-    associated_equalities.reserve(object_info.trait_object_associated_equalities.size());
-    for (const TraitObjectAssociatedTypeEquality& equality : object_info.trait_object_associated_equalities) {
-        TraitImplAssociatedTypeInfo info = this->core_.state_.checked.make_trait_impl_associated_type_info();
-        info.name = equality.name;
-        info.name_id = equality.name.id;
-        info.value_type = equality.value_type;
-        info.member_key = equality.associated_member;
-        associated_equalities.push_back(info);
+    if (report_failure) {
+        return this->resolve_direct_dyn_trait_method_call(
+            object_type, object_info, trait, name_id, name, range, true);
     }
-    resolution.trait = &trait;
-    resolution.requirement = requirement;
-    resolution.return_type =
-        this->substitute_requirement_type(requirement->return_type, object_type, object_info.trait_object_args, trait,
-            associated_equalities);
-    resolution.param_types.reserve(requirement->param_types.size());
-    for (const TypeHandle param : requirement->param_types) {
-        resolution.param_types.push_back(
-            this->substitute_requirement_type(param, object_type, object_info.trait_object_args, trait,
-                associated_equalities));
-    }
-    resolution.dispatch = TraitMethodDispatchKind::vtable_slot;
-    resolution.vtable_slot = slot_fact->slot;
-    resolution.found = true;
     return resolution;
 }
 

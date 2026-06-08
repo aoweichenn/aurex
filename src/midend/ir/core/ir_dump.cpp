@@ -1,5 +1,7 @@
 #include <aurex/midend/ir/ir_dump.hpp>
 
+#include <aurex/infrastructure/query/dyn_abi_facts.hpp>
+
 #include <sstream>
 
 namespace aurex::ir {
@@ -278,6 +280,12 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             out << "dyn.pack " << value_ref(value.lhs)
                 << ", vtable=" << value.vtable_layout.global_id;
             break;
+        case ValueKind::trait_object_upcast:
+            out << "dyn.upcast " << value_ref(value.object)
+                << ", source_layout=" << value.vtable_layout.global_id
+                << ", target_layout=" << value.target_vtable_layout.global_id
+                << ", edge=" << value.vtable_supertrait_edge;
+            break;
         case ValueKind::trait_object_data:
             out << "dyn.data " << value_ref(value.object);
             break;
@@ -359,6 +367,15 @@ std::string dump_module(const Module& module)
                 out << " method=" << module.text(slot.method_name);
             }
             out << "\n";
+        }
+        for (const TraitObjectVTableSupertraitEdge& edge : layout.supertrait_edges) {
+            out << "  supertrait_edge " << edge.edge_index
+                << " source_layout=" << edge.source_layout.global_id
+                << " target_layout=" << edge.target_layout.global_id
+                << " " << module.types.display_name(edge.source_object_type)
+                << " -> " << module.types.display_name(edge.target_object_type)
+                << " borrow=" << query::dyn_borrow_kind_name(query::dyn_borrow_kind_from_key(edge.borrow_kind))
+                << "\n";
         }
         out << "}\n";
     }

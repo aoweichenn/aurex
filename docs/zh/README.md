@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M9 Dyn ABI / Tooling Release Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M10a Supertrait Upcasting Design Baseline**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -9,9 +9,11 @@ user surface 实现收口基线之上。M7 Hardening Performance Closure 和 M7d
 coercion、checked vtable facts、IR/backend runtime dynamic dispatch、M8e hardening 和 sample / release polish
 收口。M8 已正式封口；M9 Dyn ABI / Tooling Release Closure 也已完成，当前已经完成 borrowed dyn 的 ABI
 DTO、metadata/fingerprint schema、query/cache、tooling projection、verifier/backend negative matrix、
-M9c Advanced Dyn Design Gate 和 M9 release baseline。M9 release 只完成 compiler/query/tooling 侧事实层和设计准入，
-不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、supertrait upcasting runtime 或多 trait object
-composition runtime。
+M9c Advanced Dyn Design Gate 和 M9 release baseline。M10a 已从 M9c gate 中选择 supertrait upcasting 作为 M10
+第一条 advanced dyn 主线，并固定 `supertrait_vptr_metadata_v1`、`TraitSupertraitEdgeFact`、
+`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor` 和 `VTableSupertraitEdgeDescriptor` 的设计基线。
+M10a 仍只做设计、状态入口和文档测试，不实现标准库、owning dyn runtime、dynamic Drop dispatch runtime、
+supertrait upcasting runtime 或多 trait object composition runtime。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -54,6 +56,7 @@ composition runtime。
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
 - [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
 - [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)
+- [Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

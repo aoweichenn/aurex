@@ -1,5 +1,34 @@
 # 版本文档
 
+## M10a Supertrait Upcasting Design Baseline
+
+M10 已从 `m10` 分支开启。M9 release closure 已完成；当前版本新增
+[Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)，把 M9c
+`DynAdvancedDesignGate` 中的 `supertrait_upcasting` 候选正式选为 M10 第一条 advanced dyn 主线。M10a 是设计基线，
+不实现 parser/sema/IR lowering/LLVM backend runtime 或标准库代码。
+
+当前新增设计内容包括：
+
+- 固定 M10a 语义：只设计 borrowed dyn-to-dyn coercion，即 `&dyn Child -> &dyn Parent` 和
+  `&mut dyn Child -> &mut dyn Parent`。
+- 明确 upcast 是 coercion，**不是普通子类型**；它不创建 ownership、不延长 origin、不放宽 loan、不把 shared
+  borrow 升级成 mutable borrow。
+- 保留 Aurex 的 origin-bound erased view：`borrowed_view_v1` 继续表达 `{data*, vtable*}` borrowed fat view，
+  data pointer 不变，只替换或投影 parent vtable pointer。
+- 明确 `borrowed_methods_only_v1` 不能承载 supertrait edge metadata；后续实现必须新增
+  `supertrait_vptr_metadata_v1`。
+- 固定后续 query/checked/ABI facts：`TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、
+  `DynUpcastAbiDescriptor` 和 `VTableSupertraitEdgeDescriptor`。
+- 固定 source surface 方向：`trait Child: Parent { ... }` 是 declaration graph edge；`where Self: Parent`
+  继续只是 generic predicate，不作为 trait inheritance metadata。
+- 固定 M10a 非目标：不实现标准库、`Box<dyn Trait>`、owning dyn、allocator、dynamic Drop dispatch、
+  multi trait composition、`dyn A + B` 或 runtime upcast lowering。
+- 给出 M10b frontend/query/sema、M10c IR/backend runtime、M10d hardening/release 的后续实现计划和代码量预估。
+
+下一步是 M10b Supertrait Frontend / Query / Sema Implementation：先实现 supertrait syntax/AST、
+`TraitSupertraitEdgeFact`、cycle/visibility/associated equality diagnostics 和 `TraitObjectUpcastCoercionKey`；
+LLVM runtime lowering 留到 M10c，标准库仍不属于本阶段。
+
 ## M9 Dyn ABI / Tooling Release Closure
 
 M9 已从 `m9` 分支开启。M8 release closure 已完成；当前版本在
@@ -40,8 +69,8 @@ composition 的后续准入条件固化为 query-facing design gate；M9d 完成
 - 固定 policy 分离规则：advanced dyn candidate 不能把 `borrowed_view_v1` 或 `borrowed_methods_only_v1` 当成
   required policy 复用。
 
-下一步是 M10 planning / post-M9 advanced dyn policy selection。若继续推进 advanced dyn，必须先在独立阶段为对应
-capability 增加 policy/schema、sema/IR/runtime 或标准库设计；M9 release 本身仍不实现标准库或 advanced runtime。
+M9 release 后续已经由 M10a 承接：supertrait upcasting 已被选为 M10 第一条 advanced dyn 主线，并已先固定
+policy/schema/query/ABI 设计。M9 release 本身仍不实现标准库或 advanced runtime。
 
 ## M8 Dyn Trait、Erased View 与动态派发 Release Closure
 

@@ -1055,7 +1055,9 @@ let all = bytes[:];
 建议按这个顺序开工：
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
-2. 继续保持 `where` capability / trait predicate 和 borrowed dyn trait 的文档、测试和诊断同步；M9 dyn ABI / tooling release closure 已完成，下一步应进入 M10 planning / post-M9 advanced dyn policy selection，owning dyn、trait-object Drop dispatch、supertrait upcasting 和完整 Rust-style lifetime surface 继续作为独立后续包。
+2. 继续保持 `where` capability / trait predicate 和 borrowed dyn trait 的文档、测试和诊断同步；M9 dyn ABI / tooling release closure 已完成，M10a 已选择 supertrait upcasting 并固定设计基线，下一步应进入 M10b
+   frontend/query/sema 实现；owning dyn、trait-object Drop dispatch、allocator、multi trait composition 和完整
+   Rust-style lifetime surface 继续作为独立后续包。
 3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block；FFI ownership adoption 等资源 unsafe API 等 M6 后续专门设计。
 

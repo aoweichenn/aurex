@@ -1,9 +1,26 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M9 Dyn ABI / Tooling Release Closure
+阶段：M10a Supertrait Upcasting Design Baseline
 
 ## 总体状态
+
+2026-06-08：M10a Supertrait Upcasting Design Baseline 已完成。M10 已从 `m10` 分支开启，并从 M9c
+`DynAdvancedDesignGate` 的 advanced dyn 候选中选择 supertrait upcasting 作为第一条后续主线。新增
+[Aurex M10 Supertrait Upcasting 设计基线](m10-supertrait-upcasting-design.md)，基于当前代码事实固定
+borrowed dyn-to-dyn coercion：`&dyn Child -> &dyn Parent` 和 `&mut dyn Child -> &mut dyn Parent`。
+
+M10a 的核心设计结论是：upcast 是 coercion，**不是普通子类型**；它保持 origin-bound erased view，data pointer
+不变，只替换或投影 parent vtable pointer。当前 `borrowed_view_v1` 仍可作为 borrowed fat view ABI，当前
+`borrowed_methods_only_v1` 不能承载 supertrait edge metadata，必须新增 `supertrait_vptr_metadata_v1`。M10a
+固定后续实现需要的 `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、
+`DynUpcastAbiDescriptor` 和 `VTableSupertraitEdgeDescriptor`，并把 parser/sema/query/IR/backend/diagnostics/
+tests 的分层计划和代码量预估写入文档。
+
+M10a 不新增 parser/sema/IR lowering/LLVM backend runtime 或标准库代码。本阶段继续不实现标准库、不实现
+`Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现 multi trait composition，也不把 runtime
+feature 藏进 `borrowed_view_v1` / `borrowed_methods_only_v1`。下一步应进入 M10b Supertrait Frontend / Query /
+Sema Implementation，而不是提前做 LLVM runtime lowering 或标准库。
 
 2026-06-08：M9 Dyn ABI / Tooling release closure 已完成。M9a-M9c 已收成
 [Aurex M9 Dyn ABI / Tooling Release Baseline](m9-release-baseline.md)：M9a 固定 facts-first dyn ABI / tooling

@@ -847,6 +847,38 @@ TEST(CoreUnit, LlvmBackendDynTraitSupertraitUpcastProjectsParentVtable)
         });
 }
 
+TEST(CoreUnit, LowerAstDynTraitCompositionRemainsCheckOnly)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_check_only;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn consume(view: &dyn (Draw + Debug)) -> i32 { return 0; }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let view: &dyn (Draw + Debug) = &file;\n"
+        "  return consume(view);\n"
+        "}\n";
+
+    DynTraitLoweringFixture fixture;
+    fixture.ast = parse_dyn_trait_lowering_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(fixture.ast, diagnostics);
+    auto checked = analyzer.analyze();
+    ASSERT_TRUE(checked) << checked.error().message;
+    fixture.checked = checked.take_value();
+    ASSERT_EQ(fixture.checked.principal_set_composition_facts.summary.principal_set_count, 1U);
+
+    auto lowered = ir::lower_ast(fixture.ast, fixture.checked);
+    ASSERT_FALSE(lowered);
+    EXPECT_EQ(lowered.error().code, base::ErrorCode::codegen_error);
+    EXPECT_NE(lowered.error().message.find("dyn trait principal-set composition is check-only in M11c"),
+        std::string::npos);
+}
+
 TEST(CoreUnit, IrDynTraitVtableParticipatesInLayoutFingerprint)
 {
     DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();

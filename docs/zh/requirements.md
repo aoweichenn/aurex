@@ -2,7 +2,7 @@
 
 ## 当前分支目标
 
-当前实现基线是 M11b Principal-Set Composition Query Prototype Gate。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
+当前实现基线是 M11c Principal-Set Composition Frontend / Sema Check-Only。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
 analysis、cleanup obligation lowering、drop-glue identity/planning、tooling projection 和 release closure；
 M7 已完成 CFG-sensitive borrow/lifetime/resource hardening；M8 已完成 borrowed dyn trait frontend/sema、
 checked vtable facts、IR/backend dynamic dispatch 和 hardening closure；M9 已完成 dyn ABI/tooling release
@@ -11,9 +11,10 @@ closure；M10 已完成 direct supertrait declaration、borrowed dyn-to-dyn upca
 principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固定 `principal_set_metadata_v1`、
 `principal_set_identity_fact`、`composition_witness_set_fact`、`principal_method_namespace_fact`、
 `associated_equality_merge_fact` 和 `composition_projection_fact` 的 design/query gate；M11b 已新增
-`PrincipalSetCompositionFacts`、`principal_set_identity_fact()`、summary/dump/fingerprint 和 focused validation tests。
+`PrincipalSetCompositionFacts`、`principal_set_identity_fact()`、summary/dump/fingerprint 和 focused validation tests；
+M11c 已新增 `dyn (A + B)` borrowed composition annotation/coercion 的 parser/AST/type/sema check-only 实现。
 历史基线说明：当前实现基线是 M6 Resource And Access Semantics 这条旧 release baseline 仍作为资源语义
-设计入口保留，但当前分支已经继续推进到 M11b。
+设计入口保留，但当前分支已经继续推进到 M11c。
 较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
@@ -37,7 +38,7 @@ principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固
   hover/tooling projection。
 - M11a/M11b advanced dyn design/query facts：`m11a_dyn_advanced_design_gate_baseline`、
   `principal_set_metadata_v1`、`PrincipalSetCompositionFacts` 和 principal-set composition required facts 已固定，
-  但仍不是用户可写 composition 语法。
+  M11c 已支持 `dyn (A + B)` borrowed composition check-only annotation/coercion，但仍没有 runtime lowering。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。
@@ -51,8 +52,8 @@ principal-set borrowed dyn composition 作为后续 advanced dyn 主线，并固
 - 标准库 API、容器、文件、目录、进程、console。
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
-- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、用户可写多 trait object
-  composition、`dyn A + B` parser syntax、associated const、default associated type、generic associated type、
+- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、principal-set composition runtime、
+  principal-qualified dispatch、bare `dyn A + B` parser syntax、associated const、default associated type、generic associated type、
   specialization、minimal implementation annotation、完整 Rust-style lifetime surface、async drop 和标准库重建。
 
 M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求。M6 不复活这套 ad hoc surface，而是按

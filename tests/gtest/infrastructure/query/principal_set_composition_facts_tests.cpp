@@ -116,6 +116,16 @@ struct PrincipalSetFixture {
     };
 }
 
+[[nodiscard]] bool trait_object_key_less(
+    const query::TraitObjectTypeKey& lhs,
+    const query::TraitObjectTypeKey& rhs) noexcept
+{
+    if (lhs.principal_trait.global_id != rhs.principal_trait.global_id) {
+        return lhs.principal_trait.global_id < rhs.principal_trait.global_id;
+    }
+    return lhs.global_id < rhs.global_id;
+}
+
 [[nodiscard]] query::PrincipalSetIdentityFact test_identity_fact(const PrincipalSetFixture& fixture)
 {
     const std::array<query::PrincipalSetPrincipalDescriptor, 2> principals{
@@ -154,7 +164,7 @@ struct PrincipalSetFixture {
     std::sort(fact.witnesses.begin(), fact.witnesses.end(),
         [](const query::CompositionWitnessDescriptor& lhs,
             const query::CompositionWitnessDescriptor& rhs) {
-            return lhs.principal_object.global_id < rhs.principal_object.global_id;
+            return trait_object_key_less(lhs.principal_object, rhs.principal_object);
         });
     return fact;
 }
@@ -205,7 +215,7 @@ struct PrincipalSetFixture {
     };
     std::sort(fact.contributing_principals.begin(), fact.contributing_principals.end(),
         [](const query::TraitObjectTypeKey& lhs, const query::TraitObjectTypeKey& rhs) {
-            return lhs.global_id < rhs.global_id;
+            return trait_object_key_less(lhs, rhs);
         });
     return fact;
 }
@@ -344,7 +354,7 @@ TEST(QueryUnit, PrincipalSetCompositionIdentityCanonicalizesPrincipalSet)
     EXPECT_TRUE(std::is_sorted(identity.principals.begin(), identity.principals.end(),
         [](const query::PrincipalSetPrincipalDescriptor& lhs,
             const query::PrincipalSetPrincipalDescriptor& rhs) {
-            return lhs.object_type.principal_trait.global_id < rhs.object_type.principal_trait.global_id;
+            return trait_object_key_less(lhs.object_type, rhs.object_type);
         }));
 
     std::array<query::PrincipalSetPrincipalDescriptor, 2> renamed = source_order;
@@ -378,7 +388,10 @@ TEST(QueryUnit, PrincipalSetCompositionFactsValidationRejectsBoundaryDrift)
         principal_descriptor(fixture.draw_object, "Draw"),
         principal_descriptor(other_origin_object, "OtherOrigin"),
     };
-    EXPECT_FALSE(query::is_valid(query::principal_set_identity_fact(mixed_origin)));
+    const query::PrincipalSetIdentityFact mixed_origin_identity =
+        query::principal_set_identity_fact(mixed_origin);
+    EXPECT_TRUE(query::is_valid(mixed_origin_identity));
+    EXPECT_NE(mixed_origin_identity.object_origin, fixture.draw_object.object_origin);
 
     query::CompositionWitnessSetFact witness_set = test_witness_set(fixture, identity);
     EXPECT_TRUE(query::is_valid(witness_set));
@@ -539,7 +552,7 @@ TEST(QueryUnit, PrincipalSetCompositionFactsRejectCrossIdentityPayloadDrift)
         wrong_witness.witness_sets.front().witnesses.end(),
         [](const query::CompositionWitnessDescriptor& lhs,
             const query::CompositionWitnessDescriptor& rhs) {
-            return lhs.principal_object.global_id < rhs.principal_object.global_id;
+            return trait_object_key_less(lhs.principal_object, rhs.principal_object);
         });
     wrong_witness.fingerprint = query::principal_set_composition_facts_fingerprint(wrong_witness);
     EXPECT_FALSE(query::is_valid(wrong_witness));
@@ -556,7 +569,7 @@ TEST(QueryUnit, PrincipalSetCompositionFactsRejectCrossIdentityPayloadDrift)
     std::sort(wrong_associated.associated_equality_merges.front().contributing_principals.begin(),
         wrong_associated.associated_equality_merges.front().contributing_principals.end(),
         [](const query::TraitObjectTypeKey& lhs, const query::TraitObjectTypeKey& rhs) {
-            return lhs.global_id < rhs.global_id;
+            return trait_object_key_less(lhs, rhs);
         });
     wrong_associated.fingerprint = query::principal_set_composition_facts_fingerprint(wrong_associated);
     EXPECT_FALSE(query::is_valid(wrong_associated));

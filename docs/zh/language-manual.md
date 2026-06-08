@@ -1,7 +1,8 @@
 # Aurex 语言参考手册
 
 日期：2026-06-08
-阶段：M11b Principal-Set Composition Query Prototype Gate，建立在 M11a Advanced Dyn Design Baseline、
+阶段：M11c Principal-Set Composition Frontend / Sema Check-Only，建立在 M11b Principal-Set Composition Query
+Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
 M10a supertrait upcasting design baseline、
@@ -77,7 +78,11 @@ A | B         表示二选一
   `PrincipalSetIdentityFact`、`CompositionWitnessSetFact`、`PrincipalMethodNamespaceFact`、
   `AssociatedEqualityMergeFact`、`CompositionProjectionFact`、`principal_set_composition_facts_fingerprint()`、
   `summarize_principal_set_composition_facts()` 和 `dump_principal_set_composition_facts()` 已固定为 query/tooling
-  原型。它们仍不是用户可写语法或 runtime lowering。
+  原型。
+- 使用 M11c borrowed principal-set composition check-only syntax：`&dyn (Draw + Debug)` 和
+  `&mut dyn (Draw + Debug)` 可以作为类型 annotation；`&T` / `&mut T` 可以在所有 principal impl 可见时
+  coercion 到对应 borrowed composition view，并记录 principal-set identity、method namespace、associated
+  equality merge、witness set、projection、checked dump/fingerprint 和 query authority facts。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -86,8 +91,8 @@ A | B         表示二选一
 - 没有标准库级拥有型 `String`、容器库、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
-- 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、用户可写多 trait object composition、
-  `dyn A + B` parser syntax、composition sema/runtime、generic associated type、associated const、specialization、
+- 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
+  principal-qualified composition dispatch、composition IR/backend runtime、generic associated type、associated const、specialization、
   const generic 或 `<T>` 风格泛型。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
@@ -1747,28 +1752,33 @@ fn score(value: &dyn Child) -> i32 {
 - 对 `fn render(x: &dyn Draw)` 这类只有 dyn object type 的 call site，slot schema 来自同 object type 的
   checked vtable layout；runtime vtable 仍来自传入的 fat view，所以不同 concrete impl 会 late bind 到不同函数。
 
-M11a/M11b advanced dyn design/query facts：
+M11 advanced dyn design/query/sema facts：
 
-- M11a 已选择 principal-set borrowed dyn composition 作为后续主线，但当前不新增用户可写 composition 语法。
-- Future composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
+- M11a 已选择 principal-set borrowed dyn composition 作为后续主线。
+- Future/full-runtime composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
   `principal_set_metadata_v1`。
-- Future composition method lookup 必须有 principal-qualified namespace，不能把 slots flatten 到一个未命名
+- Future/full-runtime composition method lookup 必须有 principal-qualified namespace，不能把 slots flatten 到一个未命名
   namespace。
-- Future composition 仍保持 borrowed view：不拥有对象、不分配、不复制、不延长 origin、不放宽 loan。
+- Composition 仍保持 borrowed view：不拥有对象、不分配、不复制、不延长 origin、不放宽 loan。
 - `m11a_dyn_advanced_design_gate_baseline`、`principal_set_identity_fact`、`composition_witness_set_fact`、
   `principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact` 已作为
   design/query gate 固定。
 - M11b 已新增 `PrincipalSetCompositionFacts`、`PrincipalSetIdentityFact`、`CompositionWitnessSetFact`、
   `PrincipalMethodNamespaceFact`、`AssociatedEqualityMergeFact` 和 `CompositionProjectionFact`，并提供
-  `principal_set_composition_facts_fingerprint()`、`summarize_principal_set_composition_facts()` 和
-  `dump_principal_set_composition_facts()`。这些事实只服务 query/tooling/check-only 后续地基，不代表语言已经支持
-  `dyn A + B`。
+- M11c 已新增用户可写 check-only spelling `dyn (A + B)`。当前只支持 borrowed annotation/coercion：
+  `&dyn (Draw + Debug)`、`&mut dyn (Draw + Debug)`、`&T -> &dyn (Draw + Debug)` 和
+  `&mut T -> &mut dyn (Draw + Debug)`。每个 principal 必须是 single dyn trait object；composition 至少两个
+  principal；duplicate principal、非 trait principal、missing impl、associated equality conflict 和 shared-to-mut
+  coercion 会被拒绝。
+- M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持
+  dynamic Drop dispatch，不支持 principal-qualified dispatch，不支持通过 composition receiver 调用 method，也不支持
+  IR/backend runtime lowering。
 
 当前不支持：
 
 - owning dyn、`Box<dyn Trait>`、allocator 或 side allocation。
 - trait-object Drop dispatch、dynamic cleanup runtime ABI、panic/unwind-aware dyn cleanup。
-- consuming receiver、多 principal trait object、多 trait object composition 或 auto trait composition。
+- consuming receiver、composition method dispatch、composition runtime、owning multi-principal trait object 或 auto trait composition。
 - generic associated type、associated const、default associated type、specialization 或 unsafe trait。
 
 暂不支持：

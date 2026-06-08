@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v6";
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v7";
 
 } // namespace
 
@@ -67,6 +67,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.body_loan_fingerprint);
     builder.mix_fingerprint(authority.destructor_fingerprint);
     builder.mix_fingerprint(authority.trait_object_fingerprint);
+    builder.mix_fingerprint(authority.principal_set_composition_fingerprint);
     builder.mix_u64(authority.expr_side_table_count);
     builder.mix_u64(authority.pattern_side_table_count);
     builder.mix_u64(authority.type_side_table_count);
@@ -78,6 +79,9 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.trait_object_coercion_count);
     builder.mix_u64(authority.trait_supertrait_edge_count);
     builder.mix_u64(authority.trait_object_upcast_coercion_count);
+    builder.mix_u64(authority.principal_set_composition_count);
+    builder.mix_u64(authority.principal_set_composition_principal_count);
+    builder.mix_u64(authority.principal_set_composition_projection_count);
     builder.mix_u64(authority.borrow_summary_origin_count);
     builder.mix_u64(authority.borrow_summary_dependency_count);
     builder.mix_u64(authority.borrow_summary_storage_escape_count);
@@ -124,6 +128,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_body_loan_check);
     builder.mix_bool(authority.has_destructor_facts);
     builder.mix_bool(authority.has_trait_object_facts);
+    builder.mix_bool(authority.has_principal_set_composition_facts);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
     builder.mix_bool(authority.borrow_summary_has_storage_escape);

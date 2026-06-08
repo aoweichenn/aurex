@@ -1,4 +1,5 @@
 #include <aurex/frontend/sema/sema_messages.hpp>
+#include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -58,6 +59,8 @@ constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_USIZE = "usize";
 constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F32 = "f32";
 constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F64 = "f64";
 constexpr int SEMA_TUPLE_FIELD_INDEX_DECIMAL_BASE = 10;
+constexpr std::string_view SEMA_PRINCIPAL_SET_WITNESS_TAG = "sema.principal_set.witness.v1";
+constexpr std::string_view SEMA_PRINCIPAL_SET_PROJECTION_TAG = "sema.principal_set.projection.v1";
 
 struct IntegerLiteralParts {
     std::string_view digits;
@@ -140,6 +143,63 @@ struct TupleFieldIndexParse {
         default:
             return false;
     }
+}
+
+[[nodiscard]] query::DynBorrowKind principal_set_borrow_kind(const PointerMutability mutability) noexcept
+{
+    return mutability == PointerMutability::mut ? query::DynBorrowKind::mut : query::DynBorrowKind::shared;
+}
+
+[[nodiscard]] query::TraitObjectBorrowKindKey trait_object_borrow_kind(
+    const PointerMutability mutability) noexcept
+{
+    return mutability == PointerMutability::mut ? query::TraitObjectBorrowKindKey::mut
+                                                : query::TraitObjectBorrowKindKey::shared;
+}
+
+[[nodiscard]] query::StableFingerprint128 principal_witness_fingerprint(
+    const TypeTable& types,
+    const TypeHandle concrete_type,
+    const query::TraitObjectTypeKey& principal,
+    const query::VTableLayoutKey& layout)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_PRINCIPAL_SET_WITNESS_TAG);
+    writer.write_string(types.display_name(concrete_type));
+    query::append_stable_key(writer, principal);
+    query::append_stable_key(writer, layout);
+    return writer.fingerprint();
+}
+
+[[nodiscard]] query::StableFingerprint128 principal_projection_fingerprint(
+    const TypeTable& types,
+    const TypeHandle concrete_type,
+    const query::StableFingerprint128 principal_set_identity,
+    const query::TraitObjectTypeKey& principal,
+    const query::DynBorrowKind borrow_kind)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_PRINCIPAL_SET_PROJECTION_TAG);
+    writer.write_string(types.display_name(concrete_type));
+    writer.write_fingerprint(principal_set_identity);
+    query::append_stable_key(writer, principal);
+    writer.write_u8(static_cast<base::u8>(borrow_kind));
+    return writer.fingerprint();
+}
+
+[[nodiscard]] bool composition_witness_sets_match(
+    const query::CompositionWitnessSetFact& lhs,
+    const query::CompositionWitnessSetFact& rhs) noexcept
+{
+    if (lhs.principal_set_identity != rhs.principal_set_identity || lhs.witnesses.size() != rhs.witnesses.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < lhs.witnesses.size(); ++index) {
+        if (lhs.witnesses[index].witness_fingerprint != rhs.witnesses[index].witness_fingerprint) {
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type, const base::u32 target_pointer_bits) noexcept
@@ -481,6 +541,20 @@ bool SemanticAnalyzerCore::can_borrowed_dyn_trait_coerce(const TypeHandle dst, c
     if (object_info.kind != TypeKind::trait_object || source_info.kind == TypeKind::trait_object) {
         return false;
     }
+    if (!object_info.trait_object_principal_types.empty()) {
+        SemanticAnalyzerCore& mutable_core = const_cast<SemanticAnalyzerCore&>(*this);
+        for (const TypeHandle principal : object_info.trait_object_principal_types) {
+            if (!is_valid(principal) || principal.value >= this->state_.checked.types.size()) {
+                return false;
+            }
+            const TypeInfo& principal_info = this->state_.checked.types.get(principal);
+            if (principal_info.kind != TypeKind::trait_object
+                || mutable_core.find_trait_object_impl(src_ref.pointee, principal_info, {}, false) == nullptr) {
+                return false;
+            }
+        }
+        return true;
+    }
     SemanticAnalyzerCore& mutable_core = const_cast<SemanticAnalyzerCore&>(*this);
     return mutable_core.find_trait_object_impl(src_ref.pointee, object_info, {}, false) != nullptr;
 }
@@ -521,6 +595,79 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const sy
     const TypeHandle concrete_type = source_ref.pointee;
     const TypeHandle object_type = target_ref.pointee;
     const TypeInfo& object_info = this->state_.checked.types.get(object_type);
+    if (!object_info.trait_object_principal_types.empty()) {
+        std::vector<query::CompositionWitnessDescriptor> witnesses;
+        witnesses.reserve(object_info.trait_object_principal_types.size());
+        base::Result<query::CanonicalTypeKey> concrete_key = this->checked_canonical_type_key(concrete_type);
+        if (!concrete_key) {
+            this->report_internal_contract(range, concrete_key.error().message);
+            return;
+        }
+        const query::CanonicalTypeKey concrete_type_key = concrete_key.take_value();
+        const query::DynBorrowKind borrow_kind = principal_set_borrow_kind(target_ref.pointer_mutability);
+        for (const TypeHandle principal : object_info.trait_object_principal_types) {
+            if (!is_valid(principal) || principal.value >= this->state_.checked.types.size()) {
+                return;
+            }
+            const TypeInfo& principal_info = this->state_.checked.types.get(principal);
+            const query::VTableLayoutKey layout = this->record_vtable_layout(concrete_type, principal, range);
+            if (!query::is_valid(layout)) {
+                return;
+            }
+            query::CompositionWitnessDescriptor witness;
+            witness.principal_object = principal_info.trait_object_key;
+            witness.vtable_layout = layout;
+            witness.witness_fingerprint =
+                principal_witness_fingerprint(this->state_.checked.types, concrete_type, witness.principal_object,
+                    layout);
+            witness.principal_name = std::string(principal_info.trait_object_name.view());
+            witness.concrete_type_name = this->state_.checked.types.display_name(concrete_type);
+            witnesses.push_back(std::move(witness));
+
+            query::CompositionProjectionFact projection;
+            projection.principal_set_identity = object_info.trait_object_principal_set_identity;
+            projection.kind = query::PrincipalSetProjectionKind::concrete_to_composition;
+            projection.concrete_type = concrete_type_key;
+            projection.source_principal = principal_info.trait_object_key;
+            projection.target_object = principal_info.trait_object_key;
+            projection.projection_path = principal_projection_fingerprint(this->state_.checked.types, concrete_type,
+                object_info.trait_object_principal_set_identity, principal_info.trait_object_key, borrow_kind);
+            projection.borrow_kind = borrow_kind;
+            projection.source_view_name = this->state_.checked.types.display_name(concrete_type);
+            projection.target_view_name = this->state_.checked.types.display_name(object_type);
+            if (!std::ranges::any_of(this->state_.checked.principal_set_composition_facts.projections,
+                    [&](const query::CompositionProjectionFact& existing) {
+                        return existing.projection_path == projection.projection_path;
+                    })) {
+                query::record_composition_projection_fact(
+                    this->state_.checked.principal_set_composition_facts, std::move(projection));
+            }
+        }
+        std::ranges::sort(witnesses, [](const query::CompositionWitnessDescriptor& lhs,
+                                         const query::CompositionWitnessDescriptor& rhs) {
+            if (lhs.principal_object.principal_trait.global_id != rhs.principal_object.principal_trait.global_id) {
+                return lhs.principal_object.principal_trait.global_id < rhs.principal_object.principal_trait.global_id;
+            }
+            return lhs.principal_object.global_id < rhs.principal_object.global_id;
+        });
+
+        query::CompositionWitnessSetFact witness_set;
+        witness_set.principal_set_identity = object_info.trait_object_principal_set_identity;
+        witness_set.metadata_policy = query::PrincipalSetMetadataPolicy::principal_set_metadata_v1;
+        witness_set.witnesses = std::move(witnesses);
+        if (!std::ranges::any_of(this->state_.checked.principal_set_composition_facts.witness_sets,
+                [&](const query::CompositionWitnessSetFact& existing) {
+                    return composition_witness_sets_match(existing, witness_set);
+                })) {
+            query::record_composition_witness_set_fact(
+                this->state_.checked.principal_set_composition_facts, std::move(witness_set));
+        }
+
+        this->state_.checked.principal_set_composition_facts.fingerprint =
+            query::principal_set_composition_facts_fingerprint(this->state_.checked.principal_set_composition_facts);
+        this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
+        return;
+    }
     const query::VTableLayoutKey layout = this->record_vtable_layout(concrete_type, object_type, range);
     if (!query::is_valid(layout)) {
         return;
@@ -530,9 +677,7 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_coercion_if_needed(const sy
         this->report_internal_contract(range, source_key.error().message);
         return;
     }
-    const query::TraitObjectBorrowKindKey borrow_kind = target_ref.pointer_mutability == PointerMutability::mut
-        ? query::TraitObjectBorrowKindKey::mut
-        : query::TraitObjectBorrowKindKey::shared;
+    const query::TraitObjectBorrowKindKey borrow_kind = trait_object_borrow_kind(target_ref.pointer_mutability);
     const query::TraitObjectCoercionKey coercion_key = query::trait_object_coercion_key(source_key.take_value(),
         object_info.trait_object_key.object_origin, object_info.trait_object_key, layout, borrow_kind);
     if (!query::is_valid(coercion_key)) {

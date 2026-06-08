@@ -263,6 +263,10 @@ void push_children_reverse(
 
 [[nodiscard]] base::Result<void> lower_trait_object_type(const TypeInfo& info, query::CanonicalTypeKey& target)
 {
+    if (info.trait_object_principal_set_identity.byte_count != 0) {
+        target = query::canonical_trait_object_view(info.trait_object_principal_set_identity);
+        return base::Result<void>::ok();
+    }
     if (!query::is_valid(info.trait_object_key)) {
         return base::Result<void>::fail({
             base::ErrorCode::internal_error,

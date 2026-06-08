@@ -68,17 +68,25 @@ constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_BORROW_KIND_VALUE = 255U;
     return lhs.object_type.global_id < rhs.object_type.global_id;
 }
 
+[[nodiscard]] bool trait_object_key_less(
+    const TraitObjectTypeKey& lhs,
+    const TraitObjectTypeKey& rhs) noexcept
+{
+    if (lhs.principal_trait.global_id != rhs.principal_trait.global_id) {
+        return lhs.principal_trait.global_id < rhs.principal_trait.global_id;
+    }
+    return lhs.global_id < rhs.global_id;
+}
+
 void normalize_principals(std::vector<PrincipalSetPrincipalDescriptor>& principals)
 {
     std::sort(principals.begin(), principals.end(), principal_descriptor_less);
 }
 
-[[nodiscard]] bool principals_are_canonical_unique_and_same_origin(
-    const std::vector<PrincipalSetPrincipalDescriptor>& principals,
-    const StableFingerprint128 object_origin) noexcept
+[[nodiscard]] bool principal_descriptors_are_canonical_unique(
+    const std::vector<PrincipalSetPrincipalDescriptor>& principals) noexcept
 {
-    if (principals.size() < QUERY_PRINCIPAL_SET_MIN_PRINCIPAL_COUNT
-        || !is_nonempty_fingerprint(object_origin)) {
+    if (principals.size() < QUERY_PRINCIPAL_SET_MIN_PRINCIPAL_COUNT) {
         return false;
     }
 
@@ -86,7 +94,7 @@ void normalize_principals(std::vector<PrincipalSetPrincipalDescriptor>& principa
     bool has_previous = false;
     for (base::usize index = 0; index < principals.size(); ++index) {
         const PrincipalSetPrincipalDescriptor& principal = principals[index];
-        if (!is_valid(principal) || principal.object_type.object_origin != object_origin) {
+        if (!is_valid(principal)) {
             return false;
         }
         if (has_previous) {
@@ -104,16 +112,15 @@ void normalize_principals(std::vector<PrincipalSetPrincipalDescriptor>& principa
 [[nodiscard]] bool trait_object_keys_are_valid_unique_sorted(
     const std::vector<TraitObjectTypeKey>& principals) noexcept
 {
-    base::u64 previous_global_id = 0;
     bool has_previous = false;
-    for (const TraitObjectTypeKey& principal : principals) {
+    for (base::usize index = 0; index < principals.size(); ++index) {
+        const TraitObjectTypeKey& principal = principals[index];
         if (!is_valid(principal)) {
             return false;
         }
-        if (has_previous && principal.global_id <= previous_global_id) {
+        if (has_previous && !trait_object_key_less(principals[index - 1U], principal)) {
             return false;
         }
-        previous_global_id = principal.global_id;
         has_previous = true;
     }
     return true;
@@ -122,16 +129,15 @@ void normalize_principals(std::vector<PrincipalSetPrincipalDescriptor>& principa
 [[nodiscard]] bool witnesses_are_valid_unique_sorted(
     const std::vector<CompositionWitnessDescriptor>& witnesses) noexcept
 {
-    base::u64 previous_principal_global_id = 0;
     bool has_previous = false;
-    for (const CompositionWitnessDescriptor& witness : witnesses) {
+    for (base::usize index = 0; index < witnesses.size(); ++index) {
+        const CompositionWitnessDescriptor& witness = witnesses[index];
         if (!is_valid(witness)) {
             return false;
         }
-        if (has_previous && witness.principal_object.global_id <= previous_principal_global_id) {
+        if (has_previous && !trait_object_key_less(witnesses[index - 1U].principal_object, witness.principal_object)) {
             return false;
         }
-        previous_principal_global_id = witness.principal_object.global_id;
         has_previous = true;
     }
     return true;
@@ -549,8 +555,9 @@ bool is_valid(const PrincipalSetPrincipalDescriptor& descriptor) noexcept
 bool is_valid(const PrincipalSetIdentityFact& fact) noexcept
 {
     return is_nonempty_fingerprint(fact.principal_set_identity)
+        && is_nonempty_fingerprint(fact.object_origin)
         && is_valid(fact.metadata_policy)
-        && principals_are_canonical_unique_and_same_origin(fact.principals, fact.object_origin);
+        && principal_descriptors_are_canonical_unique(fact.principals);
 }
 
 bool is_valid(const CompositionWitnessDescriptor& descriptor) noexcept
@@ -606,7 +613,8 @@ bool is_valid(const CompositionProjectionFact& fact) noexcept
         && fact.source_principal.principal_trait == fact.target_object.principal_trait) {
         return false;
     }
-    return fact.source_principal.object_origin == fact.target_object.object_origin;
+    return fact.kind == PrincipalSetProjectionKind::concrete_to_composition
+        || fact.source_principal.object_origin == fact.target_object.object_origin;
 }
 
 bool is_valid(
@@ -653,19 +661,19 @@ PrincipalSetIdentityFact principal_set_identity_fact(
     fact.metadata_policy = PrincipalSetMetadataPolicy::principal_set_metadata_v1;
     fact.principals.assign(principals.begin(), principals.end());
     normalize_principals(fact.principals);
-    if (!fact.principals.empty()) {
-        fact.object_origin = fact.principals.front().object_type.object_origin;
-    }
-    if (principals_are_canonical_unique_and_same_origin(fact.principals, fact.object_origin)) {
+    if (principal_descriptors_are_canonical_unique(fact.principals)) {
         StableHashBuilder builder;
         builder.mix_string("principal_set_identity_fact.v1");
-        builder.mix_fingerprint(fact.object_origin);
         builder.mix_u8(stable_metadata_policy_value(fact.metadata_policy));
         builder.mix_u64(static_cast<base::u64>(fact.principals.size()));
         for (const PrincipalSetPrincipalDescriptor& principal : fact.principals) {
             mix_principal_identity_descriptor(builder, principal);
         }
-        fact.principal_set_identity = builder.finish();
+        fact.object_origin = builder.finish();
+        StableHashBuilder identity_builder;
+        identity_builder.mix_string("principal_set_identity_fact.identity.v1");
+        identity_builder.mix_fingerprint(fact.object_origin);
+        fact.principal_set_identity = identity_builder.finish();
     }
     return fact;
 }

@@ -2,8 +2,9 @@
 
 日期：2026-06-08
 
-状态：**M11b Principal-Set Composition Query Prototype Gate 已完成**。本阶段仍是 compiler/query facts
-baseline，不是 parser/sema、IR/backend runtime 或标准库实现阶段。
+状态：**M11c Principal-Set Composition Frontend / Sema Check-Only 已完成**。M11a/M11b 已固定
+compiler/query facts baseline；M11c 已接入 parser/AST/type/sema check-only。当前仍不是 IR/backend runtime
+或标准库实现阶段。
 
 ## 1. 阶段结论
 
@@ -34,8 +35,10 @@ M11b 在该选择之上落地纯 query facts 原型：`PrincipalSetCompositionFa
 `AssociatedEqualityMergeFact`、`CompositionProjectionFact`、`principal_set_composition_facts_fingerprint()`、
 `summarize_principal_set_composition_facts()` 和 `dump_principal_set_composition_facts()`。
 
-一句话：M11b 已把 **borrowed multi-principal composition** 的 facts/query 地基落到代码，但 M11b 不实现
-`dyn A + B` parser syntax、不实现 composition sema、不实现 IR/backend runtime、不实现标准库。
+M11c 在 M11b 地基上落地 frontend/sema check-only：当前用户可写 spelling 是 `dyn (A + B)`，支持
+`&dyn (Draw + Debug)` / `&mut dyn (Draw + Debug)` annotation，以及 `&T` / `&mut T` 到 borrowed composition
+view 的 contextual coercion。M11c 不实现 bare `dyn A + B` parser syntax、不实现 principal-qualified dispatch、
+不实现 IR/backend runtime、不实现标准库。
 
 ## 2. 当前能做什么
 
@@ -54,7 +57,7 @@ M11b 在该选择之上落地纯 query facts 原型：`PrincipalSetCompositionFa
 - `FunctionDynAbiFacts`、`DynUpcastAbiDescriptor`、summary/dump/fingerprint、lower-IR invalidation 和 IDE hover
   对 dyn ABI / upcast facts 的 tooling projection。
 
-M11a/M11b 新增的是设计和 query facts 能力，而不是用户可写语言语法：
+M11a/M11b 新增的是设计和 query facts 能力；M11c 新增的是用户可写 check-only composition 语法和 sema facts：
 
 - 可以通过 `m11a_dyn_advanced_design_gate_baseline()` 查询 M11a 设计选择。
 - 可以通过 `is_valid_m11a_dyn_advanced_design_gate()` 防止 M11a boundary drift。
@@ -63,26 +66,27 @@ M11a/M11b 新增的是设计和 query facts 能力，而不是用户可写语言
 - 可以用 documentation tests 固定 “M11a 不实现标准库，不实现 owning/runtime feature” 的阶段边界。
 - 可以通过 `PrincipalSetCompositionFacts` 在 query/tooling 层表达 principal-set identity、witness set、
   principal-qualified method namespace、associated equality merge 和 composition projection。
-- 可以通过 `principal_set_identity_fact()` 对 principal descriptors 做 canonical order、same-origin 和 duplicate
-  validation，并生成稳定 principal-set identity。
-- 可以通过 `is_valid(const PrincipalSetCompositionFacts&)` 拒绝 mixed origin、single principal、duplicate principal、
+- 可以通过 `principal_set_identity_fact()` 对 principal descriptors 做 canonical order、duplicate validation 和
+  derived composition origin/identity 生成；composition identity 不要求所有 single-trait object origin 相同。
+- 可以通过 `is_valid(const PrincipalSetCompositionFacts&)` 拒绝 single principal、duplicate principal、
   missing identity、stale summary、stale fingerprint、flattened method namespace、associated equality conflict shape
   drift、projection 改变 data pointer/origin 和 invalid metadata policy。
 - 可以通过 summary/dump/fingerprint 固定 `principal_set_metadata_v1`、`ambiguous_requires_principal`、
   `composition_to_supertrait` 等 tooling-facing 事实。
+- 可以在源码中写 `&dyn (A + B)` / `&mut dyn (A + B)`，并在 check-only sema 中获得 principal-set
+  identity、method namespace、associated equality merge、witness set、projection 和 query authority facts。
 
 当前还不能写：
 
-- `dyn A + B` 或任何多 principal trait object 语法。
+- bare `dyn A + B`。
 - owning dyn、`Box<dyn Trait>`、side allocation 或 allocator-driven dyn container。
 - trait-object Drop dispatch、dynamic destructor ABI、dynamic cleanup runtime call。
 - 标准库容器、标准库 `Box`、标准库 allocator API。
-- auto trait composition、structural conformance、Swift-style owning existential value buffer。
+- principal-qualified method dispatch、composition IR/backend runtime、auto trait composition、structural conformance、
+  Swift-style owning existential value buffer。
 
-M11b 当前也不能做：
+M11c 当前也不能做：
 
-- parser/AST/sema 中的 principal-set composition type。
-- concrete-to-composition coercion 的用户级诊断。
 - principal-set method call resolution。
 - IR `trait_object_composition` value、LLVM principal-set metadata global 或 runtime dispatch。
 - 标准库、owning dyn、`Box<dyn Trait>`、allocator API/policy 或 dynamic Drop dispatch。
@@ -137,14 +141,15 @@ object，也不把 borrowed dyn view 改成 C++ class object。
 
 ## 5. 语义模型
 
-M11 的 future source surface 可以考虑 borrowed composition view，例如 `&dyn A + B`、`&dyn (A + B)` 或显式
-composition type spelling。M11a 不冻结最终 parser spelling，只冻结语义模型。
+M11c 已冻结当前 borrowed composition source spelling 为 `dyn (A + B)`。`dyn A + B` 仍不支持，原因是它更容易
+和 type grammar / expression grammar 的 `+` 恢复策略混淆；`dyn (A + B)` 把 principal set 边界显式放进
+括号中，parser diagnostics 更稳定。
 
 ### 5.1 Principal Set
 
 composition object 的核心 identity 不是单一 principal trait，而是 canonical principal set：
 
-- principal set 至少包含一个 principal trait。
+- principal set 至少包含两个 principal trait。
 - 每个 principal trait 必须是 nominal trait，并且必须有可见 checked impl evidence。
 - principal set 中不能有重复 principal。
 - canonical order 必须稳定，不能依赖源码遍历偶然顺序；建议后续使用 trait `DefKey` / canonical trait args /
@@ -315,10 +320,11 @@ M11b 新增的查询 API：
 - `summarize_principal_set_composition_facts`
 - `dump_principal_set_composition_facts`
 
-M11b validation 固定以下边界：
+M11b/M11c validation 固定以下边界：
 
 - principal set 至少包含两个 principal，且 principal 必须是有效 `TraitObjectTypeKey`。
-- principal set 中所有 principal 必须共享同一个 `object_origin`。
+- principal-set composition 生成自己的 derived `object_origin` / `principal_set_identity`；它不要求所有 single-trait
+  object origin 相同。
 - principal descriptor 必须 canonical ordered 且 duplicate principal 会被拒绝。
 - composition metadata policy 只接受 `principal_set_metadata_v1`。
 - witness descriptor 必须把 principal object 与 vtable layout 的 object type 对齐。
@@ -331,13 +337,17 @@ M11b validation 固定以下边界：
 - aggregate facts 必须引用已记录的 identity，summary 必须与 facts 重新计算结果一致，非空 fingerprint 必须与当前 facts
   重新计算结果一致。
 
-M11b focused tests 覆盖 enum name、invalid fallback、principal-set identity canonicalization、single/duplicate/
-mixed-origin principal rejection、metadata policy drift、witness layout mismatch、associated equality shape drift、
-projection boundary drift、flattened method namespace rejection、summary/dump/fingerprint 稳定性、unknown identity、
-stale summary 和 stale fingerprint rejection。
+M11b focused tests 覆盖 enum name、invalid fallback、principal-set identity canonicalization、single/duplicate
+principal rejection、metadata policy drift、witness layout mismatch、associated equality shape drift、projection
+boundary drift、flattened method namespace rejection、summary/dump/fingerprint 稳定性、unknown identity、stale
+summary 和 stale fingerprint rejection。M11c focused tests 继续覆盖 `dyn (A + B)` parser/AST、invalid syntax
+recovery、single/duplicate/non-trait principal diagnostics、missing impl、shared-to-mut rejection、canonical
+display/order、associated equality merge/conflict、composition method-call guard、checked dump/query authority、
+multiple concrete witness sets 和 IR lowering check-only rejection。
 
-M11b 仍明确不实现标准库、不实现 `dyn A + B` parser syntax、不实现 parser/AST/sema、不实现 IR/backend runtime、
-不实现 owning dyn、不实现 `Box<dyn Trait>`、不实现 allocator API/policy、不实现 dynamic Drop dispatch。
+M11c 仍明确不实现标准库、不实现 bare `dyn A + B` parser syntax、不实现 principal-qualified dispatch、不实现
+IR/backend runtime、不实现 owning dyn、不实现 `Box<dyn Trait>`、不实现 allocator API/policy、不实现 dynamic
+Drop dispatch。
 
 ## 9. Diagnostics 计划
 
@@ -390,17 +400,17 @@ M11a 已覆盖：
 M11c/M11d 应继续按功能模块拆测试，不把所有 dyn 测试塞回一个巨大文件：
 
 - query DTO / validation tests。
-- parser syntax tests，等最终 spelling 选定后再加。
-- sema coercion / method lookup / associated equality tests。
-- checked dump / fingerprint tests。
+- parser syntax tests。
+- sema coercion / method lookup guard / associated equality tests。
+- checked dump / fingerprint / authority tests。
 - IDE/tooling projection tests。
 - negative samples。
-- IR/verifier focused tests。
+- IR/verifier focused tests；M11c 已先加入 runtime lowering not implemented guard。
 - backend/native tests 只在 runtime package 开始后加入。
 
 ## 12. 明确非目标
 
-M11b 明确不做：
+M11c 明确不做：
 
 - 不实现标准库。
 - 不实现 `Box<dyn Trait>`。
@@ -408,8 +418,8 @@ M11b 明确不做：
 - 不实现 dynamic Drop dispatch。
 - 不实现 allocator API。
 - 不实现 trait-object destructor ABI。
-- 不实现 `dyn A + B` parser syntax。
-- 不实现 principal-set sema coercion。
+- 不实现 bare `dyn A + B` parser syntax。
+- 不实现 principal-qualified dispatch。
 - 不实现 IR/backend runtime dispatch。
 - 不实现 side allocation、owner container 或 value buffer。
 - 不实现 structural conformance。
@@ -420,20 +430,20 @@ M11b 明确不做：
 
 ## 13. 后续阶段和代码量预估
 
-M11b 预估是 800-1,400 行。实际完成后应以 commit diffstat 为准；若偏离预估，主要原因通常是文档入口、
-documentation tests、query validation 强度和 focused tests 数量。当前 M11b 实现仍保持 compiler/query facts
-边界，因此没有 parser/sema/IR/backend/runtime 代码量。
+M11b 预估是 800-1,400 行，M11c 预估是 1,800-3,200 行。实际完成后应以 commit diffstat 为准；若偏离预估，
+主要原因通常是文档入口、documentation tests、query validation 强度、focused tests 数量，以及 M8/M10/M11b
+已有地基可复用程度。当前 M11c 实现仍保持 check-only 边界，因此没有 composition runtime/backend/native 代码量。
 
 M11 剩余阶段建议：
 
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
 | M11b Principal-Set Composition Query Prototype Gate | 已完成。新增 principal-set composition query DTO、stable fingerprint、summary/dump、validation 和 focused query tests；仍不实现 parser/sema/runtime | 实际以本次 diffstat 为准 |
-| M11c Principal-Set Composition Frontend / Sema Check-Only | 最终选择 source spelling，parser/AST、type identity、coercion check、method namespace diagnostics、associated equality merge check、checked dump/fingerprint、negative samples | 1,800-3,200 行 |
+| M11c Principal-Set Composition Frontend / Sema Check-Only | 已完成。`dyn (A + B)` parser/AST、type identity、coercion check、method-call guard、associated equality merge check、checked dump/fingerprint、negative samples、IR runtime guard | 实际以本次 diffstat 为准 |
 | M11d Principal-Set Composition IR / Backend Runtime | IR value/layout/projection、verifier、LLVM metadata layout、principal-qualified slot dispatch、native runtime tests；仍不实现 owning dyn/stdlib | 1,600-2,800 行 |
 | M11e Hardening / Release Closure | query/cache/tooling polish、IDE hover/workspace index、stress/perf gates、docs/tests release closure、代码量偏差分析 | 700-1,300 行 |
 | 后续标准库/owning/drop 阶段 | `Box`、owning dyn container、allocator API、dynamic Drop dispatch、destructor ABI、standard-library resource wrappers | 独立设计后估算 |
 
-M11c 是 M11b 之后最合适的下一步，因为 query facts 已经固定，下一步应在不实现标准库和 runtime 的前提下把
-source spelling、type identity、coercion check、method namespace diagnostics 和 associated equality merge check 做成
-frontend/sema check-only 子集。
+M11d 是 M11c 之后最合适的下一步，因为 parser/AST/type/sema check-only facts 已经固定，下一步应在仍不实现
+标准库和 owning dyn 的前提下把 composition runtime layout、IR projection、verifier、LLVM metadata 和
+principal-qualified dispatch 做成可执行子集。

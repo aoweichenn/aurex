@@ -1,6 +1,7 @@
 #include <aurex/frontend/sema/checked_module.hpp>
 #include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
 #include <aurex/infrastructure/query/stable_hash.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
 
@@ -659,6 +660,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_object_coercions(std::move(other.trait_object_coercions)),
       trait_supertrait_edges(std::move(other.trait_supertrait_edges)),
       trait_object_upcast_coercions(std::move(other.trait_object_upcast_coercions)),
+      principal_set_composition_facts(std::move(other.principal_set_composition_facts)),
       trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
@@ -743,6 +745,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_object_coercions.swap(other.trait_object_coercions);
     this->trait_supertrait_edges.swap(other.trait_supertrait_edges);
     this->trait_object_upcast_coercions.swap(other.trait_object_upcast_coercions);
+    swap(this->principal_set_composition_facts, other.principal_set_composition_facts);
     this->trait_method_call_by_expr.swap(other.trait_method_call_by_expr);
     this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
@@ -893,6 +896,7 @@ void CheckedModule::copy_from(const CheckedModule& other)
     for (const TraitObjectUpcastCoercionFact& fact : other.trait_object_upcast_coercions) {
         this->trait_object_upcast_coercions.push_back(this->clone_trait_object_upcast_coercion_fact(fact));
     }
+    this->principal_set_composition_facts = other.principal_set_composition_facts;
     this->borrow_summaries.clear();
     this->borrow_summaries.reserve(other.borrow_summaries.size());
     for (const auto& entry : other.borrow_summaries) {
@@ -1928,6 +1932,8 @@ query::StableFingerprint128 trait_object_facts_fingerprint(const CheckedModule& 
         builder.mix_fingerprint(fact.edge_fingerprint);
         builder.mix_u8(static_cast<base::u8>(fact.borrow_kind));
     }
+    builder.mix_fingerprint(
+        query::principal_set_composition_facts_fingerprint(checked.principal_set_composition_facts));
     return builder.finish();
 }
 
@@ -2598,11 +2604,23 @@ void populate_type_check_body_borrow_authority(
     authority.trait_supertrait_edge_count = static_cast<base::u64>(checked.trait_supertrait_edges.size());
     authority.trait_object_upcast_coercion_count =
         static_cast<base::u64>(checked.trait_object_upcast_coercions.size());
+    authority.principal_set_composition_count =
+        checked.principal_set_composition_facts.summary.principal_set_count;
+    authority.principal_set_composition_principal_count =
+        checked.principal_set_composition_facts.summary.principal_count;
+    authority.principal_set_composition_projection_count =
+        checked.principal_set_composition_facts.summary.projection_count;
     if (authority.trait_object_method_slot_count != 0 || authority.trait_object_callability_count != 0
         || authority.vtable_layout_count != 0 || authority.trait_object_coercion_count != 0
-        || authority.trait_supertrait_edge_count != 0 || authority.trait_object_upcast_coercion_count != 0) {
+        || authority.trait_supertrait_edge_count != 0 || authority.trait_object_upcast_coercion_count != 0
+        || authority.principal_set_composition_count != 0) {
         authority.has_trait_object_facts = true;
         authority.trait_object_fingerprint = trait_object_facts_fingerprint(checked);
+    }
+    if (authority.principal_set_composition_count != 0) {
+        authority.has_principal_set_composition_facts = true;
+        authority.principal_set_composition_fingerprint =
+            query::principal_set_composition_facts_fingerprint(checked.principal_set_composition_facts);
     }
     if (const auto summary = checked.borrow_summaries.find(function); summary != checked.borrow_summaries.end()) {
         authority.has_borrow_summary = true;
@@ -3123,6 +3141,16 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " key=" << query::debug_string(query::stable_key_fingerprint(fact.upcast_key));
         append_part_origin(out, show_parts, fact.part_index);
         out << "\n";
+    }
+
+    if (!checked.principal_set_composition_facts.identity_facts.empty()) {
+        out << "  principal_set_composition "
+            << checked.principal_set_composition_facts.summary.principal_set_count
+            << " fingerprint="
+            << query::debug_string(
+                   query::principal_set_composition_facts_fingerprint(checked.principal_set_composition_facts))
+            << "\n";
+        out << query::dump_principal_set_composition_facts(checked.principal_set_composition_facts);
     }
 
     out << "  function_calls " << checked.function_calls.size() << "\n";

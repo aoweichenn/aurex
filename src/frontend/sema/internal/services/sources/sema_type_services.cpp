@@ -21,6 +21,7 @@ namespace {
 constexpr base::usize SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY = 16;
 constexpr base::u64 SEMA_ABI_INVALID_SIZE = 0;
 constexpr base::u64 SEMA_ABI_MIN_ALIGNMENT = 1;
+constexpr base::usize SEMA_DYN_TRAIT_COMPOSITION_MIN_PRINCIPALS = 2;
 
 enum class TypeLayoutFrameStage {
     enter,
@@ -47,6 +48,7 @@ enum class TypeResolveActionKind {
     build_tuple,
     build_function,
     build_dyn_trait,
+    build_dyn_trait_composition,
 };
 
 struct TypeResolveAction {
@@ -62,6 +64,7 @@ struct TypeResolveAction {
     base::usize function_param_count = 0;
     base::usize dyn_trait_arg_count = 0;
     base::usize dyn_trait_associated_constraint_count = 0;
+    base::usize dyn_trait_principal_count = 0;
 };
 
 struct LayoutResult {
@@ -196,6 +199,197 @@ struct LayoutResult {
         return false;
     }
     return is_builtin_scalar_bcast_type(types, type) || types.is_pointer(type);
+}
+
+[[nodiscard]] bool trait_object_key_less(
+    const query::TraitObjectTypeKey& lhs, const query::TraitObjectTypeKey& rhs) noexcept
+{
+    if (lhs.principal_trait.global_id != rhs.principal_trait.global_id) {
+        return lhs.principal_trait.global_id < rhs.principal_trait.global_id;
+    }
+    return lhs.global_id < rhs.global_id;
+}
+
+[[nodiscard]] bool type_handles_are_same(
+    const TypeTable& types, const TypeHandle lhs, const TypeHandle rhs) noexcept
+{
+    return is_valid(lhs) && is_valid(rhs) && lhs.value < types.size() && rhs.value < types.size()
+        && types.same(lhs, rhs);
+}
+
+[[nodiscard]] std::vector<TypeHandle> canonical_principal_types(
+    const TypeTable& types, const std::span<const TypeHandle> principal_types)
+{
+    std::vector<TypeHandle> sorted;
+    sorted.reserve(principal_types.size());
+    for (const TypeHandle principal : principal_types) {
+        if (!is_valid(principal) || principal.value >= types.size()) {
+            sorted.push_back(principal);
+            continue;
+        }
+        const TypeInfo& info = types.get(principal);
+        if (info.kind != TypeKind::trait_object || !query::is_valid(info.trait_object_key)) {
+            sorted.push_back(principal);
+            continue;
+        }
+        sorted.push_back(principal);
+    }
+    std::ranges::sort(sorted, [&](const TypeHandle lhs, const TypeHandle rhs) {
+        if (!is_valid(lhs) || lhs.value >= types.size() || !is_valid(rhs) || rhs.value >= types.size()) {
+            return lhs.value < rhs.value;
+        }
+        return trait_object_key_less(types.get(lhs).trait_object_key, types.get(rhs).trait_object_key);
+    });
+    return sorted;
+}
+
+[[nodiscard]] query::PrincipalSetPrincipalDescriptor principal_descriptor(
+    const TypeTable& types, const TypeHandle principal)
+{
+    const TypeInfo& info = types.get(principal);
+    return query::PrincipalSetPrincipalDescriptor{
+        info.trait_object_key,
+        std::string(info.trait_object_name.view()),
+        types.display_name(principal),
+    };
+}
+
+[[nodiscard]] std::vector<query::PrincipalSetPrincipalDescriptor> principal_descriptors(
+    const TypeTable& types, const std::span<const TypeHandle> principal_types)
+{
+    std::vector<query::PrincipalSetPrincipalDescriptor> descriptors;
+    descriptors.reserve(principal_types.size());
+    for (const TypeHandle principal : principal_types) {
+        descriptors.push_back(principal_descriptor(types, principal));
+    }
+    return descriptors;
+}
+
+[[nodiscard]] query::PrincipalMethodNamespaceEntry principal_method_entry(
+    const TypeInfo& principal_info,
+    const TraitObjectMethodSlotFact& slot,
+    const query::PrincipalMethodNamespaceStatus status)
+{
+    return query::PrincipalMethodNamespaceEntry{
+        principal_info.trait_object_key,
+        std::string(principal_info.trait_object_name.view()),
+        std::string(slot.method_name.view()),
+        slot.slot,
+        status,
+    };
+}
+
+[[nodiscard]] std::vector<query::PrincipalMethodNamespaceEntry> principal_method_entries(
+    const CheckedModule& checked, const std::span<const TypeHandle> principal_types)
+{
+    std::vector<query::PrincipalMethodNamespaceEntry> entries;
+    for (const TypeHandle principal : principal_types) {
+        const TypeInfo& info = checked.types.get(principal);
+        for (const TraitObjectMethodSlotFact& slot : checked.trait_object_method_slots) {
+            if (slot.object_type.value != principal.value) {
+                continue;
+            }
+            query::PrincipalMethodNamespaceStatus status =
+                query::PrincipalMethodNamespaceStatus::unique_principal_method;
+            for (const TypeHandle other : principal_types) {
+                if (other.value == principal.value) {
+                    continue;
+                }
+                const TypeInfo& other_info = checked.types.get(other);
+                for (const TraitObjectMethodSlotFact& other_slot : checked.trait_object_method_slots) {
+                    if (other_slot.object_type.value == other.value && other_slot.method_name_id == slot.method_name_id
+                        && other_info.trait_object_key.global_id != info.trait_object_key.global_id) {
+                        status = query::PrincipalMethodNamespaceStatus::ambiguous_requires_principal;
+                    }
+                }
+            }
+            entries.push_back(principal_method_entry(info, slot, status));
+        }
+    }
+    std::ranges::sort(entries, [](const query::PrincipalMethodNamespaceEntry& lhs,
+                                  const query::PrincipalMethodNamespaceEntry& rhs) {
+        if (lhs.method_name != rhs.method_name) {
+            return lhs.method_name < rhs.method_name;
+        }
+        return lhs.principal_object.global_id < rhs.principal_object.global_id;
+    });
+    return entries;
+}
+
+[[nodiscard]] std::vector<query::AssociatedEqualityMergeFact> associated_equality_merge_facts(
+    SemanticAnalyzerCore& core,
+    const query::StableFingerprint128 principal_set_identity,
+    const std::span<const TypeHandle> principal_types,
+    const base::SourceRange& range)
+{
+    struct MergeState {
+        query::MemberKey member;
+        query::CanonicalTypeKey merged_type;
+        TypeHandle merged_handle = INVALID_TYPE_HANDLE;
+        std::vector<query::TraitObjectTypeKey> contributors;
+        std::string name;
+        bool conflict = false;
+    };
+
+    std::vector<MergeState> states;
+    for (const TypeHandle principal : principal_types) {
+        const TypeInfo& info = core.state_.checked.types.get(principal);
+        for (const TraitObjectAssociatedTypeEquality& equality : info.trait_object_associated_equalities) {
+            const std::string equality_name(equality.name.view());
+            auto found = std::ranges::find_if(states, [&](const MergeState& candidate) {
+                return candidate.name == equality_name;
+            });
+            if (found == states.end()) {
+                base::Result<query::CanonicalTypeKey> key = core.checked_canonical_type_key(equality.value_type);
+                if (!key) {
+                    core.report_internal_contract(range, key.error().message);
+                    continue;
+                }
+                MergeState state;
+                state.member = equality.associated_member;
+                state.merged_type = key.take_value();
+                state.merged_handle = equality.value_type;
+                state.contributors.push_back(info.trait_object_key);
+                state.name = equality_name;
+                states.push_back(std::move(state));
+                continue;
+            }
+            found->contributors.push_back(info.trait_object_key);
+            if (!type_handles_are_same(core.state_.checked.types, found->merged_handle, equality.value_type)) {
+                found->conflict = true;
+            }
+        }
+    }
+
+    std::vector<query::AssociatedEqualityMergeFact> facts;
+    facts.reserve(states.size());
+    for (MergeState& state : states) {
+        std::ranges::sort(state.contributors, trait_object_key_less);
+        const auto unique_end = std::ranges::unique(state.contributors,
+            [](const query::TraitObjectTypeKey& lhs, const query::TraitObjectTypeKey& rhs) {
+                return lhs.global_id == rhs.global_id;
+            });
+        state.contributors.erase(unique_end.begin(), unique_end.end());
+        query::AssociatedEqualityMergeFact fact;
+        fact.principal_set_identity = principal_set_identity;
+        fact.associated_type = state.member;
+        fact.merged_type = state.merged_type;
+        fact.status = state.conflict ? query::PrincipalAssociatedEqualityMergeStatus::conflict
+                                     : query::PrincipalAssociatedEqualityMergeStatus::satisfied;
+        fact.contributing_principals = std::move(state.contributors);
+        fact.associated_type_name = state.name;
+        fact.merged_type_name = state.conflict ? std::string("<conflict>")
+                                               : core.state_.checked.types.display_name(state.merged_handle);
+        facts.push_back(std::move(fact));
+    }
+    std::ranges::sort(facts, [](const query::AssociatedEqualityMergeFact& lhs,
+                                const query::AssociatedEqualityMergeFact& rhs) {
+        if (lhs.associated_type_name != rhs.associated_type_name) {
+            return lhs.associated_type_name < rhs.associated_type_name;
+        }
+        return lhs.associated_type.global_id < rhs.associated_type.global_id;
+    });
+    return facts;
 }
 
 } // namespace
@@ -350,6 +544,22 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
                         break;
                     }
                     case syntax::TypeKind::dyn_trait: {
+                        if (!type.dyn_trait_principals.empty()) {
+                            TypeResolveAction build;
+                            build.kind = TypeResolveActionKind::build_dyn_trait_composition;
+                            build.type = action.type;
+                            build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                            build.dyn_trait_principal_count = type.dyn_trait_principals.size();
+                            actions.push_back(build);
+                            for (base::usize index = type.dyn_trait_principals.size(); index > 0; --index) {
+                                TypeResolveAction resolve_principal;
+                                resolve_principal.kind = TypeResolveActionKind::resolve;
+                                resolve_principal.type = type.dyn_trait_principals[index - 1].trait_type;
+                                resolve_principal.opaque_allowed_as_pointee = false;
+                                actions.push_back(resolve_principal);
+                            }
+                            break;
+                        }
                         TypeResolveAction build;
                         build.kind = TypeResolveActionKind::build_dyn_trait;
                         build.type = action.type;
@@ -521,6 +731,21 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
                 values.push_back(resolved);
                 break;
             }
+            case TypeResolveActionKind::build_dyn_trait_composition: {
+                std::vector<TypeHandle> principal_types(action.dyn_trait_principal_count, INVALID_TYPE_HANDLE);
+                for (base::usize index = action.dyn_trait_principal_count; index > 0; --index) {
+                    if (values.empty()) {
+                        break;
+                    }
+                    principal_types[index - 1] = values.back();
+                    values.pop_back();
+                }
+                const syntax::TypeNode& syntax_type = this->core_.ctx_.module.types[action.type.value];
+                const TypeHandle resolved =
+                    this->resolve_dyn_trait_composition_type(action.type, syntax_type, principal_types);
+                values.push_back(resolved);
+                break;
+            }
         }
     }
 
@@ -678,6 +903,107 @@ TypeHandle SemanticTypeResolver::resolve_dyn_trait_type(const syntax::TypeId typ
     this->core_.record_trait_object_callability(resolved, *trait, resolved_args, associated_equalities, type.range);
     this->core_.record_syntax_type_handle(type_id, resolved);
     return resolved;
+}
+
+TypeHandle SemanticTypeResolver::resolve_dyn_trait_composition_type(const syntax::TypeId type_id,
+    const syntax::TypeNode& type,
+    const std::span<const TypeHandle> principal_types)
+{
+    if (principal_types.size() < SEMA_DYN_TRAIT_COMPOSITION_MIN_PRINCIPALS) {
+        this->core_.report_type(type.range, sema_dyn_trait_composition_min_principals_message());
+        return INVALID_TYPE_HANDLE;
+    }
+
+    bool ok = true;
+    for (const TypeHandle principal : principal_types) {
+        if (!is_valid(principal) || principal.value >= this->core_.state_.checked.types.size()
+            || this->core_.state_.checked.types.get(principal).kind != TypeKind::trait_object
+            || !query::is_valid(this->core_.state_.checked.types.get(principal).trait_object_key)) {
+            this->core_.report_type(type.range, sema_dyn_trait_composition_principal_message());
+            ok = false;
+        }
+    }
+    if (!ok) {
+        return INVALID_TYPE_HANDLE;
+    }
+
+    std::vector<TypeHandle> sorted_principals =
+        canonical_principal_types(this->core_.state_.checked.types, principal_types);
+    for (base::usize index = 1; index < sorted_principals.size(); ++index) {
+        const TypeInfo& previous = this->core_.state_.checked.types.get(sorted_principals[index - 1]);
+        const TypeInfo& current = this->core_.state_.checked.types.get(sorted_principals[index]);
+        if (previous.trait_object_key.principal_trait.global_id
+            == current.trait_object_key.principal_trait.global_id) {
+            this->core_.report_type(
+                type.range, sema_dyn_trait_composition_duplicate_principal_message(current.trait_object_name));
+            ok = false;
+        }
+    }
+    if (!ok) {
+        return INVALID_TYPE_HANDLE;
+    }
+
+    std::vector<query::PrincipalSetPrincipalDescriptor> descriptors =
+        principal_descriptors(this->core_.state_.checked.types, sorted_principals);
+    query::PrincipalSetIdentityFact identity = query::principal_set_identity_fact(descriptors);
+    if (!query::is_valid(identity)) {
+        this->core_.report_internal_contract(type.range, "failed to create dyn trait principal-set identity fact");
+        return INVALID_TYPE_HANDLE;
+    }
+
+    const TypeHandle resolved = this->core_.state_.checked.types.principal_set_trait_object(
+        identity.principal_set_identity, sorted_principals);
+    if (!is_valid(resolved)) {
+        this->core_.report_internal_contract(type.range, "failed to create dyn trait principal-set type");
+        return INVALID_TYPE_HANDLE;
+    }
+
+    if (!std::ranges::any_of(this->core_.state_.checked.principal_set_composition_facts.identity_facts,
+            [&](const query::PrincipalSetIdentityFact& fact) {
+                return fact.principal_set_identity == identity.principal_set_identity;
+            })) {
+        query::record_principal_set_identity_fact(
+            this->core_.state_.checked.principal_set_composition_facts, std::move(identity));
+    }
+
+    query::PrincipalMethodNamespaceFact method_namespace;
+    method_namespace.principal_set_identity =
+        this->core_.state_.checked.types.get(resolved).trait_object_principal_set_identity;
+    method_namespace.methods = principal_method_entries(this->core_.state_.checked, sorted_principals);
+    if (!method_namespace.methods.empty()
+        && !std::ranges::any_of(this->core_.state_.checked.principal_set_composition_facts.method_namespaces,
+            [&](const query::PrincipalMethodNamespaceFact& fact) {
+                return fact.principal_set_identity == method_namespace.principal_set_identity;
+            })) {
+        query::record_principal_method_namespace_fact(
+            this->core_.state_.checked.principal_set_composition_facts, std::move(method_namespace));
+    }
+
+    std::vector<query::AssociatedEqualityMergeFact> merges = associated_equality_merge_facts(this->core_,
+        this->core_.state_.checked.types.get(resolved).trait_object_principal_set_identity, sorted_principals,
+        type.range);
+    for (query::AssociatedEqualityMergeFact& merge : merges) {
+        if (!std::ranges::any_of(this->core_.state_.checked.principal_set_composition_facts.associated_equality_merges,
+                [&](const query::AssociatedEqualityMergeFact& fact) {
+                    return fact.principal_set_identity == merge.principal_set_identity
+                        && fact.associated_type_name == merge.associated_type_name;
+                })) {
+            if (merge.status == query::PrincipalAssociatedEqualityMergeStatus::conflict) {
+                this->core_.report_type(
+                    type.range, sema_dyn_trait_composition_associated_conflict_message(merge.associated_type_name));
+                ok = false;
+            }
+            query::record_associated_equality_merge_fact(
+                this->core_.state_.checked.principal_set_composition_facts, std::move(merge));
+        }
+    }
+
+    this->core_.state_.checked.principal_set_composition_facts.subject = "checked dyn trait principal-set composition";
+    this->core_.state_.checked.principal_set_composition_facts.fingerprint =
+        query::principal_set_composition_facts_fingerprint(
+            this->core_.state_.checked.principal_set_composition_facts);
+    this->core_.record_syntax_type_handle(type_id, resolved);
+    return ok ? resolved : INVALID_TYPE_HANDLE;
 }
 
 TypeHandle SemanticTypeResolver::resolve_named_type(

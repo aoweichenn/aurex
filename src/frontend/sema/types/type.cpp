@@ -44,6 +44,9 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR = ".";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX = "dyn ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_OPEN = "dyn (";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_SEPARATOR = " + ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_CLOSE = ")";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_EQUALITY_SEPARATOR = " = ";
 constexpr std::string_view SEMA_TYPE_ORIGIN_KEY_SEPARATOR = " | ";
 constexpr base::usize SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE = 16;
@@ -53,6 +56,7 @@ constexpr std::size_t SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT = 17U;
 enum class TypeDisplayTaskKind {
     type,
     text,
+    trait_object_principal,
 };
 
 struct TypeDisplayTask {
@@ -165,6 +169,60 @@ void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const
             args[index - 1],
             {},
         });
+    }
+}
+
+void push_trait_object_suffix_display_tasks(
+    std::vector<TypeDisplayTask>& pending,
+    const TypeInfo& info)
+{
+    if (info.trait_object_args.empty() && info.trait_object_associated_equalities.empty()) {
+        return;
+    }
+    pending.push_back(TypeDisplayTask{
+        TypeDisplayTaskKind::text,
+        INVALID_TYPE_HANDLE,
+        std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE),
+    });
+    for (base::usize index = info.trait_object_associated_equalities.size(); index > 0; --index) {
+        const TraitObjectAssociatedTypeEquality& equality =
+            info.trait_object_associated_equalities[index - 1];
+        pending.push_back(TypeDisplayTask{
+            TypeDisplayTaskKind::type,
+            equality.value_type,
+            {},
+        });
+        pending.push_back(TypeDisplayTask{
+            TypeDisplayTaskKind::text,
+            INVALID_TYPE_HANDLE,
+            std::string(SEMA_TYPE_DISPLAY_ASSOCIATED_EQUALITY_SEPARATOR),
+        });
+        pending.push_back(TypeDisplayTask{
+            TypeDisplayTaskKind::text,
+            INVALID_TYPE_HANDLE,
+            std::string(equality.name.view()),
+        });
+        if (index > 1 || !info.trait_object_args.empty()) {
+            pending.push_back(TypeDisplayTask{
+                TypeDisplayTaskKind::text,
+                INVALID_TYPE_HANDLE,
+                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+            });
+        }
+    }
+    for (base::usize index = info.trait_object_args.size(); index > 0; --index) {
+        pending.push_back(TypeDisplayTask{
+            TypeDisplayTaskKind::type,
+            info.trait_object_args[index - 1],
+            {},
+        });
+        if (index > 1) {
+            pending.push_back(TypeDisplayTask{
+                TypeDisplayTaskKind::text,
+                INVALID_TYPE_HANDLE,
+                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+            });
+        }
     }
 }
 
@@ -328,8 +386,14 @@ void TypeTable::copy_from(const TypeTable& other)
             this->associated_projection_types_.emplace(
                 AssociatedProjectionKey{info.associated_base.value, info.associated_member.global_id},
                 TypeHandle{index});
-        } else if (info.kind == TypeKind::trait_object && info.trait_object_key.global_id != 0) {
-            this->trait_object_types_.emplace(TraitObjectKey{info.trait_object_key.global_id}, TypeHandle{index});
+        } else if (info.kind == TypeKind::trait_object) {
+            if (info.trait_object_key.global_id != 0) {
+                this->trait_object_types_.emplace(TraitObjectKey{info.trait_object_key.global_id, {}},
+                    TypeHandle{index});
+            } else if (info.trait_object_principal_set_identity.byte_count != 0) {
+                this->trait_object_types_.emplace(TraitObjectKey{0, info.trait_object_principal_set_identity},
+                    TypeHandle{index});
+            }
         }
     }
 }
@@ -433,6 +497,8 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other)
     copy.trait_object_args = this->copy_type_handles(other.trait_object_args);
     copy.trait_object_associated_equalities =
         this->copy_trait_object_associated_equalities(other.trait_object_associated_equalities);
+    copy.trait_object_principal_set_identity = other.trait_object_principal_set_identity;
+    copy.trait_object_principal_types = this->copy_type_handles(other.trait_object_principal_types);
     copy.name = this->intern_text(other.name);
     copy.c_name = this->intern_text(other.c_name);
     copy.generic_origin_key = this->intern_text(other.generic_origin_key);
@@ -728,7 +794,7 @@ TypeHandle TypeTable::trait_object(const query::TraitObjectTypeKey key, const st
     if (!query::is_valid(key)) {
         return INVALID_TYPE_HANDLE;
     }
-    const TraitObjectKey table_key{key.global_id};
+    const TraitObjectKey table_key{key.global_id, {}};
     if (const auto found = this->trait_object_types_.find(table_key); found != this->trait_object_types_.end()) {
         return found->second;
     }
@@ -741,6 +807,26 @@ TypeHandle TypeTable::trait_object(const query::TraitObjectTypeKey key, const st
     info.trait_object_name_id = trait_name_id;
     info.trait_object_args = this->copy_type_handles(trait_args);
     info.trait_object_associated_equalities = this->copy_trait_object_associated_equalities(associated_equalities);
+    const TypeHandle handle = this->push(std::move(info));
+    this->trait_object_types_.emplace(table_key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::principal_set_trait_object(
+    const query::StableFingerprint128 identity, const std::span<const TypeHandle> principal_types)
+{
+    if (identity.byte_count == 0 || principal_types.size() < 2) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const TraitObjectKey table_key{0, identity};
+    if (const auto found = this->trait_object_types_.find(table_key); found != this->trait_object_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info = this->make_type_info();
+    info.kind = TypeKind::trait_object;
+    info.trait_object_principal_set_identity = identity;
+    info.trait_object_principal_types = this->copy_type_handles(principal_types);
     const TypeHandle handle = this->push(std::move(info));
     this->trait_object_types_.emplace(table_key, handle);
     return handle;
@@ -870,6 +956,12 @@ bool TypeTable::is_trait_object(const TypeHandle type) const noexcept
         && this->types_[type.value].kind == TypeKind::trait_object;
 }
 
+bool TypeTable::is_principal_set_trait_object(const TypeHandle type) const noexcept
+{
+    return this->is_trait_object(type)
+        && this->types_[type.value].trait_object_principal_set_identity.byte_count != 0;
+}
+
 bool TypeTable::contains_array(const TypeHandle type) const noexcept
 {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].contains_array;
@@ -895,6 +987,18 @@ std::string TypeTable::display_name(const TypeHandle type) const
         const TypeInfo& info = this->types_[current.value];
         if (!is_known_type_kind(info.kind)) {
             name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
+            continue;
+        }
+        if (task.kind == TypeDisplayTaskKind::trait_object_principal) {
+            if (info.kind != TypeKind::trait_object || !info.trait_object_principal_types.empty()) {
+                name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
+                continue;
+            }
+            name.append(info.trait_object_name.view());
+            if (!info.trait_object_args.empty() || !info.trait_object_associated_equalities.empty()) {
+                name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+                push_trait_object_suffix_display_tasks(pending, info);
+            }
             continue;
         }
         switch (info.kind) {
@@ -1031,55 +1135,34 @@ std::string TypeTable::display_name(const TypeHandle type) const
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.associated_base, {}});
                 break;
             case TypeKind::trait_object:
-                name.append(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX);
-                name.append(info.trait_object_name.view());
-                if (!info.trait_object_args.empty() || !info.trait_object_associated_equalities.empty()) {
-                    name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+                if (!info.trait_object_principal_types.empty()) {
+                    name.append(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_OPEN);
                     pending.push_back(TypeDisplayTask{
                         TypeDisplayTaskKind::text,
                         INVALID_TYPE_HANDLE,
-                        std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE),
+                        std::string(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_CLOSE),
                     });
-                    for (base::usize index = info.trait_object_associated_equalities.size(); index > 0; --index) {
-                        const TraitObjectAssociatedTypeEquality& equality =
-                            info.trait_object_associated_equalities[index - 1];
+                    for (base::usize index = info.trait_object_principal_types.size(); index > 0; --index) {
                         pending.push_back(TypeDisplayTask{
-                            TypeDisplayTaskKind::type,
-                            equality.value_type,
-                            {},
-                        });
-                        pending.push_back(TypeDisplayTask{
-                            TypeDisplayTaskKind::text,
-                            INVALID_TYPE_HANDLE,
-                            std::string(SEMA_TYPE_DISPLAY_ASSOCIATED_EQUALITY_SEPARATOR),
-                        });
-                        pending.push_back(TypeDisplayTask{
-                            TypeDisplayTaskKind::text,
-                            INVALID_TYPE_HANDLE,
-                            std::string(equality.name.view()),
-                        });
-                        if (index > 1 || !info.trait_object_args.empty()) {
-                            pending.push_back(TypeDisplayTask{
-                                TypeDisplayTaskKind::text,
-                                INVALID_TYPE_HANDLE,
-                                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
-                            });
-                        }
-                    }
-                    for (base::usize index = info.trait_object_args.size(); index > 0; --index) {
-                        pending.push_back(TypeDisplayTask{
-                            TypeDisplayTaskKind::type,
-                            info.trait_object_args[index - 1],
+                            TypeDisplayTaskKind::trait_object_principal,
+                            info.trait_object_principal_types[index - 1],
                             {},
                         });
                         if (index > 1) {
                             pending.push_back(TypeDisplayTask{
                                 TypeDisplayTaskKind::text,
                                 INVALID_TYPE_HANDLE,
-                                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+                                std::string(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_COMPOSITION_SEPARATOR),
                             });
                         }
                     }
+                    break;
+                }
+                name.append(SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX);
+                name.append(info.trait_object_name.view());
+                if (!info.trait_object_args.empty() || !info.trait_object_associated_equalities.empty()) {
+                    name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+                    push_trait_object_suffix_display_tasks(pending, info);
                 }
                 break;
         }
@@ -1195,9 +1278,10 @@ std::size_t TypeTable::AssociatedProjectionKeyHash::operator()(const AssociatedP
 
 std::size_t TypeTable::TraitObjectKeyHash::operator()(const TraitObjectKey& key) const noexcept
 {
-    return static_cast<std::size_t>(key.global_id)
-        ^ (static_cast<std::size_t>(key.global_id >> SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT)
-            * SEMA_TYPE_HASH_MULTIPLIER);
+    return (static_cast<std::size_t>(key.global_id)
+               ^ (static_cast<std::size_t>(key.global_id >> SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT)
+                   * SEMA_TYPE_HASH_MULTIPLIER))
+        ^ (query::stable_hash_value(key.principal_set_identity) * SEMA_TYPE_HASH_MULTIPLIER);
 }
 
 } // namespace aurex::sema

@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M11b Principal-Set Composition Query Prototype Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait 和 borrowed dyn supertrait upcast 表面本身展开。M11a/M11b 新增的是 principal-set borrowed dyn composition 的 design/query facts，不新增用户可写 `dyn A + B` 语法。
+本文描述当前 **M11c Principal-Set Composition Frontend / Sema Check-Only** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition check-only 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion，但仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、principal-qualified dispatch 或 IR/backend runtime。
 
 ## 构建
 
@@ -152,9 +152,34 @@ M11a 已把后续 advanced dyn 主线选为 principal-set borrowed dyn compositi
 `principal_set_identity_fact()`、`principal_set_composition_facts_fingerprint()`、
 `summarize_principal_set_composition_facts()` 和 `dump_principal_set_composition_facts()`，用于校验 principal-set
 identity、witness set、principal-qualified method namespace、associated equality merge 和 projection facts。
-这些目前只属于设计/query facts；当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop
-dispatch、用户可写多 trait object composition、`dyn A + B` parser syntax、composition sema/runtime、
-specialization、default associated type、generic associated type 或 associated const。
+M11c 已在此基础上支持 check-only borrowed composition：
+
+```aurex
+trait Draw { fn draw(self: &Self) -> i32; }
+trait Debug { fn debug(self: &Self) -> i32; }
+
+struct File { value: i32; }
+
+impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }
+impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }
+
+fn consume(view: &dyn (Draw + Debug)) -> i32 {
+    return 0;
+}
+
+fn main() -> i32 {
+    let file: File = File { value: 7 };
+    let view: &dyn (Debug + Draw) = &file;
+    return consume(view);
+}
+```
+
+这段程序在 `--check` / `--emit=checked` 阶段会生成 principal-set identity、canonical principal order、
+composition witness set、projection fact 和 checked dump/fingerprint。当前不能通过 composition receiver 调用
+`view.draw()` 或 `view.debug()`，因为 principal-qualified dispatch syntax/runtime 不属于 M11c；也不能
+`--emit=ir` / native execution，因为 IR/backend runtime lowering 留给 M11d。当前仍不实现 owning dyn、
+`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、composition
+runtime、specialization、default associated type、generic associated type 或 associated const。
 
 ## import
 

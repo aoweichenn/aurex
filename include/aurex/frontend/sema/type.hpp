@@ -4,6 +4,7 @@
 #include <aurex/frontend/sema/storage.hpp>
 #include <aurex/frontend/syntax/core/ast_ids.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
 #include <aurex/infrastructure/query/query_key.hpp>
 #include <aurex/infrastructure/query/trait_object_key.hpp>
 
@@ -117,6 +118,8 @@ struct TypeInfo {
     IdentId trait_object_name_id = INVALID_IDENT_ID;
     TypeHandleList trait_object_args;
     TraitObjectAssociatedTypeEqualityList trait_object_associated_equalities;
+    query::StableFingerprint128 trait_object_principal_set_identity;
+    TypeHandleList trait_object_principal_types;
     InternedText name;
     InternedText c_name;
     InternedText generic_origin_key;
@@ -172,6 +175,9 @@ public:
         IdentId trait_name_id,
         std::span<const TypeHandle> trait_args,
         std::span<const TraitObjectAssociatedTypeEquality> associated_equalities);
+    [[nodiscard]] TypeHandle principal_set_trait_object(query::StableFingerprint128 identity,
+        std::span<const TypeHandle> principal_types);
+    [[nodiscard]] bool is_principal_set_trait_object(TypeHandle type) const noexcept;
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
@@ -279,10 +285,11 @@ private:
 
     struct TraitObjectKey {
         base::u64 global_id = 0;
+        query::StableFingerprint128 principal_set_identity;
 
         [[nodiscard]] bool operator==(const TraitObjectKey& other) const noexcept
         {
-            return global_id == other.global_id;
+            return global_id == other.global_id && principal_set_identity == other.principal_set_identity;
         }
     };
 

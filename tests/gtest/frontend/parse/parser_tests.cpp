@@ -1443,6 +1443,8 @@ TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
         "type DrawRef = &dyn Draw;\n"
         "type DrawMutRef = &mut dyn Draw;\n"
         "type IterRef = &dyn core.iter.Iterator[i32, Item = i32, Error = bool];\n"
+        "type DrawDebugRef = &dyn (Draw + Debug);\n"
+        "type QualifiedCompositionRef = &dyn (core.draw.Draw + core.iter.Iterator[i32, Item = i32]);\n"
         "fn render(drawable: &dyn Draw) -> i32 { return 0; }\n";
     const syntax::AstModule module = parse_success(source);
 
@@ -1486,6 +1488,48 @@ TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
     EXPECT_EQ(iter_object.associated_type_constraints[0].name, "Item");
     EXPECT_EQ(iter_object.associated_type_constraints[1].name, "Error");
 
+    const syntax::ItemNode* const draw_debug_ref = find_item(module, "DrawDebugRef");
+    ASSERT_NE(draw_debug_ref, nullptr);
+    ASSERT_TRUE(syntax::is_valid(draw_debug_ref->alias_type));
+    const syntax::TypeNode& draw_debug_ref_type = module.types[draw_debug_ref->alias_type.value];
+    ASSERT_EQ(draw_debug_ref_type.kind, syntax::TypeKind::reference);
+    ASSERT_TRUE(syntax::is_valid(draw_debug_ref_type.pointee));
+    const syntax::TypeNode& draw_debug_object = module.types[draw_debug_ref_type.pointee.value];
+    ASSERT_EQ(draw_debug_object.kind, syntax::TypeKind::dyn_trait);
+    ASSERT_EQ(draw_debug_object.dyn_trait_principals.size(), 2U);
+    const syntax::TypeNode& draw_principal =
+        module.types[draw_debug_object.dyn_trait_principals[0].trait_type.value];
+    const syntax::TypeNode& debug_principal =
+        module.types[draw_debug_object.dyn_trait_principals[1].trait_type.value];
+    EXPECT_EQ(draw_principal.name, "Draw");
+    EXPECT_EQ(debug_principal.name, "Debug");
+    EXPECT_TRUE(draw_debug_object.name.empty());
+    EXPECT_TRUE(draw_debug_object.type_args.empty());
+
+    const syntax::ItemNode* const qualified_composition_ref = find_item(module, "QualifiedCompositionRef");
+    ASSERT_NE(qualified_composition_ref, nullptr);
+    ASSERT_TRUE(syntax::is_valid(qualified_composition_ref->alias_type));
+    const syntax::TypeNode& qualified_ref_type = module.types[qualified_composition_ref->alias_type.value];
+    ASSERT_EQ(qualified_ref_type.kind, syntax::TypeKind::reference);
+    ASSERT_TRUE(syntax::is_valid(qualified_ref_type.pointee));
+    const syntax::TypeNode& qualified_object = module.types[qualified_ref_type.pointee.value];
+    ASSERT_EQ(qualified_object.dyn_trait_principals.size(), 2U);
+    const syntax::TypeNode& qualified_draw =
+        module.types[qualified_object.dyn_trait_principals[0].trait_type.value];
+    const syntax::TypeNode& qualified_iter =
+        module.types[qualified_object.dyn_trait_principals[1].trait_type.value];
+    ASSERT_EQ(qualified_draw.scope_parts.size(), 2U);
+    EXPECT_EQ(qualified_draw.scope_parts[0], "core");
+    EXPECT_EQ(qualified_draw.scope_parts[1], "draw");
+    EXPECT_EQ(qualified_draw.name, "Draw");
+    ASSERT_EQ(qualified_iter.scope_parts.size(), 2U);
+    EXPECT_EQ(qualified_iter.scope_parts[0], "core");
+    EXPECT_EQ(qualified_iter.scope_parts[1], "iter");
+    EXPECT_EQ(qualified_iter.name, "Iterator");
+    ASSERT_EQ(qualified_iter.type_args.size(), 1U);
+    ASSERT_EQ(qualified_iter.associated_type_constraints.size(), 1U);
+    EXPECT_EQ(qualified_iter.associated_type_constraints.front().name, "Item");
+
     const syntax::ItemNode* const render = find_item(module, "render");
     ASSERT_NE(render, nullptr);
     ASSERT_EQ(render->params.size(), 1U);
@@ -1500,6 +1544,8 @@ TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
             "alias &dyn Draw",
             "alias &mut dyn Draw",
             "alias &dyn core.iter.Iterator[i32, Item = i32, Error = bool]",
+            "alias &dyn (Draw + Debug)",
+            "alias &dyn (core.draw.Draw + core.iter.Iterator[i32, Item = i32])",
             "param drawable : &dyn Draw",
         });
 }
@@ -2578,6 +2624,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators)
     expect_parse_error("module parser.dyn_trait_arg_recovery;\n"
                        "type Bad = &dyn Draw[i32 Item = i32];\n",
         "expected ',' or ']' after generic type argument");
+    expect_parse_error("module parser.dyn_trait_composition_empty_recovery;\n"
+                       "type Bad = &dyn ();\n",
+        "expected type");
+    expect_parse_error("module parser.dyn_trait_composition_separator_recovery;\n"
+                       "type Bad = &dyn (Draw Debug);\n",
+        "expected '+' or ')' after dyn trait composition principal");
+    expect_parse_error("module parser.dyn_trait_composition_trailing_recovery;\n"
+                       "type Bad = &dyn (Draw +);\n",
+        "expected type");
     expect_parse_error("module parser.generic_expr_arg_recovery;\n"
                        "fn main() -> i32 { return id[i32 bool](1); }\n",
         "expected ',' or ']' after generic type argument");

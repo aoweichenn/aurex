@@ -5,6 +5,7 @@
 #include <aurex/frontend/sema/type.hpp>
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
+#include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -1584,6 +1585,7 @@ public:
     TraitObjectCoercionFactList trait_object_coercions;
     TraitSupertraitEdgeFactList trait_supertrait_edges;
     TraitObjectUpcastCoercionFactList trait_object_upcast_coercions;
+    query::PrincipalSetCompositionFacts principal_set_composition_facts;
     CallBindingExprIndexMap trait_method_call_by_expr;
     CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;

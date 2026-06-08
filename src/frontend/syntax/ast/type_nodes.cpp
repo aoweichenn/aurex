@@ -205,6 +205,7 @@ base::u32 TypeNodeList::store_payload(const TypeNode& node)
                     node.name_id,
                     this->copy_list(node.type_args),
                     this->copy_list(node.associated_type_constraints),
+                    this->copy_list(node.dyn_trait_principals),
                 });
     }
     return UINT32_MAX;
@@ -284,6 +285,7 @@ TypeNode TypeNodeList::load(const base::usize index) const
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
             node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
+            node.dyn_trait_principals = copy_std_vector(payload.principals);
             break;
         }
     }
@@ -364,6 +366,7 @@ TypeNode TypeNodeList::load_moved(const base::usize index)
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
             node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
+            node.dyn_trait_principals = copy_std_vector(payload.principals);
             break;
         }
     }

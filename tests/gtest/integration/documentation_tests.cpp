@@ -177,7 +177,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M11c Principal-Set Composition Frontend / Sema Check-Only");
+        "docs/zh/next-steps.md", "当前最高优先级：M11d Principal-Set Composition IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -279,7 +279,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M10d Supertrait Hardening / Release Closure");
     expect_document_contains("docs/zh/version.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M11c Principal-Set Composition Frontend / Sema Check-Only");
+        "docs/zh/next-steps.md", "当前最高优先级：M11d Principal-Set Composition IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md", "M10 已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11a 也已结束");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M10d 已完成 hardening/release closure");
@@ -315,29 +315,37 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M11b Principal-Set Composition Query Prototype Gate");
+    expect_document_contains("docs/zh/README.md", "M11c Principal-Set Composition Frontend / Sema Check-Only");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "principal_set_metadata_v1");
-    expect_document_contains("docs/zh/progress.md", "阶段：M11b Principal-Set Composition Query Prototype Gate");
+    expect_document_contains("docs/zh/README.md", "dyn (A + B)");
+    expect_document_contains("docs/zh/progress.md", "阶段：M11c Principal-Set Composition Frontend / Sema Check-Only");
     expect_document_contains("docs/zh/progress.md", "principal-set borrowed dyn composition");
     expect_document_contains("docs/zh/progress.md", "m11a_dyn_advanced_design_gate_baseline");
+    expect_document_contains("docs/zh/progress.md", "M11d Principal-Set Composition IR / Backend Runtime");
+    expect_document_contains("docs/zh/version.md", "## M11c Principal-Set Composition Frontend / Sema Check-Only");
     expect_document_contains("docs/zh/version.md", "## M11a Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/version.md", "completed_release_baseline");
     expect_document_contains("docs/zh/version.md", "ready_for_future_stage");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M11c Principal-Set Composition Frontend / Sema Check-Only");
+        "docs/zh/next-steps.md", "当前最高优先级：M11d Principal-Set Composition IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md",
-        "M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate 均已完成");
+        "M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set");
     expect_document_contains("docs/zh/next-steps.md", "M11b 也已结束");
+    expect_document_contains("docs/zh/next-steps.md", "M11c 也已结束");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M11a advanced dyn design/query gate");
     expect_document_contains("docs/zh/language-manual.md", "M11a advanced dyn design gate");
-    expect_document_contains("docs/zh/usage.md", "M11b Principal-Set Composition Query Prototype Gate");
+    expect_document_contains("docs/zh/language-manual.md", "dyn (Draw + Debug)");
+    expect_document_contains("docs/zh/usage.md", "M11c Principal-Set Composition Frontend / Sema Check-Only");
 
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
         "M11a Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
+        "M11c Principal-Set Composition Frontend / Sema Check-Only");
+    expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
         "principal-set borrowed dyn composition");
+    expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "dyn (A + B)");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "principal_set_metadata_v1");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "principal_set_identity_fact");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "composition_witness_set_fact");
@@ -378,14 +386,16 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "dump_principal_set_composition_facts");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "ambiguous_requires_principal");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "composition_to_supertrait");
-    expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "不实现 parser/AST/sema");
+    expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "不实现 principal-qualified dispatch");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "不实现 IR/backend runtime");
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "不实现标准库");
+    expect_document_contains("docs/zh/m11-advanced-dyn-design.md", "IR lowering check-only rejection");
     expect_document_contains("docs/zh/version.md", "## M11b Principal-Set Composition Query Prototype Gate");
     expect_document_contains("docs/zh/version.md", "PrincipalSetCompositionFacts");
     expect_document_contains("docs/zh/next-steps.md",
-        "M11c Principal-Set Composition Frontend / Sema Check-Only");
+        "M11d Principal-Set Composition IR / Backend Runtime");
     expect_document_contains("docs/zh/language-manual.md", "M11b principal-set composition facts");
+    expect_document_contains("docs/zh/language-manual.md", "M11c borrowed principal-set composition check-only syntax");
 }
 
 } // namespace aurex::test

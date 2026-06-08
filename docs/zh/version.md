@@ -1,5 +1,47 @@
 # 版本文档
 
+## M11c Principal-Set Composition Frontend / Sema Check-Only
+
+M11c 已完成 principal-set borrowed dyn composition 的 frontend/sema check-only 子集。当前用户可写
+composition spelling 是 `dyn (A + B)`；它只用于 borrowed dyn composition view，例如
+`&dyn (Draw + Debug)` 和 `&mut dyn (Draw + Debug)`。M11c 继续保持 compiler-only/check-only 边界，不实现
+标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、不实现 allocator API/policy、不实现 dynamic Drop
+dispatch、不实现 principal-qualified dispatch、不实现 bare `dyn A + B` syntax、不实现 IR/backend runtime。
+
+M11c 当前新增或固定的实现包括：
+
+- Parser/AST 支持 `dyn (A + B)` principal-set composition，单 trait `dyn Trait` 和
+  `dyn Trait[Assoc = Type]` 语法保持不变；`dyn ()`、缺少 `+` 和 trailing `+` 都有 focused recovery。
+- Type model 新增 principal-set trait object identity 和 canonical principal type list；display 使用
+  `dyn (Draw + Debug)`，不会显示成 `dyn (dyn Draw + dyn Debug)`。
+- Sema 要求 composition 至少两个 principal、每个 principal 必须是 single dyn trait object、duplicate
+  principal 会诊断；associated equality merge 按 associated type 名称合并，冲突会给用户诊断。
+- Borrowed concrete reference 可以在所有 principal impl 可见时 coercion 到 borrowed composition view：
+  `&T -> &dyn (A + B)` 和 `&mut T -> &mut dyn (A + B)`；shared-to-mut 仍被现有 assignment/coercion 规则拒绝。
+- Coercion 会记录每个 principal 的 checked vtable layout、`CompositionWitnessSetFact`、
+  `CompositionProjectionFact` 和 generic `CoercionRecord`，但不会把 composition 伪装成 single-trait
+  `TraitObjectCoercionFact`。
+- Composition method call 在本阶段显式拒绝。存在匹配 principal method 时诊断
+  `principal-qualified dispatch is not part of this stage`；缺失 method 时保留普通 no visible impl 诊断。
+- `CheckedModule`、checked dump、stable fingerprint 和 `TypeCheckBodyAuthority` 已纳入
+  `PrincipalSetCompositionFacts`。
+- `ir::lower_ast` 对包含 principal-set composition type 的 checked module 返回明确 codegen error，固定 M11c
+  check-only 边界，避免后端把 composition 当成普通 `{data*, vtable*}` single-trait dyn runtime。
+- Focused parser、AST、sema、query 和 IR negative tests 已覆盖 positive spelling、invalid principal set、
+  canonical order、associated equality merge/conflict、method-call guard、borrowed witness/projection facts 和
+  runtime lowering 未实现边界。
+
+M11c 实际改动低于早期 1,800-3,200 行预估的可能原因是 M11b 已提前铺好 `PrincipalSetCompositionFacts`
+DTO、validation、summary/dump/fingerprint，M8/M10 已有 single-trait dyn 和 supertrait upcast 的 checked
+vtable/borrowed coercion 地基；但 M11c 仍额外补了 parser/AST/type/sema/check-only coercion、测试拆分和 IR
+guard。最终代码量以提交 diffstat 为准。
+
+M11c 之后的下一步是 **M11d Principal-Set Composition IR / Backend Runtime**：在仍不实现标准库、owning dyn、
+`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch 的前提下，实现 IR composition/projection value、verifier、
+LLVM principal-set metadata layout、principal-qualified slot dispatch 和 native runtime tests。M11d 预计
+1,600-2,800 行；M11e hardening/release 预计 700-1,300 行。标准库、owning dyn、allocator 和 dynamic Drop
+dispatch 仍进入独立后续阶段。
+
 ## M11b Principal-Set Composition Query Prototype Gate
 
 M11b 已完成 principal-set composition 的 query facts 原型。该阶段继续保持 compiler/query facts 边界，不实现
@@ -11,7 +53,7 @@ M11b 当前新增或固定的实现包括：
 - 新增 `PrincipalSetCompositionFacts` aggregate DTO，记录 subject、identity facts、witness sets、method
   namespaces、associated equality merges、projections、summary 和 fingerprint。
 - 新增 `PrincipalSetIdentityFact` / `PrincipalSetPrincipalDescriptor`，由 `principal_set_identity_fact()` 对
-  principal descriptors 做 canonical order、same-origin、duplicate validation 和稳定 identity 生成。
+  principal descriptors 做 canonical order、duplicate validation、derived composition origin 和稳定 identity 生成。
 - 新增 `CompositionWitnessSetFact` / `CompositionWitnessDescriptor`，把 principal object、`VTableLayoutKey` 和
   witness fingerprint 组成 composition witness set。
 - 新增 `PrincipalMethodNamespaceFact` / `PrincipalMethodNamespaceEntry`，明确同名 method 冲突必须使用

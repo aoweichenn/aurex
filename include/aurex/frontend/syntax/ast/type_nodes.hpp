@@ -72,6 +72,7 @@ struct DynTraitTypePayload {
     IdentId name_id = INVALID_IDENT_ID;
     AstArenaVector<TypeId> type_args;
     AstArenaVector<AssociatedTypeConstraintDecl> associated_type_constraints;
+    AstArenaVector<DynTraitPrincipalDecl> principals;
 };
 
 struct TypeNodePayloadArena {

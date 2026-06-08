@@ -20,6 +20,7 @@ struct TypeCheckBodyAuthority {
     StableFingerprint128 body_loan_fingerprint;
     StableFingerprint128 destructor_fingerprint;
     StableFingerprint128 trait_object_fingerprint;
+    StableFingerprint128 principal_set_composition_fingerprint;
     base::u64 expr_side_table_count = 0;
     base::u64 pattern_side_table_count = 0;
     base::u64 type_side_table_count = 0;
@@ -31,6 +32,9 @@ struct TypeCheckBodyAuthority {
     base::u64 trait_object_coercion_count = 0;
     base::u64 trait_supertrait_edge_count = 0;
     base::u64 trait_object_upcast_coercion_count = 0;
+    base::u64 principal_set_composition_count = 0;
+    base::u64 principal_set_composition_principal_count = 0;
+    base::u64 principal_set_composition_projection_count = 0;
     base::u64 borrow_summary_origin_count = 0;
     base::u64 borrow_summary_dependency_count = 0;
     base::u64 borrow_summary_storage_escape_count = 0;
@@ -77,6 +81,7 @@ struct TypeCheckBodyAuthority {
     bool has_body_loan_check = false;
     bool has_destructor_facts = false;
     bool has_trait_object_facts = false;
+    bool has_principal_set_composition_facts = false;
     bool borrow_summary_has_unknown_return_origin = false;
     bool borrow_summary_has_local_return_escape = false;
     bool borrow_summary_has_storage_escape = false;

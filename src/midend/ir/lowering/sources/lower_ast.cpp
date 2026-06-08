@@ -14,6 +14,8 @@ namespace aurex::ir::detail {
 namespace {
 
 constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
+constexpr std::string_view IR_LOWER_PRINCIPAL_SET_COMPOSITION_UNSUPPORTED =
+    "dyn trait principal-set composition is check-only in M11c; IR/backend runtime lowering is not implemented";
 
 [[nodiscard]] bool trait_object_vtable_slot_less(
     const TraitObjectVTableMethodSlot& lhs, const TraitObjectVTableMethodSlot& rhs) noexcept
@@ -174,6 +176,16 @@ template <typename Layouts>
         }
     }
     return true;
+}
+
+[[nodiscard]] bool contains_principal_set_trait_object_type(const sema::TypeTable& types) noexcept
+{
+    for (base::u32 index = 0; index < types.size(); ++index) {
+        if (types.is_principal_set_trait_object(sema::TypeHandle{index})) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -660,6 +672,10 @@ base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::Checked
     if (!detail::trait_default_method_instance_body_views_are_valid(ast, checked)) {
         return base::Result<Module>::fail({base::ErrorCode::internal_error,
             "trait default method instance body missing retained sema view for IR lowering"});
+    }
+    if (detail::contains_principal_set_trait_object_type(checked.types)) {
+        return base::Result<Module>::fail(
+            {base::ErrorCode::codegen_error, std::string(detail::IR_LOWER_PRINCIPAL_SET_COMPOSITION_UNSUPPORTED)});
     }
     detail::Lowerer lowerer(ast, checked);
     return base::Result<Module>::ok(lowerer.lower());

@@ -135,6 +135,11 @@ struct AssociatedTypeConstraintDecl {
     IdentId name_id = INVALID_IDENT_ID;
 };
 
+struct DynTraitPrincipalDecl {
+    TypeId trait_type = INVALID_TYPE_ID;
+    base::SourceRange range{};
+};
+
 struct GenericConstraintDecl {
     std::string_view param_name;
     base::SourceRange param_range{};
@@ -172,6 +177,7 @@ struct TypeNode {
     std::vector<TypeId> function_params;
     TypeId function_return = INVALID_TYPE_ID;
     std::vector<AssociatedTypeConstraintDecl> associated_type_constraints;
+    std::vector<DynTraitPrincipalDecl> dyn_trait_principals;
 };
 
 enum class ExprKind {

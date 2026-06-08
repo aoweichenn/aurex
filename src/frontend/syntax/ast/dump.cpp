@@ -287,6 +287,8 @@ bool is_trivia_token(const TokenKind kind) noexcept
 
 namespace {
 
+std::string dyn_trait_principal_label(const AstModule& module, TypeId id);
+
 void indent(std::ostringstream& out, const int depth)
 {
     for (int i = 0; i < depth; ++i) {
@@ -553,32 +555,43 @@ std::string type_label(const AstModule& module, const TypeId id)
             break;
         case TypeKind::dyn_trait:
             out << "dyn ";
-            if (!type.scope_parts.empty()) {
-                for (const std::string_view part : type.scope_parts) {
-                    out << part << ".";
-                }
-            } else if (!type.scope_name.empty()) {
-                out << type.scope_name << ".";
-            }
-            out << type.name;
-            if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
-                out << "[";
-                bool first = true;
-                for (const TypeId arg : type.type_args) {
-                    if (!first) {
-                        out << ", ";
+            if (!type.dyn_trait_principals.empty()) {
+                out << "(";
+                for (base::usize index = 0; index < type.dyn_trait_principals.size(); ++index) {
+                    if (index != 0) {
+                        out << " + ";
                     }
-                    first = false;
-                    out << type_label(module, arg);
+                    out << dyn_trait_principal_label(module, type.dyn_trait_principals[index].trait_type);
                 }
-                for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
-                    if (!first) {
-                        out << ", ";
+                out << ")";
+            } else {
+                if (!type.scope_parts.empty()) {
+                    for (const std::string_view part : type.scope_parts) {
+                        out << part << ".";
                     }
-                    first = false;
-                    out << constraint.name << " = " << type_label(module, constraint.value_type);
+                } else if (!type.scope_name.empty()) {
+                    out << type.scope_name << ".";
                 }
-                out << "]";
+                out << type.name;
+                if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
+                    out << "[";
+                    bool first = true;
+                    for (const TypeId arg : type.type_args) {
+                        if (!first) {
+                            out << ", ";
+                        }
+                        first = false;
+                        out << type_label(module, arg);
+                    }
+                    for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
+                        if (!first) {
+                            out << ", ";
+                        }
+                        first = false;
+                        out << constraint.name << " = " << type_label(module, constraint.value_type);
+                    }
+                    out << "]";
+                }
             }
             break;
         case TypeKind::pointer:
@@ -647,6 +660,46 @@ std::string type_label(const AstModule& module, const TypeId id)
             }
             out << ") -> " << type_label(module, type.function_return);
             break;
+    }
+    return out.str();
+}
+
+std::string dyn_trait_principal_label(const AstModule& module, const TypeId id)
+{
+    if (!is_valid(id) || id.value >= module.types.size()) {
+        return "<invalid-type>";
+    }
+    const TypeNode& type = module.types[id.value];
+    if (type.kind != TypeKind::dyn_trait || !type.dyn_trait_principals.empty()) {
+        return type_label(module, id);
+    }
+    std::ostringstream out;
+    if (!type.scope_parts.empty()) {
+        for (const std::string_view part : type.scope_parts) {
+            out << part << ".";
+        }
+    } else if (!type.scope_name.empty()) {
+        out << type.scope_name << ".";
+    }
+    out << type.name;
+    if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
+        out << "[";
+        bool first = true;
+        for (const TypeId arg : type.type_args) {
+            if (!first) {
+                out << ", ";
+            }
+            first = false;
+            out << type_label(module, arg);
+        }
+        for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
+            if (!first) {
+                out << ", ";
+            }
+            first = false;
+            out << constraint.name << " = " << type_label(module, constraint.value_type);
+        }
+        out << "]";
     }
     return out.str();
 }

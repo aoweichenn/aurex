@@ -273,7 +273,7 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
 TEST(CoreUnit, AstTypeNodeListCopiesAndMovesEveryPayloadKind)
 {
     syntax::TypeNodeList types;
-    types.reserve(9U);
+    types.reserve(10U);
     const base::SourceRange range{base::SourceId{2U}, 30U, 40U};
 
     syntax::TypeNode primitive_type;
@@ -344,12 +344,19 @@ TEST(CoreUnit, AstTypeNodeListCopiesAndMovesEveryPayloadKind)
     function_type.range = range;
     const syntax::TypeId function_id = types.append(function_type);
 
+    syntax::TypeNode dyn_composition_type;
+    dyn_composition_type.kind = syntax::TypeKind::dyn_trait;
+    dyn_composition_type.dyn_trait_principals.push_back(syntax::DynTraitPrincipalDecl{named_id, range});
+    dyn_composition_type.dyn_trait_principals.push_back(syntax::DynTraitPrincipalDecl{function_id, range});
+    dyn_composition_type.range = range;
+    const syntax::TypeId dyn_composition_id = types.append(dyn_composition_type);
+
     syntax::TypeNode unknown_type;
     unknown_type.kind = static_cast<syntax::TypeKind>(99);
     unknown_type.range = range;
     const syntax::TypeId unknown_id = types.append(unknown_type);
 
-    ASSERT_EQ(types.size(), 9U);
+    ASSERT_EQ(types.size(), 10U);
     const syntax::TypeNodeList copied(types);
     EXPECT_EQ(copied[primitive_id.value].primitive, syntax::PrimitiveTypeKind::i64);
     EXPECT_EQ(copied[named_id.value].scope_parts.back(), "mem");
@@ -364,6 +371,9 @@ TEST(CoreUnit, AstTypeNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_TRUE(copied[function_id.value].function_is_unsafe);
     EXPECT_TRUE(copied[function_id.value].function_is_variadic);
     EXPECT_EQ(copied[function_id.value].function_params.front().value, pointer_id.value);
+    ASSERT_EQ(copied[dyn_composition_id.value].dyn_trait_principals.size(), 2U);
+    EXPECT_EQ(copied[dyn_composition_id.value].dyn_trait_principals.front().trait_type.value, named_id.value);
+    EXPECT_EQ(copied[dyn_composition_id.value].dyn_trait_principals.back().trait_type.value, function_id.value);
     EXPECT_EQ(copied[unknown_id.value].kind, static_cast<syntax::TypeKind>(99));
     EXPECT_EQ(copied[unknown_id.value].range.begin, range.begin);
 
@@ -381,6 +391,7 @@ TEST(CoreUnit, AstTypeNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_EQ(moved.take(slice_id.value).slice_element.value, primitive_id.value);
     EXPECT_EQ(moved.take(tuple_id.value).tuple_elements.front().value, primitive_id.value);
     EXPECT_EQ(moved.take(function_id.value).function_call_conv, syntax::FunctionCallConv::c);
+    EXPECT_EQ(moved.take(dyn_composition_id.value).dyn_trait_principals.back().trait_type.value, function_id.value);
     EXPECT_EQ(moved.take(unknown_id.value).kind, static_cast<syntax::TypeKind>(99));
 
     syntax::TypeNode replacement_type;

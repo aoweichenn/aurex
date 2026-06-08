@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M11b Principal-Set Composition Query Prototype Gate**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M11c Principal-Set Composition Frontend / Sema Check-Only**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -20,9 +20,13 @@ principal-set borrowed dyn composition 作为下一条主线，并通过 `m11a_d
 `principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact`。
 M11b 已把该模型落成 `PrincipalSetCompositionFacts` query 原型，覆盖 principal-set identity、composition witness
 set、principal-qualified method namespace、associated equality merge、composition projection、validation、
-summary/dump/fingerprint 和 focused query tests。M11b 仍不实现标准库、owning dyn runtime、dynamic Drop dispatch
-runtime、allocator policy、`dyn A + B` parser syntax、composition sema 或多 trait object composition runtime；
-下一步是 M11c principal-set composition frontend/sema check-only。
+summary/dump/fingerprint 和 focused query tests。M11c 已把该 query 地基接到 frontend/sema check-only：
+当前用户可写 borrowed composition spelling 是 `dyn (A + B)`，parser/AST/type identity/checked dump/fingerprint
+已支持 principal-set trait object，`&T` / `&mut T` 可以在所有 principal impl 可见时 coercion 到
+`&dyn (A + B)` / `&mut dyn (A + B)`，并记录 identity、method namespace、associated equality merge、
+witness set 和 projection facts。M11c 仍不实现标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop
+dispatch runtime、allocator policy、bare `dyn A + B` syntax、principal-qualified dispatch 或
+IR/backend runtime；下一步是 M11d principal-set composition IR/backend runtime，且仍不引入标准库或 owning dyn。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

@@ -1416,6 +1416,36 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
         + "` because no matching trait impl is visible";
 }
 
+[[nodiscard]] inline std::string sema_dyn_trait_composition_min_principals_message()
+{
+    return "dyn trait composition requires at least two principal traits";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_composition_principal_message()
+{
+    return "dyn trait composition principal must be a dyn trait";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_composition_duplicate_principal_message(
+    const std::string_view principal_name)
+{
+    return "duplicate dyn trait composition principal `" + std::string(principal_name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_composition_method_ambiguous_message(
+    const std::string_view method_name)
+{
+    return "dyn trait composition method `" + std::string(method_name)
+        + "` is ambiguous; principal-qualified dispatch is not part of this stage";
+}
+
+[[nodiscard]] inline std::string sema_dyn_trait_composition_associated_conflict_message(
+    const std::string_view associated_name)
+{
+    return "dyn trait composition associated type `" + std::string(associated_name)
+        + "` has conflicting equality constraints";
+}
+
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(
     const std::string_view name, const std::string_view first_module, const std::string_view second_module)
 {

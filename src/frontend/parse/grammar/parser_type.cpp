@@ -443,6 +443,38 @@ syntax::TypeId TypeParser::parse_named_type()
 syntax::TypeId TypeParser::parse_dyn_trait_type()
 {
     const syntax::Token& begin = this->expect(TokenKind::kw_dyn, std::string(PARSER_EXPECT_TYPE));
+    if (this->match(TokenKind::l_paren)) {
+        const syntax::Token& composition_begin = this->previous();
+        syntax::TypeNode type;
+        type.kind = syntax::TypeKind::dyn_trait;
+        type.range = this->merge(begin.range, composition_begin.range);
+        if (this->check(TokenKind::r_paren)) {
+            this->report_here(std::string(PARSER_EXPECT_TYPE));
+        }
+        while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+            const base::SourceRange principal_begin = this->peek().range;
+            const syntax::TypeId principal = this->parse_dyn_trait_principal_type(principal_begin);
+            syntax::DynTraitPrincipalDecl decl;
+            decl.trait_type = principal;
+            decl.range = this->type_range_or(principal, this->peek().range);
+            type.dyn_trait_principals.push_back(decl);
+            type.range = this->merge(type.range, decl.range);
+            this->reset_panic();
+            if (!this->recover_dyn_trait_principal_separator()) {
+                break;
+            }
+        }
+        const syntax::Token& end = this->expect_recovered_after(TokenKind::r_paren,
+            std::string(PARSER_EXPECT_DYN_TRAIT_COMPOSITION_END), RecoveryContext::type_annotation,
+            composition_begin);
+        type.range = this->merge(type.range, end.range);
+        return this->session_.module.push_type(std::move(type));
+    }
+    return this->parse_dyn_trait_principal_type(begin.range);
+}
+
+syntax::TypeId TypeParser::parse_dyn_trait_principal_type(const base::SourceRange& begin_range)
+{
     std::vector<syntax::Token> parts;
     parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE)));
     while (this->match(TokenKind::dot)) {
@@ -451,7 +483,7 @@ syntax::TypeId TypeParser::parse_dyn_trait_type()
 
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::dyn_trait;
-    type.range = this->merge(begin.range, parts.back().range);
+    type.range = this->merge(begin_range, parts.back().range);
     type.name = parts.back().text();
     if (parts.size() > 1) {
         type.scope_range = this->merge(parts.front().range, parts[parts.size() - 2].range);
@@ -475,6 +507,32 @@ syntax::TypeId TypeParser::parse_dyn_trait_type()
         this->reject_legacy_angle_type_args();
     }
     return this->session_.module.push_type(std::move(type));
+}
+
+bool TypeParser::recover_dyn_trait_principal_separator() const
+{
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::plus)) {
+        this->reset_panic();
+        if (this->check(TokenKind::r_paren)) {
+            this->report_here(std::string(PARSER_EXPECT_TYPE));
+            return false;
+        }
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_DYN_TRAIT_COMPOSITION_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::type_annotation)) {
+        this->synchronize(RecoveryContext::type_annotation);
+    }
+    if (this->match(TokenKind::plus)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return false;
 }
 
 void TypeParser::parse_dyn_trait_args(syntax::TypeNode& type)

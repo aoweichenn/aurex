@@ -445,6 +445,12 @@ inline constexpr std::string_view PARSER_ARRAY_LENGTH_OUT_OF_RANGE = "array leng
 
 inline constexpr std::string_view PARSER_EXPECT_TYPE = "expected type";
 
+inline constexpr std::string_view PARSER_EXPECT_DYN_TRAIT_COMPOSITION_END =
+    "expected ')' after dyn trait composition";
+
+inline constexpr std::string_view PARSER_EXPECT_DYN_TRAIT_COMPOSITION_SEPARATOR =
+    "expected '+' or ')' after dyn trait composition principal";
+
 inline constexpr std::string_view PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE = "expected type name after '.'";
 
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LENGTH_END = "expected ']' after array length";

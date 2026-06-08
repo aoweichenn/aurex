@@ -2804,6 +2804,13 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_direct_dyn_trait_method_call(const 
     const bool report_failure) const
 {
     TraitMethodCallResolution resolution;
+    if (!object_info.trait_object_principal_types.empty()) {
+        if (report_failure) {
+            this->core_.report_type(range, sema_dyn_trait_composition_method_ambiguous_message(name));
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
     const TraitMethodRequirement* const requirement = this->find_trait_method_requirement(trait, name_id, true);
     if (requirement == nullptr) {
         if (report_failure) {
@@ -2909,7 +2916,31 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHan
         return resolution;
     }
     const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
-    if (object_info.kind != TypeKind::trait_object || !query::is_valid(object_info.trait_object_key)) {
+    if (object_info.kind != TypeKind::trait_object) {
+        return resolution;
+    }
+    if (!object_info.trait_object_principal_types.empty()) {
+        bool has_candidate = false;
+        for (const TypeHandle principal : object_info.trait_object_principal_types) {
+            for (const TraitObjectMethodSlotFact& slot : this->core_.state_.checked.trait_object_method_slots) {
+                if (slot.object_type.value == principal.value && slot.method_name_id == name_id) {
+                    has_candidate = true;
+                }
+            }
+        }
+        if (report_failure) {
+            if (has_candidate) {
+                this->core_.report_type(range, sema_dyn_trait_composition_method_ambiguous_message(name));
+            } else {
+                this->core_.report_lookup(range,
+                    sema_trait_method_impl_missing_message(
+                        this->core_.state_.checked.types.display_name(object_type), name));
+            }
+        }
+        resolution.reported_failure = report_failure;
+        return resolution;
+    }
+    if (!query::is_valid(object_info.trait_object_key)) {
         return resolution;
     }
     const auto trait_found = this->core_.state_.checked.traits.find(ModuleLookupKey{

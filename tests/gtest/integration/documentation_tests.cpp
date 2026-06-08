@@ -50,6 +50,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m7-hardening-performance-closure.md",
         "docs/zh/m8-dyn-trait-design.md",
         "docs/zh/m9-dyn-abi-tooling-design.md",
+        "docs/zh/m9-release-baseline.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -173,7 +174,8 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "origin-bound erased view");
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M9d / M9 Release Closure");
+    expect_document_contains(
+        "docs/zh/next-steps.md", "当前最高优先级：M10 Planning / Post-M9 Advanced Dyn Policy Selection");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -213,16 +215,18 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M9c Advanced Dyn Design Gate Baseline");
+    expect_document_contains("docs/zh/README.md", "M9 Dyn ABI / Tooling Release Closure");
     expect_document_contains("docs/zh/README.md", "Aurex M9 Dyn ABI / Tooling 设计基线");
+    expect_document_contains("docs/zh/README.md", "Aurex M9 Dyn ABI / Tooling Release Baseline");
     expect_document_contains("docs/zh/README.md", "M9c Advanced Dyn Design Gate");
-    expect_document_contains("docs/zh/progress.md", "阶段：M9c Advanced Dyn Design Gate Baseline");
+    expect_document_contains("docs/zh/progress.md", "阶段：M9 Dyn ABI / Tooling Release Closure");
     expect_document_contains("docs/zh/progress.md", "FunctionDynAbiFacts");
     expect_document_contains("docs/zh/progress.md", "DynAdvancedDesignGate");
     expect_document_contains("docs/zh/progress.md", "library-independent dyn ABI DTO");
-    expect_document_contains("docs/zh/version.md", "## M9c Advanced Dyn Design Gate Baseline");
+    expect_document_contains("docs/zh/version.md", "## M9 Dyn ABI / Tooling Release Closure");
     expect_document_contains("docs/zh/next-steps.md", "M9b ABI/tooling implementation");
-    expect_document_contains("docs/zh/next-steps.md", "M9d / M9 release closure");
+    expect_document_contains("docs/zh/next-steps.md", "M10 Planning / Post-M9 Advanced Dyn Policy Selection");
+    expect_document_contains("docs/zh/next-steps.md", "M9d / M9 release closure 已完成");
     expect_document_contains("docs/zh/next-steps.md", "M9c Advanced Dyn Design Gate");
     expect_document_contains("docs/zh/next-steps.md", "borrowed_methods_only_v1");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "facts-first dyn ABI DTO");
@@ -247,6 +251,18 @@ TEST_F(AurexIntegrationTest, M9DynAbiToolingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`trait_object_vtable`");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "`vtable_slot`");
     expect_document_contains("docs/zh/m9-dyn-abi-tooling-design.md", "{data*, vtable*}");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "M9 release closure 已完成");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "FunctionDynAbiFacts");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "DynAdvancedDesignGate");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "`borrowed_view_v1`");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "`borrowed_methods_only_v1`");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "`standard_library_runtime_not_in_m9c`");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "不新增标准库");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "不新增 owning dyn runtime");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "不新增 dynamic Drop dispatch runtime");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "不新增 supertrait upcasting runtime");
+    expect_document_contains("docs/zh/m9-release-baseline.md", "M10 planning / Post-M9 Advanced Dyn Policy Selection");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "M9 dyn ABI / tooling release closure 已完成");
 }
 
 } // namespace aurex::test

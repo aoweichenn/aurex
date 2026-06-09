@@ -1,5 +1,41 @@
 # 版本文档
 
+## M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline
+
+M15 已完成 advanced dyn ownership/runtime boundary 与 const generic boundary 的 design baseline。M15 只落
+query design gate、validation、summary、dump、fingerprint、文档和测试；不实现标准库、不实现 owning dyn runtime、
+不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch、不打开用户可用 const generic 语法。
+
+M15 新增或固定：
+
+- `m15_dyn_advanced_design_gate_baseline()`。
+- `m15_const_generic_design_gate_baseline()`。
+- `ConstGenericCapability::{typed_const_parameter_surface, canonical_const_argument_identity,
+  generic_instance_key_integration, array_length_type_integration, const_expression_evaluation_subset,
+  trait_predicate_and_dyn_boundary}`。
+- `ConstGenericGateStage::{research_only, design_gate, ready_for_implementation, blocked_by_dependency,
+  future_stage}`。
+- `ConstGenericPolicyDecision::{rejected, selected_m15_frontend_query_path, requires_comptime_engine,
+  requires_trait_solver_extension, requires_runtime_or_std_boundary}`。
+- `const_generic_design_gate_fingerprint()`、summary 和 dump。
+
+Dyn ownership 侧，M15 把 M10/M11/M12/M13/M14 的 borrowed dyn 能力全部标记为 completed release baseline；
+`owning_dyn`、`dynamic_drop_dispatch` 和 `allocator_policy` 进入 design gate，但仍分别受 standard library stage、
+runtime stage 和 future resource surface 阻塞。M15 明确不把 destructor slot 加到 borrowed vtable，也不把 borrowed
+`{data*, vtable*}` 当成 owner。
+
+Const generic 侧，M15 选择后续实现路线为 typed scalar const generic：
+
+```aurex
+struct ArrayView[T, const N: usize] {
+    data: *const T;
+}
+```
+
+第一批实现目标应是 parser/AST/query/sema check-only、canonical const value identity、generic instance key const
+argument、以及 `[N]T` array length 集成。M15 不支持 `N + 1` 这类 generic const arithmetic，不支持 user
+function comptime evaluation，不支持 const where predicate、const associated value 或 dyn const equality dispatch。
+
 ## M14 Borrowed Dyn View Path Inference / Dispatch Release
 
 M14 已完成 borrowed dyn view path inference / dispatch release。M14 在 M13 的 explicit

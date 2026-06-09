@@ -1,9 +1,28 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M14 Borrowed Dyn View Path Inference / Dispatch Release
+阶段：M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline
 
 ## 总体状态
+
+2026-06-09：M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline 已完成。M15 不实现标准库、
+不实现 owning dyn runtime、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch、不打开用户可用 const generic
+语法；它把后续两条大主线的 query design gate 固定到代码、文档和测试。
+
+M15 新增 `m15_dyn_advanced_design_gate_baseline()`，把 M10 supertrait upcasting、M11/M12 principal-set
+composition 和 M13/M14 borrowed view path 标记为 `completed_release_baseline`，同时把 `owning_dyn`、
+`dynamic_drop_dispatch` 和 `allocator_policy` 从长期 blocked 状态推进到 `design_gate`。owning dyn 仍要求 future
+standard library owner/container surface；dynamic Drop dispatch 仍要求 runtime stage；allocator policy 仍要求 future
+standard library/resource surface。新增 required facts 包括 `owned_dyn_container_layout_fact`、
+`owned_dyn_move_boundary_fact`、`erased_drop_glue_identity_fact`、`dynamic_drop_slot_layout_fact`、
+`allocator_identity_fact` 和 `owned_dyn_deallocation_policy_fact`。
+
+M15 同时新增 `m15_const_generic_design_gate_baseline()`。该 gate 选择 typed scalar const generic 的
+frontend/query/sema check-only 路径，固定 `typed_const_param_v1`、`canonical_const_value_v1`、
+`generic_instance_const_arg_key_v1` 和 `array_length_const_param_v1`；`const_expression_evaluation_subset`
+被标记为 `blocked_by_dependency`，需要后续 comptime engine；`trait_predicate_and_dyn_boundary` 被标记为
+`future_stage`，需要 trait solver extension。M15 明确不支持 untyped const params、generic const arithmetic、
+const where predicates、const associated values 或 dyn trait const equality dispatch。
 
 2026-06-09：M14 Borrowed Dyn View Path Inference / Dispatch Release 已完成。M14 在 M13 的
 explicit composition-to-supertrait runtime chain 之上，打开了两个受限隐式 borrowed view path：expected-type

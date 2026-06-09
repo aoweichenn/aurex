@@ -77,6 +77,8 @@ struct DynAdvancedDesignGate {
     const DynAdvancedDesignGate& gate) noexcept;
 [[nodiscard]] bool is_valid_m13a_dyn_advanced_design_gate(
     const DynAdvancedDesignGate& gate) noexcept;
+[[nodiscard]] bool is_valid_m15_dyn_advanced_design_gate(
+    const DynAdvancedDesignGate& gate) noexcept;
 
 void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvancedDesignCandidate candidate);
 
@@ -87,5 +89,6 @@ void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvanc
 [[nodiscard]] DynAdvancedDesignGate m9c_dyn_advanced_design_gate_baseline();
 [[nodiscard]] DynAdvancedDesignGate m11a_dyn_advanced_design_gate_baseline();
 [[nodiscard]] DynAdvancedDesignGate m13a_dyn_advanced_design_gate_baseline();
+[[nodiscard]] DynAdvancedDesignGate m15_dyn_advanced_design_gate_baseline();
 
 } // namespace aurex::query

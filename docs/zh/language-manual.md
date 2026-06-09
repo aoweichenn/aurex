@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-09
-阶段：M14 Borrowed Dyn View Path Inference / Dispatch Release，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -117,7 +117,8 @@ A | B         表示二选一
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
   歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
-  const generic 或 `<T>` 风格泛型。
+  用户可写 const generic 或 `<T>` 风格泛型。M15 已固定 const generic 的 query design gate，但没有打开
+  parser/AST/sema 用户语法。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
 - 本阶段明确不实现任何标准库 API 或标准库拥有型资源 wrapper；资源语义收口只发生在 compiler facts、IR marker、
@@ -1536,6 +1537,29 @@ GenericParam  = Identifier | "origin" Identifier
 - `origin` 是上下文标记，不是全局关键字。
 - 泛型参数列表不能为空；`fn f[]`、`struct Box[]`、`Box[]` 和 `id[](...)` 都会被拒绝。
 - inline bound 不支持；`fn f[T: Copy](...)` 会被拒绝，约束必须写在 `where` 子句。
+- 当前实现的泛型参数只有 type parameter 和 `origin` parameter。M15 已在 query design gate 中选择未来
+  typed const parameter 路线，但还没有进入 parser grammar；`struct Array[T, const N: usize]` 当前仍会被拒绝。
+
+M15 const generic 设计门固定的后续语法方向如下，但这不是当前可写语法：
+
+```aurex
+struct ArrayView[T, const N: usize] {
+    data: *const T;
+}
+
+fn len[T, const N: usize](value: &[N]T) -> usize {
+    return N;
+}
+```
+
+后续实现必须满足：
+
+- `const N: usize` 明确声明 typed scalar const parameter，不支持 untyped const params。
+- const argument identity 必须是 typed canonical value，不允许按 display text 建 key。
+- generic instance key 必须包含 const args，不能复用 type parameter 的 `TypeHandle` placeholder。
+- `[N]T` array length 是第一批消费点，IR lowering 前必须解析出稳定 layout identity。
+- generic const arithmetic、`N + 1`、user function comptime evaluation、const where predicate、const associated
+  value 和 dyn const equality dispatch 不属于 M15。
 
 `where` 当前支持 compiler-owned builtin capability 和 nominal static trait predicate：
 
@@ -1878,7 +1902,8 @@ fn score(view: &dyn (Child + Debug)) -> i32 {
 
 暂不支持：
 
-- const generic
+- 用户可写 const generic；M15 已固定 `m15_const_generic_design_gate_baseline()`，但当前 grammar 仍只有
+  `Identifier | "origin" Identifier`
 - 用户 `Drop` bound、generic Drop impl、trait-object Drop dispatch、dynamic cleanup runtime ABI call 和 async/unwind-aware drop
 - generic associated type
 - associated const

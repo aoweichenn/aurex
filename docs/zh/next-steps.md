@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M15 Advanced Dyn Ownership / Runtime Boundary Design Baseline
+## 当前最高优先级：M16 Const Generic Frontend / Query / Sema Check-Only
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
@@ -8,8 +8,9 @@ Composition Frontend / Sema Check-Only、M11d Principal-Set Composition IR / Bac
 Composition Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M12b
 Direct Composition Dispatch Hardening / Release Closure、M13a Advanced Dyn Remaining Policy Design Baseline、
 M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait
-IR / Backend Runtime、M13d Borrowed Composition-To-Supertrait Hardening / Release Closure 和
-M14 Borrowed Dyn View Path Inference / Dispatch Release 均已完成。
+IR / Backend Runtime、M13d Borrowed Composition-To-Supertrait Hardening / Release Closure、
+M14 Borrowed Dyn View Path Inference / Dispatch Release 和
+M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline 均已完成。
 当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
@@ -22,6 +23,7 @@ M14 Borrowed Dyn View Path Inference / Dispatch Release 均已完成。
 - [Aurex M12 Direct Composition Dispatch Release Baseline](m12-release-baseline.md)
 - [Aurex M13 Advanced Dyn Remaining Policy Design Baseline](m13-advanced-dyn-design.md)
 - [Aurex M14 Borrowed Dyn View Path Inference Release Baseline](m14-borrowed-dyn-view-path-release.md)
+- [Aurex M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline](m15-advanced-dyn-const-generic-design.md)
 
 M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
@@ -116,6 +118,15 @@ mixing、summary/dump、sema/IR/native coverage 和 ambiguity negative case。M1
 `Box<dyn Trait>`、allocator、dynamic Drop dispatch、trait-object destructor ABI、bare `dyn A + B` 或新 runtime
 metadata policy。
 
+M15 也已结束。M15 没有实现标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop dispatch 或用户可写
+const generic；它把 advanced dyn ownership/runtime boundary 和 const generic boundary 固定成两个 query design
+gate。`m15_dyn_advanced_design_gate_baseline()` 把 M10/M11/M12/M13/M14 borrowed dyn 路径标为
+`completed_release_baseline`，并把 owning dyn、dynamic Drop dispatch 和 allocator policy 留在 future standard
+library/runtime/resource surface。`m15_const_generic_design_gate_baseline()` 选择 typed scalar const parameter、
+canonical const value key、generic instance const arg key 和 `[N]T` array length integration 作为下一步路线；
+const expression evaluation subset 仍受 comptime engine 阻塞，trait/dyn const predicate 仍受 trait solver extension
+阻塞。
+
 已完成基线摘要：
 
 - M8 query foundation 已完成，`CanonicalTypeKind::trait_object` 占位已移除；当前结构化 identity 是
@@ -148,12 +159,19 @@ metadata policy。
   `composition_supertrait_chains`、verifier negative matrix、docs/tests/coverage release closure 已固定。
 - M14 Borrowed Dyn View Path Inference / Dispatch Release 已完成；唯一 path 的 expected-type projection 和
   direct supertrait method dispatch 已固定，`BorrowedDynViewPathFact` 已进入 query/tooling facts。
+- M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline 已完成；owning dyn / dynamic Drop /
+  allocator 仍只是 future boundary，const generic 已固定 typed scalar / canonical value / instance key / `[N]T`
+  integration 路线但尚未打开用户语法。
 
-当前下一步应进入 **M15 Advanced Dyn Ownership / Runtime Boundary Design Baseline**。M15 起点仍不应直接实现
-标准库；应先把 owning dyn、trait-object Drop dispatch、allocator policy、bare `dyn A + B`、auto trait /
-marker trait composition 等候选拆开评估，明确哪一条主线可以在 no-std compiler runtime core 中先落地，哪些必须等待
-标准库阶段。M14 已把 borrowed view metadata 路径收口，下一步不要把 owning/runtime/stdlib 能力混进 borrowed
-view path inference。
+当前下一步应进入 **M16 Const Generic Frontend / Query / Sema Check-Only**。M16 仍不实现标准库，也不实现
+runtime owning dyn。M16 的目标是把 M15 已选定的 const generic 前端/query 身份落地为 check-only 子集：
+`syntax::GenericParamKind::const_`、typed const param parser、canonical scalar const value key、generic instance
+const arg key、const param environment binding 和 `[N]T` array length check-only。M16 不做 generic const arithmetic、
+user function comptime evaluation、const where predicate、const associated value 或 dyn const equality dispatch。
+
+M17 可作为后续较大阶段，进入 **Dyn Ownership Runtime Preparation**。M17 也不直接做标准库 API；它应先补
+owning dyn facts DTO、erased drop glue identity、cleanup/dropck boundary facts 和 allocator boundary facts，
+为 future `Box`/owner container/runtime cleanup ABI 做准备。
 
 M12 后续候选不应混在同一阶段一次性实现：
 
@@ -181,7 +199,9 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M13c IR/backend runtime | 已完成。composition project + supertrait upcast lowering、ABI descriptor、LLVM/native tests | 实际以本次 diffstat 为准 |
 | M13d hardening/release | 已完成。`composition_supertrait_chains`、query/cache/tooling hover、negative verifier matrix、docs/tests/coverage closure、代码量偏差分析 | 实际以本次 diffstat 为准 |
 | M14 borrowed view path release | 已完成。`BorrowedDynViewPathFact`、expected-type projection、direct supertrait dispatch、IR/native coverage、docs/tests release closure | 实际以本次 diffstat 为准 |
-| M15 design baseline | owning dyn / Drop dispatch / allocator / bare composition / auto trait 候选重新评估，明确下一条主线、query gate、ABI/runtime non-goals、测试计划；不直接实现标准库 | 600-1,000 行 |
+| M15 advanced dyn / const generic design baseline | 已完成。owning dyn / Drop dispatch / allocator boundary、typed scalar const generic route、query gates、docs/tests；不实现标准库、不打开 const generic 用户语法 | 实际以本次 diffstat 为准；高于原 600-1,000 行时主要因为同时新增 const generic gate、文档和 documentation tests |
+| M16 const generic check-only | `syntax::GenericParamKind::const_`、typed const param parser/AST、canonical const value key、generic instance const arg key、const param env binding、`[N]T` check-only、negative diagnostics、docs/tests | 1,200-2,000 行 |
+| M17 dyn ownership runtime prep | owning dyn facts DTO、erased drop glue identity、cleanup/dropck boundary facts、allocator boundary facts、query/tooling dump/fingerprint、negative boundary tests；仍不做标准库 API | 900-1,500 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

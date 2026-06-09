@@ -12,6 +12,7 @@ add_library(aurex_query
     src/infrastructure/query/query_result.cpp
     src/infrastructure/query/query_reuse.cpp
     src/infrastructure/query/cleanup_marker_facts.cpp
+    src/infrastructure/query/const_generic_design_gate.cpp
     src/infrastructure/query/dyn_advanced_design_gate.cpp
     src/infrastructure/query/dyn_abi_facts.cpp
     src/infrastructure/query/principal_set_composition_facts.cpp

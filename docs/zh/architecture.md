@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M14 Borrowed Dyn View Path Inference / Dispatch Release。M2 已移除标准库层：
+当前架构基线是 M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -56,7 +56,16 @@
   supertrait vptr metadata；M13d 新增 `FunctionDynAbiFacts::composition_supertrait_chains`、lower-IR fingerprint
   invalidation、IDE semantic fact/hover 和 verifier negative matrix，固定完整 `composition_project -> upcast`
   runtime chain。
-- owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、歧义多 principal composition-to-supertrait 自动选择、specialization、default associated type、associated const 和
+- M15 新增 `m15_dyn_advanced_design_gate_baseline()`，把 M10/M11/M12/M13/M14 的 borrowed dyn 路径标记为
+  completed release baseline，并把 owning dyn、dynamic Drop dispatch 和 allocator policy 明确留在 future
+  standard library / runtime / resource surface 边界内。本阶段没有改动 borrowed dyn runtime representation，
+  也没有给 borrowed vtable 增加 destructor slot。
+- M15 新增 `m15_const_generic_design_gate_baseline()`，作为 const generic 的 query-facing 边界。它固定后续
+  parser/AST/sema/query 必须区分 type parameter、origin parameter 和 typed scalar const parameter，generic
+  instance key 必须混入 canonical const value，`[N]T` array length 必须在 IR lowering 前解析为稳定 layout
+  identity。M15 不改变当前 parser grammar，不打开用户可写 `const N: usize`。
+- owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、歧义多 principal composition-to-supertrait 自动选择、
+  用户可写 const generic、generic const arithmetic、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向

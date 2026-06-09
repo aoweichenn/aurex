@@ -15,6 +15,7 @@ constexpr base::u8 QUERY_TEST_INVALID_DYN_ADVANCED_DECISION = 242U;
 constexpr base::usize QUERY_TEST_M9C_ADVANCED_CANDIDATE_COUNT = 5;
 constexpr base::usize QUERY_TEST_M11A_ADVANCED_CANDIDATE_COUNT = 5;
 constexpr base::usize QUERY_TEST_M13A_ADVANCED_CANDIDATE_COUNT = 6;
+constexpr base::usize QUERY_TEST_M15_ADVANCED_CANDIDATE_COUNT = 6;
 
 [[nodiscard]] const query::DynAdvancedDesignCandidate* find_candidate(
     const query::DynAdvancedDesignGate& gate, const query::DynAdvancedCapability capability) noexcept
@@ -494,6 +495,128 @@ TEST(QueryUnit, DynAdvancedDesignGateM13aSummaryAndDumpExposeSelection)
         std::string::npos) << dump;
     EXPECT_NE(dump.find("non_goal=do_not_add_new_principal_set_metadata_policy"),
         std::string::npos) << dump;
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM15SelectsOwnershipRuntimeBoundary)
+{
+    const query::DynAdvancedDesignGate gate = query::m15_dyn_advanced_design_gate_baseline();
+
+    ASSERT_EQ(gate.name, "M15 Advanced Dyn Ownership / Runtime Boundary Design Baseline");
+    ASSERT_EQ(gate.candidates.size(), QUERY_TEST_M15_ADVANCED_CANDIDATE_COUNT);
+    EXPECT_TRUE(query::is_valid(gate));
+    EXPECT_TRUE(query::is_valid_m15_dyn_advanced_design_gate(gate));
+    EXPECT_EQ(gate.fingerprint, query::dyn_advanced_design_gate_fingerprint(gate));
+
+    const query::DynAdvancedDesignCandidate* projection = find_candidate(
+        gate, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection, nullptr);
+    EXPECT_EQ(projection->stage, query::DynAdvancedGateStage::completed_release_baseline);
+    EXPECT_EQ(projection->decision,
+        query::DynAdvancedPolicyDecision::composes_existing_metadata_policies);
+    EXPECT_TRUE(has_non_goal(*projection, "do_not_add_new_runtime_metadata_policy_for_borrowed_view_paths"));
+
+    const query::DynAdvancedDesignCandidate* owning =
+        find_candidate(gate, query::DynAdvancedCapability::owning_dyn);
+    ASSERT_NE(owning, nullptr);
+    EXPECT_EQ(owning->stage, query::DynAdvancedGateStage::design_gate);
+    EXPECT_EQ(owning->decision, query::DynAdvancedPolicyDecision::requires_standard_library_stage);
+    EXPECT_EQ(owning->required_abi_policy, "owning_dyn_container_v1");
+    EXPECT_EQ(owning->required_metadata_policy, "owning_dyn_metadata_v1");
+    EXPECT_TRUE(owning->impact.standard_library_required);
+    EXPECT_TRUE(owning->impact.runtime_required);
+    EXPECT_TRUE(has_non_goal(*owning, "standard_library_runtime_not_in_m15"));
+    EXPECT_TRUE(has_non_goal(*owning, "owning_dyn_runtime_not_in_m15"));
+    EXPECT_TRUE(has_non_goal(*owning, "do_not_implement_box_dyn_trait_in_m15"));
+
+    const query::DynAdvancedDesignCandidate* dynamic_drop =
+        find_candidate(gate, query::DynAdvancedCapability::dynamic_drop_dispatch);
+    ASSERT_NE(dynamic_drop, nullptr);
+    EXPECT_EQ(dynamic_drop->stage, query::DynAdvancedGateStage::design_gate);
+    EXPECT_EQ(dynamic_drop->decision, query::DynAdvancedPolicyDecision::requires_runtime_stage);
+    EXPECT_EQ(dynamic_drop->required_metadata_policy, "dynamic_drop_metadata_v1");
+    EXPECT_TRUE(dynamic_drop->impact.runtime_required);
+    EXPECT_FALSE(dynamic_drop->impact.standard_library_required);
+    EXPECT_TRUE(has_non_goal(*dynamic_drop, "do_not_emit_dynamic_drop_dispatch_in_m15"));
+
+    const query::DynAdvancedDesignCandidate* allocator =
+        find_candidate(gate, query::DynAdvancedCapability::allocator_policy);
+    ASSERT_NE(allocator, nullptr);
+    EXPECT_EQ(allocator->stage, query::DynAdvancedGateStage::design_gate);
+    EXPECT_EQ(allocator->decision, query::DynAdvancedPolicyDecision::requires_standard_library_stage);
+    EXPECT_TRUE(allocator->impact.standard_library_required);
+    EXPECT_FALSE(allocator->impact.runtime_required);
+    EXPECT_TRUE(has_non_goal(*allocator, "do_not_define_allocator_trait_or_std_module_in_m15"));
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM15ValidationRejectsBoundaryDrift)
+{
+    const query::DynAdvancedDesignGate gate = query::m15_dyn_advanced_design_gate_baseline();
+    ASSERT_TRUE(query::is_valid_m15_dyn_advanced_design_gate(gate));
+
+    query::DynAdvancedDesignGate wrong_name = gate;
+    wrong_name.name = "M15 wrong gate";
+    EXPECT_FALSE(query::is_valid_m15_dyn_advanced_design_gate(wrong_name));
+    EXPECT_FALSE(query::is_valid(wrong_name));
+
+    query::DynAdvancedDesignGate reopened_borrowed_path = gate;
+    query::DynAdvancedDesignCandidate* const projection = find_candidate(
+        reopened_borrowed_path, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection, nullptr);
+    projection->stage = query::DynAdvancedGateStage::ready_for_future_stage;
+    EXPECT_FALSE(query::is_valid_m15_dyn_advanced_design_gate(reopened_borrowed_path));
+
+    query::DynAdvancedDesignGate premature_owning_runtime = gate;
+    query::DynAdvancedDesignCandidate* const owning =
+        find_candidate(premature_owning_runtime, query::DynAdvancedCapability::owning_dyn);
+    ASSERT_NE(owning, nullptr);
+    owning->stage = query::DynAdvancedGateStage::ready_for_future_stage;
+    owning->impact.standard_library_required = false;
+    owning->decision = query::DynAdvancedPolicyDecision::requires_new_abi_policy;
+    EXPECT_FALSE(query::is_valid_m15_dyn_advanced_design_gate(premature_owning_runtime));
+
+    query::DynAdvancedDesignGate destructor_on_borrowed_vtable = gate;
+    query::DynAdvancedDesignCandidate* const dynamic_drop =
+        find_candidate(destructor_on_borrowed_vtable, query::DynAdvancedCapability::dynamic_drop_dispatch);
+    ASSERT_NE(dynamic_drop, nullptr);
+    dynamic_drop->required_metadata_policy = "borrowed_methods_only_v1";
+    EXPECT_FALSE(query::is_valid_m15_dyn_advanced_design_gate(destructor_on_borrowed_vtable));
+
+    query::DynAdvancedDesignGate duplicate_capability = gate;
+    query::DynAdvancedDesignCandidate* const allocator =
+        find_candidate(duplicate_capability, query::DynAdvancedCapability::allocator_policy);
+    ASSERT_NE(allocator, nullptr);
+    allocator->capability = query::DynAdvancedCapability::owning_dyn;
+    EXPECT_FALSE(query::is_valid_m15_dyn_advanced_design_gate(duplicate_capability));
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM15SummaryAndDumpExposeBoundary)
+{
+    const query::DynAdvancedDesignGate gate = query::m15_dyn_advanced_design_gate_baseline();
+    query::DynAdvancedDesignGate changed = gate;
+    query::DynAdvancedDesignCandidate* const owning =
+        find_candidate(changed, query::DynAdvancedCapability::owning_dyn);
+    ASSERT_NE(owning, nullptr);
+    owning->required_facts.push_back("new fact changes m15 gate contract");
+
+    EXPECT_NE(query::dyn_advanced_design_gate_fingerprint(gate),
+        query::dyn_advanced_design_gate_fingerprint(changed));
+
+    const std::string summary = query::summarize_dyn_advanced_design_gate(gate);
+    EXPECT_NE(summary.find(
+                  "dyn_advanced_design_gate name=M15 Advanced Dyn Ownership / Runtime Boundary Design Baseline"),
+        std::string::npos) << summary;
+    EXPECT_NE(summary.find("candidates=6"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("completed_release=3"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("standard_library_blocked=2"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("runtime_blocked=2"), std::string::npos) << summary;
+
+    const std::string dump = query::dump_dyn_advanced_design_gate(gate);
+    EXPECT_NE(dump.find("required_fact=owned_dyn_container_layout_fact"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("required_fact=erased_drop_glue_identity_fact"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("required_fact=allocator_identity_fact"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("non_goal=standard_library_runtime_not_in_m15"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("non_goal=do_not_implement_box_dyn_trait_in_m15"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("non_goal=do_not_emit_dynamic_drop_dispatch_in_m15"), std::string::npos) << dump;
 }
 
 } // namespace aurex::test

@@ -105,6 +105,12 @@ private:
         IdentId name_id,
         std::string_view name,
         const base::SourceRange& range);
+    [[nodiscard]] TraitMethodCallResolution resolve_principal_set_dyn_trait_method_call(TypeHandle object_type,
+        const TypeInfo& object_info,
+        IdentId name_id,
+        std::string_view name,
+        const base::SourceRange& range,
+        bool report_failure);
     void append_supertrait_fact_if_new(const TraitSupertraitInfo& info);
     void validate_supertrait_graph();
     void validate_supertrait_impl_obligations();

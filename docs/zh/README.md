@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M11e Principal-Set Composition Hardening / Release Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M12a Direct Principal-Qualified Composition Method Dispatch**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -29,9 +29,11 @@ project 到 `&dyn A` / `&dyn B`，lowering 为 `trait_object_composition_pack` /
 `trait_object_composition_project` IR，LLVM 使用 `principal_set_metadata_v1` metadata global 从 canonical
 principal index 取出目标 vtable。M11e 已完成 release closure：`FunctionDynAbiFacts` 暴露 `principal_sets`
 和 `composition_projections`，lower-IR query/IDE hover 消费 composition runtime descriptors，IR verifier 负例矩阵和
-documentation tests 已固定 release boundary。当前仍不实现标准库、owning dyn runtime、`Box<dyn Trait>`、
-dynamic Drop dispatch runtime、allocator policy、bare `dyn A + B` syntax 或 direct principal-qualified composition
-method dispatch；下一步是 M12 advanced dyn design，且仍不引入标准库或 owning dyn。
+documentation tests 已固定 release boundary。M12a 已打开无歧义 direct composition method dispatch：`combo.draw()`
+会选择唯一提供 `draw` 的 principal，隐式 composition projection 后复用 ordinary dyn vtable dispatch。当前仍不实现
+标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop dispatch runtime、allocator policy、bare
+`dyn A + B` syntax 或 composition-to-supertrait 隐式多步 direct dispatch；下一步是 M12b direct composition
+dispatch hardening/release closure，且仍不引入标准库或 owning dyn。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

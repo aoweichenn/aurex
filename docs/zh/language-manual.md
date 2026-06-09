@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
-日期：2026-06-08
-阶段：M11e Principal-Set Composition Hardening / Release Closure，建立在 M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+日期：2026-06-09
+阶段：M12a Direct Principal-Qualified Composition Method Dispatch，建立在 M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -89,6 +89,10 @@ A | B         表示二选一
   LLVM metadata global；projection 后复用 single-trait dyn vtable dispatch。`FunctionDynAbiFacts` 会投影
   `principal_sets`、`composition_projections`、principal-set witnesses 和 projection borrow kind；lower-IR query
   fingerprint、IDE semantic fact 和 hover 会消费这些 runtime descriptors。
+- 使用 M12a borrowed principal-set composition direct dispatch：`view: &dyn (Draw + Debug)` 可以直接写
+  `view.draw()` 或 `view.debug()`，前提是该 method 名称只由一个 principal 提供。该 direct call 会隐式记录
+  composition-to-principal projection，再复用 ordinary single-trait dyn `vtable_slot` dispatch；多个 principal
+  暴露同名 method 时仍报 ambiguous，shared receiver 仍不能调用要求 `&mut Self` 的 method。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -98,7 +102,7 @@ A | B         表示二选一
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
-  direct principal-qualified composition method dispatch、generic associated type、associated const、specialization、
+  composition-to-supertrait 隐式多步 direct dispatch、generic associated type、associated const、specialization、
   const generic 或 `<T>` 风格泛型。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
@@ -1756,6 +1760,10 @@ fn score(value: &dyn Child) -> i32 {
   shape 为 `{ [N x ptr] }`，每个 entry 按 canonical principal order 指向一个 single-trait vtable witness。
 - composition-to-principal 显式 projection 从 metadata array 按 principal index 加载目标 vtable，构造普通
   `{data*, vtable*}` single dyn view；projection 不分配、不复制、不创建 cleanup，不改变 origin 或 borrow permission。
+- M12a direct composition method call 是 projection sugar：`view.draw()` 会在 principal-set method namespace
+  中选择唯一提供 `draw` 的 principal，隐式生成同样的 composition-to-principal projection，再执行普通
+  single-trait dyn `vtable_slot` dispatch。它不会创建 composition-wide slot table，也不会把多个 principal 的
+  method slots flatten 到一个 namespace。
 - 带 supertrait edge 的 vtable 使用 `supertrait_vptr_metadata_v1`，LLVM global shape 为
   `{ [methods x ptr], [supertraits x ptr] }`；没有 supertrait edge 的 vtable 仍可保持 methods-only metadata。
 - slot function ABI 的第一个 receiver 参数被擦成 `*const u8` 或 `*mut u8`；checked facts 和 IR verifier
@@ -1768,8 +1776,8 @@ M11 advanced dyn design/query/sema facts：
 - M11a 已选择 principal-set borrowed dyn composition 作为后续主线。
 - M11e release composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
   `principal_set_metadata_v1`。
-- Future direct composition method lookup 必须有 principal-qualified namespace，不能把 slots flatten 到一个未命名
-  namespace。
+- M12a direct composition method lookup 使用 principal-qualified namespace：唯一 principal method 可直接调用；
+  多个 principal 同名 method 仍拒绝，不能把 slots flatten 到一个未命名 namespace。
 - Composition 仍保持 borrowed view：不拥有对象、不分配、不复制、不延长 origin、不放宽 loan。
 - `m11a_dyn_advanced_design_gate_baseline`、`principal_set_identity_fact`、`composition_witness_set_fact`、
   `principal_method_namespace_fact`、`associated_equality_merge_fact` 和 `composition_projection_fact` 已作为
@@ -1777,22 +1785,25 @@ M11 advanced dyn design/query/sema facts：
 - M11b 已新增 `PrincipalSetCompositionFacts`、`PrincipalSetIdentityFact`、`CompositionWitnessSetFact`、
   `PrincipalMethodNamespaceFact`、`AssociatedEqualityMergeFact` 和 `CompositionProjectionFact`，并提供
   validation、summary、dump 和 stable fingerprint。
-- M11c 已新增用户可写 spelling `dyn (A + B)`；M11d 已新增显式 runtime projection。当前支持 borrowed annotation/coercion：
+- M11c 已新增用户可写 spelling `dyn (A + B)`；M11d 已新增显式 runtime projection；M12a 已新增唯一 principal
+  direct method dispatch。当前支持 borrowed annotation/coercion：
   `&dyn (Draw + Debug)`、`&mut dyn (Draw + Debug)`、`&T -> &dyn (Draw + Debug)` 和
   `&mut T -> &mut dyn (Draw + Debug)`，以及 `&dyn (Draw + Debug) -> &dyn Draw` /
-  `&mut dyn (Draw + Debug) -> &mut dyn Draw` 这类显式 projection。每个 principal 必须是 single dyn trait
-  object；composition 至少两个 principal；duplicate principal、非 trait principal、missing impl、associated
-  equality conflict 和 shared-to-mut coercion 会被拒绝。
+  `&mut dyn (Draw + Debug) -> &mut dyn Draw` 这类 projection。`view.draw()` 会在唯一 principal 提供 `draw`
+  时隐式走同一条 projection + vtable dispatch 路径。每个 principal 必须是 single dyn trait object；composition
+  至少两个 principal；duplicate principal、非 trait principal、missing impl、associated equality conflict、
+  shared-to-mut coercion、同名 method ambiguity 和 shared receiver 调 mutable method 都会被拒绝。
 - M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持
-  dynamic Drop dispatch，也不支持通过 composition receiver 直接调用 method；M11 release baseline 只支持先显式
-  projection 后按 single-trait dyn dispatch。只接收 `&dyn (A+B)` 的函数会记录 projection descriptor，但不会伪造
+  dynamic Drop dispatch；M11 release baseline 只支持先显式 projection 后按 single-trait dyn dispatch，M12a
+  在此基础上支持无歧义 direct composition method call。只接收 `&dyn (A+B)` 的函数会记录 projection descriptor，但不会伪造
   concrete-specific principal-set metadata descriptor。
 
 当前不支持：
 
 - owning dyn、`Box<dyn Trait>`、allocator 或 side allocation。
 - trait-object Drop dispatch、dynamic cleanup runtime ABI、panic/unwind-aware dyn cleanup。
-- consuming receiver、direct composition method dispatch、owning multi-principal trait object 或 auto trait composition。
+- consuming receiver、composition-to-supertrait 隐式多步 direct dispatch、owning multi-principal trait object 或
+  auto trait composition。
 - generic associated type、associated const、default associated type、specialization 或 unsafe trait。
 
 暂不支持：

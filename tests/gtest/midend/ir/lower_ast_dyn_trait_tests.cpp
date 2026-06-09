@@ -950,6 +950,60 @@ TEST(CoreUnit, LowerAstDynTraitCompositionProjectionLowersToMetadataPackAndProje
         });
 }
 
+TEST(CoreUnit, LowerAstDynTraitCompositionDirectDispatchProjectsUniquePrincipal)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_direct_dispatch;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let combo: &dyn (Draw + Debug) = &file;\n"
+        "  return combo.draw() + combo.debug();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_method_calls.size(), 2U);
+    for (const sema::TraitMethodCallBinding& binding : fixture.checked.trait_method_calls) {
+        EXPECT_EQ(binding.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
+        EXPECT_NE(
+            fixture.checked.types.display_name(binding.dispatch_receiver_type).find("dyn "), std::string::npos);
+        EXPECT_EQ(fixture.checked.types.display_name(binding.receiver_type), "&dyn (Debug + Draw)");
+    }
+    ASSERT_EQ(fixture.checked.principal_set_composition_facts.summary.projection_count, 4U);
+    ASSERT_EQ(fixture.ir.trait_object_vtables.size(), 2U);
+    ASSERT_EQ(fixture.ir.principal_set_metadata_layouts.size(), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 2U);
+
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->principal_sets.size(), 1U);
+    ASSERT_EQ(main_facts->composition_projections.size(), 2U);
+    EXPECT_EQ(main_facts->summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_witness_count, 2U);
+    EXPECT_EQ(main_facts->summary.composition_projection_count, 2U);
+    EXPECT_EQ(main_facts->summary.shared_borrow_count, 2U);
+    EXPECT_EQ(main_facts->summary.mut_borrow_count, 0U);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+    const std::string dump = ir::dump_module(fixture.ir);
+    expect_contains_all(dump,
+        {
+            "dyn.composition.pack",
+            "dyn.composition.project",
+            "vtable_slot",
+            "call",
+        });
+}
+
 TEST(CoreUnit, LowerAstDynTraitCompositionMetadataLayoutsCoverEachConcreteType)
 {
     const std::string_view source =

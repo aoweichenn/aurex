@@ -43,9 +43,11 @@
   annotation/coercion 的 parser/AST/type/sema 子集；M11d 已接入 `trait_object_composition_pack` /
   `trait_object_composition_project` IR、`principal_set_metadata_v1` LLVM metadata global 和显式 projection
   runtime；M11e 已把 `FunctionDynAbiFacts::principal_sets` / `FunctionDynAbiFacts::composition_projections`、
-  lower-IR query invalidation、IDE semantic fact/hover 和 verifier negative matrix 收口成 release baseline。
+  lower-IR query invalidation、IDE semantic fact/hover 和 verifier negative matrix 收口成 release baseline；M12a
+  已支持唯一 principal method 的 direct composition dispatch，lowering 为 composition projection + ordinary
+  `vtable_slot` dispatch。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
-  direct composition method dispatch、principal-qualified syntax、specialization、default associated type、associated const 和
+  composition-to-supertrait 隐式多步 direct dispatch、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向

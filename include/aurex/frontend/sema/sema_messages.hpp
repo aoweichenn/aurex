@@ -1436,7 +1436,7 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     const std::string_view method_name)
 {
     return "dyn trait composition method `" + std::string(method_name)
-        + "` is ambiguous; principal-qualified dispatch is not part of this stage";
+        + "` is ambiguous across multiple principal traits";
 }
 
 [[nodiscard]] inline std::string sema_dyn_trait_composition_associated_conflict_message(

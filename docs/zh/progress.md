@@ -1,9 +1,31 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M11e Principal-Set Composition Hardening / Release Closure
+阶段：M12a Direct Principal-Qualified Composition Method Dispatch
 
 ## 总体状态
+
+2026-06-09：M12a Direct Principal-Qualified Composition Method Dispatch 已完成。M12a 没有引入标准库、
+owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 bare `dyn A + B` syntax；它只打开
+borrowed principal-set composition receiver 上的无歧义 direct method call。
+
+当前可执行子集新增：
+
+```aurex
+fn score(view: &dyn (Draw + Debug)) -> i32 {
+    return view.draw() + view.debug();
+}
+```
+
+`view.draw()` 的语义是：在 principal set 中找到唯一提供 `draw` 的 principal，隐式记录
+composition-to-principal projection，再按该 principal 的 ordinary borrowed dyn vtable slot dispatch。多个
+principal 暴露同名 method 时仍拒绝，缺失 method 仍给 no visible impl 诊断；shared composition receiver 不能调用
+要求 `&mut Self` 的 method，mutable composition receiver 会保留 `mut` projection borrow kind。
+
+实现上，M12a 复用 M11d/M11e 的 `trait_object_composition_project`、`principal_set_metadata_v1`、
+`FunctionDynAbiFacts::composition_projections` 和 existing `vtable_slot` lowering/backend。Focused validation 已覆盖
+frontend shared/mut direct dispatch、ambiguous/missing/mutable-receiver negative cases、IR project/vtable-slot
+lowering、IDE hover/query facts 和 native execution 多 concrete dispatch。
 
 2026-06-08：M11e Principal-Set Composition Hardening / Release Closure 已完成。M11 现在收口为完整
 origin-bound borrowed principal-set dyn composition release baseline：M11a 设计、M11b query facts、M11c

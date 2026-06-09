@@ -177,7 +177,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "M8 封口结论");
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M12 Advanced Dyn Design Baseline");
+        "docs/zh/next-steps.md", "当前最高优先级：M12b Direct Composition Dispatch Hardening / Release Closure");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -279,7 +279,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M10d Supertrait Hardening / Release Closure");
     expect_document_contains("docs/zh/version.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M12 Advanced Dyn Design Baseline");
+        "docs/zh/next-steps.md", "当前最高优先级：M12b Direct Composition Dispatch Hardening / Release Closure");
     expect_document_contains("docs/zh/next-steps.md", "M10 已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11a 也已结束");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M10d 已完成 hardening/release closure");
@@ -315,14 +315,16 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M11e Principal-Set Composition Hardening / Release Closure");
+    expect_document_contains("docs/zh/README.md", "M12a Direct Principal-Qualified Composition Method Dispatch");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "principal_set_metadata_v1");
     expect_document_contains("docs/zh/README.md", "dyn (A + B)");
     expect_document_contains("docs/zh/README.md", "FunctionDynAbiFacts");
     expect_document_contains("docs/zh/README.md", "composition_projections");
-    expect_document_contains("docs/zh/progress.md", "阶段：M11e Principal-Set Composition Hardening / Release Closure");
+    expect_document_contains("docs/zh/README.md", "combo.draw()");
+    expect_document_contains("docs/zh/progress.md", "阶段：M12a Direct Principal-Qualified Composition Method Dispatch");
+    expect_document_contains("docs/zh/progress.md", "M12a Direct Principal-Qualified Composition Method Dispatch 已完成");
     expect_document_contains("docs/zh/progress.md", "principal-set borrowed dyn composition");
     expect_document_contains("docs/zh/progress.md", "m11a_dyn_advanced_design_gate_baseline");
     expect_document_contains("docs/zh/progress.md", "M11e Principal-Set Composition Hardening / Release Closure");
@@ -337,23 +339,28 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "completed_release_baseline");
     expect_document_contains("docs/zh/version.md", "ready_for_future_stage");
     expect_document_contains(
-        "docs/zh/next-steps.md", "当前最高优先级：M12 Advanced Dyn Design Baseline");
+        "docs/zh/next-steps.md", "当前最高优先级：M12b Direct Composition Dispatch Hardening / Release Closure");
     expect_document_contains("docs/zh/next-steps.md",
         "M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set");
     expect_document_contains("docs/zh/next-steps.md", "M11b 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11c 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11d 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11e 也已结束");
-    expect_document_contains("docs/zh/next-steps.md", "M12 design baseline");
+    expect_document_contains("docs/zh/next-steps.md", "M12a 也已结束");
+    expect_document_contains("docs/zh/next-steps.md", "M12b hardening/release");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M11a advanced dyn design/query gate");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M11e 已完成 composition runtime facts/query/tooling/verifier hardening");
-    expect_document_contains("docs/zh/language-manual.md", "M11a advanced dyn design gate");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M12a 已支持唯一 principal method 的 direct composition dispatch");
+    expect_document_contains("docs/zh/language-manual.md", "M12a borrowed principal-set composition direct dispatch");
     expect_document_contains("docs/zh/language-manual.md", "dyn (Draw + Debug)");
     expect_document_contains("docs/zh/language-manual.md", "M11e borrowed principal-set composition release closure");
     expect_document_contains("docs/zh/language-manual.md", "composition_projections");
-    expect_document_contains("docs/zh/usage.md", "M11e Principal-Set Composition Hardening / Release Closure");
+    expect_document_contains("docs/zh/language-manual.md", "view.draw()");
+    expect_document_contains("docs/zh/usage.md", "M12a Direct Principal-Qualified Composition Method Dispatch");
+    expect_document_contains("docs/zh/usage.md", "score_direct");
     expect_document_contains("docs/zh/usage.md", "composition_metadata=principal_set_metadata_v1");
 
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
@@ -422,6 +429,8 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m11-release-baseline.md", "缺失或不匹配 principal object");
     expect_document_contains("docs/zh/m11-release-baseline.md", "M12 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/version.md", "## M11b Principal-Set Composition Query Prototype Gate");
+    expect_document_contains(
+        "docs/zh/version.md", "## M12a Direct Principal-Qualified Composition Method Dispatch");
     expect_document_contains("docs/zh/version.md", "PrincipalSetCompositionFacts");
     expect_document_contains("docs/zh/next-steps.md",
         "M11e Principal-Set Composition Hardening / Release Closure");

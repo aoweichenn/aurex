@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M11e Principal-Set Composition Hardening / Release Closure** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 显式 projection 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 direct principal-qualified composition method dispatch。
+本文描述当前 **M12a Direct Principal-Qualified Composition Method Dispatch** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.method()` direct dispatch。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或隐式 composition-to-supertrait 多步 direct dispatch。
 
 ## 构建
 
@@ -152,7 +152,8 @@ M11a 已把后续 advanced dyn 主线选为 principal-set borrowed dyn compositi
 `principal_set_identity_fact()`、`principal_set_composition_facts_fingerprint()`、
 `summarize_principal_set_composition_facts()` 和 `dump_principal_set_composition_facts()`，用于校验 principal-set
 identity、witness set、principal-qualified method namespace、associated equality merge 和 projection facts。
-M11c 已在此基础上支持 borrowed composition annotation/coercion，M11d 进一步支持显式 projection 后 runtime dispatch：
+M11c 已在此基础上支持 borrowed composition annotation/coercion，M11d 进一步支持显式 projection 后 runtime dispatch；
+M12a 支持唯一 principal method 的 direct dispatch：
 
 ```aurex
 trait Draw { fn draw(self: &Self) -> i32; }
@@ -169,6 +170,10 @@ fn score(view: &dyn (Draw + Debug)) -> i32 {
     return draw.draw() + debug.debug();
 }
 
+fn score_direct(view: &dyn (Draw + Debug)) -> i32 {
+    return view.draw() + view.debug();
+}
+
 fn main() -> i32 {
     let file: File = File { value: 7 };
     let view: &dyn (Debug + Draw) = &file;
@@ -181,11 +186,11 @@ composition witness set、projection fact 和 checked dump/fingerprint；在 `--
 native execution 中会生成 `dyn.composition.pack`、`dyn.composition.project` 和 `principal_set_metadata_v1`
 metadata global。M11e 后，`FunctionDynAbiFacts`、lower-IR query invalidation、IDE semantic fact 和 hover 也会展示
 `principal_sets`、`composition_projections`、projection principal index、borrow kind 和
-`composition_metadata=principal_set_metadata_v1`。当前仍不能通过 composition receiver 直接调用 `view.draw()` 或
-`view.debug()`，因为 direct principal-qualified dispatch syntax 不属于 M11；应先显式投影到 `&dyn Draw` /
-`&dyn Debug`。当前仍不实现 owning
-dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、specialization、
-default associated type、generic associated type 或 associated const。
+`composition_metadata=principal_set_metadata_v1`。M12a 后，`view.draw()` 会选择唯一提供 `draw` 的 principal，
+隐式记录 composition-to-principal projection，并继续使用 ordinary single-trait dyn vtable dispatch；如果多个
+principal 暴露同名 method，仍必须先显式投影来消除歧义。当前仍不实现 owning dyn、`Box<dyn Trait>`、
+allocator、标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、composition-to-supertrait 隐式多步
+direct dispatch、specialization、default associated type、generic associated type 或 associated const。
 
 ## import
 

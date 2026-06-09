@@ -2905,6 +2905,54 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_supertrait_dyn_trait_method_call(co
 }
 
 SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::resolve_principal_set_dyn_trait_method_call(const TypeHandle object_type,
+    const TypeInfo& object_info,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    TraitMethodCallResolution result;
+    for (const TypeHandle principal : object_info.trait_object_principal_types) {
+        if (!is_valid(principal) || principal.value >= this->core_.state_.checked.types.size()) {
+            continue;
+        }
+        const TypeInfo& principal_info = this->core_.state_.checked.types.get(principal);
+        if (principal_info.kind != TypeKind::trait_object || !query::is_valid(principal_info.trait_object_key)) {
+            continue;
+        }
+        const auto trait_found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+            principal_info.trait_object_module.value,
+            principal_info.trait_object_name_id,
+        });
+        if (trait_found == this->core_.state_.checked.traits.end()) {
+            continue;
+        }
+        TraitMethodCallResolution candidate = this->resolve_direct_dyn_trait_method_call(
+            principal, principal_info, trait_found->second, name_id, name, range, false);
+        if (!candidate.found) {
+            continue;
+        }
+        if (result.found) {
+            TraitMethodCallResolution ambiguous;
+            ambiguous.reported_failure = report_failure;
+            if (report_failure) {
+                this->core_.report_type(range, sema_dyn_trait_composition_method_ambiguous_message(name));
+            }
+            return ambiguous;
+        }
+        candidate.dispatch_receiver_type = principal;
+        result = std::move(candidate);
+    }
+    if (!result.found && report_failure) {
+        this->core_.report_lookup(range,
+            sema_trait_method_impl_missing_message(this->core_.state_.checked.types.display_name(object_type), name));
+        result.reported_failure = true;
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
 SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHandle object_type,
     const IdentId name_id,
     const std::string_view name,
@@ -2920,25 +2968,8 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_dyn_trait_method_call(const TypeHan
         return resolution;
     }
     if (!object_info.trait_object_principal_types.empty()) {
-        bool has_candidate = false;
-        for (const TypeHandle principal : object_info.trait_object_principal_types) {
-            for (const TraitObjectMethodSlotFact& slot : this->core_.state_.checked.trait_object_method_slots) {
-                if (slot.object_type.value == principal.value && slot.method_name_id == name_id) {
-                    has_candidate = true;
-                }
-            }
-        }
-        if (report_failure) {
-            if (has_candidate) {
-                this->core_.report_type(range, sema_dyn_trait_composition_method_ambiguous_message(name));
-            } else {
-                this->core_.report_lookup(range,
-                    sema_trait_method_impl_missing_message(
-                        this->core_.state_.checked.types.display_name(object_type), name));
-            }
-        }
-        resolution.reported_failure = report_failure;
-        return resolution;
+        return this->resolve_principal_set_dyn_trait_method_call(
+            object_type, object_info, name_id, name, range, report_failure);
     }
     if (!query::is_valid(object_info.trait_object_key)) {
         return resolution;

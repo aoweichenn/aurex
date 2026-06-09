@@ -699,9 +699,15 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         }
         this->validate_unsafe_call(*call_signature, callee.range);
         const base::u32 receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+        TypeHandle trait_receiver_type = receiver_type;
+        if (has_receiver && resolution.dispatch == TraitMethodDispatchKind::vtable_slot
+            && is_valid(resolution.dispatch_receiver_type)
+            && this->state_.checked.types.is_reference(receiver_type)) {
+            trait_receiver_type = this->state_.checked.types.reference(
+                this->state_.checked.types.get(receiver_type).pointer_mutability, resolution.dispatch_receiver_type);
+        }
         const bool trait_receiver_valid = !has_receiver
-            || resolution.dispatch == TraitMethodDispatchKind::vtable_slot
-            || this->method_receiver_matches(*call_signature, receiver_type, callee.object);
+            || this->method_receiver_matches(*call_signature, trait_receiver_type, callee.object);
         if (!trait_receiver_valid || resolution.param_types.size() < receiver_count) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
@@ -804,16 +810,21 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
                     && this->state_.checked.types.is_reference(receiver_type)) {
                     dispatch_reference_type = this->state_.checked.types.reference(
                         this->state_.checked.types.get(receiver_type).pointer_mutability, dispatch_receiver_type);
-                    this->record_borrowed_dyn_trait_upcast_if_needed(
-                        callee.object, receiver_type, dispatch_reference_type, callee.range);
-                    for (const TraitObjectUpcastCoercionFact& fact :
-                        this->state_.checked.trait_object_upcast_coercions) {
-                        if (fact.expr.value == callee.object.value
-                            && fact.source_reference_type.value == receiver_type.value
-                            && fact.target_reference_type.value == dispatch_reference_type.value
-                            && fact.target_object_type.value == dispatch_receiver_type.value) {
-                            dyn_resolution.vtable_layout = fact.target_vtable_layout;
-                            break;
+                    if (this->can_borrowed_dyn_trait_composition_project(dispatch_reference_type, receiver_type)) {
+                        this->record_borrowed_dyn_trait_composition_projection_if_needed(
+                            callee.object, receiver_type, dispatch_reference_type, callee.range);
+                    } else {
+                        this->record_borrowed_dyn_trait_upcast_if_needed(
+                            callee.object, receiver_type, dispatch_reference_type, callee.range);
+                        for (const TraitObjectUpcastCoercionFact& fact :
+                            this->state_.checked.trait_object_upcast_coercions) {
+                            if (fact.expr.value == callee.object.value
+                                && fact.source_reference_type.value == receiver_type.value
+                                && fact.target_reference_type.value == dispatch_reference_type.value
+                                && fact.target_object_type.value == dispatch_receiver_type.value) {
+                                dyn_resolution.vtable_layout = fact.target_vtable_layout;
+                                break;
+                            }
                         }
                     }
                 } else {

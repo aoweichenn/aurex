@@ -773,6 +773,25 @@ TEST(CoreUnit, DynTraitBorrowedMutableViewRecordsMutableBorrowAndSlotAccess)
     expect_trait_object_authority_matches_checked(checked, "main");
 }
 
+TEST(CoreUnit, DynTraitSharedViewRejectsMutableReceiverMethodCall)
+{
+    expect_dyn_trait_source_diagnostic(
+        "module dyn_trait_shared_mut_receiver_reject_whitebox;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &mut Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &mut File) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  var file: File = File { value: 2 };\n"
+        "  let drawable: &dyn Draw = &mut file;\n"
+        "  return drawable.draw();\n"
+        "}\n",
+        "mutable method receiver requires mutable pointer");
+}
+
 TEST(CoreUnit, DynTraitAssociatedEqualitySubstitutesMethodReturnType)
 {
     const std::string_view source =

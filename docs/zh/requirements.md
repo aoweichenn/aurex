@@ -56,7 +56,7 @@ negative matrix 和 release documentation closure。
 - 标准库 API、容器、文件、目录、进程、console。
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
-- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、direct principal-qualified composition method
+- owning dyn、`Box<dyn Trait>`、allocator、trait-object Drop dispatch、composition-to-supertrait 隐式多步 direct
   dispatch、bare `dyn A + B` parser syntax、associated const、default associated type、generic associated type、
   specialization、minimal implementation annotation、完整 Rust-style lifetime surface、async drop 和标准库重建。
 

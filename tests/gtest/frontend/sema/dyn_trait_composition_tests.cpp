@@ -328,7 +328,93 @@ TEST(CoreUnit, DynTraitCompositionAssociatedEqualityMergeDetectsConflicts)
     EXPECT_TRUE(query::is_valid(checked.principal_set_composition_facts));
 }
 
-TEST(CoreUnit, DynTraitCompositionMethodCallsRequirePrincipalSelection)
+TEST(CoreUnit, DynTraitCompositionDirectMethodCallsDispatchThroughUniquePrincipal)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_unique_method_call_whitebox;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 1 };\n"
+        "  let view: &dyn (Draw + Debug) = &file;\n"
+        "  return view.draw();\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.trait_method_calls.size(), 1U);
+    const sema::TraitMethodCallBinding& call = checked.trait_method_calls.front();
+    EXPECT_EQ(call.method_name.view(), "draw");
+    EXPECT_EQ(call.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
+    EXPECT_EQ(call.vtable_slot, 0U);
+    ASSERT_TRUE(sema::is_valid(call.dispatch_receiver_type));
+    ASSERT_TRUE(checked.types.is_reference(call.receiver_type));
+    EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn (Debug + Draw)");
+    EXPECT_EQ(checked.types.display_name(call.dispatch_receiver_type), "dyn Draw");
+
+    ASSERT_EQ(checked.principal_set_composition_facts.projections.size(), 3U);
+    base::usize composition_to_principal_count = 0;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind != query::PrincipalSetProjectionKind::composition_to_principal) {
+            continue;
+        }
+        ++composition_to_principal_count;
+        EXPECT_EQ(projection.borrow_kind, query::DynBorrowKind::shared);
+        EXPECT_EQ(projection.target_view_name, "dyn Draw");
+    }
+    EXPECT_EQ(composition_to_principal_count, 1U);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait_call #0 vtable_slot dyn (Debug + Draw).draw -> i32",
+            "dispatch_receiver=dyn Draw",
+            "kind=composition_to_principal borrow=shared",
+            "target=dyn Draw",
+        });
+}
+
+TEST(CoreUnit, DynTraitCompositionDirectMutableMethodCallsKeepBorrowKind)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_unique_mut_method_call_whitebox;\n"
+        "trait Draw { fn draw(self: &mut Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &mut Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &mut File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &mut File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  var file: File = File { value: 1 };\n"
+        "  let view: &mut dyn (Draw + Debug) = &mut file;\n"
+        "  return view.draw();\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.trait_method_calls.size(), 1U);
+    const sema::TraitMethodCallBinding& call = checked.trait_method_calls.front();
+    EXPECT_EQ(call.method_name.view(), "draw");
+    EXPECT_EQ(call.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
+    EXPECT_EQ(checked.types.display_name(call.receiver_type), "&mut dyn (Debug + Draw)");
+    EXPECT_EQ(checked.types.display_name(call.dispatch_receiver_type), "dyn Draw");
+    EXPECT_EQ(call.receiver_access, sema::ReceiverAccessKind::mutable_);
+
+    base::usize composition_to_principal_count = 0;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind != query::PrincipalSetProjectionKind::composition_to_principal) {
+            continue;
+        }
+        ++composition_to_principal_count;
+        EXPECT_EQ(projection.borrow_kind, query::DynBorrowKind::mut);
+        EXPECT_EQ(projection.target_view_name, "dyn Draw");
+    }
+    EXPECT_EQ(composition_to_principal_count, 1U);
+}
+
+TEST(CoreUnit, DynTraitCompositionDirectMethodCallsRejectAmbiguousAndMissingNames)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases{
         {
@@ -343,21 +429,7 @@ TEST(CoreUnit, DynTraitCompositionMethodCallsRequirePrincipalSelection)
             "  let view: &dyn (Draw + Debug) = &file;\n"
             "  return view.run();\n"
             "}\n",
-            "dyn trait composition method `run` is ambiguous; principal-qualified dispatch is not part of this stage",
-        },
-        {
-            "module dyn_trait_composition_unique_method_call_whitebox;\n"
-            "trait Draw { fn draw(self: &Self) -> i32; }\n"
-            "trait Debug { fn debug(self: &Self) -> i32; }\n"
-            "struct File { value: i32; }\n"
-            "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
-            "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
-            "fn main() -> i32 {\n"
-            "  let file: File = File { value: 1 };\n"
-            "  let view: &dyn (Draw + Debug) = &file;\n"
-            "  return view.draw();\n"
-            "}\n",
-            "dyn trait composition method `draw` is ambiguous; principal-qualified dispatch is not part of this stage",
+            "dyn trait composition method `run` is ambiguous across multiple principal traits",
         },
         {
             "module dyn_trait_composition_missing_method_call_whitebox;\n"
@@ -372,6 +444,20 @@ TEST(CoreUnit, DynTraitCompositionMethodCallsRequirePrincipalSelection)
             "  return view.missing();\n"
             "}\n",
             "has no visible impl for trait method `missing`",
+        },
+        {
+            "module dyn_trait_composition_shared_mut_method_reject_whitebox;\n"
+            "trait Draw { fn draw(self: &mut Self) -> i32; }\n"
+            "trait Debug { fn debug(self: &Self) -> i32; }\n"
+            "struct File { value: i32; }\n"
+            "impl Draw for File { fn draw(self: &mut File) -> i32 { return self.value; } }\n"
+            "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+            "fn main() -> i32 {\n"
+            "  var file: File = File { value: 1 };\n"
+            "  let view: &dyn (Draw + Debug) = &mut file;\n"
+            "  return view.draw();\n"
+            "}\n",
+            "mutable method receiver requires mutable pointer",
         },
     };
 

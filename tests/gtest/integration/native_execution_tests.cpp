@@ -224,4 +224,36 @@ TEST_F(AurexIntegrationTest, NativeDynTraitCompositionProjectionDispatchesSelect
     EXPECT_EQ(require_success(q(binary)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, NativeDynTraitCompositionDirectDispatchUsesSelectedPrincipals)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_dyn_trait_composition_direct.ax",
+        "module native_dyn_trait_composition_direct;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Debug {\n"
+        "  fn debug(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 10; } }\n"
+        "impl Draw for Socket { fn draw(self: &Socket) -> i32 { return self.value + 100; } }\n"
+        "impl Debug for Socket { fn debug(self: &Socket) -> i32 { return self.value + 1000; } }\n"
+        "fn score(combo: &dyn (Debug + Draw)) -> i32 {\n"
+        "  return combo.draw() + combo.debug();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 7 };\n"
+        "  let socket: Socket = Socket { value: 3 };\n"
+        "  let total: i32 = score(&file) + score(&socket);\n"
+        "  if total == 1131 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_dyn_trait_composition_direct";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
 } // namespace aurex::test

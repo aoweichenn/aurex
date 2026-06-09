@@ -1,11 +1,12 @@
 # 下一步计划
 
-## 当前最高优先级：M12 Advanced Dyn Design Baseline
+## 当前最高优先级：M12b Direct Composition Dispatch Hardening / Release Closure
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
 Composition Frontend / Sema Check-Only、M11d Principal-Set Composition IR / Backend Runtime、M11e Principal-Set
-Composition Hardening / Release Closure 均已完成。当前状态入口：
+Composition Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch 均已完成。
+当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
 - [Aurex M9 Dyn ABI / Tooling 设计基线](m9-dyn-abi-tooling-design.md)
@@ -55,6 +56,12 @@ principal-set metadata/projection counts，IDE semantic fact 和 hover 展示 co
 和 missing principal object。M11e 没有打开 direct composition method dispatch，也没有实现标准库、owning dyn、
 `Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。
 
+M12a 也已结束。M12a 打开 borrowed principal-set composition receiver 上的无歧义 direct method call：
+`view.draw()` 会选择唯一提供 `draw` 的 principal，记录 composition-to-principal projection，再复用 ordinary
+single-trait dyn `vtable_slot` dispatch。多个 principal 暴露同名 method 仍诊断 ambiguous，缺失 method 仍给
+no visible impl；shared receiver 不能调用 `&mut Self` method。M12a 不实现标准库、owning dyn、`Box<dyn Trait>`、
+allocator、dynamic Drop dispatch、bare `dyn A + B` syntax 或 composition-to-supertrait 的隐式多步 direct dispatch。
+
 已完成基线摘要：
 
 - M8 query foundation 已完成，`CanonicalTypeKind::trait_object` 占位已移除；当前结构化 identity 是
@@ -73,15 +80,17 @@ principal-set metadata/projection counts，IDE semantic fact 和 hover 展示 co
   IR/LLVM 并 native execution。
 - M11e Principal-Set Composition Hardening / Release Closure 已完成；query/cache/tooling/verifier/docs release
   baseline 已固定。
+- M12a Direct Principal-Qualified Composition Method Dispatch 已完成；无歧义 `combo.method()` 可降低为
+  composition projection + ordinary dyn vtable dispatch。
 
-当前下一步应进入 **M12 Advanced Dyn Design Baseline**。M12 仍不应直接实现标准库、owning dyn、
-`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；第一步应是从 M11 后仍未覆盖的 advanced dyn 候选中
-选择独立主线，写清 semantic model、metadata policy、query facts、diagnostics、verifier/backend tests 和非目标。
+当前下一步应进入 **M12b Direct Composition Dispatch Hardening / Release Closure**。M12b 仍不应直接实现标准库、
+owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；重点应是把 M12a direct dispatch 的边界、
+文档、negative matrix、query/cache/tooling surface 和 coverage 收口到 release quality。
 
-M12 候选不应混在同一阶段一次性实现：
+M12 后续候选不应混在同一阶段一次性实现：
 
-- direct principal-qualified composition method dispatch：需要 principal-qualified syntax、method namespace
-  ambiguity diagnostics、slot binding facts 和 lowering rules。
+- direct composition dispatch hardening：覆盖同名歧义、mutable receiver、missing method、tooling hover、lower-IR
+  invalidation、query fingerprint 和 native runtime regression。
 - owning dyn / `Box<dyn Trait>`：需要 ownership、move/drop、allocator、layout 和标准库 API 设计。
 - dynamic Drop dispatch：需要 destructor slot、drop glue metadata、dropck/tooling facts 和 runtime cleanup ABI。
 - allocator policy：需要标准库或 runtime ownership policy，不能塞进 borrowed view metadata。
@@ -97,7 +106,8 @@ M12 候选不应混在同一阶段一次性实现：
 | M11c frontend/sema check-only | 已完成。`dyn (A + B)` parser/AST spelling、type identity、coercion check、method-call guard、associated equality merge check、checked dump/fingerprint、negative samples | 实际以本次 diffstat 为准 |
 | M11d IR/backend runtime | 已完成。IR composition/projection value、verifier、LLVM metadata layout、显式 principal projection、native runtime tests；direct principal-qualified method dispatch 未打开 | 实际以本次 diffstat 为准 |
 | M11e hardening/release | 已完成。`FunctionDynAbiFacts` composition descriptors、lower-IR invalidation、IDE hover、verifier negative matrix、docs/tests release closure | 实际以本次 diffstat 为准 |
-| M12 design baseline | direct composition dispatch、owning dyn、dynamic Drop、allocator 或 auto trait composition 等候选择一，先做设计/query gate | 600-1,200 行文档/测试 |
+| M12a direct composition dispatch | 已完成。唯一 principal method direct dispatch、projection fact、IR project/vtable slot、native execution、receiver mutability negative cases | 实际以本次 diffstat 为准 |
+| M12b hardening/release | M12a docs/tooling/query/cache/coverage release closure，补齐 stale fingerprint 和 broader negative matrix | 500-1,000 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

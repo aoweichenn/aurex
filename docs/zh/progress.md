@@ -1,9 +1,25 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
+阶段：M14 Borrowed Dyn View Path Inference / Dispatch Release
 
 ## 总体状态
+
+2026-06-09：M14 Borrowed Dyn View Path Inference / Dispatch Release 已完成。M14 在 M13 的
+explicit composition-to-supertrait runtime chain 之上，打开了两个受限隐式 borrowed view path：expected-type
+projection 和 direct supertrait method dispatch。现在 `&dyn (Child + Debug)` 可以在目标类型唯一为
+`&dyn Parent` 时写 `let parent: &dyn Parent = view;`，也可以在 `Parent::parent` 只经唯一 source principal
+可达时写 `view.parent()`。这两类路径都会解析为
+`&dyn (Child + Debug) -> &dyn Child -> &dyn Parent`，lowering 仍复用
+`trait_object_composition_project` + `trait_object_upcast` + ordinary `vtable_slot`。
+
+M14 新增 `BorrowedDynViewPathFact`、`BorrowedDynViewPathUse`、
+`borrowed_view_path_count`、`borrowed_view_path_dispatch_count` 和
+`borrowed_view_path_expected_projection_count`，并把它们接入
+`principal_set_composition_facts_fingerprint()`、summary 和 dump。M14 明确保持 no-std/compiler-runtime-core
+边界：不实现标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、trait-object
+destructor ABI、bare `dyn A + B` 或新 runtime metadata policy；歧义 source-principal path 仍被拒绝，要求用户用
+`dynproject[SourcePrincipal, TargetSupertrait](view)` 显式选择。
 
 2026-06-09：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure 已完成。M13 现在收口为完整
 borrowed composition-to-supertrait explicit projection release baseline。M13d 仍不实现标准库、owning dyn、

@@ -167,9 +167,24 @@ public:
         std::vector<TypeHandle> param_types;
         TypeHandle return_type = INVALID_TYPE_HANDLE;
         TypeHandle dispatch_receiver_type = INVALID_TYPE_HANDLE;
+        TypeHandle composition_source_principal_type = INVALID_TYPE_HANDLE;
         TraitMethodDispatchKind dispatch = TraitMethodDispatchKind::param_env;
         bool found = false;
         bool reported_failure = false;
+        bool uses_composition_supertrait_path = false;
+    };
+
+    struct BorrowedDynViewPathResolution {
+        TypeHandle source_reference_type = INVALID_TYPE_HANDLE;
+        TypeHandle target_reference_type = INVALID_TYPE_HANDLE;
+        TypeHandle source_composition_object_type = INVALID_TYPE_HANDLE;
+        TypeHandle source_principal_type = INVALID_TYPE_HANDLE;
+        TypeHandle source_principal_reference_type = INVALID_TYPE_HANDLE;
+        TypeHandle target_object_type = INVALID_TYPE_HANDLE;
+        const TraitSupertraitEdgeFact* supertrait_edge = nullptr;
+        query::DynBorrowKind borrow_kind = query::DynBorrowKind::shared;
+        bool found = false;
+        bool ambiguous = false;
     };
 
     struct GenericSideTableScope {
@@ -913,6 +928,10 @@ public:
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const;
     [[nodiscard]] bool can_borrowed_dyn_trait_coerce(TypeHandle dst, TypeHandle src) const noexcept;
     [[nodiscard]] bool can_borrowed_dyn_trait_composition_project(TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] BorrowedDynViewPathResolution resolve_borrowed_dyn_trait_composition_supertrait_path(
+        TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] bool can_borrowed_dyn_trait_composition_supertrait_project(TypeHandle dst, TypeHandle src)
+        const noexcept;
     [[nodiscard]] bool can_borrowed_dyn_trait_upcast(TypeHandle dst, TypeHandle src) const;
     void record_borrowed_dyn_trait_coercion_if_needed(
         syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, const base::SourceRange& range);
@@ -922,6 +941,8 @@ public:
         TypeHandle from_type,
         TypeHandle to_type,
         TypeHandle source_principal_type,
+        query::BorrowedDynViewPathUse use,
+        std::string_view method_name,
         const base::SourceRange& range);
     void record_borrowed_dyn_trait_projection_upcast_if_needed(syntax::ExprId expr,
         TypeHandle from_type,

@@ -140,6 +140,19 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_expr(
             this->core_.record_expr_expected_type(expr_id, expected_type);
             return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
         }
+        const SemanticAnalyzerCore::BorrowedDynViewPathResolution borrowed_view_path =
+            this->core_.resolve_borrowed_dyn_trait_composition_supertrait_path(expected_type, analyzed);
+        if (borrowed_view_path.found) {
+            const TypeHandle intrinsic =
+                is_valid(this->core_.cached_expr_intrinsic_type(expr_id))
+                ? this->core_.cached_expr_intrinsic_type(expr_id)
+                : analyzed;
+            this->core_.record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
+                expr_id, analyzed, expected_type, borrowed_view_path.source_principal_type,
+                query::BorrowedDynViewPathUse::expected_type_projection, {}, range);
+            this->core_.record_expr_expected_type(expr_id, expected_type);
+            return this->core_.record_expr_types(expr_id, intrinsic, expected_type);
+        }
         if (this->core_.can_borrowed_dyn_trait_upcast(expected_type, analyzed)) {
             const TypeHandle intrinsic =
                 is_valid(this->core_.cached_expr_intrinsic_type(expr_id))

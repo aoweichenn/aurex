@@ -1157,6 +1157,99 @@ TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionChainsProjectAndUp
         });
 }
 
+TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitDirectDispatchInfersProjectAndUpcast)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_direct_dispatch_ir_runtime;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  return view.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  return score(&file);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.borrowed_view_path_count, 1U);
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.borrowed_view_path_dispatch_count, 1U);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+    EXPECT_EQ(fixture.checked.types.display_name(
+                  fixture.checked.trait_object_upcast_coercions.front().source_reference_type),
+        "&dyn Child");
+    EXPECT_EQ(fixture.checked.types.display_name(
+                  fixture.checked.trait_object_upcast_coercions.front().target_reference_type),
+        "&dyn Parent");
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 1U);
+
+    const std::optional<query::FunctionDynAbiFacts> score_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "score");
+    ASSERT_TRUE(score_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*score_facts));
+    EXPECT_EQ(score_facts->summary.composition_projection_count, 1U);
+    EXPECT_EQ(score_facts->summary.upcast_count, 1U);
+    EXPECT_EQ(score_facts->summary.dispatch_count, 1U);
+    EXPECT_EQ(score_facts->summary.composition_supertrait_chain_count, 1U);
+    ASSERT_EQ(score_facts->composition_supertrait_chains.size(), 1U);
+    EXPECT_EQ(score_facts->composition_supertrait_chains.front().projected_reference_type_name, "&dyn Child");
+    EXPECT_EQ(score_facts->composition_supertrait_chains.front().target_reference_type_name, "&dyn Parent");
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitExpectedProjectionInfersProjectAndUpcast)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_expected_projection_ir_runtime;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = view;\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  return score(&file);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.borrowed_view_path_count, 1U);
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.borrowed_view_path_expected_projection_count,
+        1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 1U);
+
+    const std::optional<query::FunctionDynAbiFacts> score_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "score");
+    ASSERT_TRUE(score_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*score_facts));
+    EXPECT_EQ(score_facts->summary.composition_projection_count, 1U);
+    EXPECT_EQ(score_facts->summary.upcast_count, 1U);
+    EXPECT_EQ(score_facts->summary.composition_supertrait_chain_count, 1U);
+    EXPECT_EQ(score_facts->composition_supertrait_chains.front().projected_reference_type_name, "&dyn Child");
+    EXPECT_EQ(score_facts->composition_supertrait_chains.front().target_reference_type_name, "&dyn Parent");
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
 TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionCoversEveryConcreteVtable)
 {
     const std::string_view source =

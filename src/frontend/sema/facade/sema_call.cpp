@@ -646,7 +646,8 @@ TypeHandle SemanticAnalyzerCore::analyze_dynproject_intrinsic_call(
         }
     }
     this->record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
-        expr.args.front(), argument_type, target_reference_type, source_principal_type, expr.range);
+        expr.args.front(), argument_type, target_reference_type, source_principal_type,
+        query::BorrowedDynViewPathUse::explicit_projection, {}, expr.range);
     return this->record_expr_type(expr_id, target_reference_type);
 }
 
@@ -940,7 +941,21 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
                     && this->state_.checked.types.is_reference(receiver_type)) {
                     dispatch_reference_type = this->state_.checked.types.reference(
                         this->state_.checked.types.get(receiver_type).pointer_mutability, dispatch_receiver_type);
-                    if (this->can_borrowed_dyn_trait_composition_project(dispatch_reference_type, receiver_type)) {
+                    if (dyn_resolution.uses_composition_supertrait_path) {
+                        this->record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
+                            callee.object, receiver_type, dispatch_reference_type,
+                            dyn_resolution.composition_source_principal_type,
+                            query::BorrowedDynViewPathUse::method_dispatch, callee.field_name, callee.range);
+                        for (const TraitObjectUpcastCoercionFact& fact :
+                            this->state_.checked.trait_object_upcast_coercions) {
+                            if (fact.expr.value == callee.object.value
+                                && fact.target_reference_type.value == dispatch_reference_type.value
+                                && fact.target_object_type.value == dispatch_receiver_type.value) {
+                                dyn_resolution.vtable_layout = fact.target_vtable_layout;
+                                break;
+                            }
+                        }
+                    } else if (this->can_borrowed_dyn_trait_composition_project(dispatch_reference_type, receiver_type)) {
                         this->record_borrowed_dyn_trait_composition_projection_if_needed(
                             callee.object, receiver_type, dispatch_reference_type, callee.range);
                     } else {

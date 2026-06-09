@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-09
-阶段：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M14 Borrowed Dyn View Path Inference / Dispatch Release，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -116,7 +116,7 @@ A | B         表示二选一
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
-  composition-to-supertrait 隐式多步 direct dispatch、generic associated type、associated const、specialization、
+  歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
   const generic 或 `<T>` 风格泛型。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
@@ -1825,12 +1825,17 @@ M11 advanced dyn design/query/sema facts：
   `CompositionProjectionFact{kind=composition_to_supertrait}`。`dynproject` 不是全局关键字，而是 sema 只在未限定
   generic-call 形状中识别的 contextual intrinsic。Function-level dyn ABI facts 会同时暴露
   `composition_projections`、`upcasts` 和 `composition_supertrait_chains`。
+- M14 已新增 borrowed dyn view path inference：当 source composition 中只有一个 principal 能到达目标
+  supertrait 时，`let parent: &dyn Parent = view;` 和 `view.parent()` 会隐式走
+  `&dyn (Child + Debug) -> &dyn Child -> &dyn Parent`。该路径记录 `BorrowedDynViewPathFact`，并继续 lowering
+  为 `trait_object_composition_project` + `trait_object_upcast` + ordinary `vtable_slot`。如果多个 principal
+  都能到达目标 supertrait，仍拒绝并要求显式 `dynproject[SourcePrincipal, TargetSupertrait](view)`。
 - M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持
   dynamic Drop dispatch；M11 release baseline 只支持先显式 projection 后按 single-trait dyn dispatch，M12a
   在此基础上支持无歧义 direct composition method call。只接收 `&dyn (A+B)` 的函数会记录 projection descriptor，但不会伪造
   concrete-specific principal-set metadata descriptor。
 
-M13d `dynproject` 示例：
+M14 borrowed view path 示例：
 
 ```aurex
 trait Parent { fn parent(self: &Self) -> i32; }
@@ -1845,7 +1850,8 @@ impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }
 
 fn score(view: &dyn (Child + Debug)) -> i32 {
     let parent: &dyn Parent = dynproject[Child, Parent](view);
-    return parent.parent();
+    let inferred: &dyn Parent = view;
+    return view.parent() + parent.parent() + inferred.parent();
 }
 ```
 
@@ -1860,13 +1866,13 @@ fn score(view: &dyn (Child + Debug)) -> i32 {
 - `&mut dyn (Child + Debug)` 会产生 `&mut dyn Parent`；后续可以按已有 reference coercion 降级为
   `&dyn Parent`。`&dyn (Child + Debug)` 不会产生 mutable target。
 - lowering 为 `trait_object_composition_project` + `trait_object_upcast`；不会新增 composition-supertrait metadata policy。
-- 当前不支持隐式 `let parent: &dyn Parent = view;`，也不支持 `view.parent()` 直接穿过 composition 到 supertrait。
+- `dynproject[...]` 仍可用于歧义消解；M14 的 implicit path 只在 source principal 唯一时生效。
 
 当前不支持：
 
 - owning dyn、`Box<dyn Trait>`、allocator 或 side allocation。
 - trait-object Drop dispatch、dynamic cleanup runtime ABI、panic/unwind-aware dyn cleanup。
-- consuming receiver、composition-to-supertrait 隐式多步 direct dispatch、owning multi-principal trait object 或
+- consuming receiver、歧义 composition-to-supertrait 自动选择、owning multi-principal trait object 或
   auto trait composition。
 - generic associated type、associated const、default associated type、specialization 或 unsafe trait。
 

@@ -14,6 +14,7 @@ constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_METADATA_POLICY_VALUE = 255U;
 constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_METHOD_STATUS_VALUE = 255U;
 constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_ASSOCIATED_STATUS_VALUE = 255U;
 constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_PROJECTION_KIND_VALUE = 255U;
+constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_BORROWED_VIEW_PATH_USE_VALUE = 255U;
 constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_BORROW_KIND_VALUE = 255U;
 
 [[nodiscard]] bool is_nonempty_fingerprint(const StableFingerprint128 fingerprint) noexcept
@@ -50,6 +51,13 @@ constexpr base::u8 QUERY_PRINCIPAL_SET_INVALID_BORROW_KIND_VALUE = 255U;
 {
     return is_valid(kind) ? static_cast<base::u8>(kind)
                           : QUERY_PRINCIPAL_SET_INVALID_PROJECTION_KIND_VALUE;
+}
+
+[[nodiscard]] base::u8 stable_borrowed_view_path_use_value(
+    const BorrowedDynViewPathUse use) noexcept
+{
+    return is_valid(use) ? static_cast<base::u8>(use)
+                         : QUERY_PRINCIPAL_SET_INVALID_BORROWED_VIEW_PATH_USE_VALUE;
 }
 
 [[nodiscard]] base::u8 stable_borrow_kind_value(const DynBorrowKind kind) noexcept
@@ -287,6 +295,27 @@ void mix_projection_fact(StableHashBuilder& builder, const CompositionProjection
     builder.mix_string(fact.target_view_name);
 }
 
+void mix_borrowed_view_path_fact(
+    StableHashBuilder& builder, const BorrowedDynViewPathFact& fact) noexcept
+{
+    builder.mix_fingerprint(fact.principal_set_identity);
+    builder.mix_u64(fact.source_principal.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(fact.source_principal));
+    builder.mix_u64(fact.target_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(fact.target_object));
+    builder.mix_fingerprint(fact.projection_path);
+    builder.mix_fingerprint(fact.supertrait_edge_path);
+    builder.mix_u8(stable_borrow_kind_value(fact.borrow_kind));
+    builder.mix_u8(stable_borrowed_view_path_use_value(fact.use));
+    builder.mix_bool(fact.composition_project_step);
+    builder.mix_bool(fact.supertrait_upcast_step);
+    builder.mix_bool(fact.vtable_dispatch_step);
+    builder.mix_string(fact.method_name);
+    builder.mix_string(fact.source_view_name);
+    builder.mix_string(fact.projected_view_name);
+    builder.mix_string(fact.target_view_name);
+}
+
 void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummary& summary) noexcept
 {
     builder.mix_u64(summary.principal_set_count);
@@ -299,6 +328,9 @@ void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummar
     builder.mix_u64(summary.associated_equality_conflict_count);
     builder.mix_u64(summary.projection_count);
     builder.mix_u64(summary.supertrait_projection_count);
+    builder.mix_u64(summary.borrowed_view_path_count);
+    builder.mix_u64(summary.borrowed_view_path_dispatch_count);
+    builder.mix_u64(summary.borrowed_view_path_expected_projection_count);
     builder.mix_u64(summary.shared_borrow_projection_count);
     builder.mix_u64(summary.mut_borrow_projection_count);
 }
@@ -331,6 +363,11 @@ void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummar
     }
     for (const CompositionProjectionFact& projection : facts.projections) {
         if (!has_identity_fact_for(facts, projection.principal_set_identity)) {
+            return false;
+        }
+    }
+    for (const BorrowedDynViewPathFact& path : facts.borrowed_view_paths) {
+        if (!has_identity_fact_for(facts, path.principal_set_identity)) {
             return false;
         }
     }
@@ -409,6 +446,13 @@ void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummar
     return identity_contains_principal(*identity, projection.target_object);
 }
 
+[[nodiscard]] bool borrowed_view_path_matches_identity(
+    const PrincipalSetCompositionFacts& facts, const BorrowedDynViewPathFact& path) noexcept
+{
+    const PrincipalSetIdentityFact* identity = identity_fact_for(facts, path.principal_set_identity);
+    return identity != nullptr && identity_contains_principal(*identity, path.source_principal);
+}
+
 [[nodiscard]] bool fact_payloads_match_identities(const PrincipalSetCompositionFacts& facts) noexcept
 {
     for (const CompositionWitnessSetFact& witness_set : facts.witness_sets) {
@@ -428,6 +472,11 @@ void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummar
     }
     for (const CompositionProjectionFact& projection : facts.projections) {
         if (!projection_matches_identity(facts, projection)) {
+            return false;
+        }
+    }
+    for (const BorrowedDynViewPathFact& path : facts.borrowed_view_paths) {
+        if (!borrowed_view_path_matches_identity(facts, path)) {
             return false;
         }
     }
@@ -462,6 +511,9 @@ void mix_summary(StableHashBuilder& builder, const PrincipalSetCompositionSummar
         && lhs.associated_equality_conflict_count == rhs.associated_equality_conflict_count
         && lhs.projection_count == rhs.projection_count
         && lhs.supertrait_projection_count == rhs.supertrait_projection_count
+        && lhs.borrowed_view_path_count == rhs.borrowed_view_path_count
+        && lhs.borrowed_view_path_dispatch_count == rhs.borrowed_view_path_dispatch_count
+        && lhs.borrowed_view_path_expected_projection_count == rhs.borrowed_view_path_expected_projection_count
         && lhs.shared_borrow_projection_count == rhs.shared_borrow_projection_count
         && lhs.mut_borrow_projection_count == rhs.mut_borrow_projection_count;
 }
@@ -521,6 +573,19 @@ std::string_view principal_set_projection_kind_name(const PrincipalSetProjection
     return "invalid";
 }
 
+std::string_view borrowed_dyn_view_path_use_name(const BorrowedDynViewPathUse use) noexcept
+{
+    switch (use) {
+        case BorrowedDynViewPathUse::explicit_projection:
+            return "explicit_projection";
+        case BorrowedDynViewPathUse::expected_type_projection:
+            return "expected_type_projection";
+        case BorrowedDynViewPathUse::method_dispatch:
+            return "method_dispatch";
+    }
+    return "invalid";
+}
+
 bool is_valid(const PrincipalSetMetadataPolicy policy) noexcept
 {
     return policy == PrincipalSetMetadataPolicy::principal_set_metadata_v1;
@@ -544,6 +609,13 @@ bool is_valid(const PrincipalSetProjectionKind kind) noexcept
     return kind == PrincipalSetProjectionKind::concrete_to_composition
         || kind == PrincipalSetProjectionKind::composition_to_principal
         || kind == PrincipalSetProjectionKind::composition_to_supertrait;
+}
+
+bool is_valid(const BorrowedDynViewPathUse use) noexcept
+{
+    return use == BorrowedDynViewPathUse::explicit_projection
+        || use == BorrowedDynViewPathUse::expected_type_projection
+        || use == BorrowedDynViewPathUse::method_dispatch;
 }
 
 bool is_valid(const PrincipalSetPrincipalDescriptor& descriptor) noexcept
@@ -620,6 +692,26 @@ bool is_valid(const CompositionProjectionFact& fact) noexcept
         || fact.source_principal.object_origin == fact.target_object.object_origin;
 }
 
+bool is_valid(const BorrowedDynViewPathFact& fact) noexcept
+{
+    if (!is_nonempty_fingerprint(fact.principal_set_identity)
+        || !is_valid(fact.source_principal)
+        || !is_valid(fact.target_object)
+        || !is_nonempty_fingerprint(fact.projection_path)
+        || !is_nonempty_fingerprint(fact.supertrait_edge_path)
+        || !is_valid(fact.borrow_kind)
+        || !is_valid(fact.use)
+        || !fact.composition_project_step
+        || !fact.supertrait_upcast_step
+        || fact.source_principal.principal_trait == fact.target_object.principal_trait) {
+        return false;
+    }
+    if (fact.use == BorrowedDynViewPathUse::method_dispatch) {
+        return fact.vtable_dispatch_step && !fact.method_name.empty();
+    }
+    return !fact.vtable_dispatch_step && fact.method_name.empty();
+}
+
 bool is_valid(
     const PrincipalSetCompositionSummary& summary,
     const PrincipalSetCompositionFacts& facts) noexcept
@@ -648,6 +740,10 @@ bool is_valid(const PrincipalSetCompositionFacts& facts) noexcept
             })
         && std::all_of(facts.projections.begin(), facts.projections.end(),
             [](const CompositionProjectionFact& fact) {
+                return is_valid(fact);
+            })
+        && std::all_of(facts.borrowed_view_paths.begin(), facts.borrowed_view_paths.end(),
+            [](const BorrowedDynViewPathFact& fact) {
                 return is_valid(fact);
             })
         && all_fact_identities_are_known(facts)
@@ -716,6 +812,13 @@ void record_composition_projection_fact(
     facts.summary = summarize_principal_set_composition_counts(facts);
 }
 
+void record_borrowed_dyn_view_path_fact(
+    PrincipalSetCompositionFacts& facts, BorrowedDynViewPathFact fact)
+{
+    facts.borrowed_view_paths.push_back(std::move(fact));
+    facts.summary = summarize_principal_set_composition_counts(facts);
+}
+
 PrincipalSetCompositionSummary summarize_principal_set_composition_counts(
     const PrincipalSetCompositionFacts& facts) noexcept
 {
@@ -726,6 +829,7 @@ PrincipalSetCompositionSummary summarize_principal_set_composition_counts(
     summary.associated_equality_merge_count =
         static_cast<base::u64>(facts.associated_equality_merges.size());
     summary.projection_count = static_cast<base::u64>(facts.projections.size());
+    summary.borrowed_view_path_count = static_cast<base::u64>(facts.borrowed_view_paths.size());
 
     for (const PrincipalSetIdentityFact& fact : facts.identity_facts) {
         summary.principal_count += static_cast<base::u64>(fact.principals.size());
@@ -747,6 +851,14 @@ PrincipalSetCompositionSummary summarize_principal_set_composition_counts(
         }
         count_projection_borrow_kind(summary, fact.borrow_kind);
     }
+    for (const BorrowedDynViewPathFact& fact : facts.borrowed_view_paths) {
+        if (fact.use == BorrowedDynViewPathUse::method_dispatch) {
+            ++summary.borrowed_view_path_dispatch_count;
+        }
+        if (fact.use == BorrowedDynViewPathUse::expected_type_projection) {
+            ++summary.borrowed_view_path_expected_projection_count;
+        }
+    }
     return summary;
 }
 
@@ -761,6 +873,7 @@ StableFingerprint128 principal_set_composition_facts_fingerprint(
     builder.mix_u64(static_cast<base::u64>(facts.method_namespaces.size()));
     builder.mix_u64(static_cast<base::u64>(facts.associated_equality_merges.size()));
     builder.mix_u64(static_cast<base::u64>(facts.projections.size()));
+    builder.mix_u64(static_cast<base::u64>(facts.borrowed_view_paths.size()));
     mix_summary(builder, facts.summary);
     for (const PrincipalSetIdentityFact& fact : facts.identity_facts) {
         mix_identity_fact(builder, fact);
@@ -776,6 +889,9 @@ StableFingerprint128 principal_set_composition_facts_fingerprint(
     }
     for (const CompositionProjectionFact& fact : facts.projections) {
         mix_projection_fact(builder, fact);
+    }
+    for (const BorrowedDynViewPathFact& fact : facts.borrowed_view_paths) {
+        mix_borrowed_view_path_fact(builder, fact);
     }
     return builder.finish();
 }
@@ -796,6 +912,10 @@ std::string summarize_principal_set_composition_facts(
           << " conflicts=" << facts.summary.associated_equality_conflict_count
           << " projections=" << facts.summary.projection_count
           << " supertrait_projections=" << facts.summary.supertrait_projection_count
+          << " borrowed_view_paths=" << facts.summary.borrowed_view_path_count
+          << " borrowed_view_path_dispatches=" << facts.summary.borrowed_view_path_dispatch_count
+          << " borrowed_view_path_expected_projections="
+          << facts.summary.borrowed_view_path_expected_projection_count
           << " shared_projection_borrows=" << facts.summary.shared_borrow_projection_count
           << " mut_projection_borrows=" << facts.summary.mut_borrow_projection_count
           << " metadata="
@@ -804,6 +924,13 @@ std::string summarize_principal_set_composition_facts(
         label << " first_projection="
               << principal_set_projection_kind_name(facts.projections.front().kind)
               << " borrow=" << dyn_borrow_kind_name(facts.projections.front().borrow_kind);
+    }
+    if (!facts.borrowed_view_paths.empty()) {
+        label << " first_borrowed_view_path="
+              << borrowed_dyn_view_path_use_name(facts.borrowed_view_paths.front().use)
+              << " " << fallback_name(facts.borrowed_view_paths.front().source_view_name, "<unknown>")
+              << "->" << fallback_name(facts.borrowed_view_paths.front().projected_view_name, "<unknown>")
+              << "->" << fallback_name(facts.borrowed_view_paths.front().target_view_name, "<unknown>");
     }
     label << " fingerprint=" << debug_string(principal_set_composition_facts_fingerprint(facts));
     return label.str();
@@ -825,6 +952,10 @@ std::string dump_principal_set_composition_facts(
            << " conflicts=" << facts.summary.associated_equality_conflict_count
            << " projections=" << facts.summary.projection_count
            << " supertrait_projections=" << facts.summary.supertrait_projection_count
+           << " borrowed_view_paths=" << facts.summary.borrowed_view_path_count
+           << " borrowed_view_path_dispatches=" << facts.summary.borrowed_view_path_dispatch_count
+           << " borrowed_view_path_expected_projections="
+           << facts.summary.borrowed_view_path_expected_projection_count
            << " metadata="
            << principal_set_metadata_policy_name(PrincipalSetMetadataPolicy::principal_set_metadata_v1)
            << " fingerprint=" << debug_string(principal_set_composition_facts_fingerprint(facts)) << '\n';
@@ -890,6 +1021,24 @@ std::string dump_principal_set_composition_facts(
                << " data_pointer_preserved=" << (fact.data_pointer_preserved ? "yes" : "no")
                << " origin_preserved=" << (fact.origin_preserved ? "yes" : "no")
                << " path=" << debug_string(fact.projection_path) << '\n';
+    }
+    for (base::usize index = 0; index < facts.borrowed_view_paths.size(); ++index) {
+        const BorrowedDynViewPathFact& fact = facts.borrowed_view_paths[index];
+        stream << "  borrowed_dyn_view_path_fact #" << index
+               << " identity=" << debug_string(fact.principal_set_identity)
+               << " use=" << borrowed_dyn_view_path_use_name(fact.use)
+               << " borrow=" << dyn_borrow_kind_name(fact.borrow_kind)
+               << " source=" << fallback_name(fact.source_view_name, "<unknown>")
+               << " projected=" << fallback_name(fact.projected_view_name, "<unknown>")
+               << " target=" << fallback_name(fact.target_view_name, "<unknown>")
+               << " composition_project_step=" << (fact.composition_project_step ? "yes" : "no")
+               << " supertrait_upcast_step=" << (fact.supertrait_upcast_step ? "yes" : "no")
+               << " vtable_dispatch_step=" << (fact.vtable_dispatch_step ? "yes" : "no");
+        if (!fact.method_name.empty()) {
+            stream << " method=" << fact.method_name;
+        }
+        stream << " projection_path=" << debug_string(fact.projection_path)
+               << " supertrait_edge=" << debug_string(fact.supertrait_edge_path) << '\n';
     }
     return stream.str();
 }

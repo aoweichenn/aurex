@@ -549,22 +549,6 @@ TEST(CoreUnit, DynTraitCompositionDirectMethodCallsRejectAmbiguousAndMissingName
             "}\n",
             "mutable method receiver requires mutable pointer",
         },
-        {
-            "module dyn_trait_composition_supertrait_direct_reject_whitebox;\n"
-            "trait Parent { fn parent(self: &Self) -> i32; }\n"
-            "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
-            "trait Debug { fn debug(self: &Self) -> i32; }\n"
-            "struct File { value: i32; }\n"
-            "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
-            "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
-            "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
-            "fn main() -> i32 {\n"
-            "  let file: File = File { value: 1 };\n"
-            "  let view: &dyn (Child + Debug) = &file;\n"
-            "  return view.parent();\n"
-            "}\n",
-            "has no visible impl for trait method `parent`",
-        },
     };
 
     for (const auto& [source, diagnostic] : cases) {

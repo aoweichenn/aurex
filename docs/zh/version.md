@@ -1,5 +1,36 @@
 # 版本文档
 
+## M14 Borrowed Dyn View Path Inference / Dispatch Release
+
+M14 已完成 borrowed dyn view path inference / dispatch release。M14 在 M13 的 explicit
+composition-to-supertrait runtime chain 上打开两个受限隐式路径：
+
+```aurex
+let parent: &dyn Parent = view;
+return view.parent();
+```
+
+其中 `view` 可以是 `&dyn (Child + Debug)` 或 `&mut dyn (Child + Debug)`。成功条件是 source composition 中
+只有一个 principal 能沿 checked supertrait path 到达 target supertrait；否则仍拒绝并要求用户写
+`dynproject[SourcePrincipal, TargetSupertrait](view)`。
+
+M14 新增或固定：
+
+- `BorrowedDynViewPathUse::{explicit_projection, expected_type_projection, method_dispatch}`。
+- `BorrowedDynViewPathFact`，记录 source principal、target object、composition projection fingerprint、
+  supertrait edge fingerprint、borrow kind、source/projected/target view name 和 method dispatch step。
+- `PrincipalSetCompositionSummary::{borrowed_view_path_count, borrowed_view_path_dispatch_count,
+  borrowed_view_path_expected_projection_count}`。
+- `principal_set_composition_facts_fingerprint()`、summary 和 dump 均混入 borrowed view path facts。
+- direct `view.parent()` lowering 为 `trait_object_composition_project` + `trait_object_upcast` + ordinary
+  `vtable_slot`。
+- expected-type projection lowering 为 `trait_object_composition_project` + `trait_object_upcast`。
+- ambiguous multi-principal path 继续诊断，不做隐式 source-principal 猜测。
+
+M14 继续保持 no-std/compiler runtime core 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
+不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI、不实现 bare
+`dyn A + B` syntax，也不新增 runtime metadata policy。
+
 ## M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
 
 M13d 已完成 borrowed composition-to-supertrait explicit projection 的 release closure。M13d 不改变用户语法：

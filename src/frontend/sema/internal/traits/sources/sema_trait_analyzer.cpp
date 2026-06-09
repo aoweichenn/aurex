@@ -2944,6 +2944,38 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_principal_set_dyn_trait_method_call
         candidate.dispatch_receiver_type = principal;
         result = std::move(candidate);
     }
+    if (result.found) {
+        return result;
+    }
+
+    for (const TypeHandle principal : object_info.trait_object_principal_types) {
+        if (!is_valid(principal) || principal.value >= this->core_.state_.checked.types.size()) {
+            continue;
+        }
+        const TypeInfo& principal_info = this->core_.state_.checked.types.get(principal);
+        if (principal_info.kind != TypeKind::trait_object || !query::is_valid(principal_info.trait_object_key)) {
+            continue;
+        }
+        TraitMethodCallResolution candidate =
+            this->resolve_supertrait_dyn_trait_method_call(principal, principal_info, name_id, name, range);
+        if (candidate.reported_failure) {
+            return candidate;
+        }
+        if (!candidate.found) {
+            continue;
+        }
+        if (result.found) {
+            TraitMethodCallResolution ambiguous;
+            ambiguous.reported_failure = report_failure;
+            if (report_failure) {
+                this->core_.report_type(range, sema_dyn_trait_composition_method_ambiguous_message(name));
+            }
+            return ambiguous;
+        }
+        candidate.composition_source_principal_type = principal;
+        candidate.uses_composition_supertrait_path = true;
+        result = std::move(candidate);
+    }
     if (!result.found && report_failure) {
         this->core_.report_lookup(range,
             sema_trait_method_impl_missing_message(this->core_.state_.checked.types.display_name(object_type), name));

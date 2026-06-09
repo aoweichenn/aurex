@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M13d Borrowed Composition-To-Supertrait Hardening / Release Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M14 Borrowed Dyn View Path Inference / Dispatch Release**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -34,7 +34,7 @@ documentation tests 已固定 release boundary。M12a 已打开无歧义 direct 
 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重、dyn ABI fingerprint 和
 negative matrix hardening。当前仍不实现
 标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop dispatch runtime、allocator policy、bare
-`dyn A + B` syntax 或 composition-to-supertrait 隐式多步 direct dispatch。M13a 已从剩余 advanced dyn 候选中选择
+`dyn A + B` syntax 或歧义 composition-to-supertrait 自动选择。M13a 已从剩余 advanced dyn 候选中选择
 borrowed composition-to-supertrait explicit projection 作为下一条主线，并通过
 `m13a_dyn_advanced_design_gate_baseline` 固定 `borrowed_composition_supertrait_projection`、
 `composes_existing_metadata_policies`、`composition_to_supertrait_projection_fact` 和
@@ -46,8 +46,7 @@ source principal 在 composition 中，target 是该 source principal 的 supert
 `trait_object_composition_project` + `trait_object_upcast`，复用 `principal_set_metadata_v1` 与
 `supertrait_vptr_metadata_v1`；M13d 已把该 runtime surface 收口到 query/cache/tooling/verifier release baseline：
 `FunctionDynAbiFacts::composition_supertrait_chains`、IDE hover、lower-IR fingerprint 和 negative verifier matrix 都能
-显式展示 / 校验 `composition_project -> upcast` chain。仍继续拒绝隐式 `let parent: &dyn Parent = view;` 和
-`view.parent()`。
+显式展示 / 校验 `composition_project -> upcast` chain。M14 已在唯一 source-principal path 下支持 `let parent: &dyn Parent = view;` 和 `view.parent()`，并记录 `BorrowedDynViewPathFact`；歧义 path 仍要求显式 `dynproject[...]`。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -96,6 +95,7 @@ source principal 在 composition 中，target 是该 source principal 的 supert
 - [Aurex M11 Principal-Set Composition Release Baseline](m11-release-baseline.md)
 - [Aurex M12 Direct Composition Dispatch Release Baseline](m12-release-baseline.md)
 - [Aurex M13 Advanced Dyn Remaining Policy Design Baseline](m13-advanced-dyn-design.md)
+- [Aurex M14 Borrowed Dyn View Path Inference Release Baseline](m14-borrowed-dyn-view-path-release.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

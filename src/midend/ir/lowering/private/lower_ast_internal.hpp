@@ -419,6 +419,8 @@ public:
         sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
     [[nodiscard]] const sema::TraitObjectUpcastCoercionFact* dynproject_upcast_coercion(
         syntax::ExprId argument_expr, sema::TypeHandle target_type) const noexcept;
+    [[nodiscard]] const sema::TraitObjectUpcastCoercionFact* composition_supertrait_upcast_coercion(
+        sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
     [[nodiscard]] const TraitObjectVTableSupertraitEdge* trait_object_vtable_supertrait_edge(
         const query::VTableLayoutKey& source_layout,
         const query::VTableLayoutKey& target_layout,

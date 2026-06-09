@@ -637,6 +637,81 @@ bool SemanticAnalyzerCore::can_borrowed_dyn_trait_composition_project(
     });
 }
 
+SemanticAnalyzerCore::BorrowedDynViewPathResolution
+SemanticAnalyzerCore::resolve_borrowed_dyn_trait_composition_supertrait_path(
+    const TypeHandle dst, const TypeHandle src) const noexcept
+{
+    BorrowedDynViewPathResolution resolution;
+    resolution.source_reference_type = src;
+    resolution.target_reference_type = dst;
+
+    if (!this->state_.checked.types.is_reference(dst) || !this->state_.checked.types.is_reference(src)) {
+        return resolution;
+    }
+    const TypeInfo& dst_ref = this->state_.checked.types.get(dst);
+    const TypeInfo& src_ref = this->state_.checked.types.get(src);
+    if (dst_ref.pointer_mutability == PointerMutability::mut
+        && src_ref.pointer_mutability != PointerMutability::mut) {
+        return resolution;
+    }
+    if (!is_valid(dst_ref.pointee) || dst_ref.pointee.value >= this->state_.checked.types.size()
+        || !is_valid(src_ref.pointee) || src_ref.pointee.value >= this->state_.checked.types.size()) {
+        return resolution;
+    }
+
+    const TypeInfo& target_object = this->state_.checked.types.get(dst_ref.pointee);
+    const TypeInfo& source_object = this->state_.checked.types.get(src_ref.pointee);
+    if (target_object.kind != TypeKind::trait_object || source_object.kind != TypeKind::trait_object
+        || !target_object.trait_object_principal_types.empty()
+        || source_object.trait_object_principal_types.empty()
+        || source_object.trait_object_principal_set_identity.byte_count == 0
+        || !query::is_valid(target_object.trait_object_key)) {
+        return resolution;
+    }
+
+    const TraitSupertraitEdgeFact* selected_edge = nullptr;
+    TypeHandle selected_principal = INVALID_TYPE_HANDLE;
+    for (const TypeHandle principal : source_object.trait_object_principal_types) {
+        if (!is_valid(principal) || principal.value >= this->state_.checked.types.size()) {
+            continue;
+        }
+        const TypeInfo& principal_info = this->state_.checked.types.get(principal);
+        if (principal_info.kind != TypeKind::trait_object || !query::is_valid(principal_info.trait_object_key)) {
+            continue;
+        }
+        const TraitSupertraitEdgeFact* const edge =
+            this->find_supertrait_edge_path(principal_info, target_object);
+        if (edge == nullptr) {
+            continue;
+        }
+        if (is_valid(selected_principal)) {
+            resolution.ambiguous = true;
+            resolution.found = false;
+            return resolution;
+        }
+        selected_principal = principal;
+        selected_edge = edge;
+    }
+
+    if (!is_valid(selected_principal) || selected_edge == nullptr) {
+        return resolution;
+    }
+
+    resolution.source_composition_object_type = src_ref.pointee;
+    resolution.source_principal_type = selected_principal;
+    resolution.target_object_type = dst_ref.pointee;
+    resolution.supertrait_edge = selected_edge;
+    resolution.borrow_kind = principal_set_borrow_kind(dst_ref.pointer_mutability);
+    resolution.found = true;
+    return resolution;
+}
+
+bool SemanticAnalyzerCore::can_borrowed_dyn_trait_composition_supertrait_project(
+    const TypeHandle dst, const TypeHandle src) const noexcept
+{
+    return this->resolve_borrowed_dyn_trait_composition_supertrait_path(dst, src).found;
+}
+
 bool SemanticAnalyzerCore::can_borrowed_dyn_trait_upcast(const TypeHandle dst, const TypeHandle src) const
 {
     if (!this->state_.checked.types.is_reference(dst) || !this->state_.checked.types.is_reference(src)) {
@@ -840,6 +915,8 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_composition_supertrait_proj
     const TypeHandle from_type,
     const TypeHandle to_type,
     const TypeHandle source_principal_type,
+    const query::BorrowedDynViewPathUse use,
+    const std::string_view method_name,
     const base::SourceRange& range)
 {
     if (!syntax::is_valid(expr)
@@ -891,16 +968,19 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_composition_supertrait_proj
     }
 
     const query::DynBorrowKind borrow_kind = principal_set_borrow_kind(target_ref.pointer_mutability);
+    const query::CanonicalTypeKey source_canonical_key = source_key.take_value();
+    const query::StableFingerprint128 projection_path =
+        principal_composition_supertrait_projection_fingerprint(this->state_.checked.types,
+            source_object_type, source_principal_type, target_object_type,
+            source_object.trait_object_principal_set_identity, source_principal.trait_object_key,
+            target_object.trait_object_key, edge->edge_fingerprint, borrow_kind);
     query::CompositionProjectionFact projection;
     projection.principal_set_identity = source_object.trait_object_principal_set_identity;
     projection.kind = query::PrincipalSetProjectionKind::composition_to_supertrait;
-    projection.concrete_type = source_key.take_value();
+    projection.concrete_type = source_canonical_key;
     projection.source_principal = source_principal.trait_object_key;
     projection.target_object = target_object.trait_object_key;
-    projection.projection_path = principal_composition_supertrait_projection_fingerprint(this->state_.checked.types,
-        source_object_type, source_principal_type, target_object_type,
-        source_object.trait_object_principal_set_identity, source_principal.trait_object_key,
-        target_object.trait_object_key, edge->edge_fingerprint, borrow_kind);
+    projection.projection_path = projection_path;
     projection.borrow_kind = borrow_kind;
     projection.source_view_name = this->state_.checked.types.display_name(source_object_type);
     projection.target_view_name = this->state_.checked.types.display_name(target_object_type);
@@ -912,12 +992,39 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_composition_supertrait_proj
         query::record_composition_projection_fact(
             this->state_.checked.principal_set_composition_facts, std::move(projection));
     }
+
+    const TypeHandle source_principal_reference_type =
+        this->state_.checked.types.reference(source_ref.pointer_mutability, source_principal_type);
+    query::BorrowedDynViewPathFact borrowed_view_path;
+    borrowed_view_path.principal_set_identity = source_object.trait_object_principal_set_identity;
+    borrowed_view_path.source_principal = source_principal.trait_object_key;
+    borrowed_view_path.target_object = target_object.trait_object_key;
+    borrowed_view_path.projection_path = projection_path;
+    borrowed_view_path.supertrait_edge_path = edge->edge_fingerprint;
+    borrowed_view_path.borrow_kind = borrow_kind;
+    borrowed_view_path.use = use;
+    borrowed_view_path.composition_project_step = true;
+    borrowed_view_path.supertrait_upcast_step = true;
+    borrowed_view_path.vtable_dispatch_step = use == query::BorrowedDynViewPathUse::method_dispatch;
+    borrowed_view_path.method_name = std::string(method_name);
+    borrowed_view_path.source_view_name = this->state_.checked.types.display_name(from_type);
+    borrowed_view_path.projected_view_name =
+        this->state_.checked.types.display_name(source_principal_reference_type);
+    borrowed_view_path.target_view_name = this->state_.checked.types.display_name(to_type);
+    if (!std::ranges::any_of(this->state_.checked.principal_set_composition_facts.borrowed_view_paths,
+            [&](const query::BorrowedDynViewPathFact& existing) {
+                return existing.projection_path == borrowed_view_path.projection_path
+                    && existing.use == borrowed_view_path.use
+                    && existing.method_name == borrowed_view_path.method_name;
+            })) {
+        query::record_borrowed_dyn_view_path_fact(
+            this->state_.checked.principal_set_composition_facts, std::move(borrowed_view_path));
+    }
+
     this->state_.checked.principal_set_composition_facts.fingerprint =
         query::principal_set_composition_facts_fingerprint(this->state_.checked.principal_set_composition_facts);
     this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
 
-    const TypeHandle source_principal_reference_type =
-        this->state_.checked.types.reference(source_ref.pointer_mutability, source_principal_type);
     this->record_borrowed_dyn_trait_projection_upcast_if_needed(
         expr, source_principal_reference_type, to_type, range);
 }

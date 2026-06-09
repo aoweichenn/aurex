@@ -1712,6 +1712,52 @@ const sema::TraitObjectUpcastCoercionFact* Lowerer::dynproject_upcast_coercion(
     return nullptr;
 }
 
+const sema::TraitObjectUpcastCoercionFact* Lowerer::composition_supertrait_upcast_coercion(
+    const sema::TypeHandle source_type,
+    const sema::TypeHandle target_type) const noexcept
+{
+    if (!sema::is_valid(source_type) || !sema::is_valid(target_type)
+        || !this->module_.types.is_reference(source_type) || !this->module_.types.is_reference(target_type)) {
+        return nullptr;
+    }
+    const sema::TypeInfo& source_ref = this->module_.types.get(source_type);
+    const sema::TypeInfo& target_ref = this->module_.types.get(target_type);
+    if (!sema::is_valid(source_ref.pointee) || !sema::is_valid(target_ref.pointee)
+        || !this->module_.types.is_principal_set_trait_object(source_ref.pointee)
+        || !this->module_.types.is_trait_object(target_ref.pointee)
+        || this->module_.types.is_principal_set_trait_object(target_ref.pointee)) {
+        return nullptr;
+    }
+
+    const sema::TypeInfo& source_object = this->module_.types.get(source_ref.pointee);
+    for (const sema::TraitObjectUpcastCoercionFact& fact : this->checked_.trait_object_upcast_coercions) {
+        if (!this->module_.types.same(fact.target_reference_type, target_type)
+            || !this->module_.types.is_reference(fact.source_reference_type)) {
+            continue;
+        }
+        const sema::TypeInfo& projected_ref = this->module_.types.get(fact.source_reference_type);
+        if (projected_ref.pointer_mutability != source_ref.pointer_mutability
+            || !sema::is_valid(projected_ref.pointee)) {
+            continue;
+        }
+        const bool source_contains_projected_principal =
+            std::ranges::any_of(source_object.trait_object_principal_types,
+                [&](const sema::TypeHandle principal) {
+                    return this->module_.types.same(principal, projected_ref.pointee);
+                });
+        if (!source_contains_projected_principal) {
+            continue;
+        }
+        if (this->trait_object_vtable_supertrait_edge(
+                fact.source_vtable_layout, fact.target_vtable_layout, fact.upcast_key,
+                fact.source_reference_type, fact.target_reference_type)
+            != nullptr) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
 const TraitObjectVTableSupertraitEdge* Lowerer::trait_object_vtable_supertrait_edge(
     const query::VTableLayoutKey& source_layout,
     const query::VTableLayoutKey& target_layout,
@@ -1850,6 +1896,13 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
                     }
                 }
                 return this->append_value(value);
+            }
+            if (const sema::TraitObjectUpcastCoercionFact* const upcast =
+                    this->composition_supertrait_upcast_coercion(source_type, target_type);
+                upcast != nullptr) {
+                const ValueId projected_principal =
+                    this->coerce_value(value_id, upcast->source_reference_type);
+                return this->coerce_value(projected_principal, target_type);
             }
         }
     }

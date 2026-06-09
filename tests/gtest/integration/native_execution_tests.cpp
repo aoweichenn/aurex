@@ -295,4 +295,42 @@ TEST_F(AurexIntegrationTest, NativeDynTraitCompositionSupertraitProjectionDispat
     EXPECT_EQ(require_success(q(binary)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, NativeDynTraitCompositionSupertraitDirectDispatchesParentVtables)
+{
+    const fs::path source = write_native_source_file(
+        tmp_root() / "native_dyn_trait_composition_supertrait_direct.ax",
+        "module native_dyn_trait_composition_supertrait_direct;\n"
+        "trait Parent {\n"
+        "  fn parent(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Child: Parent {\n"
+        "  fn child(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Debug {\n"
+        "  fn debug(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 100; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1000; } }\n"
+        "impl Parent for Socket { fn parent(self: &Socket) -> i32 { return self.value + 20; } }\n"
+        "impl Child for Socket { fn child(self: &Socket) -> i32 { return self.value + 200; } }\n"
+        "impl Debug for Socket { fn debug(self: &Socket) -> i32 { return self.value + 2000; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  return view.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 3 };\n"
+        "  let socket: Socket = Socket { value: 4 };\n"
+        "  let total: i32 = score(&file) + score(&socket);\n"
+        "  if total == 27 { return 0; }\n"
+        "  return 1;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_dyn_trait_composition_supertrait_direct";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
 } // namespace aurex::test

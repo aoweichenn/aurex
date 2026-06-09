@@ -244,6 +244,30 @@ struct PrincipalSetFixture {
     };
 }
 
+[[nodiscard]] query::BorrowedDynViewPathFact borrowed_view_path_fact(
+    const PrincipalSetFixture& fixture,
+    const query::PrincipalSetIdentityFact& identity,
+    const query::BorrowedDynViewPathUse use)
+{
+    return query::BorrowedDynViewPathFact{
+        identity.principal_set_identity,
+        fixture.draw_object,
+        fixture.super_object,
+        query::stable_fingerprint(std::string("borrowed-view-path:projection:")
+            + std::string(query::borrowed_dyn_view_path_use_name(use))),
+        query::stable_fingerprint("borrowed-view-path:edge:Draw->Renderable"),
+        query::DynBorrowKind::shared,
+        use,
+        true,
+        true,
+        use == query::BorrowedDynViewPathUse::method_dispatch,
+        use == query::BorrowedDynViewPathUse::method_dispatch ? "render" : "",
+        "&dyn (Draw + Debug)",
+        "&dyn Draw",
+        "&dyn Renderable",
+    };
+}
+
 [[nodiscard]] query::PrincipalSetCompositionFacts full_facts()
 {
     const PrincipalSetFixture fixture = make_fixture();
@@ -273,6 +297,9 @@ struct PrincipalSetFixture {
             query::PrincipalSetProjectionKind::composition_to_supertrait,
             fixture.super_object,
             query::DynBorrowKind::mut));
+    query::record_borrowed_dyn_view_path_fact(
+        facts,
+        borrowed_view_path_fact(fixture, identity, query::BorrowedDynViewPathUse::method_dispatch));
     facts.fingerprint = query::principal_set_composition_facts_fingerprint(facts);
     return facts;
 }
@@ -308,6 +335,15 @@ TEST(QueryUnit, PrincipalSetCompositionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::principal_set_projection_kind_name(
                   query::PrincipalSetProjectionKind::composition_to_supertrait),
         "composition_to_supertrait");
+    EXPECT_EQ(query::borrowed_dyn_view_path_use_name(
+                  query::BorrowedDynViewPathUse::explicit_projection),
+        "explicit_projection");
+    EXPECT_EQ(query::borrowed_dyn_view_path_use_name(
+                  query::BorrowedDynViewPathUse::expected_type_projection),
+        "expected_type_projection");
+    EXPECT_EQ(query::borrowed_dyn_view_path_use_name(
+                  query::BorrowedDynViewPathUse::method_dispatch),
+        "method_dispatch");
 
     EXPECT_EQ(query::principal_set_metadata_policy_name(
                   static_cast<query::PrincipalSetMetadataPolicy>(QUERY_TEST_INVALID_ENUM_VALUE)),
@@ -321,6 +357,9 @@ TEST(QueryUnit, PrincipalSetCompositionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::principal_set_projection_kind_name(
                   static_cast<query::PrincipalSetProjectionKind>(QUERY_TEST_INVALID_ENUM_VALUE)),
         "invalid");
+    EXPECT_EQ(query::borrowed_dyn_view_path_use_name(
+                  static_cast<query::BorrowedDynViewPathUse>(QUERY_TEST_INVALID_ENUM_VALUE)),
+        "invalid");
 
     EXPECT_FALSE(query::is_valid(
         static_cast<query::PrincipalSetMetadataPolicy>(QUERY_TEST_INVALID_ENUM_VALUE)));
@@ -330,6 +369,8 @@ TEST(QueryUnit, PrincipalSetCompositionFactsExposeEnumNamesAndInvalidFallbacks)
         static_cast<query::PrincipalAssociatedEqualityMergeStatus>(QUERY_TEST_INVALID_ENUM_VALUE)));
     EXPECT_FALSE(query::is_valid(
         static_cast<query::PrincipalSetProjectionKind>(QUERY_TEST_INVALID_ENUM_VALUE)));
+    EXPECT_FALSE(query::is_valid(
+        static_cast<query::BorrowedDynViewPathUse>(QUERY_TEST_INVALID_ENUM_VALUE)));
 }
 
 TEST(QueryUnit, PrincipalSetCompositionIdentityCanonicalizesPrincipalSet)
@@ -434,6 +475,27 @@ TEST(QueryUnit, PrincipalSetCompositionFactsValidationRejectsBoundaryDrift)
     projection.target_object = fixture.super_object;
     projection.kind = static_cast<query::PrincipalSetProjectionKind>(QUERY_TEST_INVALID_ENUM_VALUE);
     EXPECT_FALSE(query::is_valid(projection));
+
+    query::BorrowedDynViewPathFact path =
+        borrowed_view_path_fact(fixture, identity, query::BorrowedDynViewPathUse::method_dispatch);
+    EXPECT_TRUE(query::is_valid(path));
+    path.vtable_dispatch_step = false;
+    EXPECT_FALSE(query::is_valid(path));
+    path.vtable_dispatch_step = true;
+    path.method_name.clear();
+    EXPECT_FALSE(query::is_valid(path));
+
+    query::BorrowedDynViewPathFact expected_path =
+        borrowed_view_path_fact(fixture, identity, query::BorrowedDynViewPathUse::expected_type_projection);
+    EXPECT_TRUE(query::is_valid(expected_path));
+    expected_path.vtable_dispatch_step = true;
+    EXPECT_FALSE(query::is_valid(expected_path));
+    expected_path.vtable_dispatch_step = false;
+    expected_path.method_name = "render";
+    EXPECT_FALSE(query::is_valid(expected_path));
+    expected_path.method_name.clear();
+    expected_path.use = static_cast<query::BorrowedDynViewPathUse>(QUERY_TEST_INVALID_ENUM_VALUE);
+    EXPECT_FALSE(query::is_valid(expected_path));
 }
 
 TEST(QueryUnit, PrincipalSetCompositionFactsRejectFlattenedNamespace)
@@ -486,6 +548,9 @@ TEST(QueryUnit, PrincipalSetCompositionFactsSummaryDumpAndFingerprintAreStable)
     EXPECT_EQ(facts.summary.associated_equality_conflict_count, 1U);
     EXPECT_EQ(facts.summary.projection_count, 2U);
     EXPECT_EQ(facts.summary.supertrait_projection_count, 1U);
+    EXPECT_EQ(facts.summary.borrowed_view_path_count, 1U);
+    EXPECT_EQ(facts.summary.borrowed_view_path_dispatch_count, 1U);
+    EXPECT_EQ(facts.summary.borrowed_view_path_expected_projection_count, 0U);
     EXPECT_EQ(facts.summary.shared_borrow_projection_count, 1U);
     EXPECT_EQ(facts.summary.mut_borrow_projection_count, 1U);
     EXPECT_EQ(facts.fingerprint, query::principal_set_composition_facts_fingerprint(facts));
@@ -496,6 +561,9 @@ TEST(QueryUnit, PrincipalSetCompositionFactsSummaryDumpAndFingerprintAreStable)
     EXPECT_NE(summary.find("principal_sets=1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("principals=2"), std::string::npos) << summary;
     EXPECT_NE(summary.find("conflicts=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("borrowed_view_paths=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("borrowed_view_path_dispatches=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_borrowed_view_path=method_dispatch"), std::string::npos) << summary;
     EXPECT_NE(summary.find("metadata=principal_set_metadata_v1"), std::string::npos) << summary;
 
     const std::string dump = query::dump_principal_set_composition_facts(facts);
@@ -504,10 +572,13 @@ TEST(QueryUnit, PrincipalSetCompositionFactsSummaryDumpAndFingerprintAreStable)
     EXPECT_NE(dump.find("principal_method_namespace_fact"), std::string::npos) << dump;
     EXPECT_NE(dump.find("associated_equality_merge_fact"), std::string::npos) << dump;
     EXPECT_NE(dump.find("composition_projection_fact"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("borrowed_dyn_view_path_fact"), std::string::npos) << dump;
     EXPECT_NE(dump.find("principal=Draw"), std::string::npos) << dump;
     EXPECT_NE(dump.find("principal=Debug"), std::string::npos) << dump;
     EXPECT_NE(dump.find("status=conflict"), std::string::npos) << dump;
     EXPECT_NE(dump.find("kind=composition_to_supertrait"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("use=method_dispatch"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("method=render"), std::string::npos) << dump;
     EXPECT_NE(dump.find("borrow=mut"), std::string::npos) << dump;
 
     query::PrincipalSetCompositionFacts changed_slot = facts;
@@ -522,6 +593,12 @@ TEST(QueryUnit, PrincipalSetCompositionFactsSummaryDumpAndFingerprintAreStable)
     changed_projection.fingerprint = query::principal_set_composition_facts_fingerprint(changed_projection);
     EXPECT_TRUE(query::is_valid(changed_projection));
     EXPECT_NE(changed_projection.fingerprint, facts.fingerprint);
+
+    query::PrincipalSetCompositionFacts changed_path = facts;
+    changed_path.borrowed_view_paths.front().method_name = "paint";
+    changed_path.fingerprint = query::principal_set_composition_facts_fingerprint(changed_path);
+    EXPECT_TRUE(query::is_valid(changed_path));
+    EXPECT_NE(changed_path.fingerprint, facts.fingerprint);
 }
 
 TEST(QueryUnit, PrincipalSetCompositionFactsRejectUnknownIdentityOrStaleSummary)
@@ -533,6 +610,13 @@ TEST(QueryUnit, PrincipalSetCompositionFactsRejectUnknownIdentityOrStaleSummary)
     unknown_identity.projections.front().principal_set_identity = query::stable_fingerprint("unknown identity");
     unknown_identity.fingerprint = query::principal_set_composition_facts_fingerprint(unknown_identity);
     EXPECT_FALSE(query::is_valid(unknown_identity));
+
+    query::PrincipalSetCompositionFacts unknown_path_identity = facts;
+    unknown_path_identity.borrowed_view_paths.front().principal_set_identity =
+        query::stable_fingerprint("unknown path identity");
+    unknown_path_identity.fingerprint =
+        query::principal_set_composition_facts_fingerprint(unknown_path_identity);
+    EXPECT_FALSE(query::is_valid(unknown_path_identity));
 
     query::PrincipalSetCompositionFacts stale_summary = facts;
     ++stale_summary.summary.method_count;
@@ -591,6 +675,11 @@ TEST(QueryUnit, PrincipalSetCompositionFactsRejectCrossIdentityPayloadDrift)
     wrong_projection_target.fingerprint =
         query::principal_set_composition_facts_fingerprint(wrong_projection_target);
     EXPECT_FALSE(query::is_valid(wrong_projection_target));
+
+    query::PrincipalSetCompositionFacts wrong_path_source = facts;
+    wrong_path_source.borrowed_view_paths.front().source_principal = fixture.display_object;
+    wrong_path_source.fingerprint = query::principal_set_composition_facts_fingerprint(wrong_path_source);
+    EXPECT_FALSE(query::is_valid(wrong_path_source));
 }
 
 } // namespace aurex::test

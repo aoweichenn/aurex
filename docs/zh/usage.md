@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.method()` direct dispatch；M12b 固定 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重和 query/cache fingerprint drift；M13a 新增 `m13a_dyn_advanced_design_gate_baseline` query gate，选择 borrowed composition-to-supertrait explicit projection 作为下一条主线；M13b 新增 `dynproject[SourcePrincipal, TargetSupertrait](view)` check-only 显式投影并记录 `composition_to_supertrait` fact。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、composition-to-supertrait IR/backend runtime lowering 或隐式 composition-to-supertrait 多步 direct dispatch。
+本文描述当前 **M13c Borrowed Composition-To-Supertrait IR / Backend Runtime** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.method()` direct dispatch；M12b 固定 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重和 query/cache fingerprint drift；M13a 新增 `m13a_dyn_advanced_design_gate_baseline` query gate，选择 borrowed composition-to-supertrait explicit projection 作为下一条主线；M13b 新增 `dynproject[SourcePrincipal, TargetSupertrait](view)` 显式投影并记录 `composition_to_supertrait` fact；M13c 已把它 lowering 为 `trait_object_composition_project` + `trait_object_upcast` runtime。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或隐式 composition-to-supertrait 多步 direct dispatch。
 
 ## 构建
 
@@ -154,7 +154,7 @@ M11a 已把后续 advanced dyn 主线选为 principal-set borrowed dyn compositi
 identity、witness set、principal-qualified method namespace、associated equality merge 和 projection facts。
 M11c 已在此基础上支持 borrowed composition annotation/coercion，M11d 进一步支持显式 projection 后 runtime dispatch；
 M12a/M12b 支持唯一 principal method 的 direct dispatch，并固定 projection facts、ABI descriptors 和 receiver
-access hardening；M13b 支持显式 composition-to-supertrait check-only projection：
+access hardening；M13c 支持显式 composition-to-supertrait runtime projection：
 
 ```aurex
 trait Draw { fn draw(self: &Self) -> i32; }
@@ -208,17 +208,18 @@ direct dispatch 与显式 `let draw: &dyn Draw = view;` 混用会去重 principa
 composition projection ABI descriptor，associated equality direct call 会使用 selected principal 的 equality
 substitution。如果多个 principal 暴露同名 method，仍必须先显式投影来消除歧义。当前仍不实现 owning dyn、`Box<dyn Trait>`、
 allocator、标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、composition-to-supertrait 隐式多步
-direct dispatch、composition-to-supertrait IR/backend runtime lowering、specialization、default associated type、generic associated type 或 associated const。
+direct dispatch、specialization、default associated type、generic associated type 或 associated const。
 
-M13b 后，`dynproject[Render, Draw](view)` 会在 sema 层检查：
+M13c 后，`dynproject[Render, Draw](view)` 会在 sema 层检查并在 IR/backend 层运行：
 
 - `view` 是 `&dyn (Render + Debug)` / `&mut dyn (Render + Debug)` 这类 borrowed composition。
 - `Render` 是 source principal，并且存在于 composition 中。
 - `Draw` 是 `Render` 的 supertrait。
 - 成功后记录 `CompositionProjectionFact{kind=composition_to_supertrait}` 和 `supertrait_projections` summary。
+- lowering 时先生成 `dyn.composition.project` 取出 source principal，再生成 `dyn.upcast` 取出 target supertrait vtable。
 
-这仍是 check-only 能力。`let draw: &dyn Draw = view;` 这样的隐式 assignment 和 `view.draw()` 穿过
-`Render -> Draw` 的 composition-to-supertrait direct dispatch 继续被拒绝；runtime lowering 留给 M13c。
+`let draw: &dyn Draw = view;` 这样的隐式 assignment 和 `view.draw()` 穿过
+`Render -> Draw` 的 composition-to-supertrait direct dispatch 继续被拒绝；显式 `dynproject[...]` 才会走 runtime lowering。
 
 ## import
 

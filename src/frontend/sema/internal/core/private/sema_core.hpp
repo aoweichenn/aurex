@@ -770,7 +770,7 @@ public:
     [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_dynproject_intrinsic_call(
-        syntax::ExprId expr_id, const ExprView& expr, const ExprView& generic_apply);
+        syntax::ExprId expr_id, const ExprView& expr, const ExprView& generic_apply, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_explicit_generic_method_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const ExprView& generic_apply, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_enum_constructor_call(
@@ -922,6 +922,17 @@ public:
         TypeHandle from_type,
         TypeHandle to_type,
         TypeHandle source_principal_type,
+        const base::SourceRange& range);
+    void record_borrowed_dyn_trait_projection_upcast_if_needed(syntax::ExprId expr,
+        TypeHandle from_type,
+        TypeHandle to_type,
+        const base::SourceRange& range);
+    void bind_dyn_trait_projection_upcast_layouts_from_existing_composition_witnesses(
+        TraitObjectUpcastCoercionFact& upcast,
+        const base::SourceRange& range);
+    void bind_dyn_trait_upcast_vtable_layouts_for_composition_witness(TypeHandle concrete_type,
+        TypeHandle source_object_type,
+        query::VTableLayoutKey source_vtable_layout,
         const base::SourceRange& range);
     void bind_dyn_trait_upcast_vtable_layouts_for_coercion(const TraitObjectCoercionFact& source_coercion);
     void record_borrowed_dyn_trait_upcast_if_needed(

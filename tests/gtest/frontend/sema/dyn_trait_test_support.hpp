@@ -123,6 +123,8 @@ inline void expect_trait_object_authority_matches_checked(
     EXPECT_EQ(authority.trait_object_callability_count, checked.trait_object_callability.size());
     EXPECT_EQ(authority.vtable_layout_count, checked.vtable_layouts.size());
     EXPECT_EQ(authority.trait_object_coercion_count, checked.trait_object_coercions.size());
+    EXPECT_EQ(authority.trait_supertrait_edge_count, checked.trait_supertrait_edges.size());
+    EXPECT_EQ(authority.trait_object_upcast_coercion_count, checked.trait_object_upcast_coercions.size());
     EXPECT_EQ(authority.principal_set_composition_count,
         checked.principal_set_composition_facts.summary.principal_set_count);
     EXPECT_EQ(authority.principal_set_composition_principal_count,

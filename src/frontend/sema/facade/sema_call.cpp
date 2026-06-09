@@ -511,7 +511,7 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
     if (callee.kind == syntax::ExprKind::generic_apply) {
         const NamedTypeSelector selector = this->resolve_named_type_selector(expr.callee, false);
         if (is_unqualified_dynproject_selector(selector)) {
-            return this->analyze_dynproject_intrinsic_call(expr_id, expr, callee);
+            return this->analyze_dynproject_intrinsic_call(expr_id, expr, callee, expected_type);
         }
         if (selector.name.empty()) {
             if (syntax::is_valid(callee.callee) && callee.callee.value < this->ctx_.module.exprs.size()) {
@@ -561,7 +561,8 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
 TypeHandle SemanticAnalyzerCore::analyze_dynproject_intrinsic_call(
     const syntax::ExprId expr_id,
     const SemanticAnalyzerCore::ExprView& expr,
-    const SemanticAnalyzerCore::ExprView& generic_apply)
+    const SemanticAnalyzerCore::ExprView& generic_apply,
+    const TypeHandle expected_type)
 {
     if (generic_apply.type_args.size() != SEMA_DYNPROJECT_REQUIRED_TYPE_ARGS) {
         this->report_type(generic_apply.range, std::string(sema::SEMA_DYNPROJECT_TYPE_ARGUMENT_COUNT));
@@ -634,8 +635,16 @@ TypeHandle SemanticAnalyzerCore::analyze_dynproject_intrinsic_call(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    const TypeHandle target_reference_type =
+    TypeHandle target_reference_type =
         this->state_.checked.types.reference(argument_ref.pointer_mutability, target_supertrait_type);
+    if (this->state_.checked.types.is_reference(expected_type)) {
+        const TypeInfo& expected_ref = this->state_.checked.types.get(expected_type);
+        if ((expected_ref.pointer_mutability == PointerMutability::const_
+                || argument_ref.pointer_mutability == PointerMutability::mut)
+            && this->state_.checked.types.same(expected_ref.pointee, target_supertrait_type)) {
+            target_reference_type = expected_type;
+        }
+    }
     this->record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
         expr.args.front(), argument_type, target_reference_type, source_principal_type, expr.range);
     return this->record_expr_type(expr_id, target_reference_type);

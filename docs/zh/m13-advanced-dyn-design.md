@@ -1,7 +1,7 @@
 # Aurex M13 Advanced Dyn Remaining Policy Design Baseline
 
 日期：2026-06-09
-状态：M13a design/query gate 已完成；M13b frontend/query/sema check-only 已完成
+状态：M13a design/query gate 已完成；M13b frontend/query/sema 已完成；M13c IR/backend runtime 已完成
 
 ## 目标
 
@@ -17,7 +17,8 @@ supertrait upcast metadata，得到 borrowed supertrait view。M13a 不把这个
 M13b 已在该设计上完成第一段实现：用户可写
 `dynproject[SourcePrincipal, TargetSupertrait](view)`，frontend/sema 会检查 source principal 属于 borrowed
 composition、target 是该 source principal 的 supertrait，并记录
-`CompositionProjectionFact{kind=composition_to_supertrait}`。M13b 仍不做 runtime lowering。
+`CompositionProjectionFact{kind=composition_to_supertrait}`。M13c 已继续把该 checked fact lowering 为
+`trait_object_composition_project` + `trait_object_upcast`，不新增 runtime metadata policy。
 
 ## 当前输入事实
 
@@ -57,7 +58,7 @@ trait Child: Parent { fn child(self: &Self) -> i32; }
 trait Debug { fn debug(self: &Self) -> i32; }
 
 fn score(view: &dyn (Child + Debug)) -> i32 {
-    // M13b 已固定 check-only syntax；runtime lowering 留给 M13c。
+    // M13c lowering 为 composition project + supertrait upcast。
     let parent: &dyn Parent = dynproject[Child, Parent](view);
     return parent.parent();
 }
@@ -111,9 +112,9 @@ M13a gate 固定 6 个候选：
 - `do_not_make_composition_to_supertrait_direct_call_implicit`
 - `do_not_add_new_principal_set_metadata_policy`
 
-## M13b 已完成实现
+## M13b / M13c 已完成实现
 
-M13b 没有一次做到 release closure，而是按 check-only 范围完成：
+M13b 按 frontend/query/sema 范围完成，M13c 按 IR/backend runtime 范围完成：
 
 1. Frontend/sema explicit projection 入口：`dynproject[SourcePrincipal, TargetSupertrait](view)`。
 2. `CompositionProjectionFact` 记录 `composition_to_supertrait`，并把 source principal、target supertrait、
@@ -123,8 +124,8 @@ M13b 没有一次做到 release closure，而是按 check-only 范围完成：
    borrowed composition、source principal 不在 composition、target 不是 selected source principal 的 supertrait。
 5. M12b 的拒绝规则保持不变：`view.parent()` 不会隐式穿过 composition 到 supertrait，
    `let parent: &dyn Parent = view;` 也不会隐式成功。
-6. IR/backend 仍未实现 runtime lowering；M13c 再 lowering 为
-   `trait_object_composition_project` + `trait_object_upcast` 组合，或单个 lowering helper 生成同等 IR。
+6. M13c 已实现 runtime lowering：生成 `trait_object_composition_project` +
+   `trait_object_upcast` 组合，复用 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`。
 
 当前语法示例：
 
@@ -139,8 +140,7 @@ fn score(view: &dyn (Child + Debug)) -> i32 {
 }
 ```
 
-M13c/M13d 再做 runtime lowering、ABI descriptor、query/cache/tooling、verifier negative matrix、native execution 和
-release closure。
+M13d 再做 query/cache/tooling、verifier negative matrix、documentation tests、coverage closure 和 release closure。
 
 ## 验证要求
 
@@ -165,7 +165,7 @@ M13a design/query gate 预估 500-900 行新增/修改，主要来自 query DTO/
 | 阶段 | 内容 | 预计新增/修改代码量 |
 | --- | --- | ---: |
 | M13b frontend/query/sema check-only | explicit composition-to-supertrait projection syntax/typing/facts/diagnostics/checked dump | 1,000-1,800 行 |
-| M13c IR/backend runtime | composition project + supertrait upcast lowering、ABI descriptor、verifier、LLVM/native tests | 900-1,600 行 |
+| M13c IR/backend runtime | 已完成。composition project + supertrait upcast lowering、ABI descriptor、LLVM/native tests | 实际以本次 diffstat 为准 |
 | M13d hardening/release | query/cache/tooling hover、negative matrix、docs/samples、coverage closure、代码量偏差分析 | 700-1,200 行 |
 
 如果实际代码量偏离，主要原因应从 syntax 选择、diagnostic matrix、是否复用 M10/M11 lowering helper、documentation

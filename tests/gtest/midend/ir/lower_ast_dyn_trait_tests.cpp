@@ -1046,6 +1046,203 @@ TEST(CoreUnit, LowerAstDynTraitCompositionDirectAndExplicitProjectionShareAbiDes
     ASSERT_TRUE(verified) << verified.error().message;
 }
 
+TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionChainsProjectAndUpcast)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_ir_runtime;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let view: &dyn (Debug + Child) = &file;\n"
+        "  return score(view);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+    EXPECT_EQ(fixture.checked.types.display_name(
+                  fixture.checked.trait_object_upcast_coercions.front().source_reference_type),
+        "&dyn Child");
+    EXPECT_EQ(fixture.checked.types.display_name(
+                  fixture.checked.trait_object_upcast_coercions.front().target_reference_type),
+        "&dyn Parent");
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.supertrait_projection_count, 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 1U);
+
+    const Value* projection = find_value_of_kind(fixture.ir, ValueKind::trait_object_composition_project);
+    ASSERT_NE(projection, nullptr);
+    EXPECT_EQ(fixture.ir.types.display_name(projection->type), "&dyn Child");
+    EXPECT_TRUE(query::is_valid(projection->principal_object));
+    EXPECT_FALSE(query::is_valid(projection->target_vtable_layout));
+
+    const Value* upcast = find_value_of_kind(fixture.ir, ValueKind::trait_object_upcast);
+    ASSERT_NE(upcast, nullptr);
+    bool upcast_uses_projection = false;
+    for (base::usize value_index = 0; value_index < fixture.ir.values.size(); ++value_index) {
+        if (&fixture.ir.values[value_index] == projection) {
+            upcast_uses_projection = upcast->object.value == value_index;
+            break;
+        }
+    }
+    EXPECT_TRUE(upcast_uses_projection);
+    EXPECT_EQ(fixture.ir.types.display_name(upcast->type), "&dyn Parent");
+    EXPECT_EQ(upcast->vtable_supertrait_edge, 0U);
+    EXPECT_TRUE(query::is_valid(upcast->vtable_layout));
+    EXPECT_TRUE(query::is_valid(upcast->target_vtable_layout));
+
+    const std::optional<query::FunctionDynAbiFacts> score_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "score");
+    ASSERT_TRUE(score_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*score_facts));
+    ASSERT_EQ(score_facts->composition_projections.size(), 1U);
+    ASSERT_EQ(score_facts->upcasts.size(), 1U);
+    EXPECT_EQ(score_facts->composition_projections.front().target_reference_type_name, "&dyn Child");
+    EXPECT_EQ(score_facts->upcasts.front().target_reference_type_name, "&dyn Parent");
+    EXPECT_EQ(score_facts->summary.composition_projection_count, 1U);
+    EXPECT_EQ(score_facts->summary.upcast_count, 1U);
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(*score_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+    const std::string dump = ir::dump_module(fixture.ir);
+    expect_contains_all(dump,
+        {
+            "dyn.composition.project",
+            "dyn.upcast",
+            "dyn Child -> dyn Parent",
+            "target_layout=",
+        });
+}
+
+TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionCoversEveryConcreteVtable)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_ir_multi_concrete;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "struct Socket { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 100; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1000; } }\n"
+        "impl Parent for Socket { fn parent(self: &Socket) -> i32 { return self.value + 20; } }\n"
+        "impl Child for Socket { fn child(self: &Socket) -> i32 { return self.value + 200; } }\n"
+        "impl Debug for Socket { fn debug(self: &Socket) -> i32 { return self.value + 2000; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 3 };\n"
+        "  let socket: Socket = Socket { value: 4 };\n"
+        "  return score(&file) + score(&socket);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.ir.principal_set_metadata_layouts.size(), 2U);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+
+    base::usize child_layout_count = 0;
+    for (const TraitObjectVTableLayout& layout : fixture.ir.trait_object_vtables) {
+        if (fixture.ir.types.display_name(layout.object_type) != "dyn Child") {
+            continue;
+        }
+        ++child_layout_count;
+        ASSERT_EQ(layout.supertrait_edges.size(), 1U);
+        const auto target = std::ranges::find_if(fixture.ir.trait_object_vtables,
+            [&](const TraitObjectVTableLayout& candidate) {
+                return candidate.layout_key == layout.supertrait_edges.front().target_layout;
+            });
+        ASSERT_NE(target, fixture.ir.trait_object_vtables.end());
+        EXPECT_EQ(fixture.ir.types.display_name(target->object_type), "dyn Parent");
+        EXPECT_EQ(target->concrete_type.value, layout.concrete_type.value);
+    }
+    EXPECT_EQ(child_layout_count, 2U);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionBindsExistingWitnessLayouts)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_existing_witness;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 17 };\n"
+        "  let view: &dyn (Debug + Child) = &file;\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+        "  return parent.parent();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_object_upcast_coercions.size(), 1U);
+    EXPECT_TRUE(query::is_valid(fixture.checked.trait_object_upcast_coercions.front().source_vtable_layout));
+    EXPECT_TRUE(query::is_valid(fixture.checked.trait_object_upcast_coercions.front().target_vtable_layout));
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, LlvmBackendDynTraitCompositionSupertraitProjectionReusesExistingMetadata)
+{
+    const std::string_view source =
+        "module llvm_dyn_trait_composition_supertrait_projection;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let view: &dyn (Debug + Child) = &file;\n"
+        "  return score(view);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    auto output = backend::emit_llvm_ir({&fixture.ir, "llvm_dyn_trait_composition_supertrait_projection_whitebox"});
+    ASSERT_TRUE(output) << output.error().message;
+    expect_contains_all(output.value().text,
+        {
+            "@__aurex_principal_set_metadata_",
+            "{ [2 x ptr] }",
+            "{ [1 x ptr], [1 x ptr] }",
+            "getelementptr inbounds { [2 x ptr] }",
+            "getelementptr inbounds { [1 x ptr], [1 x ptr] }",
+            "insertvalue { ptr, ptr }",
+            "call i32 %",
+        });
+}
+
 TEST(CoreUnit, LowerAstDynTraitCompositionMetadataLayoutsCoverEachConcreteType)
 {
     const std::string_view source =

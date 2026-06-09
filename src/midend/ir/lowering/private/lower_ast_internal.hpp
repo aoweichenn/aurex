@@ -355,6 +355,7 @@ public:
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_dynproject_intrinsic_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_dyn_trait_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding);
     [[nodiscard]] ValueId lower_indirect_call_expr(
@@ -416,10 +417,14 @@ public:
         sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
     [[nodiscard]] const sema::TraitObjectUpcastCoercionFact* trait_object_upcast_coercion(
         sema::TypeHandle source_type, sema::TypeHandle target_type) const noexcept;
+    [[nodiscard]] const sema::TraitObjectUpcastCoercionFact* dynproject_upcast_coercion(
+        syntax::ExprId argument_expr, sema::TypeHandle target_type) const noexcept;
     [[nodiscard]] const TraitObjectVTableSupertraitEdge* trait_object_vtable_supertrait_edge(
         const query::VTableLayoutKey& source_layout,
         const query::VTableLayoutKey& target_layout,
-        const query::TraitObjectUpcastCoercionKey& upcast_key) const noexcept;
+        const query::TraitObjectUpcastCoercionKey& upcast_key,
+        sema::TypeHandle source_reference_type,
+        sema::TypeHandle target_reference_type) const noexcept;
     [[nodiscard]] const PrincipalSetMetadataLayout* principal_set_metadata_layout(
         query::StableFingerprint128 identity, sema::TypeHandle source_type) const noexcept;
     [[nodiscard]] const PrincipalSetMetadataWitness* principal_set_metadata_witness(

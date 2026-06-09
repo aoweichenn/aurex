@@ -1,5 +1,31 @@
 # 版本文档
 
+## M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
+
+M13c 已完成 borrowed composition-to-supertrait explicit projection 的 IR/backend runtime 子集。M13b 引入的
+用户语法保持不变：
+
+```aurex
+dynproject[SourcePrincipal, TargetSupertrait](view)
+```
+
+M13c 新增或固定：
+
+- `dynproject[...]` 在 sema 成功后不再停留在 check-only；lowering 会生成
+  `trait_object_composition_project` + `trait_object_upcast`。
+- `trait_object_composition_project` 先从 `&dyn (A + B)` / `&mut dyn (A + B)` 的
+  `principal_set_metadata_v1` 中取出 source principal vtable。
+- `trait_object_upcast` 再沿 source principal 的 `supertrait_vptr_metadata_v1` edge 取出 target supertrait vtable。
+- data pointer、borrow kind 和 origin 仍保持 borrowed view 语义；不分配、不拥有对象、不引入 cleanup/drop runtime。
+- Function dyn ABI facts 会同时暴露 composition projection descriptor 和 upcast descriptor；IR dump、LLVM output 和
+  native execution tests 已覆盖该路径。
+- 仍拒绝隐式 `let parent: &dyn Parent = view;`，也仍拒绝 `view.parent()` 直接穿过 composition 到 supertrait。
+
+M13c 继续保持 no-std/compiler runtime core 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
+不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI，也不实现 bare
+`dyn A + B` syntax。下一步 M13d 应做 hardening/release closure：query/cache/tooling hover、negative matrix、
+documentation tests、coverage closure 和代码量偏差分析。
+
 ## M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
 
 M13b 已完成 borrowed composition-to-supertrait explicit projection 的 frontend / query / sema check-only 子集。
@@ -41,7 +67,7 @@ M13b 新增或固定：
 M13b 继续保持 no-std/compiler frontend 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
 不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI、不实现 bare
 `dyn A + B` syntax，也不做 IR/backend runtime lowering。`let parent: &dyn Parent = view;` 和
-`view.parent()` 仍被拒绝。M13c 的下一步才会把 checked fact 降低为 runtime 路径。
+`view.parent()` 仍被拒绝。M13c 已在下一阶段把 checked fact 降低为 runtime 路径。
 
 ## M13a Advanced Dyn Remaining Policy Design Baseline
 

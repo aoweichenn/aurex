@@ -146,8 +146,15 @@ TEST(CoreUnit, DynTraitCompositionAllowsMutableProjectionToSharedSupertraitConte
     const std::vector<const query::CompositionProjectionFact*> projections =
         composition_supertrait_projections(checked);
     ASSERT_EQ(projections.size(), 1U);
-    EXPECT_EQ(projections.front()->borrow_kind, query::DynBorrowKind::mut);
+    EXPECT_EQ(projections.front()->borrow_kind, query::DynBorrowKind::shared);
     EXPECT_EQ(projections.front()->target_view_name, "dyn Parent");
+    ASSERT_EQ(checked.trait_object_upcast_coercions.size(), 1U);
+    EXPECT_EQ(checked.trait_object_upcast_coercions.front().borrow_kind,
+        query::TraitObjectBorrowKindKey::shared);
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_upcast_coercions.front().source_reference_type),
+        "&mut dyn Child");
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_upcast_coercions.front().target_reference_type),
+        "&dyn Parent");
     ASSERT_EQ(checked.trait_method_calls.size(), 1U);
     EXPECT_EQ(checked.types.display_name(checked.trait_method_calls.front().receiver_type), "&dyn Parent");
 }

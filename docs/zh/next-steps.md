@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
+## 当前最高优先级：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
@@ -8,6 +8,7 @@ Composition Frontend / Sema Check-Only、M11d Principal-Set Composition IR / Bac
 Composition Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M12b
 Direct Composition Dispatch Hardening / Release Closure、M13a Advanced Dyn Remaining Policy Design Baseline、
 M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 均已完成。
+M13c Borrowed Composition-To-Supertrait IR / Backend Runtime 也已完成。
 当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
@@ -89,6 +90,14 @@ source principal 必须在 principal set 中，target 必须是该 source princi
 `supertrait_projections`。M13b 不做 IR/backend lowering，也继续拒绝隐式
 `let parent: &dyn Parent = view;` 和 `view.parent()`。
 
+M13c 也已结束。M13c 把 `dynproject[SourcePrincipal, TargetSupertrait](view)` 降低为已有 runtime IR 组合：
+先用 `trait_object_composition_project` 从 `&dyn (A + B)` / `&mut dyn (A + B)` 取出 source principal 的
+single-trait dyn view，再用 `trait_object_upcast` 沿 checked supertrait edge 取出 target supertrait vtable。
+M13c 没有新增 runtime metadata policy；composition-supertrait projection 复用 `principal_set_metadata_v1` 和
+`supertrait_vptr_metadata_v1`。Function dyn ABI facts 会同时暴露 composition projection 和 upcast descriptor；
+IR/LLVM/native tests 已覆盖单 concrete、多 concrete 和 backend execution。隐式
+`let parent: &dyn Parent = view;` 与 `view.parent()` 仍继续拒绝。
+
 已完成基线摘要：
 
 - M8 query foundation 已完成，`CanonicalTypeKind::trait_object` 占位已移除；当前结构化 identity 是
@@ -115,11 +124,13 @@ source principal 必须在 principal set 中，target 必须是该 source princi
   composition-to-supertrait projection，并固定 query gate 与非目标。
 - M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 已完成；`dynproject[...]` 显式
   projection、typing、diagnostics、`composition_to_supertrait` fact、checked dump/fingerprint 和 query summary 已固定。
+- M13c Borrowed Composition-To-Supertrait IR / Backend Runtime 已完成；`dynproject[...]` 会 lowering 为
+  `trait_object_composition_project` + `trait_object_upcast`，并复用既有 LLVM metadata/runtime。
 
-当前下一步应进入 **M13c Borrowed Composition-To-Supertrait IR / Backend Runtime**。M13c 仍不应实现标准库、
-owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；重点是把 M13b 已经 checked 的
-`composition_to_supertrait` fact 降低为 runtime 路径，复用 `trait_object_composition_project` 和
-`trait_object_upcast` 等价组合，补 ABI descriptor、IR verifier、LLVM/native tests 和 query/cache invalidation。
+当前下一步应进入 **M13d Borrowed Composition-To-Supertrait Hardening / Release Closure**。M13d 仍不应实现
+标准库、owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；重点是收口 M13c runtime surface：
+补 query/cache/tooling hover 展示、negative verifier/diagnostic matrix、documentation tests、sample/usage 文档、
+coverage closure 和本阶段代码量偏差分析。
 
 M12 后续候选不应混在同一阶段一次性实现：
 
@@ -144,7 +155,7 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M12b hardening/release | 已完成。receiver-access binding、associated equality direct dispatch、projection/ABI descriptor 去重、query fingerprint drift、broader negative matrix、docs/tests release closure | 实际以本次 diffstat 为准 |
 | M13a design baseline | 已完成。剩余 advanced dyn 候选 policy selection，选择 borrowed composition-to-supertrait explicit projection，新增 query gate、docs/tests | 实际以本次 diffstat 为准 |
 | M13b frontend/query/sema | 已完成。`dynproject[...]` explicit composition-to-supertrait projection syntax/typing/facts/diagnostics/checked dump；不做 runtime release closure | 实际以本次 diffstat 为准 |
-| M13c IR/backend runtime | composition project + supertrait upcast lowering、ABI descriptor、verifier、LLVM/native tests | 900-1,600 行 |
+| M13c IR/backend runtime | 已完成。composition project + supertrait upcast lowering、ABI descriptor、LLVM/native tests | 实际以本次 diffstat 为准 |
 | M13d hardening/release | query/cache/tooling hover、negative matrix、docs/samples、coverage closure、代码量偏差分析 | 700-1,200 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 

@@ -11,9 +11,12 @@ namespace {
 
 constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
 constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
+constexpr base::usize IR_DYNPROJECT_INTRINSIC_TYPE_ARG_COUNT = 2;
+constexpr base::usize IR_DYNPROJECT_INTRINSIC_ARG_COUNT = 1;
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_FLAG_NAME = "aggregate.rollback";
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_LOAD_NAME = "aggregate.rollback.result";
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
+constexpr std::string_view IR_DYNPROJECT_INTRINSIC_NAME = "dynproject";
 
 struct RollbackCleanupScope {
     std::vector<std::vector<CleanupAction>>* scopes = nullptr;
@@ -596,6 +599,9 @@ ValueId Lowerer::lower_binary_expr(const syntax::ExprId expr_id, const ExprView&
 
 ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& expr)
 {
+    if (const ValueId dynproject = this->lower_dynproject_intrinsic_expr(expr_id, expr); is_valid(dynproject)) {
+        return dynproject;
+    }
     const IrTextId symbol = this->call_symbol(expr.callee);
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
         enum_case != nullptr && !enum_case->payload_types.empty()) {
@@ -664,6 +670,40 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
         value.args.push_back(this->coerce_value(arg, param_type));
     }
     return this->append_value(value);
+}
+
+ValueId Lowerer::lower_dynproject_intrinsic_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
+    if (expr.args.size() != IR_DYNPROJECT_INTRINSIC_ARG_COUNT || !syntax::is_valid(expr.callee)
+        || expr.callee.value >= this->ast_.exprs.size()
+        || this->ast_.exprs.kind(expr.callee.value) != syntax::ExprKind::generic_apply) {
+        return INVALID_VALUE_ID;
+    }
+    const syntax::GenericApplyExprPayload* const apply = this->ast_.exprs.generic_apply_payload(expr.callee.value);
+    if (apply == nullptr || apply->type_args.size() != IR_DYNPROJECT_INTRINSIC_TYPE_ARG_COUNT
+        || !syntax::is_valid(apply->callee) || apply->callee.value >= this->ast_.exprs.size()
+        || this->ast_.exprs.kind(apply->callee.value) != syntax::ExprKind::name) {
+        return INVALID_VALUE_ID;
+    }
+    const syntax::NameExprPayload* const name = this->ast_.exprs.name_payload(apply->callee.value);
+    if (name == nullptr || !name->scope_name.empty() || name->text != IR_DYNPROJECT_INTRINSIC_NAME) {
+        return INVALID_VALUE_ID;
+    }
+
+    const sema::TypeHandle target_reference_type = this->expr_type(expr_id);
+    const sema::TypeHandle argument_type = this->expr_type(expr.args.front());
+    const sema::TraitObjectUpcastCoercionFact* const upcast =
+        this->dynproject_upcast_coercion(expr.args.front(), target_reference_type);
+    if (upcast == nullptr || !this->module_.types.is_reference(argument_type)) {
+        Value invalid = this->module_.make_value();
+        invalid.kind = ValueKind::undef;
+        invalid.type = target_reference_type;
+        return this->append_value(invalid);
+    }
+
+    const ValueId composition = this->lower_expr(expr.args.front(), argument_type);
+    const ValueId projected_principal = this->coerce_value(composition, upcast->source_reference_type);
+    return this->coerce_value(projected_principal, target_reference_type);
 }
 
 ValueId Lowerer::lower_dyn_trait_call_expr(
@@ -1643,7 +1683,28 @@ const sema::TraitObjectUpcastCoercionFact* Lowerer::trait_object_upcast_coercion
         if (this->module_.types.same(fact.source_reference_type, source_type)
             && this->module_.types.same(fact.target_reference_type, target_type)
             && this->trait_object_vtable_supertrait_edge(
-                   fact.source_vtable_layout, fact.target_vtable_layout, fact.upcast_key)
+                   fact.source_vtable_layout, fact.target_vtable_layout, fact.upcast_key,
+                   fact.source_reference_type, fact.target_reference_type)
+                != nullptr) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+const sema::TraitObjectUpcastCoercionFact* Lowerer::dynproject_upcast_coercion(
+    const syntax::ExprId argument_expr,
+    const sema::TypeHandle target_type) const noexcept
+{
+    if (!syntax::is_valid(argument_expr) || !sema::is_valid(target_type)) {
+        return nullptr;
+    }
+    for (const sema::TraitObjectUpcastCoercionFact& fact : this->checked_.trait_object_upcast_coercions) {
+        if (fact.expr.value == argument_expr.value
+            && this->module_.types.same(fact.target_reference_type, target_type)
+            && this->trait_object_vtable_supertrait_edge(
+                   fact.source_vtable_layout, fact.target_vtable_layout, fact.upcast_key,
+                   fact.source_reference_type, fact.target_reference_type)
                 != nullptr) {
             return &fact;
         }
@@ -1654,14 +1715,18 @@ const sema::TraitObjectUpcastCoercionFact* Lowerer::trait_object_upcast_coercion
 const TraitObjectVTableSupertraitEdge* Lowerer::trait_object_vtable_supertrait_edge(
     const query::VTableLayoutKey& source_layout,
     const query::VTableLayoutKey& target_layout,
-    const query::TraitObjectUpcastCoercionKey& upcast_key) const noexcept
+    const query::TraitObjectUpcastCoercionKey& upcast_key,
+    const sema::TypeHandle source_reference_type,
+    const sema::TypeHandle target_reference_type) const noexcept
 {
     const TraitObjectVTableLayout* const layout = this->trait_object_vtable_layout(source_layout);
     if (layout == nullptr) {
         return nullptr;
     }
     for (const TraitObjectVTableSupertraitEdge& edge : layout->supertrait_edges) {
-        if (edge.target_layout == target_layout && edge.upcast_key == upcast_key) {
+        if (edge.target_layout == target_layout && edge.upcast_key == upcast_key
+            && this->module_.types.same(edge.source_reference_type, source_reference_type)
+            && this->module_.types.same(edge.target_reference_type, target_reference_type)) {
             return &edge;
         }
     }
@@ -1813,7 +1878,8 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
             this->trait_object_upcast_coercion(source_type, target_type);
         upcast != nullptr) {
         const TraitObjectVTableSupertraitEdge* const edge = this->trait_object_vtable_supertrait_edge(
-            upcast->source_vtable_layout, upcast->target_vtable_layout, upcast->upcast_key);
+            upcast->source_vtable_layout, upcast->target_vtable_layout, upcast->upcast_key,
+            upcast->source_reference_type, upcast->target_reference_type);
         if (edge != nullptr) {
             Value value = this->module_.make_value();
             value.kind = ValueKind::trait_object_upcast;

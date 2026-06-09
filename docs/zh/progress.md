@@ -1,9 +1,27 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
+阶段：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
 
 ## 总体状态
+
+2026-06-09：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime 已完成。M13c 仍不实现
+标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、bare `dyn A + B` 或
+composition-to-supertrait 隐式 direct call；它只把 M13b 已 checked 的显式
+`dynproject[SourcePrincipal, TargetSupertrait](view)` 降低到已有 runtime metadata 组合。
+
+当前 runtime 路径是：
+
+1. 对 borrowed principal-set composition view 先生成 `trait_object_composition_project`，投影出
+   `SourcePrincipal` 的普通 borrowed single-trait dyn view。
+2. 再生成 `trait_object_upcast`，沿 `SourcePrincipal -> TargetSupertrait` 的 checked supertrait edge 从 source
+   principal vtable 取出 target supertrait vtable。
+3. 最终仍返回 `{data*, vtable*}` borrowed single-trait dyn view；data pointer 和 borrow origin 保持不变。
+
+因此 M13c 不新增 composition-supertrait metadata policy；它复用 M11/M12 的 `principal_set_metadata_v1` 和
+M10 的 `supertrait_vptr_metadata_v1`。Function-level dyn ABI facts 现在会在使用 `dynproject[...]` 的函数中同时暴露
+composition projection descriptor 和 upcast descriptor；LLVM/backend 也通过既有 principal-set metadata load 与
+supertrait vptr load 完成 native execution。`view.parent()` 和 `let parent: &dyn Parent = view;` 仍继续拒绝。
 
 2026-06-09：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 已完成。M13b 仍不实现
 标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、新 runtime metadata 或 IR/backend
@@ -23,8 +41,8 @@ direct/transitive supertrait path 到达。成功后，表达式类型为 `&dyn 
 source 可以在后续上下文中降级到 shared target；shared source 仍不能升级成 mutable target。
 
 M13b 明确保持 M12b 的边界：`view.parent()` 这类 composition-to-supertrait direct call 仍被拒绝，
-`let parent: &dyn Parent = view;` 这种隐式 composition 到 supertrait coercion 也仍被拒绝。M13c 的下一步才是把
-已经 checked 的 fact 降低为 runtime 路径，预期复用 `trait_object_composition_project` +
+`let parent: &dyn Parent = view;` 这种隐式 composition 到 supertrait coercion 也仍被拒绝。M13c 已把
+已经 checked 的 fact 降低为 runtime 路径，复用 `trait_object_composition_project` +
 `trait_object_upcast` 等价组合，而不是引入新的 composition-supertrait metadata policy。
 
 2026-06-09：M13a Advanced Dyn Remaining Policy Design Baseline 已完成。M13a 没有实现标准库、owning dyn、

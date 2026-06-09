@@ -743,7 +743,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;
         const ReceiverAccessFacts access = receiver_access_facts(
-            this->state_.checked.types, resolution.param_types, receiver_count, receiver_type);
+            this->state_.checked.types, resolution.param_types, receiver_count, trait_receiver_type);
         binding.receiver_access = access.access;
         binding.receiver_auto_borrow = access.auto_borrow;
         binding.receiver_two_phase_eligible = access.two_phase_eligible;

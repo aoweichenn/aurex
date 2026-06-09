@@ -388,10 +388,22 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     EXPECT_TRUE(query::is_valid(changed_borrow_facts));
     EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_borrow_facts), facts.fingerprint);
 
+    query::FunctionDynAbiFacts changed_principal_facts = facts;
+    changed_principal_facts.composition_projections.front().principal_object = debug;
+    changed_principal_facts.composition_projections.front().target_vtable_layout = debug_layout;
+    changed_principal_facts.composition_projections.front().principal_index = 0U;
+    changed_principal_facts.composition_projections.front().target_reference_type_name = "&dyn Debug";
+    changed_principal_facts.composition_projections.front().target_object_type_name = "dyn Debug";
+    ASSERT_TRUE(query::is_valid(changed_principal_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_principal_facts), facts.fingerprint);
+
     const query::QueryResultFingerprint lowered_ir =
         query::query_result_fingerprint(query::stable_fingerprint("dyn-composition-lower-ir"));
     EXPECT_NE(query::lower_function_ir_result_fingerprint(
                   lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_borrow_facts),
+        query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
+    EXPECT_NE(query::lower_function_ir_result_fingerprint(
+                  lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_principal_facts),
         query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
 
     query::DynPrincipalSetMetadataAbiDescriptor unsorted = metadata;

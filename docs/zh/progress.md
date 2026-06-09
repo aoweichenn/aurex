@@ -1,9 +1,25 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M12a Direct Principal-Qualified Composition Method Dispatch
+阶段：M12b Direct Composition Dispatch Hardening / Release Closure
 
 ## 总体状态
+
+2026-06-09：M12b Direct Composition Dispatch Hardening / Release Closure 已完成。M12 现在收口为完整
+borrowed principal-set composition direct dispatch release baseline；新增 release 文档见
+[Aurex M12 Direct Composition Dispatch Release Baseline](m12-release-baseline.md)。
+
+M12b 没有引入标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、bare `dyn A + B`
+syntax 或 composition-to-supertrait 隐式多步 direct dispatch。它只把 M12a 的 direct composition dispatch
+路径补硬：checked binding 的 receiver access 现在按投影后的 `dispatch_receiver_type` 计算，associated equality
+direct dispatch 会使用 selected principal 的 equality substitution，direct dispatch 与显式 projection 混用时会去重
+composition-to-principal projection fact 和 function-level ABI descriptor。
+
+Query/cache 层已经固定 projection target drift：projection borrow kind、target principal、target vtable layout 或
+target reference type 变化时，`function_dyn_abi_facts_fingerprint()` 和 `lower_function_ir_result_fingerprint()`
+都会变化。Focused validation 覆盖 direct/explicit projection 混用、associated return substitution、ambiguous/missing
+method、shared-to-mut receiver rejection、composition-to-supertrait direct call rejection、IR project/vtable-slot
+lowering、FunctionDynAbiFacts descriptor 去重和 dyn ABI fingerprint invalidation。
 
 2026-06-09：M12a Direct Principal-Qualified Composition Method Dispatch 已完成。M12a 没有引入标准库、
 owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 bare `dyn A + B` syntax；它只打开

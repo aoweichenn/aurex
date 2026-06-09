@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M12a Direct Principal-Qualified Composition Method Dispatch**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M12b Direct Composition Dispatch Hardening / Release Closure**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -30,10 +30,12 @@ project 到 `&dyn A` / `&dyn B`，lowering 为 `trait_object_composition_pack` /
 principal index 取出目标 vtable。M11e 已完成 release closure：`FunctionDynAbiFacts` 暴露 `principal_sets`
 和 `composition_projections`，lower-IR query/IDE hover 消费 composition runtime descriptors，IR verifier 负例矩阵和
 documentation tests 已固定 release boundary。M12a 已打开无歧义 direct composition method dispatch：`combo.draw()`
-会选择唯一提供 `draw` 的 principal，隐式 composition projection 后复用 ordinary dyn vtable dispatch。当前仍不实现
+会选择唯一提供 `draw` 的 principal，隐式 composition projection 后复用 ordinary dyn vtable dispatch；M12b 已完成
+receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重、dyn ABI fingerprint 和
+negative matrix hardening。当前仍不实现
 标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop dispatch runtime、allocator policy、bare
-`dyn A + B` syntax 或 composition-to-supertrait 隐式多步 direct dispatch；下一步是 M12b direct composition
-dispatch hardening/release closure，且仍不引入标准库或 owning dyn。
+`dyn A + B` syntax 或 composition-to-supertrait 隐式多步 direct dispatch；下一步是 M13 advanced dyn remaining
+policy design baseline，且仍不直接引入标准库或 owning dyn。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -80,6 +82,7 @@ dispatch hardening/release closure，且仍不引入标准库或 owning dyn。
 - [Aurex M10 Supertrait Upcasting Release Baseline](m10-release-baseline.md)
 - [Aurex M11 Advanced Dyn Design Baseline](m11-advanced-dyn-design.md)
 - [Aurex M11 Principal-Set Composition Release Baseline](m11-release-baseline.md)
+- [Aurex M12 Direct Composition Dispatch Release Baseline](m12-release-baseline.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

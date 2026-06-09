@@ -414,6 +414,96 @@ TEST(CoreUnit, DynTraitCompositionDirectMutableMethodCallsKeepBorrowKind)
     EXPECT_EQ(composition_to_principal_count, 1U);
 }
 
+TEST(CoreUnit, DynTraitCompositionDirectAssociatedReturnUsesSelectedPrincipalEqualities)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_direct_assoc_return_whitebox;\n"
+        "trait Source { type Item; fn item(self: &Self) -> Self.Item; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Source for File { type Item = i32; fn item(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 9 };\n"
+        "  let view: &dyn (Debug + Source[Item = i32]) = &file;\n"
+        "  return view.item();\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.trait_method_calls.size(), 1U);
+    const sema::TraitMethodCallBinding& call = checked.trait_method_calls.front();
+    EXPECT_EQ(call.method_name.view(), "item");
+    EXPECT_EQ(call.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
+    const std::string receiver_display = checked.types.display_name(call.receiver_type);
+    EXPECT_NE(receiver_display.find("&dyn ("), std::string::npos) << receiver_display;
+    EXPECT_NE(receiver_display.find("Debug"), std::string::npos) << receiver_display;
+    EXPECT_NE(receiver_display.find("Source[Item = i32]"), std::string::npos) << receiver_display;
+    EXPECT_EQ(checked.types.display_name(call.dispatch_receiver_type), "dyn Source[Item = i32]");
+    EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
+    EXPECT_EQ(call.receiver_access, sema::ReceiverAccessKind::shared);
+
+    ASSERT_EQ(checked.principal_set_composition_facts.associated_equality_merges.size(), 1U);
+    EXPECT_EQ(checked.principal_set_composition_facts.associated_equality_merges.front().associated_type_name,
+        "Item");
+    base::usize direct_projection_count = 0;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind != query::PrincipalSetProjectionKind::composition_to_principal) {
+            continue;
+        }
+        ++direct_projection_count;
+        EXPECT_EQ(projection.target_view_name, "dyn Source[Item = i32]");
+    }
+    EXPECT_EQ(direct_projection_count, 1U);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait_call #0 vtable_slot dyn (",
+            "Source[Item = i32]",
+            ".item -> i32",
+            "dispatch_receiver=dyn Source[Item = i32]",
+            "receiver_access=shared auto_borrow=false two_phase=false",
+        });
+}
+
+TEST(CoreUnit, DynTraitCompositionDirectAndExplicitProjectionSharePrincipalProjectionFact)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_direct_explicit_projection_whitebox;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 3 };\n"
+        "  let view: &dyn (Draw + Debug) = &file;\n"
+        "  let draw: &dyn Draw = view;\n"
+        "  return view.draw() + draw.draw();\n"
+        "}\n";
+
+    const sema::CheckedModule checked = analyze_dyn_trait_source(source);
+    ASSERT_EQ(checked.trait_method_calls.size(), 2U);
+    for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
+        EXPECT_EQ(call.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
+        EXPECT_EQ(call.receiver_access, sema::ReceiverAccessKind::shared);
+    }
+
+    base::usize draw_projection_count = 0;
+    for (const query::CompositionProjectionFact& projection :
+        checked.principal_set_composition_facts.projections) {
+        if (projection.kind == query::PrincipalSetProjectionKind::composition_to_principal
+            && projection.target_view_name == "dyn Draw") {
+            ++draw_projection_count;
+        }
+    }
+    EXPECT_EQ(draw_projection_count, 1U);
+    EXPECT_EQ(checked.principal_set_composition_facts.summary.projection_count, 3U);
+    EXPECT_EQ(query::principal_set_composition_facts_fingerprint(checked.principal_set_composition_facts),
+        checked.principal_set_composition_facts.fingerprint);
+}
+
 TEST(CoreUnit, DynTraitCompositionDirectMethodCallsRejectAmbiguousAndMissingNames)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases{
@@ -458,6 +548,22 @@ TEST(CoreUnit, DynTraitCompositionDirectMethodCallsRejectAmbiguousAndMissingName
             "  return view.draw();\n"
             "}\n",
             "mutable method receiver requires mutable pointer",
+        },
+        {
+            "module dyn_trait_composition_supertrait_direct_reject_whitebox;\n"
+            "trait Parent { fn parent(self: &Self) -> i32; }\n"
+            "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+            "trait Debug { fn debug(self: &Self) -> i32; }\n"
+            "struct File { value: i32; }\n"
+            "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+            "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+            "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+            "fn main() -> i32 {\n"
+            "  let file: File = File { value: 1 };\n"
+            "  let view: &dyn (Child + Debug) = &file;\n"
+            "  return view.parent();\n"
+            "}\n",
+            "has no visible impl for trait method `parent`",
         },
     };
 

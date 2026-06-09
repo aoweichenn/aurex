@@ -1004,6 +1004,48 @@ TEST(CoreUnit, LowerAstDynTraitCompositionDirectDispatchProjectsUniquePrincipal)
         });
 }
 
+TEST(CoreUnit, LowerAstDynTraitCompositionDirectAndExplicitProjectionShareAbiDescriptor)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_direct_explicit_projection;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let combo: &dyn (Draw + Debug) = &file;\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  return combo.draw() + draw.draw();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.checked.trait_method_calls.size(), 2U);
+    EXPECT_EQ(fixture.checked.principal_set_composition_facts.summary.projection_count, 3U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 2U);
+    EXPECT_EQ(count_values_of_kind(fixture.ir, ValueKind::vtable_slot), 2U);
+
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->principal_sets.size(), 1U);
+    ASSERT_EQ(main_facts->composition_projections.size(), 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(main_facts->summary.composition_projection_count, 1U);
+    EXPECT_EQ(main_facts->summary.shared_borrow_count, 1U);
+    EXPECT_EQ(main_facts->summary.mut_borrow_count, 0U);
+    EXPECT_EQ(main_facts->composition_projections.front().target_reference_type_name, "&dyn Draw");
+    EXPECT_EQ(main_facts->fingerprint, query::function_dyn_abi_facts_fingerprint(*main_facts));
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(*main_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
 TEST(CoreUnit, LowerAstDynTraitCompositionMetadataLayoutsCoverEachConcreteType)
 {
     const std::string_view source =

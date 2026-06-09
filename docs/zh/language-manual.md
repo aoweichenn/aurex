@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-09
-阶段：M12a Direct Principal-Qualified Composition Method Dispatch，建立在 M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M12b Direct Composition Dispatch Hardening / Release Closure，建立在 M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -93,6 +93,10 @@ A | B         表示二选一
   `view.draw()` 或 `view.debug()`，前提是该 method 名称只由一个 principal 提供。该 direct call 会隐式记录
   composition-to-principal projection，再复用 ordinary single-trait dyn `vtable_slot` dispatch；多个 principal
   暴露同名 method 时仍报 ambiguous，shared receiver 仍不能调用要求 `&mut Self` 的 method。
+- 使用 M12b direct composition dispatch release closure：direct call 的 receiver access 按投影后的
+  `dispatch_receiver_type` 计算，associated equality direct dispatch 会使用 selected principal 的 equality
+  substitution，direct dispatch 与显式 projection 混用时会去重 projection fact 和 ABI descriptor，query/cache
+  fingerprint 会响应 projection target drift。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -1764,6 +1768,9 @@ fn score(value: &dyn Child) -> i32 {
   中选择唯一提供 `draw` 的 principal，隐式生成同样的 composition-to-principal projection，再执行普通
   single-trait dyn `vtable_slot` dispatch。它不会创建 composition-wide slot table，也不会把多个 principal 的
   method slots flatten 到一个 namespace。
+- M12b release closure 固定了这条 sugar 的 facts 面：checked binding 的 actual vtable receiver 通过
+  `dispatch_receiver_type` 表示；associated equality return 会在 selected principal 上替换；direct 与显式 projection
+  混用时不会重复暴露同一 function-level ABI projection descriptor。
 - 带 supertrait edge 的 vtable 使用 `supertrait_vptr_metadata_v1`，LLVM global shape 为
   `{ [methods x ptr], [supertraits x ptr] }`；没有 supertrait edge 的 vtable 仍可保持 methods-only metadata。
 - slot function ABI 的第一个 receiver 参数被擦成 `*const u8` 或 `*mut u8`；checked facts 和 IR verifier
@@ -1776,7 +1783,7 @@ M11 advanced dyn design/query/sema facts：
 - M11a 已选择 principal-set borrowed dyn composition 作为后续主线。
 - M11e release composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
   `principal_set_metadata_v1`。
-- M12a direct composition method lookup 使用 principal-qualified namespace：唯一 principal method 可直接调用；
+- M12a/M12b direct composition method lookup 使用 principal-qualified namespace：唯一 principal method 可直接调用；
   多个 principal 同名 method 仍拒绝，不能把 slots flatten 到一个未命名 namespace。
 - Composition 仍保持 borrowed view：不拥有对象、不分配、不复制、不延长 origin、不放宽 loan。
 - `m11a_dyn_advanced_design_gate_baseline`、`principal_set_identity_fact`、`composition_witness_set_fact`、
@@ -1786,11 +1793,12 @@ M11 advanced dyn design/query/sema facts：
   `PrincipalMethodNamespaceFact`、`AssociatedEqualityMergeFact` 和 `CompositionProjectionFact`，并提供
   validation、summary、dump 和 stable fingerprint。
 - M11c 已新增用户可写 spelling `dyn (A + B)`；M11d 已新增显式 runtime projection；M12a 已新增唯一 principal
-  direct method dispatch。当前支持 borrowed annotation/coercion：
+  direct method dispatch；M12b 已完成 direct dispatch release hardening。当前支持 borrowed annotation/coercion：
   `&dyn (Draw + Debug)`、`&mut dyn (Draw + Debug)`、`&T -> &dyn (Draw + Debug)` 和
   `&mut T -> &mut dyn (Draw + Debug)`，以及 `&dyn (Draw + Debug) -> &dyn Draw` /
   `&mut dyn (Draw + Debug) -> &mut dyn Draw` 这类 projection。`view.draw()` 会在唯一 principal 提供 `draw`
-  时隐式走同一条 projection + vtable dispatch 路径。每个 principal 必须是 single dyn trait object；composition
+  时隐式走同一条 projection + vtable dispatch 路径。direct 和显式 projection 混用会去重 projection facts 和
+  ABI descriptors。每个 principal 必须是 single dyn trait object；composition
   至少两个 principal；duplicate principal、非 trait principal、missing impl、associated equality conflict、
   shared-to-mut coercion、同名 method ambiguity 和 shared receiver 调 mutable method 都会被拒绝。
 - M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持

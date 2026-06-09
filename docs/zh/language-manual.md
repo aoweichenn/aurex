@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-08
-阶段：M11d Principal-Set Composition IR / Backend Runtime，建立在 M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M11e Principal-Set Composition Hardening / Release Closure，建立在 M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -83,10 +83,12 @@ A | B         表示二选一
   `&mut dyn (Draw + Debug)` 可以作为类型 annotation；`&T` / `&mut T` 可以在所有 principal impl 可见时
   coercion 到对应 borrowed composition view，并记录 principal-set identity、method namespace、associated
   equality merge、witness set、projection、checked dump/fingerprint 和 query authority facts。
-- 使用 M11d borrowed principal-set composition runtime projection：`&dyn (Draw + Debug)` 可以显式投影到
+- 使用 M11e borrowed principal-set composition release closure：`&dyn (Draw + Debug)` 可以显式投影到
   `&dyn Draw` / `&dyn Debug`，`&mut dyn (Draw + Debug)` 可以显式投影到对应 `&mut dyn Principal`。Lowering 使用
   `trait_object_composition_pack` / `trait_object_composition_project` IR 和 `principal_set_metadata_v1`
-  LLVM metadata global；projection 后复用 single-trait dyn vtable dispatch。
+  LLVM metadata global；projection 后复用 single-trait dyn vtable dispatch。`FunctionDynAbiFacts` 会投影
+  `principal_sets`、`composition_projections`、principal-set witnesses 和 projection borrow kind；lower-IR query
+  fingerprint、IDE semantic fact 和 hover 会消费这些 runtime descriptors。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -1764,7 +1766,7 @@ fn score(value: &dyn Child) -> i32 {
 M11 advanced dyn design/query/sema facts：
 
 - M11a 已选择 principal-set borrowed dyn composition 作为后续主线。
-- M11d runtime composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
+- M11e release composition 不能把多个 principal 编码成一个普通 single-trait object，必须使用
   `principal_set_metadata_v1`。
 - Future direct composition method lookup 必须有 principal-qualified namespace，不能把 slots flatten 到一个未命名
   namespace。
@@ -1774,6 +1776,7 @@ M11 advanced dyn design/query/sema facts：
   design/query gate 固定。
 - M11b 已新增 `PrincipalSetCompositionFacts`、`PrincipalSetIdentityFact`、`CompositionWitnessSetFact`、
   `PrincipalMethodNamespaceFact`、`AssociatedEqualityMergeFact` 和 `CompositionProjectionFact`，并提供
+  validation、summary、dump 和 stable fingerprint。
 - M11c 已新增用户可写 spelling `dyn (A + B)`；M11d 已新增显式 runtime projection。当前支持 borrowed annotation/coercion：
   `&dyn (Draw + Debug)`、`&mut dyn (Draw + Debug)`、`&T -> &dyn (Draw + Debug)` 和
   `&mut T -> &mut dyn (Draw + Debug)`，以及 `&dyn (Draw + Debug) -> &dyn Draw` /
@@ -1781,8 +1784,9 @@ M11 advanced dyn design/query/sema facts：
   object；composition 至少两个 principal；duplicate principal、非 trait principal、missing impl、associated
   equality conflict 和 shared-to-mut coercion 会被拒绝。
 - M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持
-  dynamic Drop dispatch，也不支持通过 composition receiver 直接调用 method；M11d 只支持先显式 projection 后按
-  single-trait dyn dispatch。
+  dynamic Drop dispatch，也不支持通过 composition receiver 直接调用 method；M11 release baseline 只支持先显式
+  projection 后按 single-trait dyn dispatch。只接收 `&dyn (A+B)` 的函数会记录 projection descriptor，但不会伪造
+  concrete-specific principal-set metadata descriptor。
 
 当前不支持：
 

@@ -9,6 +9,7 @@ namespace aurex::query {
 namespace {
 
 constexpr std::string_view QUERY_DYN_ABI_FACTS_FINGERPRINT_MARKER = "query.dyn_abi_facts.v1";
+constexpr base::usize QUERY_DYN_ABI_PRINCIPAL_SET_MIN_WITNESS_COUNT = 2;
 constexpr base::u8 QUERY_DYN_ABI_INVALID_POLICY_VALUE = 255U;
 constexpr base::u8 QUERY_DYN_METADATA_INVALID_POLICY_VALUE = 255U;
 constexpr base::u8 QUERY_DYN_BORROW_INVALID_KIND_VALUE = 255U;
@@ -101,6 +102,51 @@ void mix_dyn_upcast(StableHashBuilder& builder, const DynUpcastAbiDescriptor& de
     builder.mix_string(descriptor.target_object_type_name);
 }
 
+void mix_dyn_principal_set_witness(
+    StableHashBuilder& builder, const DynPrincipalSetWitnessAbiDescriptor& descriptor) noexcept
+{
+    builder.mix_u32(descriptor.principal_index);
+    builder.mix_u64(descriptor.principal_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.principal_object));
+    builder.mix_u64(descriptor.vtable_layout.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.vtable_layout));
+    builder.mix_string(descriptor.principal_object_type_name);
+    builder.mix_string(descriptor.vtable_symbol);
+}
+
+void mix_dyn_principal_set_metadata(
+    StableHashBuilder& builder, const DynPrincipalSetMetadataAbiDescriptor& descriptor) noexcept
+{
+    builder.mix_fingerprint(descriptor.principal_set_identity);
+    builder.mix_string(descriptor.symbol);
+    builder.mix_string(descriptor.concrete_type_name);
+    builder.mix_string(descriptor.composition_object_type_name);
+    builder.mix_u8(stable_dyn_abi_policy_value(descriptor.abi_policy));
+    builder.mix_u8(stable_dyn_metadata_policy_value(descriptor.metadata_policy));
+    builder.mix_u64(descriptor.witnesses.size());
+    for (const DynPrincipalSetWitnessAbiDescriptor& witness : descriptor.witnesses) {
+        mix_dyn_principal_set_witness(builder, witness);
+    }
+}
+
+void mix_dyn_composition_projection(
+    StableHashBuilder& builder, const DynCompositionProjectionAbiDescriptor& descriptor) noexcept
+{
+    builder.mix_fingerprint(descriptor.principal_set_identity);
+    builder.mix_u64(descriptor.principal_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.principal_object));
+    builder.mix_u64(descriptor.target_vtable_layout.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.target_vtable_layout));
+    builder.mix_u32(descriptor.principal_index);
+    builder.mix_u8(stable_dyn_borrow_kind_value(descriptor.borrow_kind));
+    builder.mix_u8(stable_dyn_abi_policy_value(descriptor.abi_policy));
+    builder.mix_u8(stable_dyn_metadata_policy_value(descriptor.metadata_policy));
+    builder.mix_string(descriptor.source_reference_type_name);
+    builder.mix_string(descriptor.target_reference_type_name);
+    builder.mix_string(descriptor.source_object_type_name);
+    builder.mix_string(descriptor.target_object_type_name);
+}
+
 void mix_dyn_dispatch(StableHashBuilder& builder, const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     builder.mix_u64(descriptor.layout.global_id);
@@ -129,6 +175,21 @@ void mix_dyn_dispatch(StableHashBuilder& builder, const DynDispatchAbiDescriptor
         has_previous = true;
     }
     return descriptor.slots.size() == descriptor.layout.method_slot_count;
+}
+
+[[nodiscard]] bool dyn_principal_set_witnesses_are_valid(
+    const DynPrincipalSetMetadataAbiDescriptor& descriptor) noexcept
+{
+    if (descriptor.witnesses.size() < QUERY_DYN_ABI_PRINCIPAL_SET_MIN_WITNESS_COUNT) {
+        return false;
+    }
+    for (base::usize index = 0; index < descriptor.witnesses.size(); ++index) {
+        const DynPrincipalSetWitnessAbiDescriptor& witness = descriptor.witnesses[index];
+        if (!is_valid(witness) || witness.principal_index != index) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void count_borrow_kind(DynAbiFactsSummary& summary, const DynBorrowKind kind) noexcept
@@ -161,6 +222,8 @@ std::string_view dyn_metadata_policy_name(const DynMetadataPolicy policy) noexce
             return "borrowed_methods_only_v1";
         case DynMetadataPolicy::supertrait_vptr_metadata_v1:
             return "supertrait_vptr_metadata_v1";
+        case DynMetadataPolicy::principal_set_metadata_v1:
+            return "principal_set_metadata_v1";
     }
     return "invalid";
 }
@@ -184,7 +247,8 @@ bool is_valid(const DynAbiPolicy policy) noexcept
 bool is_valid(const DynMetadataPolicy policy) noexcept
 {
     return policy == DynMetadataPolicy::borrowed_methods_only_v1
-        || policy == DynMetadataPolicy::supertrait_vptr_metadata_v1;
+        || policy == DynMetadataPolicy::supertrait_vptr_metadata_v1
+        || policy == DynMetadataPolicy::principal_set_metadata_v1;
 }
 
 bool is_valid(const DynBorrowKind kind) noexcept
@@ -231,6 +295,35 @@ bool is_valid(const DynUpcastAbiDescriptor& descriptor) noexcept
         && descriptor.metadata_policy == DynMetadataPolicy::supertrait_vptr_metadata_v1;
 }
 
+bool is_valid(const DynPrincipalSetWitnessAbiDescriptor& descriptor) noexcept
+{
+    return is_valid(descriptor.principal_object) && is_valid(descriptor.vtable_layout)
+        && descriptor.vtable_layout.object_type == descriptor.principal_object;
+}
+
+bool is_valid(const DynPrincipalSetMetadataAbiDescriptor& descriptor) noexcept
+{
+    return descriptor.principal_set_identity.byte_count != 0
+        && is_valid(descriptor.abi_policy)
+        && is_valid(descriptor.metadata_policy)
+        && descriptor.abi_policy == DynAbiPolicy::borrowed_view_v1
+        && descriptor.metadata_policy == DynMetadataPolicy::principal_set_metadata_v1
+        && dyn_principal_set_witnesses_are_valid(descriptor);
+}
+
+bool is_valid(const DynCompositionProjectionAbiDescriptor& descriptor) noexcept
+{
+    return descriptor.principal_set_identity.byte_count != 0
+        && is_valid(descriptor.principal_object)
+        && is_valid(descriptor.borrow_kind)
+        && is_valid(descriptor.abi_policy)
+        && is_valid(descriptor.metadata_policy)
+        && descriptor.abi_policy == DynAbiPolicy::borrowed_view_v1
+        && descriptor.metadata_policy == DynMetadataPolicy::principal_set_metadata_v1
+        && (!is_valid(descriptor.target_vtable_layout)
+            || descriptor.target_vtable_layout.object_type == descriptor.principal_object);
+}
+
 bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     if (is_valid(descriptor.layout)) {
@@ -252,7 +345,15 @@ bool is_valid(const FunctionDynAbiFacts& facts) noexcept
         return is_valid(descriptor);
     }) && std::all_of(facts.upcasts.begin(), facts.upcasts.end(), [](const DynUpcastAbiDescriptor& descriptor) {
         return is_valid(descriptor);
-    }) && std::all_of(facts.dispatches.begin(), facts.dispatches.end(),
+    }) && std::all_of(facts.principal_sets.begin(), facts.principal_sets.end(),
+             [](const DynPrincipalSetMetadataAbiDescriptor& descriptor) {
+                 return is_valid(descriptor);
+             })
+        && std::all_of(facts.composition_projections.begin(), facts.composition_projections.end(),
+             [](const DynCompositionProjectionAbiDescriptor& descriptor) {
+                 return is_valid(descriptor);
+             })
+        && std::all_of(facts.dispatches.begin(), facts.dispatches.end(),
              [](const DynDispatchAbiDescriptor& descriptor) {
                  return is_valid(descriptor);
              });
@@ -327,6 +428,22 @@ void record_dyn_upcast_abi_descriptor(FunctionDynAbiFacts& facts, DynUpcastAbiDe
     facts.summary.upcast_count = facts.upcasts.size();
 }
 
+void record_dyn_principal_set_metadata_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynPrincipalSetMetadataAbiDescriptor descriptor)
+{
+    facts.summary.principal_set_witness_count += descriptor.witnesses.size();
+    facts.principal_sets.push_back(std::move(descriptor));
+    facts.summary.principal_set_metadata_count = facts.principal_sets.size();
+}
+
+void record_dyn_composition_projection_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynCompositionProjectionAbiDescriptor descriptor)
+{
+    count_borrow_kind(facts.summary, descriptor.borrow_kind);
+    facts.composition_projections.push_back(std::move(descriptor));
+    facts.summary.composition_projection_count = facts.composition_projections.size();
+}
+
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor)
 {
     facts.dispatches.push_back(std::move(descriptor));
@@ -363,6 +480,9 @@ std::optional<const DynVTableSlotAbiDescriptor*> dyn_vtable_slot_descriptor(
 
 DynMetadataPolicy function_dyn_abi_metadata_policy(const FunctionDynAbiFacts& facts) noexcept
 {
+    if (!facts.principal_sets.empty() || !facts.composition_projections.empty()) {
+        return DynMetadataPolicy::principal_set_metadata_v1;
+    }
     if (!facts.upcasts.empty()) {
         return DynMetadataPolicy::supertrait_vptr_metadata_v1;
     }
@@ -383,12 +503,17 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     builder.mix_u64(facts.vtables.size());
     builder.mix_u64(facts.coercions.size());
     builder.mix_u64(facts.upcasts.size());
+    builder.mix_u64(facts.principal_sets.size());
+    builder.mix_u64(facts.composition_projections.size());
     builder.mix_u64(facts.dispatches.size());
     builder.mix_u64(facts.summary.object_count);
     builder.mix_u64(facts.summary.vtable_count);
     builder.mix_u64(facts.summary.slot_count);
     builder.mix_u64(facts.summary.coercion_count);
     builder.mix_u64(facts.summary.upcast_count);
+    builder.mix_u64(facts.summary.principal_set_metadata_count);
+    builder.mix_u64(facts.summary.principal_set_witness_count);
+    builder.mix_u64(facts.summary.composition_projection_count);
     builder.mix_u64(facts.summary.dispatch_count);
     builder.mix_u64(facts.summary.shared_borrow_count);
     builder.mix_u64(facts.summary.mut_borrow_count);
@@ -404,6 +529,12 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     for (const DynUpcastAbiDescriptor& descriptor : facts.upcasts) {
         mix_dyn_upcast(builder, descriptor);
     }
+    for (const DynPrincipalSetMetadataAbiDescriptor& descriptor : facts.principal_sets) {
+        mix_dyn_principal_set_metadata(builder, descriptor);
+    }
+    for (const DynCompositionProjectionAbiDescriptor& descriptor : facts.composition_projections) {
+        mix_dyn_composition_projection(builder, descriptor);
+    }
     for (const DynDispatchAbiDescriptor& descriptor : facts.dispatches) {
         mix_dyn_dispatch(builder, descriptor);
     }
@@ -418,10 +549,20 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
           << " slots=" << facts.summary.slot_count
           << " coercions=" << facts.coercions.size()
           << " upcasts=" << facts.upcasts.size()
+          << " principal_sets=" << facts.principal_sets.size()
+          << " composition_projections=" << facts.composition_projections.size()
           << " dispatches=" << facts.dispatches.size()
           << " abi=" << dyn_abi_policy_name(DynAbiPolicy::borrowed_view_v1)
           << " metadata=" << dyn_metadata_policy_name(function_dyn_abi_metadata_policy(facts));
-    if (!facts.dispatches.empty()) {
+    if (!facts.composition_projections.empty()) {
+        const DynCompositionProjectionAbiDescriptor& projection = facts.composition_projections.front();
+        label << " first_composition_projection="
+              << (projection.source_reference_type_name.empty() ? "<unknown>" : projection.source_reference_type_name)
+              << "->"
+              << (projection.target_reference_type_name.empty() ? "<unknown>" : projection.target_reference_type_name)
+              << " principal_index=" << projection.principal_index
+              << " borrow=" << dyn_borrow_kind_name(projection.borrow_kind);
+    } else if (!facts.dispatches.empty()) {
         label << " first_dispatch=vtable_slot slot=" << facts.dispatches.front().slot;
     } else if (!facts.upcasts.empty()) {
         const DynUpcastAbiDescriptor& upcast = facts.upcasts.front();
@@ -447,6 +588,9 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
            << " slots=" << facts.summary.slot_count
            << " coercions=" << facts.coercions.size()
            << " upcasts=" << facts.upcasts.size()
+           << " principal_sets=" << facts.principal_sets.size()
+           << " principal_set_witnesses=" << facts.summary.principal_set_witness_count
+           << " composition_projections=" << facts.composition_projections.size()
            << " dispatches=" << facts.dispatches.size()
            << " fingerprint=" << debug_string(function_dyn_abi_facts_fingerprint(facts)) << '\n';
     for (base::usize index = 0; index < facts.objects.size(); ++index) {
@@ -505,6 +649,53 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
                << " abi=" << dyn_abi_policy_name(upcast.abi_policy)
                << " metadata=" << dyn_metadata_policy_name(upcast.metadata_policy)
                << " key=" << debug_string(stable_key_fingerprint(upcast.upcast)) << '\n';
+    }
+    for (base::usize index = 0; index < facts.principal_sets.size(); ++index) {
+        const DynPrincipalSetMetadataAbiDescriptor& principal_set = facts.principal_sets[index];
+        stream << "  dyn_principal_set_metadata #" << index
+               << " symbol=" << (principal_set.symbol.empty() ? "<anonymous>" : principal_set.symbol)
+               << " concrete=" << (principal_set.concrete_type_name.empty() ? "<unknown>"
+                                                                             : principal_set.concrete_type_name)
+               << " object=" << (principal_set.composition_object_type_name.empty()
+                                      ? "<unknown>"
+                                      : principal_set.composition_object_type_name)
+               << " abi=" << dyn_abi_policy_name(principal_set.abi_policy)
+               << " metadata=" << dyn_metadata_policy_name(principal_set.metadata_policy)
+               << " witnesses=" << principal_set.witnesses.size()
+               << " identity=" << debug_string(principal_set.principal_set_identity) << '\n';
+        for (const DynPrincipalSetWitnessAbiDescriptor& witness : principal_set.witnesses) {
+            stream << "    dyn_principal_set_witness index=" << witness.principal_index
+                   << " object=" << (witness.principal_object_type_name.empty()
+                                         ? "<unknown>"
+                                         : witness.principal_object_type_name)
+                   << " vtable=" << (witness.vtable_symbol.empty() ? "<unknown>" : witness.vtable_symbol)
+                   << " object_key=" << debug_string(stable_key_fingerprint(witness.principal_object))
+                   << " layout=" << debug_string(stable_key_fingerprint(witness.vtable_layout)) << '\n';
+        }
+    }
+    for (base::usize index = 0; index < facts.composition_projections.size(); ++index) {
+        const DynCompositionProjectionAbiDescriptor& projection = facts.composition_projections[index];
+        stream << "  dyn_composition_projection #" << index
+               << " " << (projection.source_reference_type_name.empty() ? "<unknown>"
+                                                                        : projection.source_reference_type_name)
+               << " -> "
+               << (projection.target_reference_type_name.empty() ? "<unknown>"
+                                                                 : projection.target_reference_type_name)
+               << " source_object=" << (projection.source_object_type_name.empty()
+                                            ? "<unknown>"
+                                            : projection.source_object_type_name)
+               << " target_object=" << (projection.target_object_type_name.empty()
+                                            ? "<unknown>"
+                                            : projection.target_object_type_name)
+               << " principal_index=" << projection.principal_index
+               << " borrow=" << dyn_borrow_kind_name(projection.borrow_kind)
+               << " abi=" << dyn_abi_policy_name(projection.abi_policy)
+               << " metadata=" << dyn_metadata_policy_name(projection.metadata_policy)
+               << " principal_key=" << debug_string(stable_key_fingerprint(projection.principal_object));
+        if (is_valid(projection.target_vtable_layout)) {
+            stream << " target_layout=" << debug_string(stable_key_fingerprint(projection.target_vtable_layout));
+        }
+        stream << '\n';
     }
     for (base::usize index = 0; index < facts.dispatches.size(); ++index) {
         const DynDispatchAbiDescriptor& dispatch = facts.dispatches[index];

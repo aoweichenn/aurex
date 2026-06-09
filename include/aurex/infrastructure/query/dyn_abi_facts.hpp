@@ -18,6 +18,7 @@ enum class DynAbiPolicy : base::u8 {
 enum class DynMetadataPolicy : base::u8 {
     borrowed_methods_only_v1 = 1,
     supertrait_vptr_metadata_v1 = 2,
+    principal_set_metadata_v1 = 3,
 };
 
 enum class DynBorrowKind : base::u8 {
@@ -76,6 +77,38 @@ struct DynUpcastAbiDescriptor {
     std::string target_object_type_name;
 };
 
+struct DynPrincipalSetWitnessAbiDescriptor {
+    base::u32 principal_index = 0;
+    TraitObjectTypeKey principal_object;
+    VTableLayoutKey vtable_layout;
+    std::string principal_object_type_name;
+    std::string vtable_symbol;
+};
+
+struct DynPrincipalSetMetadataAbiDescriptor {
+    StableFingerprint128 principal_set_identity;
+    std::string symbol;
+    std::string concrete_type_name;
+    std::string composition_object_type_name;
+    DynAbiPolicy abi_policy = DynAbiPolicy::borrowed_view_v1;
+    DynMetadataPolicy metadata_policy = DynMetadataPolicy::principal_set_metadata_v1;
+    std::vector<DynPrincipalSetWitnessAbiDescriptor> witnesses;
+};
+
+struct DynCompositionProjectionAbiDescriptor {
+    StableFingerprint128 principal_set_identity;
+    TraitObjectTypeKey principal_object;
+    VTableLayoutKey target_vtable_layout;
+    base::u32 principal_index = 0;
+    DynBorrowKind borrow_kind = DynBorrowKind::shared;
+    DynAbiPolicy abi_policy = DynAbiPolicy::borrowed_view_v1;
+    DynMetadataPolicy metadata_policy = DynMetadataPolicy::principal_set_metadata_v1;
+    std::string source_reference_type_name;
+    std::string target_reference_type_name;
+    std::string source_object_type_name;
+    std::string target_object_type_name;
+};
+
 struct DynDispatchAbiDescriptor {
     VTableLayoutKey layout;
     base::u32 slot = 0;
@@ -92,6 +125,9 @@ struct DynAbiFactsSummary {
     base::u64 slot_count = 0;
     base::u64 coercion_count = 0;
     base::u64 upcast_count = 0;
+    base::u64 principal_set_metadata_count = 0;
+    base::u64 principal_set_witness_count = 0;
+    base::u64 composition_projection_count = 0;
     base::u64 dispatch_count = 0;
     base::u64 shared_borrow_count = 0;
     base::u64 mut_borrow_count = 0;
@@ -103,6 +139,8 @@ struct FunctionDynAbiFacts {
     std::vector<DynVTableAbiDescriptor> vtables;
     std::vector<DynCoercionAbiDescriptor> coercions;
     std::vector<DynUpcastAbiDescriptor> upcasts;
+    std::vector<DynPrincipalSetMetadataAbiDescriptor> principal_sets;
+    std::vector<DynCompositionProjectionAbiDescriptor> composition_projections;
     std::vector<DynDispatchAbiDescriptor> dispatches;
     DynAbiFactsSummary summary;
     StableFingerprint128 fingerprint;
@@ -119,6 +157,9 @@ struct FunctionDynAbiFacts {
 [[nodiscard]] bool is_valid(const DynVTableAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynCoercionAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynUpcastAbiDescriptor& descriptor) noexcept;
+[[nodiscard]] bool is_valid(const DynPrincipalSetWitnessAbiDescriptor& descriptor) noexcept;
+[[nodiscard]] bool is_valid(const DynPrincipalSetMetadataAbiDescriptor& descriptor) noexcept;
+[[nodiscard]] bool is_valid(const DynCompositionProjectionAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const FunctionDynAbiFacts& facts) noexcept;
 
@@ -131,6 +172,10 @@ void record_dyn_object_abi_descriptor(FunctionDynAbiFacts& facts, DynObjectAbiDe
 void record_dyn_vtable_abi_descriptor(FunctionDynAbiFacts& facts, DynVTableAbiDescriptor descriptor);
 void record_dyn_coercion_abi_descriptor(FunctionDynAbiFacts& facts, DynCoercionAbiDescriptor descriptor);
 void record_dyn_upcast_abi_descriptor(FunctionDynAbiFacts& facts, DynUpcastAbiDescriptor descriptor);
+void record_dyn_principal_set_metadata_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynPrincipalSetMetadataAbiDescriptor descriptor);
+void record_dyn_composition_projection_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynCompositionProjectionAbiDescriptor descriptor);
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor);
 
 [[nodiscard]] std::optional<const DynVTableAbiDescriptor*> dyn_vtable_descriptor_for_layout(

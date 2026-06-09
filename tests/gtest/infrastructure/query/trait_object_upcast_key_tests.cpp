@@ -286,4 +286,133 @@ TEST(QueryUnit, DynUpcastAbiDescriptorValidatesMetadataBorrowAndDump)
     EXPECT_FALSE(query::is_valid(wrong_metadata));
 }
 
+TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
+{
+    const query::TraitObjectTypeKey draw = test_object_key("Draw", "Draw");
+    const query::TraitObjectTypeKey debug = test_object_key("Debug", "Debug");
+    const query::CanonicalTypeKey concrete = query::canonical_nominal(test_trait_def("File"), {});
+    const query::StableFingerprint128 principal_set_identity =
+        query::stable_fingerprint("dyn composition Draw+Debug");
+    const query::VTableLayoutKey draw_layout = query::vtable_layout_key(concrete,
+        draw,
+        draw.object_callability_schema,
+        query::stable_fingerprint("impl File: Draw"),
+        1U);
+    const query::VTableLayoutKey debug_layout = query::vtable_layout_key(concrete,
+        debug,
+        debug.object_callability_schema,
+        query::stable_fingerprint("impl File: Debug"),
+        1U);
+
+    query::DynPrincipalSetMetadataAbiDescriptor metadata;
+    metadata.principal_set_identity = principal_set_identity;
+    metadata.symbol = "__aurex_principal_set_metadata_File_Draw_Debug";
+    metadata.concrete_type_name = "File";
+    metadata.composition_object_type_name = "dyn (Debug + Draw)";
+    metadata.witnesses.push_back(query::DynPrincipalSetWitnessAbiDescriptor{
+        0U,
+        debug,
+        debug_layout,
+        "dyn Debug",
+        "__aurex_vtable_File_Debug",
+    });
+    metadata.witnesses.push_back(query::DynPrincipalSetWitnessAbiDescriptor{
+        1U,
+        draw,
+        draw_layout,
+        "dyn Draw",
+        "__aurex_vtable_File_Draw",
+    });
+
+    query::DynCompositionProjectionAbiDescriptor projection;
+    projection.principal_set_identity = principal_set_identity;
+    projection.principal_object = draw;
+    projection.target_vtable_layout = draw_layout;
+    projection.principal_index = 1U;
+    projection.borrow_kind = query::DynBorrowKind::shared;
+    projection.source_reference_type_name = "&dyn (Debug + Draw)";
+    projection.target_reference_type_name = "&dyn Draw";
+    projection.source_object_type_name = "dyn (Debug + Draw)";
+    projection.target_object_type_name = "dyn Draw";
+
+    ASSERT_TRUE(query::is_valid(metadata));
+    ASSERT_TRUE(query::is_valid(projection));
+    EXPECT_EQ(query::dyn_metadata_policy_name(query::DynMetadataPolicy::principal_set_metadata_v1),
+        "principal_set_metadata_v1");
+
+    query::FunctionDynAbiFacts facts;
+    facts.symbol = "composition_test";
+    query::record_dyn_principal_set_metadata_abi_descriptor(facts, metadata);
+    query::record_dyn_composition_projection_abi_descriptor(facts, projection);
+    facts.fingerprint = query::function_dyn_abi_facts_fingerprint(facts);
+
+    ASSERT_TRUE(query::is_valid(facts));
+    EXPECT_EQ(facts.summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(facts.summary.principal_set_witness_count, 2U);
+    EXPECT_EQ(facts.summary.composition_projection_count, 1U);
+    EXPECT_EQ(facts.summary.shared_borrow_count, 1U);
+    EXPECT_EQ(facts.summary.mut_borrow_count, 0U);
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+    EXPECT_EQ(facts.fingerprint, query::function_dyn_abi_facts_fingerprint(facts));
+
+    const std::string summary = query::summarize_function_dyn_abi_facts(facts);
+    EXPECT_NE(summary.find("principal_sets=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("composition_projections=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("metadata=principal_set_metadata_v1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_composition_projection=&dyn (Debug + Draw)->&dyn Draw"),
+        std::string::npos) << summary;
+    EXPECT_NE(summary.find("principal_index=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("borrow=shared"), std::string::npos) << summary;
+
+    const std::string dump = query::dump_function_dyn_abi_facts(facts);
+    EXPECT_NE(dump.find("dyn_principal_set_metadata #0"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("dyn_principal_set_witness index=0 object=dyn Debug"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("dyn_principal_set_witness index=1 object=dyn Draw"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("dyn_composition_projection #0 &dyn (Debug + Draw) -> &dyn Draw"),
+        std::string::npos) << dump;
+    EXPECT_NE(dump.find("metadata=principal_set_metadata_v1"), std::string::npos) << dump;
+
+    query::FunctionDynAbiFacts changed_witness_facts = facts;
+    changed_witness_facts.principal_sets.front().witnesses.front().vtable_symbol =
+        "__aurex_vtable_File_Debug_v2";
+    EXPECT_TRUE(query::is_valid(changed_witness_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_witness_facts), facts.fingerprint);
+
+    query::FunctionDynAbiFacts changed_borrow_facts = facts;
+    changed_borrow_facts.composition_projections.front().borrow_kind = query::DynBorrowKind::mut;
+    changed_borrow_facts.summary.shared_borrow_count = 0U;
+    changed_borrow_facts.summary.mut_borrow_count = 1U;
+    EXPECT_TRUE(query::is_valid(changed_borrow_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_borrow_facts), facts.fingerprint);
+
+    const query::QueryResultFingerprint lowered_ir =
+        query::query_result_fingerprint(query::stable_fingerprint("dyn-composition-lower-ir"));
+    EXPECT_NE(query::lower_function_ir_result_fingerprint(
+                  lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_borrow_facts),
+        query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
+
+    query::DynPrincipalSetMetadataAbiDescriptor unsorted = metadata;
+    std::swap(unsorted.witnesses[0], unsorted.witnesses[1]);
+    EXPECT_FALSE(query::is_valid(unsorted));
+
+    query::DynPrincipalSetMetadataAbiDescriptor too_small = metadata;
+    too_small.witnesses.pop_back();
+    EXPECT_FALSE(query::is_valid(too_small));
+
+    query::DynPrincipalSetMetadataAbiDescriptor sparse = metadata;
+    sparse.witnesses.back().principal_index = 2U;
+    EXPECT_FALSE(query::is_valid(sparse));
+
+    query::DynPrincipalSetMetadataAbiDescriptor wrong_metadata_policy = metadata;
+    wrong_metadata_policy.metadata_policy = query::DynMetadataPolicy::borrowed_methods_only_v1;
+    EXPECT_FALSE(query::is_valid(wrong_metadata_policy));
+
+    query::DynCompositionProjectionAbiDescriptor wrong_layout = projection;
+    wrong_layout.target_vtable_layout = debug_layout;
+    EXPECT_FALSE(query::is_valid(wrong_layout));
+}
+
 } // namespace aurex::test

@@ -115,6 +115,16 @@ struct DynTraitIrFixture {
     return nullptr;
 }
 
+[[nodiscard]] Value* find_mutable_value_of_kind(ir::Module& module, const ValueKind kind) noexcept
+{
+    for (Value& value : module.values) {
+        if (value.kind == kind) {
+            return &value;
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] std::optional<query::FunctionDynAbiFacts> find_dyn_abi_facts_by_symbol_fragment(
     const std::vector<query::FunctionDynAbiFacts>& facts, const std::string_view symbol_fragment)
 {
@@ -898,6 +908,34 @@ TEST(CoreUnit, LowerAstDynTraitCompositionProjectionLowersToMetadataPackAndProje
     }
     EXPECT_EQ(projected_principal_count, 2U);
 
+    const std::vector<query::FunctionDynAbiFacts> all_facts = ir::function_dyn_abi_facts(fixture.ir);
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->principal_sets.size(), 1U);
+    ASSERT_EQ(main_facts->composition_projections.size(), 2U);
+    EXPECT_EQ(main_facts->summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_witness_count, 2U);
+    EXPECT_EQ(main_facts->summary.composition_projection_count, 2U);
+    EXPECT_EQ(main_facts->summary.shared_borrow_count, 2U);
+    EXPECT_EQ(main_facts->summary.mut_borrow_count, 0U);
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(*main_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+    EXPECT_EQ(main_facts->fingerprint, query::function_dyn_abi_facts_fingerprint(*main_facts));
+    EXPECT_NE(main_facts->composition_projections.front().principal_set_identity.byte_count, 0U);
+    EXPECT_TRUE(query::is_valid(main_facts->composition_projections.front().principal_object));
+    const std::string dyn_summary = query::summarize_function_dyn_abi_facts(*main_facts);
+    EXPECT_NE(dyn_summary.find("principal_sets=1"), std::string::npos) << dyn_summary;
+    EXPECT_NE(dyn_summary.find("composition_projections=2"), std::string::npos) << dyn_summary;
+    EXPECT_NE(dyn_summary.find("metadata=principal_set_metadata_v1"), std::string::npos) << dyn_summary;
+    EXPECT_NE(dyn_summary.find("first_composition_projection=&dyn ("), std::string::npos) << dyn_summary;
+    const std::string dyn_dump = query::dump_function_dyn_abi_facts(*main_facts);
+    EXPECT_NE(dyn_dump.find("dyn_principal_set_metadata #0"), std::string::npos) << dyn_dump;
+    EXPECT_NE(dyn_dump.find("principal_set_witnesses=2"), std::string::npos) << dyn_dump;
+    EXPECT_NE(dyn_dump.find("dyn_composition_projection #0"), std::string::npos) << dyn_dump;
+    EXPECT_NE(dyn_dump.find("metadata=principal_set_metadata_v1"), std::string::npos) << dyn_dump;
+
     const base::Result<void> verified = ir::verify_module(fixture.ir);
     ASSERT_TRUE(verified) << verified.error().message;
     const std::string dump = ir::dump_module(fixture.ir);
@@ -963,6 +1001,227 @@ TEST(CoreUnit, LowerAstDynTraitCompositionMetadataLayoutsCoverEachConcreteType)
 
     const base::Result<void> verified = ir::verify_module(fixture.ir);
     ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, IrDynAbiFactsCompositionProjectionSeparatesConcreteMetadataFromCalleeFacts)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_fact_boundaries;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn score(combo: &dyn (Debug + Draw)) -> i32 {\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  let debug: &dyn Debug = combo;\n"
+        "  return draw.draw() + debug.debug();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  return score(&file);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    const std::vector<query::FunctionDynAbiFacts> all_facts = ir::function_dyn_abi_facts(fixture.ir);
+    const std::optional<query::FunctionDynAbiFacts> score_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "score");
+    ASSERT_TRUE(score_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*score_facts));
+    EXPECT_TRUE(score_facts->principal_sets.empty());
+    ASSERT_EQ(score_facts->composition_projections.size(), 2U);
+    EXPECT_EQ(score_facts->summary.principal_set_metadata_count, 0U);
+    EXPECT_EQ(score_facts->summary.principal_set_witness_count, 0U);
+    EXPECT_EQ(score_facts->summary.composition_projection_count, 2U);
+    EXPECT_EQ(score_facts->summary.shared_borrow_count, 2U);
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(*score_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+    EXPECT_EQ(score_facts->fingerprint, query::function_dyn_abi_facts_fingerprint(*score_facts));
+    for (const query::DynCompositionProjectionAbiDescriptor& projection :
+         score_facts->composition_projections) {
+        EXPECT_FALSE(query::is_valid(projection.target_vtable_layout));
+        EXPECT_NE(projection.source_reference_type_name.find("&dyn ("), std::string::npos)
+            << projection.source_reference_type_name;
+        EXPECT_NE(projection.target_reference_type_name.find("&dyn "), std::string::npos)
+            << projection.target_reference_type_name;
+    }
+    const std::string score_summary = query::summarize_function_dyn_abi_facts(*score_facts);
+    EXPECT_NE(score_summary.find("principal_sets=0"), std::string::npos) << score_summary;
+    EXPECT_NE(score_summary.find("composition_projections=2"), std::string::npos) << score_summary;
+    EXPECT_NE(score_summary.find("metadata=principal_set_metadata_v1"), std::string::npos)
+        << score_summary;
+
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(all_facts, "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->principal_sets.size(), 1U);
+    EXPECT_TRUE(main_facts->composition_projections.empty());
+    EXPECT_EQ(main_facts->summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_witness_count, 2U);
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(*main_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+    EXPECT_NE(main_facts->fingerprint, score_facts->fingerprint);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, IrDynAbiFactsCompositionProjectionTracksMutBorrowAndSkipsInvalidPackMetadata)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_ir_mut_fact_boundaries;\n"
+        "trait Draw { fn draw(self: &mut Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &mut Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &mut File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &mut File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  var file: File = File { value: 17 };\n"
+        "  let combo: &mut dyn (Debug + Draw) = &mut file;\n"
+        "  let draw: &mut dyn Draw = combo;\n"
+        "  return draw.draw();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    const std::optional<query::FunctionDynAbiFacts> main_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(fixture.ir), "main");
+    ASSERT_TRUE(main_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*main_facts));
+    EXPECT_EQ(main_facts->principal_sets.size(), 1U);
+    ASSERT_EQ(main_facts->composition_projections.size(), 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_metadata_count, 1U);
+    EXPECT_EQ(main_facts->summary.principal_set_witness_count, 2U);
+    EXPECT_EQ(main_facts->summary.composition_projection_count, 1U);
+    EXPECT_EQ(main_facts->summary.shared_borrow_count, 0U);
+    EXPECT_EQ(main_facts->summary.mut_borrow_count, 1U);
+    const query::DynCompositionProjectionAbiDescriptor& projection = main_facts->composition_projections.front();
+    EXPECT_EQ(projection.borrow_kind, query::DynBorrowKind::mut);
+    EXPECT_NE(projection.source_reference_type_name.find("&mut dyn ("), std::string::npos)
+        << projection.source_reference_type_name;
+    EXPECT_EQ(projection.target_reference_type_name, "&mut dyn Draw");
+    const std::string summary = query::summarize_function_dyn_abi_facts(*main_facts);
+    EXPECT_NE(summary.find("borrow=mut"), std::string::npos) << summary;
+
+    Module missing_pack_source = fixture.ir;
+    Value* missing_pack_source_value =
+        find_mutable_value_of_kind(missing_pack_source, ValueKind::trait_object_composition_pack);
+    ASSERT_NE(missing_pack_source_value, nullptr);
+    missing_pack_source_value->lhs = INVALID_VALUE_ID;
+    const std::optional<query::FunctionDynAbiFacts> missing_source_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(missing_pack_source), "main");
+    ASSERT_TRUE(missing_source_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*missing_source_facts));
+    EXPECT_TRUE(missing_source_facts->principal_sets.empty());
+    EXPECT_EQ(missing_source_facts->summary.principal_set_metadata_count, 0U);
+    EXPECT_EQ(missing_source_facts->summary.principal_set_witness_count, 0U);
+    ASSERT_EQ(missing_source_facts->composition_projections.size(), 1U);
+    EXPECT_EQ(missing_source_facts->composition_projections.front().borrow_kind, query::DynBorrowKind::mut);
+
+    Module missing_pack_layout = fixture.ir;
+    Value* missing_pack_layout_value =
+        find_mutable_value_of_kind(missing_pack_layout, ValueKind::trait_object_composition_pack);
+    ASSERT_NE(missing_pack_layout_value, nullptr);
+    missing_pack_layout_value->principal_set_identity = query::stable_fingerprint("missing-principal-set-layout");
+    const std::optional<query::FunctionDynAbiFacts> missing_layout_facts =
+        find_dyn_abi_facts_by_symbol_fragment(ir::function_dyn_abi_facts(missing_pack_layout), "main");
+    ASSERT_TRUE(missing_layout_facts.has_value());
+    EXPECT_TRUE(query::is_valid(*missing_layout_facts));
+    EXPECT_TRUE(missing_layout_facts->principal_sets.empty());
+    EXPECT_EQ(missing_layout_facts->summary.principal_set_metadata_count, 0U);
+    EXPECT_EQ(missing_layout_facts->summary.principal_set_witness_count, 0U);
+    EXPECT_EQ(missing_layout_facts->composition_projections.size(), 1U);
+
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, IrVerifierRejectsDynTraitCompositionMetadataDrift)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_verifier_matrix;\n"
+        "trait Draw { fn draw(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File { fn draw(self: &File) -> i32 { return self.value; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 13 };\n"
+        "  let combo: &dyn (Draw + Debug) = &file;\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  return draw.draw();\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(fixture.ir.principal_set_metadata_layouts.size(), 1U);
+    ASSERT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_pack), 1U);
+    ASSERT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    const base::Result<void> verified = ir::verify_module(fixture.ir);
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    {
+        Module bad = fixture.ir;
+        ASSERT_GE(bad.principal_set_metadata_layouts.front().witnesses.size(), 2U);
+        bad.principal_set_metadata_layouts.front().witnesses[1].principal_index =
+            bad.principal_set_metadata_layouts.front().witnesses[0].principal_index;
+        expect_error_contains(ir::verify_module(bad), "dyn trait principal-set metadata witness is invalid");
+    }
+    {
+        Module bad = fixture.ir;
+        ASSERT_GE(bad.principal_set_metadata_layouts.front().witnesses.size(), 2U);
+        bad.principal_set_metadata_layouts.front().witnesses.pop_back();
+        expect_error_contains(ir::verify_module(bad),
+            "dyn trait principal-set metadata layout is invalid or missing");
+    }
+    {
+        Module bad = fixture.ir;
+        bad.principal_set_metadata_layouts.front().principal_set_identity =
+            query::stable_fingerprint("wrong-principal-set-identity");
+        expect_error_contains(ir::verify_module(bad),
+            "dyn trait principal-set metadata layout does not match concrete/composition types");
+    }
+    {
+        Module bad = fixture.ir;
+        bool mutated = false;
+        for (Value& value : bad.values) {
+            if (value.kind == ValueKind::trait_object_composition_pack) {
+                value.principal_set_identity = query::stable_fingerprint("missing-pack-metadata");
+                mutated = true;
+                break;
+            }
+        }
+        ASSERT_TRUE(mutated);
+        expect_error_contains(ir::verify_module(bad),
+            "dyn trait principal-set metadata layout is invalid or missing");
+    }
+    {
+        Module bad = fixture.ir;
+        bool mutated = false;
+        for (Value& value : bad.values) {
+            if (value.kind == ValueKind::trait_object_composition_project) {
+                value.principal_index = 99U;
+                mutated = true;
+                break;
+            }
+        }
+        ASSERT_TRUE(mutated);
+        expect_error_contains(ir::verify_module(bad),
+            "dyn composition project principal is not present in the metadata layout");
+    }
+    {
+        Module bad = fixture.ir;
+        bool mutated = false;
+        for (Value& value : bad.values) {
+            if (value.kind == ValueKind::trait_object_composition_project) {
+                value.principal_object = {};
+                mutated = true;
+                break;
+            }
+        }
+        ASSERT_TRUE(mutated);
+        expect_error_contains(ir::verify_module(bad),
+            "dyn composition project principal is not present in the metadata layout");
+    }
 }
 
 TEST(CoreUnit, LlvmBackendDynTraitCompositionProjectionLoadsPrincipalVtable)

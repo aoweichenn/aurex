@@ -1,14 +1,19 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M11d Principal-Set Composition IR / Backend Runtime
+阶段：M11e Principal-Set Composition Hardening / Release Closure
 
 ## 总体状态
 
-2026-06-08：M11d Principal-Set Composition IR / Backend Runtime 已完成。M11d 在不实现标准库、owning dyn、
-`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 direct composition method dispatch 的前提下，把 M11c
-principal-set borrowed composition facts 贯通到 IR、verifier、LLVM backend 和 native execution。当前可执行子集是
-显式 projection：`let draw: &dyn Draw = combo; return draw.draw();`，而不是直接 `combo.draw()`。
+2026-06-08：M11e Principal-Set Composition Hardening / Release Closure 已完成。M11 现在收口为完整
+origin-bound borrowed principal-set dyn composition release baseline：M11a 设计、M11b query facts、M11c
+frontend/sema、M11d IR/backend runtime、M11e query/cache/tooling/verifier/docs closure 均已完成。新增收口文档见
+[Aurex M11 Principal-Set Composition Release Baseline](m11-release-baseline.md)。
+
+M11d 在不实现标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 direct composition method
+dispatch 的前提下，把 M11c principal-set borrowed composition facts 贯通到 IR、verifier、LLVM backend 和 native
+execution。当前可执行子集是显式 projection：`let draw: &dyn Draw = combo; return draw.draw();`，而不是直接
+`combo.draw()`。
 
 M11d 新增 `trait_object_composition_pack` / `trait_object_composition_project` IR value，
 `PrincipalSetMetadataLayout` / `PrincipalSetMetadataWitness` metadata layout，`principal_set_metadata_v1`
@@ -20,9 +25,12 @@ allocator、drop、size 或 align metadata。
 
 M11d focused validation 已覆盖 frontend composition projection、mutable borrow projection、query principal-set facts、
 IR pack/project lowering、多 concrete metadata layout、LLVM principal vtable load 和 native execution dispatch。
-下一步应进入 **M11e Principal-Set Composition Hardening / Release Closure**：补齐 query/cache/tooling projection、
-negative matrix、stress/perf gates、文档收口和 M11d 代码量偏差分析；标准库、owning dyn、`Box<dyn Trait>`、
-allocator 和 dynamic Drop dispatch 仍后移到独立阶段。
+M11e 新增 `FunctionDynAbiFacts::principal_sets` / `FunctionDynAbiFacts::composition_projections`、
+`DynPrincipalSetMetadataAbiDescriptor`、`DynPrincipalSetWitnessAbiDescriptor` 和
+`DynCompositionProjectionAbiDescriptor`；lower-IR query fingerprint、IDE semantic fact 和 hover 已消费这些 facts。
+IR verifier 负例矩阵覆盖 duplicate witness、metadata identity drift、missing pack metadata、invalid projection
+principal index 和 missing principal object。标准库、owning dyn、`Box<dyn Trait>`、allocator 和 dynamic Drop
+dispatch 仍后移到独立阶段；下一步进入 M12 Advanced Dyn Design Baseline。
 
 2026-06-08：M11c Principal-Set Composition Frontend / Sema Check-Only 已完成。M11 已从 `m11` 分支开启，并从 M9c/M10
 advanced dyn 剩余候选中选择 **principal-set borrowed dyn composition** 作为下一条主线。新增设计文档见
@@ -52,9 +60,8 @@ dispatch，而是先设计 origin-bound borrowed dyn principal-set view。该路
 M11c 仍明确不实现标准库、不实现 `Box<dyn Trait>`、不实现 owning dyn、不实现 dynamic Drop dispatch、不实现
 allocator policy、不实现 bare `dyn A + B` parser syntax、不实现 principal-qualified dispatch、不实现
 IR/backend runtime dispatch。M10 supertrait upcasting 被标记为 `completed_release_baseline`，M11a/M11b/M11c
-不重开 `supertrait_vptr_metadata_v1` runtime。下一步应进入 **M11d Principal-Set Composition IR / Backend Runtime**：
-在仍不实现标准库和 owning dyn 的前提下，设计并实现 IR composition/projection value、verifier、LLVM
-principal-set metadata layout、显式 projection runtime 和 native runtime tests；该阶段已由 M11d 完成。
+不重开 `supertrait_vptr_metadata_v1` runtime。后续 M11d 已完成 IR/backend runtime projection，M11e 已完成
+release closure。
 
 2026-06-08：M10d Supertrait Hardening / Release Closure 已完成。M10 现在收口为完整 borrowed dyn supertrait
 upcasting release baseline：M10a 固定设计，M10b 完成 frontend/query/sema facts，M10c 完成 IR/backend runtime，

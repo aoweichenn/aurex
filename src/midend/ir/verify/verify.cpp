@@ -1163,6 +1163,12 @@ private:
                     != layout.principal_set_identity) {
                 this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT_TYPE));
             }
+            if (this->is_principal_set_trait_object_type(layout.object_type)) {
+                const sema::TypeInfo& principal_set = this->module_.types.get(layout.object_type);
+                if (layout.witnesses.size() != principal_set.trait_object_principal_types.size()) {
+                    this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
+                }
+            }
             if (layout.witnesses.size() < IR_PRINCIPAL_SET_METADATA_MIN_WITNESS_COUNT) {
                 this->fail(std::string(IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT));
                 continue;
@@ -1323,8 +1329,8 @@ private:
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL));
             return;
         }
-        if (query::is_valid(value.principal_object)
-            && this->module_.types.get(target_object_type).trait_object_key != value.principal_object) {
+        if (!query::is_valid(value.principal_object)
+            || this->module_.types.get(target_object_type).trait_object_key != value.principal_object) {
             this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PROJECT_PRINCIPAL));
         }
         if (query::is_valid(value.target_vtable_layout)) {

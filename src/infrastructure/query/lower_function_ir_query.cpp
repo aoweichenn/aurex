@@ -92,8 +92,13 @@ QueryResultFingerprint lower_function_ir_result_fingerprint(
     builder.mix_u64(dyn_abi.objects.size());
     builder.mix_u64(dyn_abi.vtables.size());
     builder.mix_u64(dyn_abi.coercions.size());
+    builder.mix_u64(dyn_abi.upcasts.size());
+    builder.mix_u64(dyn_abi.principal_sets.size());
+    builder.mix_u64(dyn_abi.composition_projections.size());
     builder.mix_u64(dyn_abi.dispatches.size());
     builder.mix_u64(dyn_abi.summary.slot_count);
+    builder.mix_u64(dyn_abi.summary.principal_set_witness_count);
+    builder.mix_u64(dyn_abi.summary.composition_projection_count);
     return query_result_fingerprint(builder.finish());
 }
 

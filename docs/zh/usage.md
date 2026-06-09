@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M11d Principal-Set Composition IR / Backend Runtime** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 显式 projection 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 direct principal-qualified composition method dispatch。
+本文描述当前 **M11e Principal-Set Composition Hardening / Release Closure** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 显式 projection 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或 direct principal-qualified composition method dispatch。
 
 ## 构建
 
@@ -179,8 +179,11 @@ fn main() -> i32 {
 这段程序在 `--check` / `--emit=checked` 阶段会生成 principal-set identity、canonical principal order、
 composition witness set、projection fact 和 checked dump/fingerprint；在 `--emit=ir` / `--emit=llvm-ir` /
 native execution 中会生成 `dyn.composition.pack`、`dyn.composition.project` 和 `principal_set_metadata_v1`
-metadata global。当前仍不能通过 composition receiver 直接调用 `view.draw()` 或 `view.debug()`，因为 direct
-principal-qualified dispatch syntax 不属于 M11d；应先显式投影到 `&dyn Draw` / `&dyn Debug`。当前仍不实现 owning
+metadata global。M11e 后，`FunctionDynAbiFacts`、lower-IR query invalidation、IDE semantic fact 和 hover 也会展示
+`principal_sets`、`composition_projections`、projection principal index、borrow kind 和
+`composition_metadata=principal_set_metadata_v1`。当前仍不能通过 composition receiver 直接调用 `view.draw()` 或
+`view.debug()`，因为 direct principal-qualified dispatch syntax 不属于 M11；应先显式投影到 `&dyn Draw` /
+`&dyn Debug`。当前仍不实现 owning
 dyn、`Box<dyn Trait>`、allocator、标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、specialization、
 default associated type、generic associated type 或 associated const。
 

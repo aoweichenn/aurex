@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M11d Principal-Set Composition IR / Backend Runtime。M2 已移除标准库层：
+当前架构基线是 M11e Principal-Set Composition Hardening / Release Closure。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -42,7 +42,8 @@
   summary/dump/fingerprint 和 focused query tests。M11c 已接入用户可写 `dyn (A + B)` borrowed composition
   annotation/coercion 的 parser/AST/type/sema 子集；M11d 已接入 `trait_object_composition_pack` /
   `trait_object_composition_project` IR、`principal_set_metadata_v1` LLVM metadata global 和显式 projection
-  runtime。
+  runtime；M11e 已把 `FunctionDynAbiFacts::principal_sets` / `FunctionDynAbiFacts::composition_projections`、
+  lower-IR query invalidation、IDE semantic fact/hover 和 verifier negative matrix 收口成 release baseline。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
   direct composition method dispatch、principal-qualified syntax、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。

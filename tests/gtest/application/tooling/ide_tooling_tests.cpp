@@ -650,6 +650,91 @@ TEST(CoreUnit, IdeToolingProjectsSupertraitUpcastDynAbiFactsAndHover)
         << widen_hover->label;
 }
 
+TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionRuntimeFactsAndHover)
+{
+    constexpr std::string_view source =
+        "module ide.dyn_trait_composition_facts;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Debug {\n"
+        "  fn debug(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "impl Debug for File {\n"
+        "  fn debug(self: &File) -> i32 { return self.value + 1; }\n"
+        "}\n"
+        "fn score(combo: &dyn (Debug + Draw)) -> i32 {\n"
+        "  let draw: &dyn Draw = combo;\n"
+        "  return draw.draw();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 5 };\n"
+        "  return score(&file);\n"
+        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
+        query::QueryKind::type_check_body));
+
+    const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
+    ASSERT_NE(score_fact, nullptr);
+    EXPECT_NE(score_fact->detail.find("dyn_abi_facts objects="), std::string::npos)
+        << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("principal_sets=0"), std::string::npos) << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
+        << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
+        << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("first_composition_projection=&dyn ("), std::string::npos)
+        << score_fact->detail;
+
+    const tooling::IdeSemanticFact* const main_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "main");
+    ASSERT_NE(main_fact, nullptr);
+    EXPECT_NE(main_fact->detail.find("principal_sets=1"), std::string::npos) << main_fact->detail;
+    EXPECT_NE(main_fact->detail.find("composition_projections=0"), std::string::npos)
+        << main_fact->detail;
+    EXPECT_NE(main_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
+        << main_fact->detail;
+
+    const base::usize score_offset = source.find("score(combo");
+    ASSERT_NE(score_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
+    ASSERT_TRUE(score_hover.has_value());
+    EXPECT_NE(score_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/metadata=principal_set_metadata_v1"), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/principal_sets=0"), std::string::npos) << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/composition_projections=1"), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/composition_projection=&dyn ("), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/composition_borrow=shared"), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/composition_metadata=principal_set_metadata_v1"), std::string::npos)
+        << score_hover->label;
+
+    const base::usize draw_offset = source.find("draw();");
+    ASSERT_NE(draw_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> draw_hover = tooling::hover_at_offset(snapshot, draw_offset);
+    ASSERT_TRUE(draw_hover.has_value());
+    EXPECT_NE(draw_hover->label.find("identifier `draw` -> trait_method"), std::string::npos)
+        << draw_hover->label;
+    EXPECT_NE(draw_hover->label.find("dyn_dispatch=dispatch=vtable_slot/slot=0"), std::string::npos)
+        << draw_hover->label;
+    EXPECT_NE(draw_hover->label.find("/metadata=borrowed_methods_only_v1"), std::string::npos)
+        << draw_hover->label;
+}
+
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
 {
     constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"

@@ -1186,7 +1186,8 @@ void recover_resolved_fragment_source_part(
 [[nodiscard]] bool dyn_abi_facts_has_surface(const query::FunctionDynAbiFacts& facts) noexcept
 {
     return !facts.objects.empty() || !facts.vtables.empty() || !facts.coercions.empty()
-        || !facts.upcasts.empty() || !facts.dispatches.empty();
+        || !facts.upcasts.empty() || !facts.principal_sets.empty()
+        || !facts.composition_projections.empty() || !facts.dispatches.empty();
 }
 
 void append_dyn_abi_hover_detail(std::ostringstream& label, const query::FunctionDynAbiFacts& facts)
@@ -1199,7 +1200,19 @@ void append_dyn_abi_hover_detail(std::ostringstream& label, const query::Functio
           << "/slots=" << facts.summary.slot_count
           << "/coercions=" << facts.coercions.size()
           << "/upcasts=" << facts.upcasts.size()
+          << "/principal_sets=" << facts.principal_sets.size()
+          << "/composition_projections=" << facts.composition_projections.size()
           << "/dispatches=" << facts.dispatches.size();
+    if (!facts.composition_projections.empty()) {
+        const query::DynCompositionProjectionAbiDescriptor& projection = facts.composition_projections.front();
+        label << "/composition_projection="
+              << (projection.source_reference_type_name.empty() ? "<unknown>" : projection.source_reference_type_name)
+              << "->"
+              << (projection.target_reference_type_name.empty() ? "<unknown>" : projection.target_reference_type_name)
+              << "/composition_principal_index=" << projection.principal_index
+              << "/composition_borrow=" << query::dyn_borrow_kind_name(projection.borrow_kind)
+              << "/composition_metadata=" << query::dyn_metadata_policy_name(projection.metadata_policy);
+    }
     if (!facts.upcasts.empty()) {
         const query::DynUpcastAbiDescriptor& upcast = facts.upcasts.front();
         label << "/upcast="

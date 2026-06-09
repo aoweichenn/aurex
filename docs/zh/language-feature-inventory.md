@@ -1,10 +1,10 @@
 # Aurex 当前语法与特性清单
 
 日期：2026-06-09
-阶段：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
-状态：当前实现清单、M10d 完成面、M11 principal-set composition release、M12 direct composition dispatch release closure、M13a advanced dyn remaining policy design gate、M13b explicit dynproject frontend/query/sema、M13c runtime lowering 与后续非目标
+阶段：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
+状态：当前实现清单、M10d 完成面、M11 principal-set composition release、M12 direct composition dispatch release closure、M13a advanced dyn remaining policy design gate、M13b explicit dynproject frontend/query/sema、M13c runtime lowering、M13d release closure 与后续非目标
 
-本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力、M10d hardening/release closure 的完成范围、M11 principal-set composition release closure、M12 direct composition dispatch release closure、M13a advanced dyn remaining policy design gate、M13b explicit dynproject frontend/query/sema 子集和 M13c runtime lowering 子集。本文以 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/ast/*`、`src/frontend/parse/*`、`src/frontend/sema/*`、`src/midend/ir/*`、`src/backend/llvm/*`、`tests/samples/**` 为准；M11a/M13a gate 另以 `include/aurex/infrastructure/query/dyn_advanced_design_gate.hpp`、`src/infrastructure/query/dyn_advanced_design_gate.cpp` 和 `tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp` 为准；M11/M12/M13 principal-set facts 另以 `include/aurex/infrastructure/query/principal_set_composition_facts.hpp`、`include/aurex/infrastructure/query/dyn_abi_facts.hpp`、`src/infrastructure/query/dyn_abi_facts.cpp`、`src/infrastructure/query/lower_function_ir_query.cpp`、`src/application/tooling/ide/ide.cpp`、`src/midend/ir/core/ir_dyn_abi_facts.cpp`、`src/frontend/sema/facade/sema_call.cpp`、`tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp`、`tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp`、`tests/gtest/midend/ir/lower_ast_dyn_trait_tests.cpp`、`tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp` 和 `tests/gtest/integration/native_execution_tests.cpp` 为准。
+本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力、M10d hardening/release closure 的完成范围、M11 principal-set composition release closure、M12 direct composition dispatch release closure、M13a advanced dyn remaining policy design gate、M13b explicit dynproject frontend/query/sema 子集、M13c runtime lowering 子集和 M13d release closure。本文以 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/ast/*`、`src/frontend/parse/*`、`src/frontend/sema/*`、`src/midend/ir/*`、`src/backend/llvm/*`、`tests/samples/**` 为准；M11a/M13a gate 另以 `include/aurex/infrastructure/query/dyn_advanced_design_gate.hpp`、`src/infrastructure/query/dyn_advanced_design_gate.cpp` 和 `tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp` 为准；M11/M12/M13 principal-set facts 另以 `include/aurex/infrastructure/query/principal_set_composition_facts.hpp`、`include/aurex/infrastructure/query/dyn_abi_facts.hpp`、`src/infrastructure/query/dyn_abi_facts.cpp`、`src/infrastructure/query/lower_function_ir_query.cpp`、`src/application/tooling/ide/ide.cpp`、`src/midend/ir/core/ir_dyn_abi_facts.cpp`、`src/frontend/sema/facade/sema_call.cpp`、`tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp`、`tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp`、`tests/gtest/midend/ir/lower_ast_dyn_trait_tests.cpp`、`tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp` 和 `tests/gtest/integration/native_execution_tests.cpp` 为准。
 
 M2 当前原则：
 
@@ -1050,7 +1050,8 @@ let all = bytes[:];
   receiver-access binding、associated equality direct dispatch、projection/ABI descriptor 去重和 query/cache
   fingerprint hardening，M13a 完成 borrowed composition-to-supertrait design/query gate，M13b 完成
   `dynproject[SourcePrincipal, TargetSupertrait](view)` frontend/query/sema check-only，M13c 已完成该显式投影的
-  IR/backend runtime lowering；下一步进入 M13d hardening/release closure。
+  IR/backend runtime lowering，M13d 已完成 `composition_supertrait_chains`、query/cache/tooling hover、verifier
+  negative matrix 和 docs/tests/coverage release closure。
 - specialization / default associated type / minimal implementation annotation / 更强 trait solver。
 - borrow checker。
 - package。
@@ -1069,7 +1070,7 @@ let all = bytes[:];
    `PrincipalSetCompositionFacts` query prototype，M11c 已完成 `dyn (A + B)` frontend/sema，M11d 已完成显式
    IR/backend runtime projection，M11e 已完成 hardening/release closure，M12a/M12b 已完成 direct composition
    dispatch release closure，M13a 已完成 remaining advanced dyn design gate，M13b 已完成
-   `dynproject[...]` check-only 显式 supertrait projection，M13c 已完成 runtime lowering；下一步应做 M13d hardening/release closure；
+   `dynproject[...]` check-only 显式 supertrait projection，M13c 已完成 runtime lowering，M13d 已完成 release closure；
    owning dyn、trait-object Drop dispatch、allocator、principal-set owning composition 和完整 Rust-style lifetime surface
    继续作为独立后续包。
 3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。

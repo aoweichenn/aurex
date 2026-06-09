@@ -109,6 +109,27 @@ struct DynCompositionProjectionAbiDescriptor {
     std::string target_object_type_name;
 };
 
+struct DynCompositionSupertraitChainAbiDescriptor {
+    StableFingerprint128 principal_set_identity;
+    TraitObjectTypeKey source_principal_object;
+    TraitObjectTypeKey target_supertrait_object;
+    VTableLayoutKey source_vtable_layout;
+    VTableLayoutKey target_vtable_layout;
+    TraitObjectUpcastCoercionKey upcast;
+    StableFingerprint128 supertrait_edge_path;
+    base::u32 principal_index = 0;
+    DynBorrowKind borrow_kind = DynBorrowKind::shared;
+    DynAbiPolicy abi_policy = DynAbiPolicy::borrowed_view_v1;
+    DynMetadataPolicy composition_metadata_policy = DynMetadataPolicy::principal_set_metadata_v1;
+    DynMetadataPolicy upcast_metadata_policy = DynMetadataPolicy::supertrait_vptr_metadata_v1;
+    std::string source_reference_type_name;
+    std::string projected_reference_type_name;
+    std::string target_reference_type_name;
+    std::string source_object_type_name;
+    std::string projected_object_type_name;
+    std::string target_object_type_name;
+};
+
 struct DynDispatchAbiDescriptor {
     VTableLayoutKey layout;
     base::u32 slot = 0;
@@ -128,6 +149,7 @@ struct DynAbiFactsSummary {
     base::u64 principal_set_metadata_count = 0;
     base::u64 principal_set_witness_count = 0;
     base::u64 composition_projection_count = 0;
+    base::u64 composition_supertrait_chain_count = 0;
     base::u64 dispatch_count = 0;
     base::u64 shared_borrow_count = 0;
     base::u64 mut_borrow_count = 0;
@@ -141,6 +163,7 @@ struct FunctionDynAbiFacts {
     std::vector<DynUpcastAbiDescriptor> upcasts;
     std::vector<DynPrincipalSetMetadataAbiDescriptor> principal_sets;
     std::vector<DynCompositionProjectionAbiDescriptor> composition_projections;
+    std::vector<DynCompositionSupertraitChainAbiDescriptor> composition_supertrait_chains;
     std::vector<DynDispatchAbiDescriptor> dispatches;
     DynAbiFactsSummary summary;
     StableFingerprint128 fingerprint;
@@ -160,6 +183,7 @@ struct FunctionDynAbiFacts {
 [[nodiscard]] bool is_valid(const DynPrincipalSetWitnessAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynPrincipalSetMetadataAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynCompositionProjectionAbiDescriptor& descriptor) noexcept;
+[[nodiscard]] bool is_valid(const DynCompositionSupertraitChainAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept;
 [[nodiscard]] bool is_valid(const FunctionDynAbiFacts& facts) noexcept;
 
@@ -176,6 +200,8 @@ void record_dyn_principal_set_metadata_abi_descriptor(
     FunctionDynAbiFacts& facts, DynPrincipalSetMetadataAbiDescriptor descriptor);
 void record_dyn_composition_projection_abi_descriptor(
     FunctionDynAbiFacts& facts, DynCompositionProjectionAbiDescriptor descriptor);
+void record_dyn_composition_supertrait_chain_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynCompositionSupertraitChainAbiDescriptor descriptor);
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor);
 
 [[nodiscard]] std::optional<const DynVTableAbiDescriptor*> dyn_vtable_descriptor_for_layout(

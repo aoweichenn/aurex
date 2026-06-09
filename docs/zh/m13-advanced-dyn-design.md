@@ -140,7 +140,10 @@ fn score(view: &dyn (Child + Debug)) -> i32 {
 }
 ```
 
-M13d 再做 query/cache/tooling、verifier negative matrix、documentation tests、coverage closure 和 release closure。
+M13d 已完成 query/cache/tooling、verifier negative matrix、documentation tests、coverage closure 和 release closure。
+本阶段新增 `FunctionDynAbiFacts::composition_supertrait_chains`，把 M13c runtime 中的
+`trait_object_composition_project` 与 `trait_object_upcast` 明确归纳成一条可 fingerprint、dump、hover 和 verifier
+测试的 chain。它仍复用 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`，没有新增 runtime metadata。
 
 ## 验证要求
 
@@ -166,7 +169,7 @@ M13a design/query gate 预估 500-900 行新增/修改，主要来自 query DTO/
 | --- | --- | ---: |
 | M13b frontend/query/sema check-only | explicit composition-to-supertrait projection syntax/typing/facts/diagnostics/checked dump | 1,000-1,800 行 |
 | M13c IR/backend runtime | 已完成。composition project + supertrait upcast lowering、ABI descriptor、LLVM/native tests | 实际以本次 diffstat 为准 |
-| M13d hardening/release | query/cache/tooling hover、negative matrix、docs/samples、coverage closure、代码量偏差分析 | 700-1,200 行 |
+| M13d hardening/release | 已完成。`composition_supertrait_chains`、query/cache/tooling hover、negative matrix、docs/tests/coverage closure、代码量偏差分析 | 实际以本次 diffstat 为准 |
 
 如果实际代码量偏离，主要原因应从 syntax 选择、diagnostic matrix、是否复用 M10/M11 lowering helper、documentation
 tests 数量和 query/cache fingerprint 覆盖强度分析，不应通过降低测试质量来贴合预估。

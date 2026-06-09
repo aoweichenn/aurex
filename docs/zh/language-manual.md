@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-09
-阶段：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime，建立在 M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -101,11 +101,12 @@ A | B         表示二选一
   `dispatch_receiver_type` 计算，associated equality direct dispatch 会使用 selected principal 的 equality
   substitution，direct dispatch 与显式 projection 混用时会去重 projection fact 和 ABI descriptor，query/cache
   fingerprint 会响应 projection target drift。
-- 使用 M13c borrowed composition-to-supertrait runtime explicit projection：`dynproject[Child, Parent](view)`
+- 使用 M13d borrowed composition-to-supertrait release baseline：`dynproject[Child, Parent](view)`
   可以把 `&dyn (Child + Debug)` / `&mut dyn (Child + Debug)` 显式投影到 selected source principal `Child` 的
   supertrait view `&dyn Parent` / `&mut dyn Parent`。它会记录
   `CompositionProjectionFact{kind=composition_to_supertrait}`，并 lowering 为
-  `trait_object_composition_project` + `trait_object_upcast`。
+  `trait_object_composition_project` + `trait_object_upcast`。`FunctionDynAbiFacts::composition_supertrait_chains`、
+  lower-IR query fingerprint、IDE semantic fact/hover 和 verifier negative matrix 已固定该 runtime chain。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -1780,10 +1781,13 @@ fn score(value: &dyn Child) -> i32 {
 - M12b release closure 固定了这条 sugar 的 facts 面：checked binding 的 actual vtable receiver 通过
   `dispatch_receiver_type` 表示；associated equality return 会在 selected principal 上替换；direct 与显式 projection
   混用时不会重复暴露同一 function-level ABI projection descriptor。
-- M13c composition-to-supertrait explicit projection 是 runtime intrinsic：`dynproject[Child, Parent](view)`
+- M13d composition-to-supertrait explicit projection 是 release baseline runtime intrinsic：
+  `dynproject[Child, Parent](view)`
   先选择 principal-set 中的 `Child`，再检查 `Parent` 是 `Child` 的 direct/transitive supertrait，返回普通
   borrowed single-trait target view。lowering 会先生成 composition project，再生成 supertrait upcast，复用
-  `principal_set_metadata_v1` 和 `supertrait_vptr_metadata_v1`。
+  `principal_set_metadata_v1` 和 `supertrait_vptr_metadata_v1`。M13d 的
+  `FunctionDynAbiFacts::composition_supertrait_chains` 会把 source composition view、projected principal view 和
+  target supertrait view 显式暴露给 query/cache/tooling，verifier 负例矩阵会拒绝 chain 中的 edge/layout/principal drift。
 - 带 supertrait edge 的 vtable 使用 `supertrait_vptr_metadata_v1`，LLVM global shape 为
   `{ [methods x ptr], [supertraits x ptr] }`；没有 supertrait edge 的 vtable 仍可保持 methods-only metadata。
 - slot function ABI 的第一个 receiver 参数被擦成 `*const u8` 或 `*mut u8`；checked facts 和 IR verifier
@@ -1814,18 +1818,19 @@ M11 advanced dyn design/query/sema facts：
   ABI descriptors。每个 principal 必须是 single dyn trait object；composition
   至少两个 principal；duplicate principal、非 trait principal、missing impl、associated equality conflict、
   shared-to-mut coercion、同名 method ambiguity 和 shared receiver 调 mutable method 都会被拒绝。
-- M13b 已新增用户可写 spelling，M13c 已接入 runtime lowering：
+- M13b 已新增用户可写 spelling，M13c 已接入 runtime lowering，M13d 已完成 release closure：
   `dynproject[SourcePrincipal, TargetSupertrait](view)`。`view` 必须是 borrowed composition；
   `SourcePrincipal` 必须是 composition 中的 principal；`TargetSupertrait` 必须是该 source 的 direct/transitive
   supertrait。成功后返回 borrowed target single-trait dyn view，并记录
   `CompositionProjectionFact{kind=composition_to_supertrait}`。`dynproject` 不是全局关键字，而是 sema 只在未限定
-  generic-call 形状中识别的 contextual intrinsic。
+  generic-call 形状中识别的 contextual intrinsic。Function-level dyn ABI facts 会同时暴露
+  `composition_projections`、`upcasts` 和 `composition_supertrait_chains`。
 - M11c 不支持 bare `dyn A + B`，不支持 `Box<dyn (A + B)>`，不支持 owning dyn，不支持标准库 allocator，不支持
   dynamic Drop dispatch；M11 release baseline 只支持先显式 projection 后按 single-trait dyn dispatch，M12a
   在此基础上支持无歧义 direct composition method call。只接收 `&dyn (A+B)` 的函数会记录 projection descriptor，但不会伪造
   concrete-specific principal-set metadata descriptor。
 
-M13c `dynproject` 示例：
+M13d `dynproject` 示例：
 
 ```aurex
 trait Parent { fn parent(self: &Self) -> i32; }

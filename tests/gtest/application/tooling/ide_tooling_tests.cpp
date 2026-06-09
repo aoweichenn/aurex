@@ -734,6 +734,69 @@ TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionRuntimeFactsAndHover)
         << draw_hover->label;
 }
 
+TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionSupertraitChainFactsAndHover)
+{
+    constexpr std::string_view source =
+        "module ide.dyn_trait_composition_supertrait_facts;\n"
+        "trait Parent {\n"
+        "  fn parent(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Child: Parent {\n"
+        "  fn child(self: &Self) -> i32;\n"
+        "}\n"
+        "trait Debug {\n"
+        "  fn debug(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File {\n"
+        "  fn parent(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "impl Child for File {\n"
+        "  fn child(self: &File) -> i32 { return self.value + 1; }\n"
+        "}\n"
+        "impl Debug for File {\n"
+        "  fn debug(self: &File) -> i32 { return self.value + 2; }\n"
+        "}\n"
+        "fn score(combo: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](combo);\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 5 };\n"
+        "  return score(&file);\n"
+        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
+
+    const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
+    ASSERT_NE(score_fact, nullptr);
+    EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
+        << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("upcasts=1"), std::string::npos) << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find("composition_supertrait_chains=1"), std::string::npos)
+        << score_fact->detail;
+    EXPECT_NE(score_fact->detail.find(
+                  "first_composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
+        std::string::npos) << score_fact->detail;
+
+    const base::usize score_offset = source.find("score(combo");
+    ASSERT_NE(score_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
+    ASSERT_TRUE(score_hover.has_value());
+    EXPECT_NE(score_hover->label.find("/composition_supertrait_chains=1"), std::string::npos)
+        << score_hover->label;
+    EXPECT_NE(score_hover->label.find(
+                  "/composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
+        std::string::npos) << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/chain_composition_metadata=principal_set_metadata_v1"),
+        std::string::npos) << score_hover->label;
+    EXPECT_NE(score_hover->label.find("/chain_upcast_metadata=supertrait_vptr_metadata_v1"),
+        std::string::npos) << score_hover->label;
+}
+
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
 {
     constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"

@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M13c Borrowed Composition-To-Supertrait IR / Backend Runtime** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.method()` direct dispatch；M12b 固定 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重和 query/cache fingerprint drift；M13a 新增 `m13a_dyn_advanced_design_gate_baseline` query gate，选择 borrowed composition-to-supertrait explicit projection 作为下一条主线；M13b 新增 `dynproject[SourcePrincipal, TargetSupertrait](view)` 显式投影并记录 `composition_to_supertrait` fact；M13c 已把它 lowering 为 `trait_object_composition_project` + `trait_object_upcast` runtime。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或隐式 composition-to-supertrait 多步 direct dispatch。
+本文描述当前 **M13d Borrowed Composition-To-Supertrait Hardening / Release Closure** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast 和 borrowed dyn composition 表面本身展开。M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` / `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的 query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.method()` direct dispatch；M12b 固定 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重和 query/cache fingerprint drift；M13a 新增 `m13a_dyn_advanced_design_gate_baseline` query gate，选择 borrowed composition-to-supertrait explicit projection 作为下一条主线；M13b 新增 `dynproject[SourcePrincipal, TargetSupertrait](view)` 显式投影并记录 `composition_to_supertrait` fact；M13c 已把它 lowering 为 `trait_object_composition_project` + `trait_object_upcast` runtime；M13d 新增 `composition_supertrait_chains` query/tooling/verifier release closure。当前仍不实现 bare `dyn A + B`、标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch 或隐式 composition-to-supertrait 多步 direct dispatch。
 
 ## 构建
 
@@ -219,7 +219,10 @@ M13c 后，`dynproject[Render, Draw](view)` 会在 sema 层检查并在 IR/backe
 - lowering 时先生成 `dyn.composition.project` 取出 source principal，再生成 `dyn.upcast` 取出 target supertrait vtable。
 
 `let draw: &dyn Draw = view;` 这样的隐式 assignment 和 `view.draw()` 穿过
-`Render -> Draw` 的 composition-to-supertrait direct dispatch 继续被拒绝；显式 `dynproject[...]` 才会走 runtime lowering。
+M13d 后，`FunctionDynAbiFacts`、lower-IR query invalidation、IDE semantic fact 和 hover 会额外展示
+`composition_supertrait_chains`，把 source composition view、projected principal view 和 target supertrait view 明确
+串起来；`Render -> Draw` 的 composition-to-supertrait direct dispatch 继续被拒绝，显式 `dynproject[...]` 才会走
+runtime lowering。
 
 ## import
 

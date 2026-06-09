@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_LOWER_FUNCTION_IR_RESULT_MARKER = "query.lower_function_ir.result.v3";
+constexpr std::string_view QUERY_LOWER_FUNCTION_IR_RESULT_MARKER = "query.lower_function_ir.result.v4";
 
 [[nodiscard]] bool is_valid_lower_function_ir_output(
     const QueryRecord& record, const QueryResultFingerprint result) noexcept
@@ -95,10 +95,12 @@ QueryResultFingerprint lower_function_ir_result_fingerprint(
     builder.mix_u64(dyn_abi.upcasts.size());
     builder.mix_u64(dyn_abi.principal_sets.size());
     builder.mix_u64(dyn_abi.composition_projections.size());
+    builder.mix_u64(dyn_abi.composition_supertrait_chains.size());
     builder.mix_u64(dyn_abi.dispatches.size());
     builder.mix_u64(dyn_abi.summary.slot_count);
     builder.mix_u64(dyn_abi.summary.principal_set_witness_count);
     builder.mix_u64(dyn_abi.summary.composition_projection_count);
+    builder.mix_u64(dyn_abi.summary.composition_supertrait_chain_count);
     return query_result_fingerprint(builder.finish());
 }
 

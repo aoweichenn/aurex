@@ -1108,10 +1108,25 @@ TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionChainsProjectAndUp
     EXPECT_TRUE(query::is_valid(*score_facts));
     ASSERT_EQ(score_facts->composition_projections.size(), 1U);
     ASSERT_EQ(score_facts->upcasts.size(), 1U);
+    ASSERT_EQ(score_facts->composition_supertrait_chains.size(), 1U);
     EXPECT_EQ(score_facts->composition_projections.front().target_reference_type_name, "&dyn Child");
     EXPECT_EQ(score_facts->upcasts.front().target_reference_type_name, "&dyn Parent");
+    const query::DynCompositionSupertraitChainAbiDescriptor& chain =
+        score_facts->composition_supertrait_chains.front();
+    EXPECT_NE(chain.source_reference_type_name.find("&dyn ("), std::string::npos)
+        << chain.source_reference_type_name;
+    EXPECT_NE(chain.source_reference_type_name.find("Child"), std::string::npos)
+        << chain.source_reference_type_name;
+    EXPECT_NE(chain.source_reference_type_name.find("Debug"), std::string::npos)
+        << chain.source_reference_type_name;
+    EXPECT_EQ(chain.projected_reference_type_name, "&dyn Child");
+    EXPECT_EQ(chain.target_reference_type_name, "&dyn Parent");
+    EXPECT_EQ(chain.borrow_kind, query::DynBorrowKind::shared);
+    EXPECT_EQ(chain.composition_metadata_policy, query::DynMetadataPolicy::principal_set_metadata_v1);
+    EXPECT_EQ(chain.upcast_metadata_policy, query::DynMetadataPolicy::supertrait_vptr_metadata_v1);
     EXPECT_EQ(score_facts->summary.composition_projection_count, 1U);
     EXPECT_EQ(score_facts->summary.upcast_count, 1U);
+    EXPECT_EQ(score_facts->summary.composition_supertrait_chain_count, 1U);
     EXPECT_EQ(query::function_dyn_abi_metadata_policy(*score_facts),
         query::DynMetadataPolicy::principal_set_metadata_v1);
 
@@ -1124,6 +1139,21 @@ TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionChainsProjectAndUp
             "dyn.upcast",
             "dyn Child -> dyn Parent",
             "target_layout=",
+        });
+    const std::string dyn_summary = query::summarize_function_dyn_abi_facts(*score_facts);
+    expect_contains_all(dyn_summary,
+        {
+            "composition_supertrait_chains=1",
+            "first_composition_supertrait_chain=&dyn (",
+            "->&dyn Child->&dyn Parent",
+        });
+    const std::string dyn_dump = query::dump_function_dyn_abi_facts(*score_facts);
+    expect_contains_all(dyn_dump,
+        {
+            "dyn_composition_supertrait_chain #0 &dyn (",
+            " -> &dyn Child -> &dyn Parent",
+            "composition_metadata=principal_set_metadata_v1",
+            "upcast_metadata=supertrait_vptr_metadata_v1",
         });
 }
 
@@ -1205,6 +1235,64 @@ TEST(CoreUnit, LowerAstDynTraitCompositionSupertraitProjectionBindsExistingWitne
 
     const base::Result<void> verified = ir::verify_module(fixture.ir);
     ASSERT_TRUE(verified) << verified.error().message;
+}
+
+TEST(CoreUnit, IrVerifierRejectsDynTraitCompositionSupertraitChainDrift)
+{
+    const std::string_view source =
+        "module dyn_trait_composition_supertrait_verifier_chain;\n"
+        "trait Parent { fn parent(self: &Self) -> i32; }\n"
+        "trait Child: Parent { fn child(self: &Self) -> i32; }\n"
+        "trait Debug { fn debug(self: &Self) -> i32; }\n"
+        "struct File { value: i32; }\n"
+        "impl Parent for File { fn parent(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 2; } }\n"
+        "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+        "  return parent.parent();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 17 };\n"
+        "  return score(&file);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    ASSERT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_composition_project), 1U);
+    ASSERT_EQ(count_values_of_kind(fixture.ir, ValueKind::trait_object_upcast), 1U);
+    ASSERT_TRUE(ir::verify_module(fixture.ir));
+
+    {
+        Module bad = fixture.ir;
+        Value* upcast = find_mutable_value_of_kind(bad, ValueKind::trait_object_upcast);
+        ASSERT_NE(upcast, nullptr);
+        upcast->object = INVALID_VALUE_ID;
+        expect_error_contains(ir::verify_module(bad), "dyn upcast object must be a reference to source dyn trait");
+    }
+    {
+        Module bad = fixture.ir;
+        Value* upcast = find_mutable_value_of_kind(bad, ValueKind::trait_object_upcast);
+        ASSERT_NE(upcast, nullptr);
+        upcast->vtable_supertrait_edge = 99U;
+        expect_error_contains(ir::verify_module(bad), "dyn upcast supertrait edge is invalid or missing");
+    }
+    {
+        Module bad = fixture.ir;
+        Value* upcast = find_mutable_value_of_kind(bad, ValueKind::trait_object_upcast);
+        ASSERT_NE(upcast, nullptr);
+        upcast->vtable_layout = upcast->target_vtable_layout;
+        expect_error_contains(
+            ir::verify_module(bad), "dyn upcast source and target layouts do not match the supertrait edge");
+    }
+    {
+        Module bad = fixture.ir;
+        Value* projection = find_mutable_value_of_kind(bad, ValueKind::trait_object_composition_project);
+        ASSERT_NE(projection, nullptr);
+        projection->target_vtable_layout = {};
+        projection->principal_object = {};
+        expect_error_contains(
+            ir::verify_module(bad), "dyn composition project principal is not present in the metadata layout");
+    }
 }
 
 TEST(CoreUnit, LlvmBackendDynTraitCompositionSupertraitProjectionReusesExistingMetadata)
@@ -1326,6 +1414,8 @@ TEST(CoreUnit, IrDynAbiFactsCompositionProjectionSeparatesConcreteMetadataFromCa
     EXPECT_EQ(score_facts->summary.principal_set_metadata_count, 0U);
     EXPECT_EQ(score_facts->summary.principal_set_witness_count, 0U);
     EXPECT_EQ(score_facts->summary.composition_projection_count, 2U);
+    EXPECT_EQ(score_facts->summary.composition_supertrait_chain_count, 0U);
+    EXPECT_TRUE(score_facts->composition_supertrait_chains.empty());
     EXPECT_EQ(score_facts->summary.shared_borrow_count, 2U);
     EXPECT_EQ(query::function_dyn_abi_metadata_policy(*score_facts),
         query::DynMetadataPolicy::principal_set_metadata_v1);

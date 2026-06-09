@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime。M2 已移除标准库层：
+当前架构基线是 M13d Borrowed Composition-To-Supertrait Hardening / Release Closure。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -53,7 +53,9 @@
   子集落成 `dynproject[SourcePrincipal, TargetSupertrait](view)`，记录
   `CompositionProjectionFact{kind=composition_to_supertrait}` 和 `supertrait_projections` query summary；M13c 已将其
   lowering 为 `trait_object_composition_project` + `trait_object_upcast`，复用已有 principal-set metadata 和
-  supertrait vptr metadata。
+  supertrait vptr metadata；M13d 新增 `FunctionDynAbiFacts::composition_supertrait_chains`、lower-IR fingerprint
+  invalidation、IDE semantic fact/hover 和 verifier negative matrix，固定完整 `composition_project -> upcast`
+  runtime chain。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
   composition-to-supertrait 隐式多步 direct dispatch、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。

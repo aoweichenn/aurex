@@ -290,6 +290,7 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
 {
     const query::TraitObjectTypeKey draw = test_object_key("Draw", "Draw");
     const query::TraitObjectTypeKey debug = test_object_key("Debug", "Debug");
+    const query::TraitObjectTypeKey parent = test_object_key("Parent", "Parent");
     const query::CanonicalTypeKey concrete = query::canonical_nominal(test_trait_def("File"), {});
     const query::StableFingerprint128 principal_set_identity =
         query::stable_fingerprint("dyn composition Draw+Debug");
@@ -303,6 +304,15 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
         debug.object_callability_schema,
         query::stable_fingerprint("impl File: Debug"),
         1U);
+    const query::StableFingerprint128 supertrait_edge_path = query::stable_fingerprint("Draw->Parent");
+    const query::VTableLayoutKey parent_layout = query::vtable_layout_key(concrete,
+        parent,
+        parent.object_callability_schema,
+        query::stable_fingerprint("impl File: Parent"),
+        1U,
+        query::TraitObjectMetadataPolicyKey::supertrait_vptr_metadata_v1);
+    const query::TraitObjectUpcastCoercionKey upcast = query::trait_object_upcast_coercion_key(
+        draw, draw.object_origin, parent, supertrait_edge_path, query::TraitObjectBorrowKindKey::shared);
 
     query::DynPrincipalSetMetadataAbiDescriptor metadata;
     metadata.principal_set_identity = principal_set_identity;
@@ -335,8 +345,26 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     projection.source_object_type_name = "dyn (Debug + Draw)";
     projection.target_object_type_name = "dyn Draw";
 
+    query::DynCompositionSupertraitChainAbiDescriptor chain;
+    chain.principal_set_identity = principal_set_identity;
+    chain.source_principal_object = draw;
+    chain.target_supertrait_object = parent;
+    chain.source_vtable_layout = draw_layout;
+    chain.target_vtable_layout = parent_layout;
+    chain.upcast = upcast;
+    chain.supertrait_edge_path = supertrait_edge_path;
+    chain.principal_index = 1U;
+    chain.borrow_kind = query::DynBorrowKind::shared;
+    chain.source_reference_type_name = "&dyn (Debug + Draw)";
+    chain.projected_reference_type_name = "&dyn Draw";
+    chain.target_reference_type_name = "&dyn Parent";
+    chain.source_object_type_name = "dyn (Debug + Draw)";
+    chain.projected_object_type_name = "dyn Draw";
+    chain.target_object_type_name = "dyn Parent";
+
     ASSERT_TRUE(query::is_valid(metadata));
     ASSERT_TRUE(query::is_valid(projection));
+    ASSERT_TRUE(query::is_valid(chain));
     EXPECT_EQ(query::dyn_metadata_policy_name(query::DynMetadataPolicy::principal_set_metadata_v1),
         "principal_set_metadata_v1");
 
@@ -344,12 +372,14 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     facts.symbol = "composition_test";
     query::record_dyn_principal_set_metadata_abi_descriptor(facts, metadata);
     query::record_dyn_composition_projection_abi_descriptor(facts, projection);
+    query::record_dyn_composition_supertrait_chain_abi_descriptor(facts, chain);
     facts.fingerprint = query::function_dyn_abi_facts_fingerprint(facts);
 
     ASSERT_TRUE(query::is_valid(facts));
     EXPECT_EQ(facts.summary.principal_set_metadata_count, 1U);
     EXPECT_EQ(facts.summary.principal_set_witness_count, 2U);
     EXPECT_EQ(facts.summary.composition_projection_count, 1U);
+    EXPECT_EQ(facts.summary.composition_supertrait_chain_count, 1U);
     EXPECT_EQ(facts.summary.shared_borrow_count, 1U);
     EXPECT_EQ(facts.summary.mut_borrow_count, 0U);
     EXPECT_EQ(query::function_dyn_abi_metadata_policy(facts),
@@ -359,11 +389,27 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     const std::string summary = query::summarize_function_dyn_abi_facts(facts);
     EXPECT_NE(summary.find("principal_sets=1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("composition_projections=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("composition_supertrait_chains=1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("metadata=principal_set_metadata_v1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("first_composition_projection=&dyn (Debug + Draw)->&dyn Draw"),
         std::string::npos) << summary;
+    EXPECT_NE(summary.find("first_composition_supertrait_chain=&dyn (Debug + Draw)->&dyn Draw->&dyn Parent"),
+        std::string::npos) << summary;
     EXPECT_NE(summary.find("principal_index=1"), std::string::npos) << summary;
     EXPECT_NE(summary.find("borrow=shared"), std::string::npos) << summary;
+
+    query::FunctionDynAbiFacts chain_only_facts;
+    chain_only_facts.symbol = "composition_chain_only";
+    query::record_dyn_composition_supertrait_chain_abi_descriptor(chain_only_facts, chain);
+    chain_only_facts.fingerprint = query::function_dyn_abi_facts_fingerprint(chain_only_facts);
+    ASSERT_TRUE(query::is_valid(chain_only_facts));
+    EXPECT_EQ(query::function_dyn_abi_metadata_policy(chain_only_facts),
+        query::DynMetadataPolicy::principal_set_metadata_v1);
+    const std::string chain_only_summary = query::summarize_function_dyn_abi_facts(chain_only_facts);
+    EXPECT_NE(chain_only_summary.find(
+                  "first_composition_supertrait_chain=&dyn (Debug + Draw)->&dyn Draw->&dyn Parent"),
+        std::string::npos) << chain_only_summary;
+    EXPECT_EQ(chain_only_summary.find("first_upcast="), std::string::npos) << chain_only_summary;
 
     const std::string dump = query::dump_function_dyn_abi_facts(facts);
     EXPECT_NE(dump.find("dyn_principal_set_metadata #0"), std::string::npos) << dump;
@@ -373,6 +419,12 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
         << dump;
     EXPECT_NE(dump.find("dyn_composition_projection #0 &dyn (Debug + Draw) -> &dyn Draw"),
         std::string::npos) << dump;
+    EXPECT_NE(dump.find("dyn_composition_supertrait_chain #0 &dyn (Debug + Draw) -> &dyn Draw -> &dyn Parent"),
+        std::string::npos) << dump;
+    EXPECT_NE(dump.find("composition_metadata=principal_set_metadata_v1"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("upcast_metadata=supertrait_vptr_metadata_v1"), std::string::npos)
+        << dump;
     EXPECT_NE(dump.find("metadata=principal_set_metadata_v1"), std::string::npos) << dump;
 
     query::FunctionDynAbiFacts changed_witness_facts = facts;
@@ -397,6 +449,11 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     ASSERT_TRUE(query::is_valid(changed_principal_facts));
     EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_principal_facts), facts.fingerprint);
 
+    query::FunctionDynAbiFacts changed_chain_facts = facts;
+    changed_chain_facts.composition_supertrait_chains.front().target_reference_type_name = "&dyn OtherParent";
+    EXPECT_TRUE(query::is_valid(changed_chain_facts));
+    EXPECT_NE(query::function_dyn_abi_facts_fingerprint(changed_chain_facts), facts.fingerprint);
+
     const query::QueryResultFingerprint lowered_ir =
         query::query_result_fingerprint(query::stable_fingerprint("dyn-composition-lower-ir"));
     EXPECT_NE(query::lower_function_ir_result_fingerprint(
@@ -404,6 +461,9 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
         query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
     EXPECT_NE(query::lower_function_ir_result_fingerprint(
                   lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_principal_facts),
+        query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
+    EXPECT_NE(query::lower_function_ir_result_fingerprint(
+                  lowered_ir, query::FunctionCleanupMarkerFacts{}, changed_chain_facts),
         query::lower_function_ir_result_fingerprint(lowered_ir, query::FunctionCleanupMarkerFacts{}, facts));
 
     query::DynPrincipalSetMetadataAbiDescriptor unsorted = metadata;
@@ -425,6 +485,14 @@ TEST(QueryUnit, DynCompositionAbiDescriptorsValidateFingerprintAndDump)
     query::DynCompositionProjectionAbiDescriptor wrong_layout = projection;
     wrong_layout.target_vtable_layout = debug_layout;
     EXPECT_FALSE(query::is_valid(wrong_layout));
+
+    query::DynCompositionSupertraitChainAbiDescriptor wrong_chain_layout = chain;
+    wrong_chain_layout.source_vtable_layout = debug_layout;
+    EXPECT_FALSE(query::is_valid(wrong_chain_layout));
+
+    query::DynCompositionSupertraitChainAbiDescriptor wrong_chain_borrow = chain;
+    wrong_chain_borrow.borrow_kind = query::DynBorrowKind::mut;
+    EXPECT_FALSE(query::is_valid(wrong_chain_borrow));
 }
 
 } // namespace aurex::test

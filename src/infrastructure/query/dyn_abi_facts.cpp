@@ -147,6 +147,34 @@ void mix_dyn_composition_projection(
     builder.mix_string(descriptor.target_object_type_name);
 }
 
+void mix_dyn_composition_supertrait_chain(
+    StableHashBuilder& builder, const DynCompositionSupertraitChainAbiDescriptor& descriptor) noexcept
+{
+    builder.mix_fingerprint(descriptor.principal_set_identity);
+    builder.mix_u64(descriptor.source_principal_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.source_principal_object));
+    builder.mix_u64(descriptor.target_supertrait_object.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.target_supertrait_object));
+    builder.mix_u64(descriptor.source_vtable_layout.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.source_vtable_layout));
+    builder.mix_u64(descriptor.target_vtable_layout.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.target_vtable_layout));
+    builder.mix_u64(descriptor.upcast.global_id);
+    builder.mix_fingerprint(stable_key_fingerprint(descriptor.upcast));
+    builder.mix_fingerprint(descriptor.supertrait_edge_path);
+    builder.mix_u32(descriptor.principal_index);
+    builder.mix_u8(stable_dyn_borrow_kind_value(descriptor.borrow_kind));
+    builder.mix_u8(stable_dyn_abi_policy_value(descriptor.abi_policy));
+    builder.mix_u8(stable_dyn_metadata_policy_value(descriptor.composition_metadata_policy));
+    builder.mix_u8(stable_dyn_metadata_policy_value(descriptor.upcast_metadata_policy));
+    builder.mix_string(descriptor.source_reference_type_name);
+    builder.mix_string(descriptor.projected_reference_type_name);
+    builder.mix_string(descriptor.target_reference_type_name);
+    builder.mix_string(descriptor.source_object_type_name);
+    builder.mix_string(descriptor.projected_object_type_name);
+    builder.mix_string(descriptor.target_object_type_name);
+}
+
 void mix_dyn_dispatch(StableHashBuilder& builder, const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     builder.mix_u64(descriptor.layout.global_id);
@@ -324,6 +352,33 @@ bool is_valid(const DynCompositionProjectionAbiDescriptor& descriptor) noexcept
             || descriptor.target_vtable_layout.object_type == descriptor.principal_object);
 }
 
+bool is_valid(const DynCompositionSupertraitChainAbiDescriptor& descriptor) noexcept
+{
+    return descriptor.principal_set_identity.byte_count != 0
+        && is_valid(descriptor.source_principal_object)
+        && is_valid(descriptor.target_supertrait_object)
+        && is_valid(descriptor.source_vtable_layout)
+        && is_valid(descriptor.target_vtable_layout)
+        && is_valid(descriptor.upcast)
+        && descriptor.supertrait_edge_path.byte_count != 0
+        && is_valid(descriptor.borrow_kind)
+        && is_valid(descriptor.abi_policy)
+        && is_valid(descriptor.composition_metadata_policy)
+        && is_valid(descriptor.upcast_metadata_policy)
+        && descriptor.source_vtable_layout.object_type == descriptor.source_principal_object
+        && descriptor.target_vtable_layout.object_type == descriptor.target_supertrait_object
+        && descriptor.upcast.source_object_type == descriptor.source_principal_object
+        && descriptor.upcast.target_object_type == descriptor.target_supertrait_object
+        && descriptor.upcast.supertrait_edge_path == descriptor.supertrait_edge_path
+        && descriptor.upcast.borrow_kind == dyn_borrow_kind_to_key(descriptor.borrow_kind)
+        && descriptor.abi_policy == DynAbiPolicy::borrowed_view_v1
+        && descriptor.composition_metadata_policy == DynMetadataPolicy::principal_set_metadata_v1
+        && descriptor.upcast_metadata_policy == DynMetadataPolicy::supertrait_vptr_metadata_v1
+        && !descriptor.source_reference_type_name.empty()
+        && !descriptor.projected_reference_type_name.empty()
+        && !descriptor.target_reference_type_name.empty();
+}
+
 bool is_valid(const DynDispatchAbiDescriptor& descriptor) noexcept
 {
     if (is_valid(descriptor.layout)) {
@@ -351,6 +406,10 @@ bool is_valid(const FunctionDynAbiFacts& facts) noexcept
              })
         && std::all_of(facts.composition_projections.begin(), facts.composition_projections.end(),
              [](const DynCompositionProjectionAbiDescriptor& descriptor) {
+                 return is_valid(descriptor);
+             })
+        && std::all_of(facts.composition_supertrait_chains.begin(), facts.composition_supertrait_chains.end(),
+             [](const DynCompositionSupertraitChainAbiDescriptor& descriptor) {
                  return is_valid(descriptor);
              })
         && std::all_of(facts.dispatches.begin(), facts.dispatches.end(),
@@ -444,6 +503,13 @@ void record_dyn_composition_projection_abi_descriptor(
     facts.summary.composition_projection_count = facts.composition_projections.size();
 }
 
+void record_dyn_composition_supertrait_chain_abi_descriptor(
+    FunctionDynAbiFacts& facts, DynCompositionSupertraitChainAbiDescriptor descriptor)
+{
+    facts.composition_supertrait_chains.push_back(std::move(descriptor));
+    facts.summary.composition_supertrait_chain_count = facts.composition_supertrait_chains.size();
+}
+
 void record_dyn_dispatch_abi_descriptor(FunctionDynAbiFacts& facts, DynDispatchAbiDescriptor descriptor)
 {
     facts.dispatches.push_back(std::move(descriptor));
@@ -480,7 +546,8 @@ std::optional<const DynVTableSlotAbiDescriptor*> dyn_vtable_slot_descriptor(
 
 DynMetadataPolicy function_dyn_abi_metadata_policy(const FunctionDynAbiFacts& facts) noexcept
 {
-    if (!facts.principal_sets.empty() || !facts.composition_projections.empty()) {
+    if (!facts.principal_sets.empty() || !facts.composition_projections.empty()
+        || !facts.composition_supertrait_chains.empty()) {
         return DynMetadataPolicy::principal_set_metadata_v1;
     }
     if (!facts.upcasts.empty()) {
@@ -505,6 +572,7 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     builder.mix_u64(facts.upcasts.size());
     builder.mix_u64(facts.principal_sets.size());
     builder.mix_u64(facts.composition_projections.size());
+    builder.mix_u64(facts.composition_supertrait_chains.size());
     builder.mix_u64(facts.dispatches.size());
     builder.mix_u64(facts.summary.object_count);
     builder.mix_u64(facts.summary.vtable_count);
@@ -514,6 +582,7 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     builder.mix_u64(facts.summary.principal_set_metadata_count);
     builder.mix_u64(facts.summary.principal_set_witness_count);
     builder.mix_u64(facts.summary.composition_projection_count);
+    builder.mix_u64(facts.summary.composition_supertrait_chain_count);
     builder.mix_u64(facts.summary.dispatch_count);
     builder.mix_u64(facts.summary.shared_borrow_count);
     builder.mix_u64(facts.summary.mut_borrow_count);
@@ -535,6 +604,9 @@ StableFingerprint128 function_dyn_abi_facts_fingerprint(const FunctionDynAbiFact
     for (const DynCompositionProjectionAbiDescriptor& descriptor : facts.composition_projections) {
         mix_dyn_composition_projection(builder, descriptor);
     }
+    for (const DynCompositionSupertraitChainAbiDescriptor& descriptor : facts.composition_supertrait_chains) {
+        mix_dyn_composition_supertrait_chain(builder, descriptor);
+    }
     for (const DynDispatchAbiDescriptor& descriptor : facts.dispatches) {
         mix_dyn_dispatch(builder, descriptor);
     }
@@ -551,9 +623,11 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
           << " upcasts=" << facts.upcasts.size()
           << " principal_sets=" << facts.principal_sets.size()
           << " composition_projections=" << facts.composition_projections.size()
+          << " composition_supertrait_chains=" << facts.composition_supertrait_chains.size()
           << " dispatches=" << facts.dispatches.size()
           << " abi=" << dyn_abi_policy_name(DynAbiPolicy::borrowed_view_v1)
           << " metadata=" << dyn_metadata_policy_name(function_dyn_abi_metadata_policy(facts));
+    bool described_surface = false;
     if (!facts.composition_projections.empty()) {
         const DynCompositionProjectionAbiDescriptor& projection = facts.composition_projections.front();
         label << " first_composition_projection="
@@ -562,9 +636,23 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
               << (projection.target_reference_type_name.empty() ? "<unknown>" : projection.target_reference_type_name)
               << " principal_index=" << projection.principal_index
               << " borrow=" << dyn_borrow_kind_name(projection.borrow_kind);
-    } else if (!facts.dispatches.empty()) {
+        described_surface = true;
+    }
+    if (!facts.composition_supertrait_chains.empty()) {
+        const DynCompositionSupertraitChainAbiDescriptor& chain = facts.composition_supertrait_chains.front();
+        label << " first_composition_supertrait_chain="
+              << (chain.source_reference_type_name.empty() ? "<unknown>" : chain.source_reference_type_name)
+              << "->"
+              << (chain.projected_reference_type_name.empty() ? "<unknown>"
+                                                              : chain.projected_reference_type_name)
+              << "->"
+              << (chain.target_reference_type_name.empty() ? "<unknown>" : chain.target_reference_type_name)
+              << " borrow=" << dyn_borrow_kind_name(chain.borrow_kind);
+        described_surface = true;
+    }
+    if (!described_surface && !facts.dispatches.empty()) {
         label << " first_dispatch=vtable_slot slot=" << facts.dispatches.front().slot;
-    } else if (!facts.upcasts.empty()) {
+    } else if (!described_surface && !facts.upcasts.empty()) {
         const DynUpcastAbiDescriptor& upcast = facts.upcasts.front();
         label << " first_upcast="
               << (upcast.source_reference_type_name.empty() ? "<unknown>" : upcast.source_reference_type_name)
@@ -572,7 +660,7 @@ std::string summarize_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
               << (upcast.target_reference_type_name.empty() ? "<unknown>" : upcast.target_reference_type_name)
               << " borrow=" << dyn_borrow_kind_name(upcast.borrow_kind)
               << " metadata=" << dyn_metadata_policy_name(upcast.metadata_policy);
-    } else if (!facts.vtables.empty() && !facts.vtables.front().slots.empty()) {
+    } else if (!described_surface && !facts.vtables.empty() && !facts.vtables.front().slots.empty()) {
         label << " first_slot=" << facts.vtables.front().slots.front().slot;
     }
     label << " fingerprint=" << debug_string(function_dyn_abi_facts_fingerprint(facts));
@@ -591,6 +679,7 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
            << " principal_sets=" << facts.principal_sets.size()
            << " principal_set_witnesses=" << facts.summary.principal_set_witness_count
            << " composition_projections=" << facts.composition_projections.size()
+           << " composition_supertrait_chains=" << facts.composition_supertrait_chains.size()
            << " dispatches=" << facts.dispatches.size()
            << " fingerprint=" << debug_string(function_dyn_abi_facts_fingerprint(facts)) << '\n';
     for (base::usize index = 0; index < facts.objects.size(); ++index) {
@@ -696,6 +785,35 @@ std::string dump_function_dyn_abi_facts(const FunctionDynAbiFacts& facts)
             stream << " target_layout=" << debug_string(stable_key_fingerprint(projection.target_vtable_layout));
         }
         stream << '\n';
+    }
+    for (base::usize index = 0; index < facts.composition_supertrait_chains.size(); ++index) {
+        const DynCompositionSupertraitChainAbiDescriptor& chain = facts.composition_supertrait_chains[index];
+        stream << "  dyn_composition_supertrait_chain #" << index
+               << " " << (chain.source_reference_type_name.empty() ? "<unknown>"
+                                                                    : chain.source_reference_type_name)
+               << " -> "
+               << (chain.projected_reference_type_name.empty() ? "<unknown>"
+                                                               : chain.projected_reference_type_name)
+               << " -> "
+               << (chain.target_reference_type_name.empty() ? "<unknown>"
+                                                            : chain.target_reference_type_name)
+               << " source_object=" << (chain.source_object_type_name.empty()
+                                            ? "<unknown>"
+                                            : chain.source_object_type_name)
+               << " projected_object=" << (chain.projected_object_type_name.empty()
+                                               ? "<unknown>"
+                                               : chain.projected_object_type_name)
+               << " target_object=" << (chain.target_object_type_name.empty()
+                                            ? "<unknown>"
+                                            : chain.target_object_type_name)
+               << " principal_index=" << chain.principal_index
+               << " borrow=" << dyn_borrow_kind_name(chain.borrow_kind)
+               << " abi=" << dyn_abi_policy_name(chain.abi_policy)
+               << " composition_metadata=" << dyn_metadata_policy_name(chain.composition_metadata_policy)
+               << " upcast_metadata=" << dyn_metadata_policy_name(chain.upcast_metadata_policy)
+               << " source_layout=" << debug_string(stable_key_fingerprint(chain.source_vtable_layout))
+               << " target_layout=" << debug_string(stable_key_fingerprint(chain.target_vtable_layout))
+               << " upcast_key=" << debug_string(stable_key_fingerprint(chain.upcast)) << '\n';
     }
     for (base::usize index = 0; index < facts.dispatches.size(); ++index) {
         const DynDispatchAbiDescriptor& dispatch = facts.dispatches[index];

@@ -1,5 +1,29 @@
 # 版本文档
 
+## M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
+
+M13d 已完成 borrowed composition-to-supertrait explicit projection 的 release closure。M13d 不改变用户语法：
+
+```aurex
+dynproject[SourcePrincipal, TargetSupertrait](view)
+```
+
+M13d 新增或固定：
+
+- `FunctionDynAbiFacts::composition_supertrait_chains`，把
+  `trait_object_composition_project` + `trait_object_upcast` 归纳成 query/cache/tooling 可见的 runtime chain。
+- `function_dyn_abi_facts_fingerprint()` 和 `lower_function_ir_result_fingerprint()` 会响应 chain 的 target、
+  source principal、borrow kind、layout 和 supertrait edge drift。
+- IDE semantic fact / hover 展示 `composition_supertrait_chains=N`、source composition view、projected principal
+  view、target supertrait view、`principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`。
+- IR verifier negative matrix 覆盖缺失 upcast object、错误 supertrait edge、source/target layout drift 和
+  projection principal drift。
+- 文档测试和 coverage gate 将 M13 收口为 release baseline。
+
+M13d 继续保持 no-std/compiler runtime core 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
+不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI，也不实现 bare
+`dyn A + B` syntax 或隐式 composition-to-supertrait direct call。
+
 ## M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
 
 M13c 已完成 borrowed composition-to-supertrait explicit projection 的 IR/backend runtime 子集。M13b 引入的
@@ -23,8 +47,7 @@ M13c 新增或固定：
 
 M13c 继续保持 no-std/compiler runtime core 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
 不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI，也不实现 bare
-`dyn A + B` syntax。下一步 M13d 应做 hardening/release closure：query/cache/tooling hover、negative matrix、
-documentation tests、coverage closure 和代码量偏差分析。
+`dyn A + B` syntax。M13d 已完成 hardening/release closure。
 
 ## M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
 

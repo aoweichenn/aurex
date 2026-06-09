@@ -23,6 +23,15 @@ namespace {
     return sema::is_valid(type) && type.value < module.types.size() ? module.types.display_name(type) : std::string{};
 }
 
+[[nodiscard]] std::string pointee_type_name(const Module& module, const sema::TypeHandle type)
+{
+    if (!sema::is_valid(type) || type.value >= module.types.size()
+        || (!module.types.is_pointer(type) && !module.types.is_reference(type))) {
+        return {};
+    }
+    return type_name(module, module.types.get(type).pointee);
+}
+
 [[nodiscard]] std::string trait_object_principal_name(const Module& module, const sema::TypeHandle type)
 {
     if (!sema::is_valid(type) || type.value >= module.types.size()) {
@@ -227,6 +236,43 @@ namespace {
     return descriptor;
 }
 
+[[nodiscard]] query::DynCompositionSupertraitChainAbiDescriptor make_composition_supertrait_chain_descriptor(
+    const Module& module,
+    const Value& projection,
+    const Value& upcast,
+    const TraitObjectVTableSupertraitEdge& edge)
+{
+    query::DynCompositionSupertraitChainAbiDescriptor descriptor;
+    descriptor.principal_set_identity = projection.principal_set_identity;
+    descriptor.source_principal_object = projection.principal_object;
+    descriptor.target_supertrait_object = edge.target_layout.object_type;
+    descriptor.source_vtable_layout = edge.source_layout;
+    descriptor.target_vtable_layout = edge.target_layout;
+    descriptor.upcast = edge.upcast_key;
+    descriptor.supertrait_edge_path = edge.edge_fingerprint;
+    descriptor.principal_index = projection.principal_index;
+    descriptor.borrow_kind = query::DynBorrowKind::shared;
+    descriptor.abi_policy = query::DynAbiPolicy::borrowed_view_v1;
+    descriptor.composition_metadata_policy = query::DynMetadataPolicy::principal_set_metadata_v1;
+    descriptor.upcast_metadata_policy = query::DynMetadataPolicy::supertrait_vptr_metadata_v1;
+    sema::TypeHandle source_reference_type = {};
+    if (is_valid(projection.object) && projection.object.value < module.values.size()) {
+        source_reference_type = module.values[projection.object.value].type;
+    }
+    descriptor.source_reference_type_name = type_name(module, source_reference_type);
+    descriptor.projected_reference_type_name = type_name(module, projection.type);
+    descriptor.target_reference_type_name = type_name(module, upcast.type);
+    descriptor.source_object_type_name = pointee_type_name(module, source_reference_type);
+    descriptor.projected_object_type_name = pointee_type_name(module, projection.type);
+    descriptor.target_object_type_name = pointee_type_name(module, upcast.type);
+    if (sema::is_valid(upcast.type) && upcast.type.value < module.types.size()
+        && module.types.is_reference(upcast.type)
+        && module.types.get(upcast.type).pointer_mutability == sema::PointerMutability::mut) {
+        descriptor.borrow_kind = query::DynBorrowKind::mut;
+    }
+    return descriptor;
+}
+
 void push_unique_object_descriptor(query::FunctionDynAbiFacts& facts, query::DynObjectAbiDescriptor descriptor)
 {
     if (!query::is_valid(descriptor)) {
@@ -316,6 +362,29 @@ void push_unique_composition_projection_descriptor(
     }
 }
 
+void push_unique_composition_supertrait_chain_descriptor(
+    query::FunctionDynAbiFacts& facts, query::DynCompositionSupertraitChainAbiDescriptor descriptor)
+{
+    if (!query::is_valid(descriptor)) {
+        return;
+    }
+    const auto found = std::ranges::find_if(facts.composition_supertrait_chains,
+        [&descriptor](const query::DynCompositionSupertraitChainAbiDescriptor& chain) {
+            return chain.principal_set_identity == descriptor.principal_set_identity
+                && chain.source_principal_object == descriptor.source_principal_object
+                && chain.target_supertrait_object == descriptor.target_supertrait_object
+                && chain.source_vtable_layout == descriptor.source_vtable_layout
+                && chain.target_vtable_layout == descriptor.target_vtable_layout
+                && chain.upcast == descriptor.upcast
+                && chain.source_reference_type_name == descriptor.source_reference_type_name
+                && chain.projected_reference_type_name == descriptor.projected_reference_type_name
+                && chain.target_reference_type_name == descriptor.target_reference_type_name;
+        });
+    if (found == facts.composition_supertrait_chains.end()) {
+        query::record_dyn_composition_supertrait_chain_abi_descriptor(facts, std::move(descriptor));
+    }
+}
+
 void include_layout(query::FunctionDynAbiFacts& facts, const Module& module, const TraitObjectVTableLayout& layout)
 {
     push_unique_object_descriptor(facts, make_object_descriptor(module, layout));
@@ -366,8 +435,15 @@ void include_value_dyn_abi(query::FunctionDynAbiFacts& facts, const Module& modu
         }
         include_layout(facts, module, *source_layout);
         include_layout(facts, module, *target_layout);
-        push_unique_upcast_descriptor(facts,
-            make_upcast_descriptor(module, source_layout->supertrait_edges[value.vtable_supertrait_edge]));
+        const TraitObjectVTableSupertraitEdge& edge = source_layout->supertrait_edges[value.vtable_supertrait_edge];
+        push_unique_upcast_descriptor(facts, make_upcast_descriptor(module, edge));
+        if (is_valid(value.object) && value.object.value < module.values.size()) {
+            const Value& object = module.values[value.object.value];
+            if (object.kind == ValueKind::trait_object_composition_project) {
+                push_unique_composition_supertrait_chain_descriptor(
+                    facts, make_composition_supertrait_chain_descriptor(module, object, value, edge));
+            }
+        }
         return;
     }
     if (value.kind == ValueKind::trait_object_composition_pack) {
@@ -403,6 +479,7 @@ query::FunctionDynAbiFacts function_dyn_abi_facts(const Module& module, const Fu
     facts.upcasts.reserve(values.size());
     facts.principal_sets.reserve(values.size());
     facts.composition_projections.reserve(values.size());
+    facts.composition_supertrait_chains.reserve(values.size());
     facts.dispatches.reserve(values.size());
     for (const ValueId id : values) {
         include_value_dyn_abi(facts, module, module.values[id.value]);
@@ -411,6 +488,7 @@ query::FunctionDynAbiFacts function_dyn_abi_facts(const Module& module, const Fu
     facts.summary.vtable_count = facts.vtables.size();
     facts.summary.principal_set_metadata_count = facts.principal_sets.size();
     facts.summary.composition_projection_count = facts.composition_projections.size();
+    facts.summary.composition_supertrait_chain_count = facts.composition_supertrait_chains.size();
     facts.summary.dispatch_count = facts.dispatches.size();
     facts.fingerprint = query::function_dyn_abi_facts_fingerprint(facts);
     return facts;

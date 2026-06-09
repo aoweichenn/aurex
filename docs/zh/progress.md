@@ -1,9 +1,26 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime
+阶段：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure
 
 ## 总体状态
+
+2026-06-09：M13d Borrowed Composition-To-Supertrait Hardening / Release Closure 已完成。M13 现在收口为完整
+borrowed composition-to-supertrait explicit projection release baseline。M13d 仍不实现标准库、owning dyn、
+`Box<dyn Trait>`、allocator、dynamic Drop dispatch、bare `dyn A + B` 或 composition-to-supertrait 隐式 direct call；
+它只补齐 M13c runtime surface 的 query/cache/tooling/verifier/docs 硬化。
+
+M13d 新增 `FunctionDynAbiFacts::composition_supertrait_chains` 派生 descriptor，把
+`trait_object_composition_project` 与紧随其后的 `trait_object_upcast` 显式归纳为一条
+composition-supertrait runtime chain。summary、dump、fingerprint、`lower_function_ir_result_fingerprint()`、IDE
+semantic fact 和 hover 都会展示 / 消费该 chain；chain 同时标出 source composition view、projected principal view、
+target supertrait view、`principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`。IR verifier 负例矩阵新增
+composition-supertrait chain drift 覆盖：缺失 upcast object、错误 supertrait edge、source/target layout drift 和
+projection principal drift 都会被拒绝。
+
+M13d 实际代码量低于原 700-1,200 行预估，主要原因是 M13c 已复用 M10/M11 runtime IR 和 backend metadata，
+本阶段只需要新增派生 ABI fact、tooling 文本和 focused negative tests，而不需要新增 lowering value、LLVM ABI
+或 parser/sema surface。质量没有通过减少测试来换行数；query、IR、tooling、documentation 和 coverage gate 都继续覆盖。
 
 2026-06-09：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime 已完成。M13c 仍不实现
 标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、bare `dyn A + B` 或

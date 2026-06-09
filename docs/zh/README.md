@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M13c Borrowed Composition-To-Supertrait IR / Backend Runtime**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M13d Borrowed Composition-To-Supertrait Hardening / Release Closure**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -44,8 +44,10 @@ dynamic Drop dispatch。M13b 已把该路线落成 frontend/query/sema check-onl
 source principal 在 composition 中，target 是该 source principal 的 supertrait；成功后记录
 `CompositionProjectionFact{kind=composition_to_supertrait}`。M13c 已把它 lowering 为
 `trait_object_composition_project` + `trait_object_upcast`，复用 `principal_set_metadata_v1` 与
-`supertrait_vptr_metadata_v1`；仍继续拒绝
-隐式 `let parent: &dyn Parent = view;` 和 `view.parent()`。
+`supertrait_vptr_metadata_v1`；M13d 已把该 runtime surface 收口到 query/cache/tooling/verifier release baseline：
+`FunctionDynAbiFacts::composition_supertrait_chains`、IDE hover、lower-IR fingerprint 和 negative verifier matrix 都能
+显式展示 / 校验 `composition_project -> upcast` chain。仍继续拒绝隐式 `let parent: &dyn Parent = view;` 和
+`view.parent()`。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

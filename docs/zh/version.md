@@ -1,5 +1,28 @@
 # 版本文档
 
+## M13a Advanced Dyn Remaining Policy Design Baseline
+
+M13a 已完成 advanced dyn 剩余能力的 policy selection 和 query design gate。M13a 选择
+**borrowed composition-to-supertrait explicit projection** 作为下一条主线，但本阶段不实现用户语法、不实现
+IR/backend runtime，也不改变 M12b 对 `view.parent()` 这类隐式 composition-to-supertrait direct call 的拒绝规则。
+设计入口见 [Aurex M13 Advanced Dyn Remaining Policy Design Baseline](m13-advanced-dyn-design.md)。
+
+M13a 新增或固定：
+
+- `DynAdvancedCapability::borrowed_composition_supertrait_projection`
+- `DynAdvancedPolicyDecision::composes_existing_metadata_policies`
+- `m13a_dyn_advanced_design_gate_baseline()`
+- `is_valid_m13a_dyn_advanced_design_gate()`
+- required facts：`composition_to_supertrait_projection_fact`、`principal_supertrait_path_fact`、
+  `composition_supertrait_ambiguity_fact`、`composition_supertrait_projection_abi_descriptor`
+- non-goals：`standard_library_runtime_not_in_m13a`、`new_runtime_metadata_not_in_m13a`、
+  `owning_dyn_runtime_not_in_m13a`、`do_not_make_composition_to_supertrait_direct_call_implicit`、
+  `do_not_add_new_principal_set_metadata_policy`
+
+M13a 的核心决策是组合已有 `principal_set_metadata_v1` 和 `supertrait_vptr_metadata_v1`，不新增
+composition-supertrait metadata policy。owning dyn、`Box<dyn Trait>`、allocator policy 和 dynamic Drop dispatch
+继续留到独立阶段。
+
 ## M12b Direct Composition Dispatch Hardening / Release Closure
 
 M12b 已完成 M12 direct composition dispatch 的 hardening / release closure。M12 现在收口为 borrowed

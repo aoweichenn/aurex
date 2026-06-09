@@ -1,9 +1,22 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M12b Direct Composition Dispatch Hardening / Release Closure
+阶段：M13a Advanced Dyn Remaining Policy Design Baseline
 
 ## 总体状态
+
+2026-06-09：M13a Advanced Dyn Remaining Policy Design Baseline 已完成。M13a 没有实现标准库、owning dyn、
+`Box<dyn Trait>`、allocator、dynamic Drop dispatch、新 runtime metadata 或隐式 composition-to-supertrait direct
+call；它只做 advanced dyn 剩余能力 policy selection 和 query design gate。新增设计文档见
+[Aurex M13 Advanced Dyn Remaining Policy Design Baseline](m13-advanced-dyn-design.md)。
+
+M13a 选择 **borrowed composition-to-supertrait explicit projection** 作为下一条主线。代码层新增
+`DynAdvancedCapability::borrowed_composition_supertrait_projection`、
+`DynAdvancedPolicyDecision::composes_existing_metadata_policies`、
+`m13a_dyn_advanced_design_gate_baseline()` 和 `is_valid_m13a_dyn_advanced_design_gate()`。Gate 固定
+M10 supertrait upcasting 和 M11/M12 principal-set composition 都是 `completed_release_baseline`，新候选是
+`ready_for_future_stage`，且不需要新 ABI policy 或新 metadata policy；owning dyn、dynamic Drop dispatch 和
+allocator policy 继续保持 blocked。
 
 2026-06-09：M12b Direct Composition Dispatch Hardening / Release Closure 已完成。M12 现在收口为完整
 borrowed principal-set composition direct dispatch release baseline；新增 release 文档见

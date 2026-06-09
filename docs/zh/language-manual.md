@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-09
-阶段：M12b Direct Composition Dispatch Hardening / Release Closure，建立在 M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M13a Advanced Dyn Remaining Policy Design Baseline，建立在 M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -74,6 +74,10 @@ A | B         表示二选一
 - 查询 M11a advanced dyn design gate：`m11a_dyn_advanced_design_gate_baseline` 固定 principal-set borrowed dyn
   composition 作为下一条主线、`principal_set_metadata_v1` 作为 future metadata policy、M10 supertrait upcasting
   作为 `completed_release_baseline`。这不是用户可写语法。
+- 查询 M13a advanced dyn design gate：`m13a_dyn_advanced_design_gate_baseline` 固定
+  `borrowed_composition_supertrait_projection` 作为 M13 下一条主线，decision 是
+  `composes_existing_metadata_policies`，并明确不新增 runtime metadata、不让 composition-to-supertrait direct
+  call 隐式发生。这不是用户可写语法。
 - 查询 M11b principal-set composition facts：`PrincipalSetCompositionFacts`、
   `PrincipalSetIdentityFact`、`CompositionWitnessSetFact`、`PrincipalMethodNamespaceFact`、
   `AssociatedEqualityMergeFact`、`CompositionProjectionFact`、`principal_set_composition_facts_fingerprint()`、

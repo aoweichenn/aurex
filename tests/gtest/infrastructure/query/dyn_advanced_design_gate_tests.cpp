@@ -14,6 +14,7 @@ constexpr base::u8 QUERY_TEST_INVALID_DYN_ADVANCED_STAGE = 241U;
 constexpr base::u8 QUERY_TEST_INVALID_DYN_ADVANCED_DECISION = 242U;
 constexpr base::usize QUERY_TEST_M9C_ADVANCED_CANDIDATE_COUNT = 5;
 constexpr base::usize QUERY_TEST_M11A_ADVANCED_CANDIDATE_COUNT = 5;
+constexpr base::usize QUERY_TEST_M13A_ADVANCED_CANDIDATE_COUNT = 6;
 
 [[nodiscard]] const query::DynAdvancedDesignCandidate* find_candidate(
     const query::DynAdvancedDesignGate& gate, const query::DynAdvancedCapability capability) noexcept
@@ -58,6 +59,9 @@ TEST(QueryUnit, DynAdvancedDesignGateExposesEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::dyn_advanced_capability_name(query::DynAdvancedCapability::multi_trait_composition),
         "multi_trait_composition");
     EXPECT_EQ(query::dyn_advanced_capability_name(
+                  query::DynAdvancedCapability::borrowed_composition_supertrait_projection),
+        "borrowed_composition_supertrait_projection");
+    EXPECT_EQ(query::dyn_advanced_capability_name(
                   static_cast<query::DynAdvancedCapability>(QUERY_TEST_INVALID_DYN_ADVANCED_CAPABILITY)),
         "invalid");
 
@@ -88,6 +92,9 @@ TEST(QueryUnit, DynAdvancedDesignGateExposesEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::dyn_advanced_policy_decision_name(
                   query::DynAdvancedPolicyDecision::requires_runtime_stage),
         "requires_runtime_stage");
+    EXPECT_EQ(query::dyn_advanced_policy_decision_name(
+                  query::DynAdvancedPolicyDecision::composes_existing_metadata_policies),
+        "composes_existing_metadata_policies");
     EXPECT_EQ(query::dyn_advanced_policy_decision_name(
                   static_cast<query::DynAdvancedPolicyDecision>(QUERY_TEST_INVALID_DYN_ADVANCED_DECISION)),
         "invalid");
@@ -357,6 +364,136 @@ TEST(QueryUnit, DynAdvancedDesignGateM11aSummaryAndDumpExposeSelection)
     EXPECT_NE(dump.find("non_goal=standard_library_runtime_not_in_m11a"), std::string::npos) << dump;
     EXPECT_NE(dump.find("non_goal=do_not_encode_principal_set_as_single_trait_object"), std::string::npos)
         << dump;
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM13aSelectsBorrowedCompositionSupertraitProjection)
+{
+    const query::DynAdvancedDesignGate gate = query::m13a_dyn_advanced_design_gate_baseline();
+
+    ASSERT_EQ(gate.name, "M13a Advanced Dyn Remaining Policy Design Baseline");
+    ASSERT_EQ(gate.candidates.size(), QUERY_TEST_M13A_ADVANCED_CANDIDATE_COUNT);
+    EXPECT_TRUE(query::is_valid(gate));
+    EXPECT_TRUE(query::is_valid_m13a_dyn_advanced_design_gate(gate));
+    EXPECT_EQ(gate.fingerprint, query::dyn_advanced_design_gate_fingerprint(gate));
+
+    const query::DynAdvancedDesignCandidate* supertrait =
+        find_candidate(gate, query::DynAdvancedCapability::supertrait_upcasting);
+    ASSERT_NE(supertrait, nullptr);
+    EXPECT_EQ(supertrait->stage, query::DynAdvancedGateStage::completed_release_baseline);
+    EXPECT_EQ(supertrait->required_metadata_policy, "supertrait_vptr_metadata_v1");
+    EXPECT_TRUE(has_non_goal(*supertrait, "do_not_reopen_m10_supertrait_runtime_in_m13a"));
+
+    const query::DynAdvancedDesignCandidate* composition =
+        find_candidate(gate, query::DynAdvancedCapability::multi_trait_composition);
+    ASSERT_NE(composition, nullptr);
+    EXPECT_EQ(composition->stage, query::DynAdvancedGateStage::completed_release_baseline);
+    EXPECT_EQ(composition->required_metadata_policy, "principal_set_metadata_v1");
+    EXPECT_TRUE(has_non_goal(*composition, "new_runtime_metadata_not_in_m13a"));
+
+    const query::DynAdvancedDesignCandidate* projection = find_candidate(
+        gate, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection, nullptr);
+    EXPECT_EQ(projection->stage, query::DynAdvancedGateStage::ready_for_future_stage);
+    EXPECT_EQ(projection->decision,
+        query::DynAdvancedPolicyDecision::composes_existing_metadata_policies);
+    EXPECT_FALSE(projection->impact.abi_policy_required);
+    EXPECT_FALSE(projection->impact.metadata_policy_required);
+    EXPECT_TRUE(projection->impact.borrow_model_impact);
+    EXPECT_TRUE(projection->impact.tooling_cache_impact);
+    EXPECT_FALSE(projection->impact.standard_library_required);
+    EXPECT_FALSE(projection->impact.runtime_required);
+    EXPECT_TRUE(projection->required_abi_policy.empty());
+    EXPECT_TRUE(projection->required_metadata_policy.empty());
+    EXPECT_TRUE(has_non_goal(*projection, "standard_library_runtime_not_in_m13a"));
+    EXPECT_TRUE(has_non_goal(*projection, "new_runtime_metadata_not_in_m13a"));
+    EXPECT_TRUE(has_non_goal(*projection, "do_not_make_composition_to_supertrait_direct_call_implicit"));
+    EXPECT_TRUE(has_non_goal(*projection, "do_not_add_new_principal_set_metadata_policy"));
+
+    const query::DynAdvancedDesignCandidate* owning =
+        find_candidate(gate, query::DynAdvancedCapability::owning_dyn);
+    ASSERT_NE(owning, nullptr);
+    EXPECT_EQ(owning->stage, query::DynAdvancedGateStage::prototype_blocked);
+    EXPECT_EQ(owning->decision, query::DynAdvancedPolicyDecision::requires_standard_library_stage);
+    EXPECT_TRUE(owning->impact.standard_library_required);
+    EXPECT_TRUE(owning->impact.runtime_required);
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM13aValidationRejectsPolicyAndBoundaryDrift)
+{
+    const query::DynAdvancedDesignGate gate = query::m13a_dyn_advanced_design_gate_baseline();
+    ASSERT_TRUE(query::is_valid_m13a_dyn_advanced_design_gate(gate));
+
+    query::DynAdvancedDesignGate wrong_name = gate;
+    wrong_name.name = "M13 wrong gate";
+    EXPECT_FALSE(query::is_valid_m13a_dyn_advanced_design_gate(wrong_name));
+    EXPECT_FALSE(query::is_valid(wrong_name));
+
+    query::DynAdvancedDesignGate reopened_composition = gate;
+    query::DynAdvancedDesignCandidate* const composition =
+        find_candidate(reopened_composition, query::DynAdvancedCapability::multi_trait_composition);
+    ASSERT_NE(composition, nullptr);
+    composition->stage = query::DynAdvancedGateStage::ready_for_future_stage;
+    EXPECT_FALSE(query::is_valid_m13a_dyn_advanced_design_gate(reopened_composition));
+
+    query::DynAdvancedDesignGate hidden_runtime = gate;
+    query::DynAdvancedDesignCandidate* const projection = find_candidate(
+        hidden_runtime, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection, nullptr);
+    projection->impact.runtime_required = true;
+    projection->decision = query::DynAdvancedPolicyDecision::requires_runtime_stage;
+    EXPECT_FALSE(query::is_valid_m13a_dyn_advanced_design_gate(hidden_runtime));
+
+    query::DynAdvancedDesignGate new_metadata_policy = gate;
+    query::DynAdvancedDesignCandidate* const projection_with_metadata = find_candidate(
+        new_metadata_policy, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection_with_metadata, nullptr);
+    projection_with_metadata->impact.metadata_policy_required = true;
+    projection_with_metadata->required_metadata_policy = "composition_supertrait_metadata_v1";
+    projection_with_metadata->decision = query::DynAdvancedPolicyDecision::requires_new_metadata_policy;
+    EXPECT_FALSE(query::is_valid_m13a_dyn_advanced_design_gate(new_metadata_policy));
+
+    query::DynAdvancedDesignGate duplicate_capability = gate;
+    query::DynAdvancedDesignCandidate* const allocator =
+        find_candidate(duplicate_capability, query::DynAdvancedCapability::allocator_policy);
+    ASSERT_NE(allocator, nullptr);
+    allocator->capability = query::DynAdvancedCapability::borrowed_composition_supertrait_projection;
+    EXPECT_FALSE(query::is_valid_m13a_dyn_advanced_design_gate(duplicate_capability));
+}
+
+TEST(QueryUnit, DynAdvancedDesignGateM13aSummaryAndDumpExposeSelection)
+{
+    const query::DynAdvancedDesignGate gate = query::m13a_dyn_advanced_design_gate_baseline();
+    query::DynAdvancedDesignGate changed = gate;
+    query::DynAdvancedDesignCandidate* const projection = find_candidate(
+        changed, query::DynAdvancedCapability::borrowed_composition_supertrait_projection);
+    ASSERT_NE(projection, nullptr);
+    projection->required_facts.push_back("new fact changes m13a gate contract");
+
+    EXPECT_NE(query::dyn_advanced_design_gate_fingerprint(gate),
+        query::dyn_advanced_design_gate_fingerprint(changed));
+
+    const std::string summary = query::summarize_dyn_advanced_design_gate(gate);
+    EXPECT_NE(summary.find(
+                  "dyn_advanced_design_gate name=M13a Advanced Dyn Remaining Policy Design Baseline"),
+        std::string::npos) << summary;
+    EXPECT_NE(summary.find("candidates=6"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("ready_for_future_stage=1"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("completed_release=2"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("standard_library_blocked=2"), std::string::npos) << summary;
+    EXPECT_NE(summary.find("runtime_blocked=2"), std::string::npos) << summary;
+
+    const std::string dump = query::dump_dyn_advanced_design_gate(gate);
+    EXPECT_NE(dump.find("capability=borrowed_composition_supertrait_projection"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("decision=composes_existing_metadata_policies"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("required_fact=composition_to_supertrait_projection_fact"),
+        std::string::npos) << dump;
+    EXPECT_NE(dump.find("required_fact=principal_supertrait_path_fact"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("non_goal=do_not_make_composition_to_supertrait_direct_call_implicit"),
+        std::string::npos) << dump;
+    EXPECT_NE(dump.find("non_goal=do_not_add_new_principal_set_metadata_policy"),
+        std::string::npos) << dump;
 }
 
 } // namespace aurex::test

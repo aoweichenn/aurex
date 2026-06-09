@@ -1,12 +1,12 @@
 # 下一步计划
 
-## 当前最高优先级：M13 Advanced Dyn Remaining Policy Design Baseline
+## 当前最高优先级：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
 Composition Frontend / Sema Check-Only、M11d Principal-Set Composition IR / Backend Runtime、M11e Principal-Set
 Composition Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M12b
-Direct Composition Dispatch Hardening / Release Closure 均已完成。
+Direct Composition Dispatch Hardening / Release Closure、M13a Advanced Dyn Remaining Policy Design Baseline 均已完成。
 当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
@@ -17,6 +17,7 @@ Direct Composition Dispatch Hardening / Release Closure 均已完成。
 - [Aurex M11 Advanced Dyn Design Baseline](m11-advanced-dyn-design.md)
 - [Aurex M11 Principal-Set Composition Release Baseline](m11-release-baseline.md)
 - [Aurex M12 Direct Composition Dispatch Release Baseline](m12-release-baseline.md)
+- [Aurex M13 Advanced Dyn Remaining Policy Design Baseline](m13-advanced-dyn-design.md)
 
 M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
@@ -70,6 +71,15 @@ projection 混用时去重 projection fact 和 function-level ABI descriptor，q
 target drift，negative matrix 覆盖 composition-to-supertrait 隐式 direct call rejection。M12b 仍不实现标准库、
 owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。
 
+M13a 也已结束。M13a 从 M12 后剩余 advanced dyn 候选中选择 **borrowed composition-to-supertrait explicit
+projection** 作为下一条主线，并通过 `m13a_dyn_advanced_design_gate_baseline()` 固定
+`borrowed_composition_supertrait_projection`、`composes_existing_metadata_policies`、
+`composition_to_supertrait_projection_fact`、`principal_supertrait_path_fact`、
+`composition_supertrait_ambiguity_fact` 和 `composition_supertrait_projection_abi_descriptor`。M13a 的关键边界是：
+组合已有 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`，不新增 runtime metadata，不让
+`view.parent()` 变成隐式 composition-to-supertrait direct call，不实现标准库、owning dyn、allocator 或 dynamic
+Drop dispatch。
+
 已完成基线摘要：
 
 - M8 query foundation 已完成，`CanonicalTypeKind::trait_object` 占位已移除；当前结构化 identity 是
@@ -92,10 +102,13 @@ owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch。
   composition projection + ordinary dyn vtable dispatch。
 - M12b Direct Composition Dispatch Hardening / Release Closure 已完成；receiver-access binding、associated
   equality direct dispatch、projection/ABI descriptor 去重、query fingerprint drift 和 negative matrix 已固定。
+- M13a Advanced Dyn Remaining Policy Design Baseline 已完成；下一条主线选择 explicit borrowed
+  composition-to-supertrait projection，并固定 query gate 与非目标。
 
-当前下一步应进入 **M13 Advanced Dyn Remaining Policy Design Baseline**。M13 仍不应直接实现标准库、owning dyn、
-`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；第一步应从 M12 后仍未覆盖的 advanced dyn 候选中选择
-独立主线，写清 semantic model、metadata policy、query facts、diagnostics、verifier/backend tests 和非目标。
+当前下一步应进入 **M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only**。M13b 仍不应直接实现
+标准库、owning dyn、`Box<dyn Trait>`、allocator 或 dynamic Drop dispatch；重点是实现显式 projection syntax/typing、
+`composition_to_supertrait` facts、source-principal disambiguation、diagnostics、checked dump/fingerprint 和
+query authority，不做 runtime lowering release closure。
 
 M12 后续候选不应混在同一阶段一次性实现：
 
@@ -118,7 +131,10 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M11e hardening/release | 已完成。`FunctionDynAbiFacts` composition descriptors、lower-IR invalidation、IDE hover、verifier negative matrix、docs/tests release closure | 实际以本次 diffstat 为准 |
 | M12a direct composition dispatch | 已完成。唯一 principal method direct dispatch、projection fact、IR project/vtable slot、native execution、receiver mutability negative cases | 实际以本次 diffstat 为准 |
 | M12b hardening/release | 已完成。receiver-access binding、associated equality direct dispatch、projection/ABI descriptor 去重、query fingerprint drift、broader negative matrix、docs/tests release closure | 实际以本次 diffstat 为准 |
-| M13 design baseline | 剩余 advanced dyn 候选 policy selection：borrowed composition-to-supertrait、dynamic Drop dispatch、owning dyn/Box、allocator 或 auto trait composition 中选择一条独立主线 | 600-1,200 行文档/测试 |
+| M13a design baseline | 已完成。剩余 advanced dyn 候选 policy selection，选择 borrowed composition-to-supertrait explicit projection，新增 query gate、docs/tests | 实际以本次 diffstat 为准 |
+| M13b frontend/query/sema | explicit composition-to-supertrait projection syntax/typing/facts/diagnostics/checked dump；不做 runtime release closure | 1,000-1,800 行 |
+| M13c IR/backend runtime | composition project + supertrait upcast lowering、ABI descriptor、verifier、LLVM/native tests | 900-1,600 行 |
+| M13d hardening/release | query/cache/tooling hover、negative matrix、docs/samples、coverage closure、代码量偏差分析 | 700-1,200 行 |
 | 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

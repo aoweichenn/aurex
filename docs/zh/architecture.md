@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M12b Direct Composition Dispatch Hardening / Release Closure。M2 已移除标准库层：
+当前架构基线是 M13a Advanced Dyn Remaining Policy Design Baseline。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -46,7 +46,10 @@
   lower-IR query invalidation、IDE semantic fact/hover 和 verifier negative matrix 收口成 release baseline；M12a
   已支持唯一 principal method 的 direct composition dispatch，lowering 为 composition projection + ordinary
   `vtable_slot` dispatch；M12b 已固定 receiver-access binding、associated equality direct dispatch、projection/ABI
-  descriptor 去重、query/cache fingerprint drift 和 broader negative matrix。
+  descriptor 去重、query/cache fingerprint drift 和 broader negative matrix。M13a 已把下一条 advanced dyn 主线
+  选为 borrowed composition-to-supertrait explicit projection，并固定 `m13a_dyn_advanced_design_gate_baseline`
+  query gate；该主线组合已有 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`，不新增 runtime
+  metadata，也不打开隐式 composition-to-supertrait direct call。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
   composition-to-supertrait 隐式多步 direct dispatch、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。

@@ -2,7 +2,7 @@
 
 ## 当前分支目标
 
-当前实现基线是 M12b Direct Composition Dispatch Hardening / Release Closure。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
+当前实现基线是 M13a Advanced Dyn Remaining Policy Design Baseline。M6-WP2 到 M6-WP7 已落地资源分类、whole-local move
 analysis、cleanup obligation lowering、drop-glue identity/planning、tooling projection 和 release closure；
 M7 已完成 CFG-sensitive borrow/lifetime/resource hardening；M8 已完成 borrowed dyn trait frontend/sema、
 checked vtable facts、IR/backend dynamic dispatch 和 hardening closure；M9 已完成 dyn ABI/tooling release
@@ -17,9 +17,10 @@ M11c 已新增 `dyn (A + B)` borrowed composition annotation/coercion 的 parser
 `FunctionDynAbiFacts` composition runtime descriptors、lower-IR invalidation、IDE hover/semantic fact、verifier
 negative matrix 和 release documentation closure；M12a 已新增无歧义 direct composition method dispatch；M12b 已补齐
 receiver-access binding、associated equality direct dispatch、projection/ABI descriptor 去重、query/cache fingerprint
-drift 和 broader negative matrix。
+drift 和 broader negative matrix；M13a 已选择 borrowed composition-to-supertrait explicit projection 作为下一条
+advanced dyn 主线，并新增 `m13a_dyn_advanced_design_gate_baseline` query gate。
 历史基线说明：当前实现基线是 M6 Resource And Access Semantics 这条旧 release baseline 仍作为资源语义
-设计入口保留，但当前分支已经继续推进到 M12b。
+设计入口保留，但当前分支已经继续推进到 M13a。
 较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
@@ -45,7 +46,7 @@ drift 和 broader negative matrix。
   `principal_set_metadata_v1`、`PrincipalSetCompositionFacts` 和 principal-set composition required facts 已固定，
   M11c 已支持 `dyn (A + B)` borrowed composition annotation/coercion，M11d 已支持显式 runtime projection，M11e
   已把 runtime projection facts 接入 query/cache/tooling/verifier release closure，M12a/M12b 已支持并收口唯一
-  principal method direct composition dispatch。
+  principal method direct composition dispatch，M13a 已固定 `borrowed_composition_supertrait_projection` 设计门禁。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。

@@ -15,6 +15,7 @@ enum class DynAdvancedCapability : base::u8 {
     dynamic_drop_dispatch,
     allocator_policy,
     multi_trait_composition,
+    borrowed_composition_supertrait_projection,
 };
 
 enum class DynAdvancedGateStage : base::u8 {
@@ -31,6 +32,7 @@ enum class DynAdvancedPolicyDecision : base::u8 {
     requires_new_metadata_policy,
     requires_standard_library_stage,
     requires_runtime_stage,
+    composes_existing_metadata_policies,
 };
 
 struct DynAdvancedImpactSummary {
@@ -73,6 +75,8 @@ struct DynAdvancedDesignGate {
 [[nodiscard]] bool is_valid(const DynAdvancedDesignGate& gate) noexcept;
 [[nodiscard]] bool is_valid_m11a_dyn_advanced_design_gate(
     const DynAdvancedDesignGate& gate) noexcept;
+[[nodiscard]] bool is_valid_m13a_dyn_advanced_design_gate(
+    const DynAdvancedDesignGate& gate) noexcept;
 
 void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvancedDesignCandidate candidate);
 
@@ -82,5 +86,6 @@ void record_dyn_advanced_design_candidate(DynAdvancedDesignGate& gate, DynAdvanc
 [[nodiscard]] std::string dump_dyn_advanced_design_gate(const DynAdvancedDesignGate& gate);
 [[nodiscard]] DynAdvancedDesignGate m9c_dyn_advanced_design_gate_baseline();
 [[nodiscard]] DynAdvancedDesignGate m11a_dyn_advanced_design_gate_baseline();
+[[nodiscard]] DynAdvancedDesignGate m13a_dyn_advanced_design_gate_baseline();
 
 } // namespace aurex::query

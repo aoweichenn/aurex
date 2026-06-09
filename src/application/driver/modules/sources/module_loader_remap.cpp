@@ -45,7 +45,17 @@ void remap_type_node(syntax::TypeNode& node, const IdMap& map)
     for (syntax::TypeId& arg : node.type_args) {
         arg = remap_type(arg, map);
     }
+    for (syntax::GenericArgDecl& arg : node.generic_args) {
+        if (arg.kind == syntax::GenericArgKind::type) {
+            arg.type = remap_type(arg.type, map);
+        } else {
+            arg.const_expr = remap_expr(arg.const_expr, map);
+        }
+    }
     node.pointee = remap_type(node.pointee, map);
+    if (node.array_length.kind == syntax::ArrayLengthKind::const_expr) {
+        node.array_length.expr = remap_expr(node.array_length.expr, map);
+    }
     node.array_element = remap_type(node.array_element, map);
     node.slice_element = remap_type(node.slice_element, map);
     for (syntax::TypeId& param : node.function_params) {
@@ -67,6 +77,18 @@ void remap_type_ids(std::vector<syntax::TypeId, Allocator>& args, const IdMap& m
 {
     for (syntax::TypeId& arg : args) {
         arg = remap_type(arg, map);
+    }
+}
+
+template <typename Allocator>
+void remap_generic_args(std::vector<syntax::GenericArgDecl, Allocator>& args, const IdMap& map)
+{
+    for (syntax::GenericArgDecl& arg : args) {
+        if (arg.kind == syntax::GenericArgKind::type) {
+            arg.type = remap_type(arg.type, map);
+        } else {
+            arg.const_expr = remap_expr(arg.const_expr, map);
+        }
     }
 }
 
@@ -126,6 +148,8 @@ template <typename T, typename Allocator>
             syntax::IdentId scope_name_id = syntax::INVALID_IDENT_ID;
             syntax::IdentId text_id = syntax::INVALID_IDENT_ID;
             syntax::AstArenaVector<syntax::TypeId> type_args = destination.make_expr_list<syntax::TypeId>();
+            syntax::AstArenaVector<syntax::GenericArgDecl> generic_args =
+                destination.make_expr_list<syntax::GenericArgDecl>();
             if (syntax::NameExprPayload* const source_payload = source.exprs.name_payload(index);
                 source_payload != nullptr) {
                 scope_name = source_payload->scope_name;
@@ -134,22 +158,39 @@ template <typename T, typename Allocator>
                 scope_name_id = source_payload->scope_name_id;
                 text_id = source_payload->text_id;
                 type_args = copy_expr_arena_list(destination, source_payload->type_args);
+                generic_args = copy_expr_arena_list(destination, source_payload->generic_args);
                 remap_type_ids(type_args, map);
+                remap_generic_args(generic_args, map);
             }
-            return destination.push_name_expr(
-                range, scope_name, scope_range, text, std::move(type_args), scope_name_id, text_id);
+            syntax::NameExprPayload payload;
+            payload.scope_name = scope_name;
+            payload.scope_range = scope_range;
+            payload.text = text;
+            payload.scope_name_id = scope_name_id;
+            payload.text_id = text_id;
+            payload.type_args = std::move(type_args);
+            payload.generic_args = std::move(generic_args);
+            return destination.push_name_expr(range, std::move(payload));
         }
         case syntax::ExprKind::generic_apply: {
             syntax::ExprId callee = syntax::INVALID_EXPR_ID;
             syntax::AstArenaVector<syntax::TypeId> type_args = destination.make_expr_list<syntax::TypeId>();
+            syntax::AstArenaVector<syntax::GenericArgDecl> generic_args =
+                destination.make_expr_list<syntax::GenericArgDecl>();
             if (syntax::GenericApplyExprPayload* const source_payload = source.exprs.generic_apply_payload(index);
                 source_payload != nullptr) {
                 callee = source_payload->callee;
                 type_args = copy_expr_arena_list(destination, source_payload->type_args);
+                generic_args = copy_expr_arena_list(destination, source_payload->generic_args);
             }
             callee = remap_expr(callee, map);
             remap_type_ids(type_args, map);
-            return destination.push_generic_apply_expr(range, callee, std::move(type_args));
+            remap_generic_args(generic_args, map);
+            syntax::GenericApplyExprPayload payload;
+            payload.callee = callee;
+            payload.type_args = std::move(type_args);
+            payload.generic_args = std::move(generic_args);
+            return destination.push_generic_apply_expr(range, std::move(payload));
         }
         case syntax::ExprKind::unary: {
             syntax::UnaryOp op = syntax::UnaryOp::logical_not;
@@ -314,6 +355,8 @@ template <typename T, typename Allocator>
             syntax::IdentId name_id = syntax::INVALID_IDENT_ID;
             syntax::AstArenaVector<syntax::TypeId> type_args = destination.make_expr_list<syntax::TypeId>();
             syntax::AstArenaVector<syntax::FieldInit> field_inits = destination.make_expr_list<syntax::FieldInit>();
+            syntax::AstArenaVector<syntax::GenericArgDecl> generic_args =
+                destination.make_expr_list<syntax::GenericArgDecl>();
             if (syntax::StructLiteralExprPayload* const source_payload = source.exprs.struct_literal_payload(index);
                 source_payload != nullptr) {
                 object = source_payload->object;
@@ -324,12 +367,23 @@ template <typename T, typename Allocator>
                 name_id = source_payload->name_id;
                 type_args = copy_expr_arena_list(destination, source_payload->type_args);
                 field_inits = copy_expr_arena_list(destination, source_payload->field_inits);
+                generic_args = copy_expr_arena_list(destination, source_payload->generic_args);
             }
             object = remap_expr(object, map);
             remap_type_ids(type_args, map);
             remap_field_inits(field_inits, map);
-            return destination.push_struct_literal_expr(range, object, scope_name, scope_range, name,
-                std::move(type_args), std::move(field_inits), scope_name_id, name_id);
+            remap_generic_args(generic_args, map);
+            syntax::StructLiteralExprPayload payload;
+            payload.object = object;
+            payload.scope_name = scope_name;
+            payload.scope_range = scope_range;
+            payload.name = name;
+            payload.scope_name_id = scope_name_id;
+            payload.name_id = name_id;
+            payload.type_args = std::move(type_args);
+            payload.field_inits = std::move(field_inits);
+            payload.generic_args = std::move(generic_args);
+            return destination.push_struct_literal_expr(range, std::move(payload));
         }
         case syntax::ExprKind::cast:
         case syntax::ExprKind::pcast:

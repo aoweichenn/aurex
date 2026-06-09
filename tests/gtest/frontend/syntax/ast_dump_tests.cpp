@@ -1944,6 +1944,69 @@ TEST(CoreUnit, AstDumpPrintsOriginGenericParamsAndReferenceOrigins)
         });
 }
 
+TEST(CoreUnit, AstDumpPrintsConstGenericParamsArgumentsAndArrayLengths)
+{
+    syntax::AstModule module;
+    module.module_path.parts = {"const_generic_dump"};
+
+    syntax::TypeNode t_type_node;
+    t_type_node.kind = syntax::TypeKind::named;
+    t_type_node.name = "T";
+    const syntax::TypeId t_type = module.push_type(t_type_node);
+    const syntax::TypeId usize_type = push_primitive_type(module, syntax::PrimitiveTypeKind::usize);
+    const syntax::TypeId i32_type = push_primitive_type(module, syntax::PrimitiveTypeKind::i32);
+    const syntax::ExprId n_expr = push_name_expr(module, "N");
+
+    syntax::TypeNode array_type;
+    array_type.kind = syntax::TypeKind::array;
+    array_type.array_element = t_type;
+    array_type.array_length = syntax::ArrayLengthDecl{
+        syntax::ArrayLengthKind::const_expr,
+        0,
+        n_expr,
+        {},
+    };
+    const syntax::TypeId array_t_type = module.push_type(array_type);
+
+    const syntax::ExprId four_expr =
+        module.push_literal_expr(syntax::ExprKind::integer_literal, {}, std::string_view{"4"});
+    syntax::TypeNode view_i32_4;
+    view_i32_4.kind = syntax::TypeKind::named;
+    view_i32_4.name = "ArrayView";
+    view_i32_4.type_args = {i32_type};
+    view_i32_4.generic_args = {
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, i32_type, syntax::INVALID_EXPR_ID, {}},
+        syntax::GenericArgDecl{syntax::GenericArgKind::const_expr, syntax::INVALID_TYPE_ID, four_expr, {}},
+    };
+    const syntax::TypeId view_i32_4_type = module.push_type(view_i32_4);
+
+    syntax::ItemNode view;
+    view.kind = syntax::ItemKind::struct_decl;
+    view.name = "ArrayView";
+    view.generic_params = {
+        syntax::GenericParamDecl{"T", {}, syntax::INVALID_IDENT_ID, syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{"N", {}, syntax::INVALID_IDENT_ID, syntax::GenericParamKind::const_, usize_type},
+    };
+    view.fields = {syntax::FieldDecl{"value", array_t_type, {}}};
+    static_cast<void>(module.push_item(view));
+
+    syntax::ItemNode use;
+    use.kind = syntax::ItemKind::fn_decl;
+    use.name = "use";
+    use.params = {syntax::ParamDecl{"value", view_i32_4_type, {}}};
+    use.return_type = usize_type;
+    static_cast<void>(module.push_item(use));
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "item #0 priv struct ArrayView[T, const N: usize]",
+            "field priv value : [N]T",
+            "param value : ArrayView[i32, 4]",
+            "return usize",
+        });
+}
+
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels)
 {
     std::vector<Token> tokens = {
@@ -2173,6 +2236,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
         syntax::GenericApplyExprPayload{
             scoped_name_id,
             {reference_type_id, fn_type_id},
+            {},
         });
     const syntax::ExprId field_id = module.push_field_expr({},
         syntax::FieldExprPayload{
@@ -2201,6 +2265,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
             syntax::INVALID_IDENT_ID,
             {i32_type, bool_type},
             {syntax::FieldInit{"value", call_id, {}}},
+            {},
         });
     const syntax::ExprId selector_struct_literal_id = module.push_struct_literal_expr({},
         syntax::StructLiteralExprPayload{
@@ -2212,6 +2277,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
             syntax::INVALID_IDENT_ID,
             {},
             {syntax::FieldInit{"fd", index_id, {}}},
+            {},
         });
     const syntax::ExprId if_expr_id = module.push_if_expr({},
         syntax::IfExprPayload{

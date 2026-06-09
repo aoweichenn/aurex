@@ -109,7 +109,32 @@ enum class TypeKind {
 
 enum class GenericParamKind {
     type,
+    const_,
     origin,
+};
+
+enum class GenericArgKind {
+    type,
+    const_expr,
+};
+
+struct GenericArgDecl {
+    GenericArgKind kind = GenericArgKind::type;
+    TypeId type = INVALID_TYPE_ID;
+    ExprId const_expr = INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+enum class ArrayLengthKind {
+    literal,
+    const_expr,
+};
+
+struct ArrayLengthDecl {
+    ArrayLengthKind kind = ArrayLengthKind::literal;
+    base::u64 value = 0;
+    ExprId expr = INVALID_EXPR_ID;
+    base::SourceRange range{};
 };
 
 struct GenericParamDecl {
@@ -117,6 +142,7 @@ struct GenericParamDecl {
     base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
     GenericParamKind kind = GenericParamKind::type;
+    TypeId const_type = INVALID_TYPE_ID;
 };
 
 struct TypeOriginQualifier {
@@ -163,10 +189,12 @@ struct TypeNode {
     std::vector<IdentId> scope_part_ids;
     IdentId name_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
+    std::vector<GenericArgDecl> generic_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
     TypeId pointee = INVALID_TYPE_ID;
     TypeOriginQualifier reference_origin;
     base::u64 array_count = 0;
+    ArrayLengthDecl array_length;
     TypeId array_element = INVALID_TYPE_ID;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeId slice_element = INVALID_TYPE_ID;

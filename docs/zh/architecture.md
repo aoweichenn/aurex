@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline。M2 已移除标准库层：
+当前架构基线是 M16 Const Generic Frontend / Query / Sema Check-Only。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -63,9 +63,11 @@
 - M15 新增 `m15_const_generic_design_gate_baseline()`，作为 const generic 的 query-facing 边界。它固定后续
   parser/AST/sema/query 必须区分 type parameter、origin parameter 和 typed scalar const parameter，generic
   instance key 必须混入 canonical const value，`[N]T` array length 必须在 IR lowering 前解析为稳定 layout
-  identity。M15 不改变当前 parser grammar，不打开用户可写 `const N: usize`。
+  identity。M16 已把该路线落到 parser/AST/query/sema check-only：`syntax::GenericParamKind::const_`、
+  mixed `GenericArgDecl`、`GenericInstanceKey::const_args`、const param env binding 和 `sema::ArrayLengthInfo`
+  都已进入当前前端。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、歧义多 principal composition-to-supertrait 自动选择、
-  用户可写 const generic、generic const arithmetic、specialization、default associated type、associated const 和
+  generic const arithmetic、runtime const-param array lowering、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向

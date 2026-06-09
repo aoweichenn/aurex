@@ -24,6 +24,16 @@ template <typename T, typename Allocator>
     return {values.data(), values.size()};
 }
 
+[[nodiscard]] TypeHandle find_const_generic_value_type(
+    const SemanticAnalyzerCore::GenericContext* const context, const IdentId name_id) noexcept
+{
+    if (context == nullptr) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const auto found = context->const_params.find(name_id);
+    return found == context->const_params.end() ? INVALID_TYPE_HANDLE : found->second;
+}
+
 } // namespace
 
 SemanticAnalyzerCore::TryShape SemanticAnalyzerCore::classify_try_shape(const TypeHandle type) const noexcept
@@ -102,6 +112,7 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
             view.text = payload.text;
             view.text_id = payload.text_id;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             break;
         }
         case syntax::ExprKind::generic_apply: {
@@ -109,6 +120,7 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
                 *this->ctx_.module.exprs.generic_apply_payload(expr_id.value);
             view.callee = payload.callee;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             break;
         }
         case syntax::ExprKind::unary: {
@@ -200,6 +212,7 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
             view.struct_name = payload.name;
             view.struct_name_id = payload.name_id;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             view.field_inits = readonly_span(payload.field_inits);
             break;
         }
@@ -235,6 +248,14 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
 TypeHandle SemanticAnalyzerCore::analyze_name_expr(
     const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr)
 {
+    if (expr.scope_name.empty()) {
+        const TypeHandle const_generic_value_type =
+            find_const_generic_value_type(this->state_.flow.current_generic_context, expr.text_id);
+        if (is_valid(const_generic_value_type)) {
+            return this->record_expr_type(expr_id, const_generic_value_type);
+        }
+    }
+
     const Symbol* symbol = nullptr;
     if (!expr.scope_name.empty()) {
         const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range);

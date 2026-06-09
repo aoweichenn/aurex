@@ -236,7 +236,7 @@ ConstGenericDesignCandidate make_typed_const_parameter_candidate()
         std::string(QUERY_CONST_GENERIC_TYPED_PARAM_POLICY),
         ConstGenericImpactSummary{true, true, true, true, false, false, false, false, false},
         {
-            "syntax::GenericParamKind currently has type and origin only",
+            "M15 selected the typed scalar const parameter route; M16 implements syntax::GenericParamKind::const_ alongside type and origin params",
             "parser must keep Name[T] and array [N]T contexts unambiguous",
             "const parameters need explicit scalar type annotation before value arguments are accepted",
         },

@@ -1,9 +1,28 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline
+阶段：M16 Const Generic Frontend / Query / Sema Check-Only
 
 ## 总体状态
+
+2026-06-09：M16 Const Generic Frontend / Query / Sema Check-Only 已完成。M16 不实现标准库、
+不实现 owning dyn runtime、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch，也不做 runtime ABI lowering
+for unresolved const-param arrays；它只把 M15 选定的 typed scalar const generic 路线落到 parser、AST、query
+identity、generic instance key 和 sema check-only。
+
+M16 新增或固定 `syntax::GenericParamKind::const_`、`syntax::GenericArgKind::{type,const_expr}`、
+`syntax::ArrayLengthKind::{literal,const_expr}`、`sema::ArrayLengthKind::const_param`、`ArrayLengthInfo`、
+`GenericInstanceKey::const_args` 和 const generic context binding。当前可写
+`struct ArrayView[T, const N: usize]`、`ArrayView[i32, 4]`、`len[i32, 4](...)` 和 `[N]T`；const parameter type
+只接受 integer / bool / char 标量，const argument 只接受 scalar literal 或当前 const generic parameter name，
+且 const parameter name 转发时必须和目标 const parameter type 一致。
+函数体里的未限定 `N` 可解析为 const generic value，generic template reachable-AST span 会包含 const param type、
+const argument expression 和 `[N]T` length expression。
+
+M16 明确不支持 untyped const params、generic const arithmetic、`N + 1`、user function comptime evaluation、
+const where predicates、const associated values、dyn trait const equality dispatch、runtime const generic ABI 或
+标准库 const generic API。新增收口文档见
+[Aurex M16 Const Generic Frontend / Query / Sema Check-Only Release Baseline](m16-const-generic-check-only-release.md)。
 
 2026-06-09：M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline 已完成。M15 不实现标准库、
 不实现 owning dyn runtime、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch、不打开用户可用 const generic

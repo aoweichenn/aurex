@@ -89,6 +89,31 @@ enum class FunctionCallConv {
     c,
 };
 
+enum class ArrayLengthKind {
+    literal,
+    const_param,
+};
+
+struct ArrayLengthInfo {
+    ArrayLengthKind kind = ArrayLengthKind::literal;
+    base::u64 literal = 0;
+    GenericParamIdentity const_param_identity = INVALID_GENERIC_PARAM_IDENTITY;
+    InternedText const_param_name;
+    TypeHandle const_param_type = INVALID_TYPE_HANDLE;
+    query::StableFingerprint128 fingerprint;
+};
+
+[[nodiscard]] inline bool operator==(const ArrayLengthInfo& lhs, const ArrayLengthInfo& rhs) noexcept
+{
+    return lhs.kind == rhs.kind && lhs.literal == rhs.literal && lhs.const_param_identity == rhs.const_param_identity
+        && lhs.const_param_type.value == rhs.const_param_type.value && lhs.fingerprint == rhs.fingerprint;
+}
+
+[[nodiscard]] inline bool operator!=(const ArrayLengthInfo& lhs, const ArrayLengthInfo& rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
 struct TypeInfo {
     TypeKind kind = TypeKind::builtin;
     BuiltinType builtin = BuiltinType::void_;
@@ -96,6 +121,7 @@ struct TypeInfo {
     TypeHandle pointee = INVALID_TYPE_HANDLE;
     InternedText reference_origin_key;
     base::u64 array_count = 0;
+    ArrayLengthInfo array_length;
     TypeHandle array_element = INVALID_TYPE_HANDLE;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeHandle slice_element = INVALID_TYPE_HANDLE;
@@ -146,6 +172,7 @@ public:
     [[nodiscard]] TypeHandle reference_with_origin_key(
         PointerMutability mutability, TypeHandle pointee, std::string_view origin_key);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
+    [[nodiscard]] TypeHandle array_with_length(ArrayLengthInfo length, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
     [[nodiscard]] TypeHandle tuple(std::span<const TypeHandle> elements);
     [[nodiscard]] TypeHandle tuple(const std::vector<TypeHandle>& elements);
@@ -220,12 +247,12 @@ private:
     };
 
     struct ArrayKey {
-        base::u64 count = 0;
+        ArrayLengthInfo length;
         base::u32 element = TypeHandle::INVALID_VALUE;
 
         [[nodiscard]] bool operator==(const ArrayKey& other) const noexcept
         {
-            return count == other.count && element == other.element;
+            return length == other.length && element == other.element;
         }
     };
 

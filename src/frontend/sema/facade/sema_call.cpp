@@ -303,6 +303,7 @@ SemanticAnalyzerCore::NamedTypeSelector SemanticAnalyzerCore::resolve_named_type
         }
         selector.range = expr.range;
         selector.type_args.assign(expr.type_args.begin(), expr.type_args.end());
+        selector.generic_args.assign(expr.generic_args.begin(), expr.generic_args.end());
         return selector;
     }
     if (expr.kind == syntax::ExprKind::name) {
@@ -361,13 +362,14 @@ TypeHandle SemanticAnalyzerCore::resolve_named_type_selector_type(
     if (selector.name.empty()) {
         return INVALID_TYPE_HANDLE;
     }
-    if (!selector.qualified && selector.type_args.empty() && this->state_.flow.current_generic_context != nullptr) {
+    if (!selector.qualified && selector.type_args.empty() && selector.generic_args.empty()
+        && this->state_.flow.current_generic_context != nullptr) {
         if (const auto found = this->state_.flow.current_generic_context->params.find(selector.name_id);
             found != this->state_.flow.current_generic_context->params.end()) {
             return found->second;
         }
     }
-    if (!selector.type_args.empty()) {
+    if (!selector.type_args.empty() || !selector.generic_args.empty()) {
         return this->resolve_generic_type_selector(
             selector, syntax::INVALID_TYPE_ID, opaque_allowed_as_pointee, report_unknown);
     }
@@ -411,37 +413,63 @@ TypeHandle SemanticAnalyzerCore::resolve_generic_type_selector(const NamedTypeSe
     if (selector.name.empty()) {
         return INVALID_TYPE_HANDLE;
     }
-    std::vector<TypeHandle> args;
-    args.reserve(selector.type_args.size());
-    for (const syntax::TypeId arg : selector.type_args) {
-        args.push_back(this->resolve_type(arg, false));
-    }
 
     syntax::TypeNode use_type;
     use_type.kind = syntax::TypeKind::named;
     use_type.name = selector.name;
     use_type.range = selector.range;
     use_type.type_args = selector.type_args;
+    use_type.generic_args = selector.generic_args;
+
+    std::vector<syntax::GenericArgDecl> legacy_args;
+    std::span<const syntax::GenericArgDecl> ordered_args = selector.generic_args;
+    if (ordered_args.empty() && !selector.type_args.empty()) {
+        legacy_args.reserve(selector.type_args.size());
+        for (const syntax::TypeId type_arg : selector.type_args) {
+            legacy_args.push_back(syntax::GenericArgDecl{
+                syntax::GenericArgKind::type,
+                type_arg,
+                syntax::INVALID_EXPR_ID,
+                selector.range,
+            });
+        }
+        ordered_args = legacy_args;
+    }
 
     const GenericTemplateInfo* generic_struct = selector.qualified
         ? this->find_generic_struct_in_module(selector.module, selector.name_id, selector.name, selector.range, false)
         : this->find_generic_struct_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_struct != nullptr) {
-        return this->instantiate_generic_struct(*generic_struct, use_type, use_type_id, args);
+        base::Result<GenericArgumentBundle> args =
+            this->resolve_generic_argument_bundle(*generic_struct, ordered_args, selector.range);
+        if (!args) {
+            return INVALID_TYPE_HANDLE;
+        }
+        return this->instantiate_generic_struct(*generic_struct, use_type, use_type_id, args.value());
     }
     const GenericTemplateInfo* generic_enum = selector.qualified
         ? this->find_generic_enum_in_module(selector.module, selector.name_id, selector.name, selector.range, false)
         : this->find_generic_enum_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_enum != nullptr) {
-        return this->instantiate_generic_enum(*generic_enum, use_type, use_type_id, args);
+        base::Result<GenericArgumentBundle> args =
+            this->resolve_generic_argument_bundle(*generic_enum, ordered_args, selector.range);
+        if (!args) {
+            return INVALID_TYPE_HANDLE;
+        }
+        return this->instantiate_generic_enum(*generic_enum, use_type, use_type_id, args.value());
     }
     const GenericTemplateInfo* generic_alias = selector.qualified
         ? this->find_generic_type_alias_in_module(
               selector.module, selector.name_id, selector.name, selector.range, false)
         : this->find_generic_type_alias_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_alias != nullptr) {
+        base::Result<GenericArgumentBundle> args =
+            this->resolve_generic_argument_bundle(*generic_alias, ordered_args, selector.range);
+        if (!args) {
+            return INVALID_TYPE_HANDLE;
+        }
         return this->instantiate_generic_type_alias(
-            *generic_alias, use_type, use_type_id, args, opaque_allowed_as_pointee);
+            *generic_alias, use_type, use_type_id, args.value(), opaque_allowed_as_pointee);
     }
 
     const TypeHandle concrete = selector.qualified
@@ -675,12 +703,26 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(con
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    std::vector<TypeHandle> args;
-    args.reserve(selector.type_args.size());
-    for (const syntax::TypeId arg : selector.type_args) {
-        args.push_back(this->resolve_type(arg));
+    std::vector<syntax::GenericArgDecl> legacy_args;
+    std::span<const syntax::GenericArgDecl> ordered_args = selector.generic_args;
+    if (ordered_args.empty() && !selector.type_args.empty()) {
+        legacy_args.reserve(selector.type_args.size());
+        for (const syntax::TypeId type_arg : selector.type_args) {
+            legacy_args.push_back(syntax::GenericArgDecl{
+                syntax::GenericArgKind::type,
+                type_arg,
+                syntax::INVALID_EXPR_ID,
+                selector.range,
+            });
+        }
+        ordered_args = legacy_args;
     }
-    FunctionSignature* signature = this->instantiate_generic_function(*generic, args, callee_range);
+    base::Result<GenericArgumentBundle> args =
+        this->resolve_generic_argument_bundle(*generic, ordered_args, callee_range);
+    if (!args) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    FunctionSignature* signature = this->instantiate_generic_function(*generic, args.value(), callee_range);
     if (signature == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }

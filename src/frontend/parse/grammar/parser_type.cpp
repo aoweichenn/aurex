@@ -229,6 +229,7 @@ syntax::TypeId TypeParser::parse_type()
         base::SourceRange begin_range{};
         syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
         base::u64 array_count = 0;
+        syntax::ArrayLengthDecl array_length;
         syntax::TypeOriginQualifier reference_origin;
     };
 
@@ -290,6 +291,7 @@ syntax::TypeId TypeParser::parse_type()
                 mutability,
                 0,
                 {},
+                {},
             });
             continue;
         }
@@ -306,6 +308,7 @@ syntax::TypeId TypeParser::parse_type()
                 begin.range,
                 mutability,
                 0,
+                {},
                 std::move(origin),
             });
             continue;
@@ -328,21 +331,18 @@ syntax::TypeId TypeParser::parse_type()
                     mutability,
                     0,
                     {},
+                    {},
                 });
                 continue;
             }
-            const syntax::Token& count =
-                this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
+            syntax::ArrayLengthDecl array_length = this->parse_array_length();
             this->expect_array_length_end();
-            base::u64 array_count = 0;
-            if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text(), array_count)) {
-                this->report_at(count, std::string(PARSER_ARRAY_LENGTH_OUT_OF_RANGE));
-            }
             constructors.push_back(TypeConstructor{
                 TypeConstructorKind::array,
                 begin.range,
                 syntax::PointerMutability::const_,
-                array_count,
+                array_length.value,
+                array_length,
                 {},
             });
             continue;
@@ -367,6 +367,7 @@ syntax::TypeId TypeParser::parse_type()
         } else if (constructor.kind == TypeConstructorKind::array) {
             node.kind = syntax::TypeKind::array;
             node.array_count = constructor.array_count;
+            node.array_length = constructor.array_length;
             node.array_element = type;
         } else {
             node.kind = syntax::TypeKind::slice;
@@ -430,7 +431,7 @@ syntax::TypeId TypeParser::parse_named_type()
         if (this->check(TokenKind::r_bracket)) {
             this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         }
-        this->parse_generic_type_args(type.type_args);
+        this->parse_generic_type_args(type.type_args, type.generic_args);
         const syntax::Token& end = this->expect_recovered_after(TokenKind::r_bracket,
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, generic_begin);
         type.range = this->merge(type.range, end.range);
@@ -549,7 +550,11 @@ void TypeParser::parse_dyn_trait_args(syntax::TypeNode& type)
             constraint.range = this->merge(name.range, this->type_range_or(value_type, name.range));
             type.associated_type_constraints.push_back(std::move(constraint));
         } else {
-            type.type_args.push_back(this->parse_type());
+            syntax::GenericArgDecl arg = this->parse_generic_arg();
+            if (arg.kind == syntax::GenericArgKind::type && syntax::is_valid(arg.type)) {
+                type.type_args.push_back(arg.type);
+            }
+            type.generic_args.push_back(arg);
         }
         this->reset_panic();
         if (!this->recover_dyn_trait_arg_separator()) {
@@ -642,10 +647,85 @@ const syntax::Token& TypeParser::expect_tuple_type_end(const syntax::Token& open
         TokenKind::r_paren, std::string(PARSER_EXPECT_TUPLE_TYPE_END), RecoveryContext::type_annotation, opening);
 }
 
-void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args)
+syntax::ArrayLengthDecl TypeParser::parse_array_length()
+{
+    syntax::ArrayLengthDecl length;
+    length.range = this->peek().range;
+    if (this->match(TokenKind::integer_literal)) {
+        const syntax::Token& count = this->previous();
+        length.kind = syntax::ArrayLengthKind::literal;
+        length.range = count.range;
+        if (!parse_u64_literal(count.text(), length.value)) {
+            this->report_at(count, std::string(PARSER_ARRAY_LENGTH_OUT_OF_RANGE));
+        }
+        return length;
+    }
+    if (this->check(TokenKind::identifier) || this->check(TokenKind::kw_true) || this->check(TokenKind::kw_false)
+        || this->check(TokenKind::char_literal)) {
+        length.kind = syntax::ArrayLengthKind::const_expr;
+        length.expr = this->parse_const_generic_expr_atom(std::string(PARSER_EXPECT_ARRAY_LENGTH));
+        length.range = syntax::is_valid(length.expr) && length.expr.value < this->session_.module.exprs.size()
+            ? this->session_.module.exprs.range(length.expr.value)
+            : length.range;
+        return length;
+    }
+    this->report_here(std::string(PARSER_EXPECT_ARRAY_LENGTH));
+    this->synchronize(RecoveryContext::array_type_length);
+    return length;
+}
+
+syntax::ExprId TypeParser::parse_const_generic_expr_atom(std::string message) const
+{
+    if (this->match(TokenKind::integer_literal)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::integer_literal, token.range, token.text());
+    }
+    if (this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::bool_literal, token.range, token.text());
+    }
+    if (this->match(TokenKind::char_literal)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::char_literal, token.range, token.text());
+    }
+    if (this->match(TokenKind::identifier)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_name_expr(token.range, token.text());
+    }
+    this->report_here(std::move(message));
+    return syntax::INVALID_EXPR_ID;
+}
+
+syntax::GenericArgDecl TypeParser::parse_generic_arg()
+{
+    if (this->check(TokenKind::integer_literal) || this->check(TokenKind::kw_true) || this->check(TokenKind::kw_false)
+        || this->check(TokenKind::char_literal)) {
+        const base::SourceRange range = this->peek().range;
+        return syntax::GenericArgDecl{
+            syntax::GenericArgKind::const_expr,
+            syntax::INVALID_TYPE_ID,
+            this->parse_const_generic_expr_atom(std::string(PARSER_EXPECT_GENERIC_ARGUMENT)),
+            range,
+        };
+    }
+    const syntax::TypeId type = this->parse_type();
+    return syntax::GenericArgDecl{
+        syntax::GenericArgKind::type,
+        type,
+        syntax::INVALID_EXPR_ID,
+        this->type_range_or(type, this->previous().range),
+    };
+}
+
+void TypeParser::parse_generic_type_args(
+    std::vector<syntax::TypeId>& type_args, std::vector<syntax::GenericArgDecl>& args)
 {
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
-        args.push_back(this->parse_type());
+        syntax::GenericArgDecl arg = this->parse_generic_arg();
+        if (arg.kind == syntax::GenericArgKind::type && syntax::is_valid(arg.type)) {
+            type_args.push_back(arg.type);
+        }
+        args.push_back(arg);
         this->reset_panic();
         if (!this->recover_generic_type_arg_separator()) {
             break;

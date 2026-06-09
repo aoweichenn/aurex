@@ -50,6 +50,10 @@ SemanticAnalyzerCore::GenericTemplateInfo SemanticAnalyzerCore::make_generic_tem
     GenericTemplateInfo info;
     info.params = make_sema_vector<IdentId>(*this->state_.arena);
     info.param_identities = make_sema_vector<GenericParamIdentity>(*this->state_.arena);
+    info.ordered_params = make_sema_vector<IdentId>(*this->state_.arena);
+    info.ordered_param_kinds = make_sema_vector<syntax::GenericParamKind>(*this->state_.arena);
+    info.ordered_param_identities = make_sema_vector<GenericParamIdentity>(*this->state_.arena);
+    info.ordered_const_param_types = make_sema_vector<TypeHandle>(*this->state_.arena);
     info.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->state_.arena, IdentIdHash{});
     info.predicate_indices = make_sema_vector<base::u32>(*this->state_.arena);
     info.obligation_indices = make_sema_vector<base::u32>(*this->state_.arena);
@@ -66,6 +70,11 @@ SemanticAnalyzerCore::GenericContext SemanticAnalyzerCore::make_generic_context(
     context.params = make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->state_.arena, IdentIdHash{});
     context.param_identities =
         make_sema_map<IdentId, GenericParamIdentity, IdentIdHash>(*this->state_.arena, IdentIdHash{});
+    context.const_params = make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->state_.arena, IdentIdHash{});
+    context.const_param_identities =
+        make_sema_map<IdentId, GenericParamIdentity, IdentIdHash>(*this->state_.arena, IdentIdHash{});
+    context.const_arg_values =
+        make_sema_map<IdentId, query::StableFingerprint128, IdentIdHash>(*this->state_.arena, IdentIdHash{});
     context.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->state_.arena, IdentIdHash{});
     context.constraints_by_identity = make_sema_map<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>(
         *this->state_.arena, GenericParamIdentityHash{});

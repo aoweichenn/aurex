@@ -344,6 +344,11 @@ private:
     {
         for (GenericParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
+            if (is_valid(param.const_type) && param.const_type.value < this->types.size()) {
+                TypeNode type = this->types.take(param.const_type.value);
+                this->intern_type_node(type);
+                this->types.set(param.const_type.value, std::move(type));
+            }
         }
     }
 

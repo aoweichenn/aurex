@@ -1,6 +1,64 @@
+#include <aurex/frontend/lex/lexer.hpp>
+#include <aurex/frontend/parse/parser.hpp>
+
 #include <gtest/frontend/sema/sema_whitebox_test_support.hpp>
 
 namespace aurex::test {
+namespace {
+
+constexpr base::SourceId SEMA_CONST_GENERIC_TEST_SOURCE_ID{716};
+
+[[nodiscard]] syntax::AstModule parse_const_generic_source(const std::string_view source)
+{
+    base::DiagnosticSink diagnostics;
+    lex::Lexer lexer(SEMA_CONST_GENERIC_TEST_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    if (!tokens) {
+        ADD_FAILURE() << tokens.error().message;
+        return {};
+    }
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    if (!parsed) {
+        ADD_FAILURE() << parsed.error().message;
+        return {};
+    }
+    if (diagnostics.has_error()) {
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            ADD_FAILURE() << diagnostic.message;
+        }
+        return {};
+    }
+    return parsed.take_value();
+}
+
+[[nodiscard]] std::string analyze_const_generic_source_failure(const std::string_view source)
+{
+    syntax::AstModule module = parse_const_generic_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto result = analyzer.analyze();
+
+    std::string output;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        output += diagnostic.message;
+        output += '\n';
+        for (const base::DiagnosticChild& child : diagnostic.children) {
+            output += child.message;
+            output += '\n';
+        }
+    }
+    if (result) {
+        ADD_FAILURE() << "expected semantic analysis to fail";
+    } else {
+        output += result.error().message;
+        output += '\n';
+    }
+    return output;
+}
+
+} // namespace
 
 TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges)
 {
@@ -94,17 +152,24 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     const TypeId generic_type = module.push_type(named_node("T"));
     const TypeId unused_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::f64));
     const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId usize_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::usize));
 
     syntax::TypeNode pointer_type;
     pointer_type.kind = syntax::TypeKind::pointer;
     pointer_type.pointee = generic_type;
     const TypeId pointer_generic_type = module.push_type(pointer_type);
 
-    syntax::TypeNode array_type;
-    array_type.kind = syntax::TypeKind::array;
-    array_type.array_count = SEMA_TEST_SMALL_ARRAY_COUNT;
-    array_type.array_element = i32_type;
-    const TypeId array_i32_type = module.push_type(array_type);
+    const ExprId array_length_expr = module.push_name_expr({}, "N");
+    syntax::TypeNode const_array_type;
+    const_array_type.kind = syntax::TypeKind::array;
+    const_array_type.array_element = generic_type;
+    const_array_type.array_length = syntax::ArrayLengthDecl{
+        syntax::ArrayLengthKind::const_expr,
+        0,
+        array_length_expr,
+        {},
+    };
+    const TypeId array_generic_type = module.push_type(const_array_type);
 
     syntax::TypeNode slice_type;
     slice_type.kind = syntax::TypeKind::slice;
@@ -119,11 +184,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     syntax::TypeNode function_type;
     function_type.kind = syntax::TypeKind::function;
     function_type.function_params = {pointer_generic_type, slice_generic_type, tuple_i32_generic_type};
-    function_type.function_return = array_i32_type;
+    function_type.function_return = array_generic_type;
     const TypeId function_handle_type = module.push_type(function_type);
 
+    const ExprId type_const_arg_expr = push_integer_text(module, "4");
     syntax::TypeNode box_type_node = named_node("Box");
     box_type_node.type_args = {function_handle_type};
+    box_type_node.generic_args = {
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, function_handle_type, syntax::INVALID_EXPR_ID, {}},
+        syntax::GenericArgDecl{syntax::GenericArgKind::const_expr, syntax::INVALID_TYPE_ID, type_const_arg_expr, {}},
+    };
     const TypeId box_function_type = module.push_type(box_type_node);
 
     syntax::PatternNode binding_pattern;
@@ -169,13 +239,43 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     const syntax::PatternId or_pattern_id = module.push_pattern(or_pattern);
 
     const ExprId name_with_type_arg = module.push_name_expr({}, "value", std::vector<TypeId>{generic_type});
+    const ExprId name_const_arg_expr = push_integer_text(module, "5");
+    syntax::NameExprPayload name_with_mixed_args_payload;
+    name_with_mixed_args_payload.text = "with_const";
+    name_with_mixed_args_payload.type_args = module.make_expr_list<syntax::TypeId>();
+    name_with_mixed_args_payload.type_args.push_back(i32_type);
+    name_with_mixed_args_payload.generic_args = module.make_expr_list<syntax::GenericArgDecl>();
+    name_with_mixed_args_payload.generic_args.push_back(
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, i32_type, syntax::INVALID_EXPR_ID, {}});
+    name_with_mixed_args_payload.generic_args.push_back(syntax::GenericArgDecl{
+        syntax::GenericArgKind::const_expr,
+        syntax::INVALID_TYPE_ID,
+        name_const_arg_expr,
+        {},
+    });
+    const ExprId name_with_mixed_args = module.push_name_expr({}, std::move(name_with_mixed_args_payload));
     const ExprId unused_expr = push_integer_text(module, "99");
     const ExprId callee = module.push_name_expr({}, "callee", std::vector<TypeId>{function_handle_type});
     const ExprId generic_apply = push_generic_apply(module, callee, {i32_type});
+    const ExprId apply_const_arg_expr = push_integer_text(module, "6");
+    syntax::GenericApplyExprPayload mixed_apply_payload;
+    mixed_apply_payload.callee = callee;
+    mixed_apply_payload.type_args = module.make_expr_list<syntax::TypeId>();
+    mixed_apply_payload.type_args.push_back(i32_type);
+    mixed_apply_payload.generic_args = module.make_expr_list<syntax::GenericArgDecl>();
+    mixed_apply_payload.generic_args.push_back(
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, i32_type, syntax::INVALID_EXPR_ID, {}});
+    mixed_apply_payload.generic_args.push_back(syntax::GenericArgDecl{
+        syntax::GenericArgKind::const_expr,
+        syntax::INVALID_TYPE_ID,
+        apply_const_arg_expr,
+        {},
+    });
+    const ExprId mixed_generic_apply = module.push_generic_apply_expr({}, std::move(mixed_apply_payload));
     const ExprId try_expr = module.push_try_expr({}, generic_apply);
     const ExprId bool_expr = push_bool(module, "true");
     const ExprId binary_expr = push_binary(module, syntax::BinaryOp::add, name_with_type_arg, generic_apply);
-    const ExprId call_expr = push_call(module, callee, {binary_expr, try_expr});
+    const ExprId call_expr = push_call(module, callee, {binary_expr, try_expr, name_with_mixed_args, mixed_generic_apply});
 
     syntax::CallExprPayload string_call_payload;
     string_call_payload.callee = callee;
@@ -216,10 +316,24 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     const ExprId index_expr = module.push_index_expr({}, syntax::IndexExprPayload{field_expr, match_value_expr});
     const ExprId slice_expr =
         module.push_slice_expr({}, syntax::SliceExprPayload{index_expr, match_guard_expr, match_value_expr});
-    const ExprId struct_literal_expr = module.push_struct_literal_expr({}, push_name(module, "Box"), {}, {}, "Box",
-        std::vector<TypeId>{box_function_type},
-        std::vector<syntax::FieldInit>{syntax::FieldInit{"field", slice_expr, {}}}, syntax::INVALID_IDENT_ID,
-        syntax::INVALID_IDENT_ID);
+    const ExprId struct_const_arg_expr = push_integer_text(module, "7");
+    syntax::StructLiteralExprPayload struct_literal_payload;
+    struct_literal_payload.object = push_name(module, "Box");
+    struct_literal_payload.name = "Box";
+    struct_literal_payload.type_args = module.make_expr_list<syntax::TypeId>();
+    struct_literal_payload.type_args.push_back(box_function_type);
+    struct_literal_payload.generic_args = module.make_expr_list<syntax::GenericArgDecl>();
+    struct_literal_payload.generic_args.push_back(
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, box_function_type, syntax::INVALID_EXPR_ID, {}});
+    struct_literal_payload.generic_args.push_back(syntax::GenericArgDecl{
+        syntax::GenericArgKind::const_expr,
+        syntax::INVALID_TYPE_ID,
+        struct_const_arg_expr,
+        {},
+    });
+    struct_literal_payload.field_inits = module.make_expr_list<syntax::FieldInit>();
+    struct_literal_payload.field_inits.push_back(syntax::FieldInit{"field", slice_expr, {}});
+    const ExprId struct_literal_expr = module.push_struct_literal_expr({}, std::move(struct_literal_payload));
     const ExprId cast_expr =
         module.push_cast_like_expr(syntax::ExprKind::cast, {}, syntax::CastExprPayload{i32_type, struct_literal_expr});
 
@@ -319,7 +433,10 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     syntax::ItemNode generic_function;
     generic_function.kind = syntax::ItemKind::fn_decl;
     generic_function.name = "span";
-    generic_function.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    generic_function.generic_params = {
+        syntax::GenericParamDecl{"T", {}, module.intern_identifier("T"), syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{"N", {}, module.intern_identifier("N"), syntax::GenericParamKind::const_, usize_type},
+    };
     generic_function.params = {syntax::ParamDecl{"param", box_function_type, {}}};
     generic_function.return_type = function_handle_type;
     generic_function.impl_type = pointer_generic_type;
@@ -337,6 +454,13 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     EXPECT_TRUE(info.pattern_span.contains(or_pattern_id.value));
     EXPECT_TRUE(info.type_span.contains(box_function_type.value));
     EXPECT_TRUE(info.stmt_span.contains(body_id.value));
+    EXPECT_TRUE(info.expr_span.contains(array_length_expr.value));
+    EXPECT_TRUE(info.expr_span.contains(type_const_arg_expr.value));
+    EXPECT_TRUE(info.expr_span.contains(name_const_arg_expr.value));
+    EXPECT_TRUE(info.expr_span.contains(apply_const_arg_expr.value));
+    EXPECT_TRUE(info.expr_span.contains(struct_const_arg_expr.value));
+    EXPECT_TRUE(info.expr_span.contains(name_with_mixed_args.value));
+    EXPECT_TRUE(info.type_span.contains(usize_type.value));
     ASSERT_FALSE(info.expr_node_ids.empty());
     ASSERT_FALSE(info.pattern_node_ids.empty());
     ASSERT_FALSE(info.type_node_ids.empty());
@@ -451,7 +575,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
-    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    ASSERT_TRUE(checked_result) << diagnostic_messages(diagnostics) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
     ASSERT_EQ(checked.generic_function_instances.size(), 1U);
     const sema::GenericFunctionInstanceInfo& instance = checked.generic_function_instances.front();
@@ -717,6 +841,87 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
         analyzer.canonical_nominal_type_query_key(case_only_enum, analyzer.state_.checked.types.get(case_only_enum));
     ASSERT_TRUE(case_only_enum_key.has_value());
     EXPECT_EQ(case_only_enum_key->kind, query::DefKind::enum_);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericParamIdentitiesSkipOriginParamsForOrderedTypeAndConstKeys)
+{
+    constexpr std::string_view SEMA_TEST_MIXED_PARAM_MODULE = "mixed_param_identity";
+    constexpr std::string_view SEMA_TEST_MIXED_PARAM_TEMPLATE = "View";
+
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_MIXED_PARAM_MODULE})};
+    const TypeId usize_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::usize));
+    const IdentId origin_id = module.intern_identifier("data");
+    const IdentId type_id = module.intern_identifier("T");
+    const IdentId const_id = module.intern_identifier("N");
+    const base::SourceRange origin_range{base::SourceId{1U}, 10U, 20U};
+    const base::SourceRange type_range{base::SourceId{1U}, 30U, 40U};
+    const base::SourceRange const_range{base::SourceId{1U}, 50U, 60U};
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::struct_decl;
+    item.name = SEMA_TEST_MIXED_PARAM_TEMPLATE;
+    item.name_id = module.intern_identifier(SEMA_TEST_MIXED_PARAM_TEMPLATE);
+    item.generic_params = {
+        syntax::GenericParamDecl{"data", origin_range, origin_id, syntax::GenericParamKind::origin},
+        syntax::GenericParamDecl{"T", type_range, type_id, syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{"N", const_range, const_id, syntax::GenericParamKind::const_, usize_type},
+    };
+    const syntax::ItemId item_id = module.push_item(item);
+    module.item_modules[item_id.value] = module_id(0);
+
+    syntax::ItemNode no_origin_item = item;
+    no_origin_item.generic_params = {
+        syntax::GenericParamDecl{"T", type_range, type_id, syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{"N", const_range, const_id, syntax::GenericParamKind::const_, usize_type},
+    };
+    const syntax::ItemId no_origin_item_id = module.push_item(no_origin_item);
+    module.item_modules[no_origin_item_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_MIXED_PARAM_TEMPLATE);
+    info.item = item_id;
+    info.params.clear();
+    info.params.push_back(type_id);
+    info.ordered_params.clear();
+    info.ordered_params.push_back(type_id);
+    info.ordered_params.push_back(const_id);
+    info.ordered_param_kinds.clear();
+    info.ordered_param_kinds.push_back(syntax::GenericParamKind::type);
+    info.ordered_param_kinds.push_back(syntax::GenericParamKind::const_);
+
+    sema::GenericParamIdentity no_origin_type_identity = sema::INVALID_GENERIC_PARAM_IDENTITY;
+    sema::GenericParamIdentity no_origin_const_identity = sema::INVALID_GENERIC_PARAM_IDENTITY;
+    {
+        sema::SemanticAnalyzerCore::GenericTemplateInfo no_origin = info;
+        no_origin.item = no_origin_item_id;
+        no_origin.ordered_param_identities.clear();
+        analyzer.populate_generic_param_identities(no_origin);
+        no_origin_type_identity = no_origin.param_identities.front();
+        no_origin_const_identity = no_origin.ordered_param_identities.back();
+    }
+
+    analyzer.populate_generic_param_identities(info);
+    ASSERT_EQ(info.param_identities.size(), 1U);
+    ASSERT_EQ(info.ordered_param_identities.size(), 2U);
+    EXPECT_EQ(info.param_identities.front(), info.ordered_param_identities.front());
+    EXPECT_EQ(info.param_identities.front(), no_origin_type_identity);
+    EXPECT_EQ(info.ordered_param_identities.back(), no_origin_const_identity);
+
+    analyzer.index_generic_param_query_keys(info, query::DefNamespace::type);
+    const query::DefKey owner_key = analyzer.generic_template_query_key(info, query::DefNamespace::type);
+    const TypeHandle type_param =
+        analyzer.state_.checked.types.generic_param(info.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
+    const std::optional<query::GenericParamKey> type_key =
+        analyzer.canonical_generic_param_query_key(info, owner_key, analyzer.state_.checked.types.get(type_param));
+    ASSERT_TRUE(type_key.has_value());
+    EXPECT_EQ(*type_key, query::generic_param_key(owner_key, 0, query::GenericParamKind::type));
+
+    const auto const_key = analyzer.state_.generics.param_query_keys.find(info.ordered_param_identities.back());
+    ASSERT_NE(const_key, analyzer.state_.generics.param_query_keys.end());
+    EXPECT_EQ(const_key->second, query::generic_param_key(owner_key, 1, query::GenericParamKind::const_));
 }
 TEST(CoreUnit, SemanticWhiteBoxGenericParamEnvKeySortsPredicates)
 {
@@ -1047,7 +1252,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
-    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    ASSERT_TRUE(checked_result) << diagnostic_messages(diagnostics) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
 
     const sema::StructInfo* generic_box = nullptr;
@@ -1105,6 +1310,208 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
     EXPECT_NE(checked_dump.find("case Maybe[i32]_some"), std::string::npos);
 }
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericStructInstancesCarryConstArgs)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"const_generic_struct"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId usize_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::usize));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+
+    syntax::ItemNode view_item;
+    view_item.kind = syntax::ItemKind::struct_decl;
+    view_item.name = "ArrayView";
+    view_item.name_id = module.intern_identifier("ArrayView");
+    view_item.generic_params = {
+        syntax::GenericParamDecl{"T", {}, module.intern_identifier("T"), syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{
+            "N", {}, module.intern_identifier("N"), syntax::GenericParamKind::const_, usize_type},
+    };
+    view_item.fields = {syntax::FieldDecl{"value", generic_type, {}}};
+    const syntax::ItemId view_item_id = module.push_item(view_item);
+    module.item_modules[view_item_id.value] = module_id(0);
+
+    const ExprId four_expr = module.push_literal_expr(syntax::ExprKind::integer_literal, {}, "4");
+    syntax::TypeNode view_i32_4 = named_node("ArrayView");
+    view_i32_4.type_args = {i32_type};
+    view_i32_4.generic_args = {
+        syntax::GenericArgDecl{syntax::GenericArgKind::type, i32_type, syntax::INVALID_EXPR_ID, {}},
+        syntax::GenericArgDecl{syntax::GenericArgKind::const_expr, syntax::INVALID_TYPE_ID, four_expr, {}},
+    };
+    const TypeId view_i32_4_type = module.push_type(view_i32_4);
+
+    const ExprId zero = push_integer(module);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = zero;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode use_item;
+    use_item.kind = syntax::ItemKind::fn_decl;
+    use_item.name = "use";
+    use_item.params = {syntax::ParamDecl{"view", view_i32_4_type, {}}};
+    use_item.return_type = i32_type;
+    use_item.body = body;
+    const syntax::ItemId use_item_id = module.push_item(use_item);
+    module.item_modules[use_item_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+
+    const sema::StructInfo* generic_view = nullptr;
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (info.name == "ArrayView" && query::is_valid(info.generic_instance_key)) {
+            generic_view = &info;
+            break;
+        }
+    }
+    ASSERT_NE(generic_view, nullptr);
+    ASSERT_EQ(generic_view->generic_instance_key.type_args.size(), 1U);
+    EXPECT_EQ(
+        generic_view->generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
+    ASSERT_EQ(generic_view->generic_instance_key.const_args.size(), 1U);
+    EXPECT_NE(query::debug_string(generic_view->generic_instance_key.const_args.front()),
+        query::debug_string(query::StableFingerprint128{}));
+    EXPECT_EQ(checked.types.display_name(generic_view->type), "const_generic_struct.ArrayView[i32]");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericFunctionBodyUsesConstParamArrayLength)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"const_generic_function"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId usize_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::usize));
+    const IdentId t_id = module.intern_identifier("T");
+    const IdentId n_id = module.intern_identifier("N");
+
+    const ExprId n_length_expr = module.push_name_expr({}, "N");
+    syntax::TypeNode array_type;
+    array_type.kind = syntax::TypeKind::array;
+    array_type.array_element = generic_type;
+    array_type.array_length = syntax::ArrayLengthDecl{syntax::ArrayLengthKind::const_expr, 0, n_length_expr, {}};
+    const TypeId array_generic_type = module.push_type(array_type);
+
+    const ExprId return_n_expr = module.push_name_expr({}, "N");
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = return_n_expr;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode len_item;
+    len_item.kind = syntax::ItemKind::fn_decl;
+    len_item.name = "len";
+    len_item.name_id = module.intern_identifier("len");
+    len_item.generic_params = {
+        syntax::GenericParamDecl{"T", {}, t_id, syntax::GenericParamKind::type},
+        syntax::GenericParamDecl{"N", {}, n_id, syntax::GenericParamKind::const_, usize_type},
+    };
+    len_item.params = {syntax::ParamDecl{"value", array_generic_type, {}}};
+    len_item.return_type = usize_type;
+    len_item.body = body;
+    const syntax::ItemId len_item_id = module.push_item(len_item);
+    module.item_modules[len_item_id.value] = module_id(0);
+
+    {
+        base::DiagnosticSink type_diagnostics;
+        sema::SemanticAnalyzerCore type_analyzer(module, type_diagnostics);
+        prepare_expr_storage(type_analyzer, module);
+        type_analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+        type_analyzer.state_.flow.current_module = module_id(0);
+
+        sema::SemanticAnalyzerCore::GenericContext generic_context = type_analyzer.make_generic_context();
+        const sema::GenericParamIdentity t_identity = sema::generic_param_identity_from_text("const_generic_function.T");
+        const sema::GenericParamIdentity n_identity = sema::generic_param_identity_from_text("const_generic_function.N");
+        generic_context.params.emplace(
+            t_id, type_analyzer.state_.checked.types.generic_param(t_identity, "T"));
+        generic_context.param_identities.emplace(t_id, t_identity);
+        generic_context.const_params.emplace(n_id, type_analyzer.state_.checked.types.builtin(sema::BuiltinType::usize));
+        generic_context.const_param_identities.emplace(n_id, n_identity);
+        query::StableHashBuilder n_value_builder;
+        n_value_builder.mix_string("const_generic_function.N");
+        generic_context.const_arg_values.emplace(n_id, n_value_builder.finish());
+        type_analyzer.state_.flow.current_generic_context = &generic_context;
+
+        const TypeHandle resolved_array = type_analyzer.resolve_type(array_generic_type);
+        ASSERT_TRUE(sema::is_valid(resolved_array)) << diagnostic_messages(type_diagnostics);
+        const sema::TypeInfo& array_info = type_analyzer.state_.checked.types.get(resolved_array);
+        EXPECT_EQ(array_info.kind, sema::TypeKind::array);
+        EXPECT_EQ(array_info.array_length.kind, sema::ArrayLengthKind::const_param);
+        EXPECT_EQ(array_info.array_length.const_param_name, "N");
+        EXPECT_TRUE(type_analyzer.state_.checked.types.same(
+            array_info.array_length.const_param_type,
+            type_analyzer.state_.checked.types.builtin(sema::BuiltinType::usize)));
+        EXPECT_EQ(type_analyzer.state_.checked.types.get(array_info.array_element).kind, sema::TypeKind::generic_param);
+        EXPECT_NE(query::debug_string(array_info.array_length.fingerprint),
+            query::debug_string(query::StableFingerprint128{}));
+        type_analyzer.state_.flow.current_generic_context = nullptr;
+    }
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << diagnostic_messages(diagnostics) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+
+    EXPECT_TRUE(checked.functions.empty());
+    static_cast<void>(return_n_expr);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsUnsupportedSurfaces)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"const_generic_reject"})};
+
+    const TypeId str_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::str));
+    syntax::ItemNode bad_const_type_item;
+    bad_const_type_item.kind = syntax::ItemKind::struct_decl;
+    bad_const_type_item.name = "Bad";
+    bad_const_type_item.name_id = module.intern_identifier("Bad");
+    bad_const_type_item.generic_params = {
+        syntax::GenericParamDecl{
+            "N", {}, module.intern_identifier("N"), syntax::GenericParamKind::const_, str_type},
+    };
+    const syntax::ItemId bad_const_type_item_id = module.push_item(bad_const_type_item);
+    module.item_modules[bad_const_type_item_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    const auto found = std::ranges::find_if(diagnostics.diagnostics(), [](const base::Diagnostic& diagnostic) {
+        return diagnostic.message.find("must use an integer, bool, or char type") != std::string::npos;
+    });
+    EXPECT_NE(found, diagnostics.diagnostics().end());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsForwardedParamTypeMismatch)
+{
+    const std::string output = analyze_const_generic_source_failure(
+        "module const_generic_forward_mismatch;\n"
+        "struct Target[T, const N: usize] {\n"
+        "    value: T;\n"
+        "}\n"
+        "struct Forward[T, const B: bool] {\n"
+        "    target: Target[T, B];\n"
+        "}\n"
+        "fn use(value: Forward[i32, true]) -> i32 {\n"
+        "    return 0;\n"
+        "}\n");
+
+    EXPECT_NE(output.find(sema::SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH), std::string::npos) << output;
+    EXPECT_NE(output.find("expected type: usize"), std::string::npos) << output;
+    EXPECT_NE(output.find("actual type: bool"), std::string::npos) << output;
+}
+
 TEST(CoreUnit, SemanticWhiteBoxGenericAggregateInstanceSignaturesTrackResolvedShape)
 {
     const std::optional<GenericAggregateSignatureSnapshot> generic_shape = generic_aggregate_signature_snapshot(

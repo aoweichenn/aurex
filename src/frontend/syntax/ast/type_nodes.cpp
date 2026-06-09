@@ -152,6 +152,7 @@ base::u32 TypeNodeList::store_payload(const TypeNode& node)
                     this->copy_list(node.scope_part_ids),
                     node.name_id,
                     this->copy_list(node.type_args),
+                    this->copy_list(node.generic_args),
                 });
         case TypeKind::pointer:
             return this->push_payload(this->payloads_.pointers,
@@ -174,6 +175,7 @@ base::u32 TypeNodeList::store_payload(const TypeNode& node)
             return this->push_payload(this->payloads_.arrays,
                 ArrayTypePayload{
                     node.array_count,
+                    node.array_length,
                     node.array_element,
                 });
         case TypeKind::slice:
@@ -204,6 +206,7 @@ base::u32 TypeNodeList::store_payload(const TypeNode& node)
                     this->copy_list(node.scope_part_ids),
                     node.name_id,
                     this->copy_list(node.type_args),
+                    this->copy_list(node.generic_args),
                     this->copy_list(node.associated_type_constraints),
                     this->copy_list(node.dyn_trait_principals),
                 });
@@ -231,6 +234,7 @@ TypeNode TypeNodeList::load(const base::usize index) const
             node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
+            node.generic_args = copy_std_vector(payload.generic_args);
             break;
         }
         case TypeKind::pointer: {
@@ -253,6 +257,7 @@ TypeNode TypeNodeList::load(const base::usize index) const
         case TypeKind::array: {
             const ArrayTypePayload& payload = this->payloads_.arrays[header.payload];
             node.array_count = payload.count;
+            node.array_length = payload.length;
             node.array_element = payload.element;
             break;
         }
@@ -284,6 +289,7 @@ TypeNode TypeNodeList::load(const base::usize index) const
             node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
+            node.generic_args = copy_std_vector(payload.generic_args);
             node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
             node.dyn_trait_principals = copy_std_vector(payload.principals);
             break;
@@ -312,6 +318,7 @@ TypeNode TypeNodeList::load_moved(const base::usize index)
             node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
+            node.generic_args = copy_std_vector(payload.generic_args);
             break;
         }
         case TypeKind::pointer: {
@@ -334,6 +341,7 @@ TypeNode TypeNodeList::load_moved(const base::usize index)
         case TypeKind::array: {
             const ArrayTypePayload& payload = this->payloads_.arrays[header.payload];
             node.array_count = payload.count;
+            node.array_length = payload.length;
             node.array_element = payload.element;
             break;
         }
@@ -365,6 +373,7 @@ TypeNode TypeNodeList::load_moved(const base::usize index)
             node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
             node.type_args = copy_std_vector(payload.type_args);
+            node.generic_args = copy_std_vector(payload.generic_args);
             node.associated_type_constraints = copy_std_vector(payload.associated_type_constraints);
             node.dyn_trait_principals = copy_std_vector(payload.principals);
             break;

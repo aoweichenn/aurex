@@ -154,6 +154,25 @@ void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& par
 
 std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param()
 {
+    if (this->match(TokenKind::kw_const)) {
+        const syntax::Token& const_keyword = this->previous();
+        const syntax::Token& name =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_GENERIC_PARAMETER_NAME));
+        this->expect_recovered(TokenKind::colon, std::string(PARSER_EXPECT_CONST_GENERIC_PARAMETER_COLON),
+            RecoveryContext::type_annotation);
+        const syntax::TypeId const_type = this->parse_type();
+        if (name.kind != TokenKind::identifier) {
+            return std::nullopt;
+        }
+        return syntax::GenericParamDecl{
+            name.text(),
+            this->merge(const_keyword.range, this->type_range_or(const_type, name.range)),
+            syntax::INVALID_IDENT_ID,
+            syntax::GenericParamKind::const_,
+            const_type,
+        };
+    }
+
     if (this->check(TokenKind::identifier) && this->peek().text() == PARSER_FN_CONTEXTUAL_ORIGIN
         && this->peek_at(1).kind == TokenKind::identifier) {
         const syntax::Token& origin_context = this->advance();

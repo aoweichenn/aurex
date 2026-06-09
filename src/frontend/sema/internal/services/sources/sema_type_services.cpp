@@ -60,6 +60,7 @@ struct TypeResolveAction {
     bool function_is_unsafe = false;
     bool function_is_variadic = false;
     std::optional<base::u64> array_count{};
+    ArrayLengthInfo array_length;
     base::usize tuple_element_count = 0;
     base::usize function_param_count = 0;
     base::usize dyn_trait_arg_count = 0;
@@ -479,6 +480,48 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
                         build.type = action.type;
                         build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
                         build.array_count = type.array_count;
+                        build.array_length.kind = ArrayLengthKind::literal;
+                        build.array_length.literal = type.array_count;
+                        if (type.array_length.kind == syntax::ArrayLengthKind::const_expr) {
+                            build.array_count = std::nullopt;
+                            if (!syntax::is_valid(type.array_length.expr)
+                                || type.array_length.expr.value >= this->core_.ctx_.module.exprs.size()
+                                || this->core_.state_.flow.current_generic_context == nullptr) {
+                                this->core_.report_type(
+                                    type.array_length.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+                            } else {
+                                const SemanticAnalyzerCore::ExprView length_expr =
+                                    this->core_.expr_view(type.array_length.expr);
+                                if (length_expr.kind != syntax::ExprKind::name) {
+                                    this->core_.report_type(type.array_length.range,
+                                        std::string(SEMA_CONST_GENERIC_ARITHMETIC_UNSUPPORTED));
+                                } else {
+                                    const auto identity = this->core_.state_.flow.current_generic_context
+                                                              ->const_param_identities.find(length_expr.text_id);
+                                    const auto const_type = this->core_.state_.flow.current_generic_context
+                                                               ->const_params.find(length_expr.text_id);
+                                    const auto value = this->core_.state_.flow.current_generic_context
+                                                           ->const_arg_values.find(length_expr.text_id);
+                                    if (identity
+                                            == this->core_.state_.flow.current_generic_context
+                                                   ->const_param_identities.end()
+                                        || const_type
+                                            == this->core_.state_.flow.current_generic_context->const_params.end()
+                                        || value
+                                            == this->core_.state_.flow.current_generic_context->const_arg_values.end()) {
+                                        this->core_.report_lookup(type.array_length.range,
+                                            sema_unknown_const_generic_param_message(length_expr.text));
+                                    } else {
+                                        build.array_length.kind = ArrayLengthKind::const_param;
+                                        build.array_length.const_param_identity = identity->second;
+                                        build.array_length.const_param_name =
+                                            this->core_.state_.checked.intern_text(length_expr.text);
+                                        build.array_length.const_param_type = const_type->second;
+                                        build.array_length.fingerprint = value->second;
+                                    }
+                                }
+                            }
+                        }
                         actions.push_back(build);
                         TypeResolveAction resolve_element;
                         resolve_element.kind = TypeResolveActionKind::resolve;
@@ -633,7 +676,12 @@ TypeHandle SemanticTypeResolver::resolve_type(const syntax::TypeId type_id, cons
             case TypeResolveActionKind::build_array: {
                 const TypeHandle element = values.back();
                 values.pop_back();
-                const TypeHandle resolved = this->core_.state_.checked.types.array(*action.array_count, element);
+                TypeHandle resolved = INVALID_TYPE_HANDLE;
+                if (action.array_length.kind == ArrayLengthKind::const_param) {
+                    resolved = this->core_.state_.checked.types.array_with_length(action.array_length, element);
+                } else if (action.array_count.has_value()) {
+                    resolved = this->core_.state_.checked.types.array(*action.array_count, element);
+                }
                 this->core_.record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -1014,9 +1062,9 @@ TypeHandle SemanticTypeResolver::resolve_named_type(
         const IdentId scope_name_id = type.scope_part_ids.empty()
             ? this->core_.ctx_.module.find_identifier(scope_parts.front())
             : type.scope_part_ids.front();
-        if (const auto found = this->core_.state_.flow.current_generic_context->params.find(scope_name_id);
-            found != this->core_.state_.flow.current_generic_context->params.end()) {
-            if (!type.type_args.empty()) {
+            if (const auto found = this->core_.state_.flow.current_generic_context->params.find(scope_name_id);
+                found != this->core_.state_.flow.current_generic_context->params.end()) {
+            if (!type.type_args.empty() || !type.generic_args.empty()) {
                 this->core_.report_type(type.range, sema_generic_param_type_args_message(scope_parts.front()));
                 return INVALID_TYPE_HANDLE;
             }
@@ -1034,7 +1082,7 @@ TypeHandle SemanticTypeResolver::resolve_named_type(
     if (!qualified && this->core_.state_.flow.current_generic_context != nullptr) {
         if (const auto found = this->core_.state_.flow.current_generic_context->params.find(type.name_id);
             found != this->core_.state_.flow.current_generic_context->params.end()) {
-            if (!type.type_args.empty()) {
+            if (!type.type_args.empty() || !type.generic_args.empty()) {
                 this->core_.report_type(type.range, sema_generic_param_type_args_message(type.name));
                 return INVALID_TYPE_HANDLE;
             }
@@ -1048,8 +1096,9 @@ TypeHandle SemanticTypeResolver::resolve_named_type(
     selector.name_id = type.name_id;
     selector.range = type.range;
     selector.type_args = type.type_args;
+    selector.generic_args = type.generic_args;
     selector.qualified = qualified;
-    if (!selector.type_args.empty()) {
+    if (!selector.type_args.empty() || !selector.generic_args.empty()) {
         return this->core_.resolve_generic_type_selector(selector, type_id, opaque_allowed_as_pointee, true);
     }
     if (qualified && this->core_.generic_type_template_exists_in_module(scope_module, type.name_id, type.name)) {
@@ -1190,6 +1239,10 @@ bool SemanticTypeValidator::is_valid_storage_type(const TypeHandle type) const
         if (info.kind != TypeKind::array) {
             continue;
         }
+        if (info.array_length.kind == ArrayLengthKind::const_param) {
+            pending.push_back(info.array_element);
+            continue;
+        }
         const base::u64 element_size = this->core_.abi_size(info.array_element);
         if (element_size != 0 && info.array_count > std::numeric_limits<base::u64>::max() / element_size) {
             return false;
@@ -1208,6 +1261,10 @@ bool SemanticTypeValidator::check_m2_value_abi(
 
     switch (context) {
         case ValueAbiContext::parameter:
+            if (this->core_.state_.checked.types.is_array(type)
+                && this->core_.state_.checked.types.get(type).array_length.kind == ArrayLengthKind::const_param) {
+                return true;
+            }
             if (this->core_.state_.checked.types.is_array(type)) {
                 this->core_.report_unsupported(range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
                 return false;
@@ -1372,6 +1429,10 @@ void SemanticAbiChecker::validate_type_layouts() const
         result.ok = true;
         const TypeInfo& info = this->core_.state_.checked.types.get(type);
         if (info.kind == TypeKind::array) {
+            if (info.array_length.kind == ArrayLengthKind::const_param) {
+                result = LayoutResult{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT, false};
+                return result;
+            }
             const LayoutResult element = cached_result(info.array_element);
             if (!element.ok) {
                 result = LayoutResult{

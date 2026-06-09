@@ -126,6 +126,10 @@ public:
         IncrementalKey incremental_key;
         SemaVector<IdentId> params;
         SemaVector<GenericParamIdentity> param_identities;
+        SemaVector<IdentId> ordered_params;
+        SemaVector<syntax::GenericParamKind> ordered_param_kinds;
+        SemaVector<GenericParamIdentity> ordered_param_identities;
+        SemaVector<TypeHandle> ordered_const_param_types;
         CapabilityMap constraints;
         SemaIndexTable predicate_indices;
         SemaIndexTable obligation_indices;
@@ -149,11 +153,19 @@ public:
     struct GenericContext {
         SemaMap<IdentId, TypeHandle, IdentIdHash> params;
         SemaMap<IdentId, GenericParamIdentity, IdentIdHash> param_identities;
+        SemaMap<IdentId, TypeHandle, IdentIdHash> const_params;
+        SemaMap<IdentId, GenericParamIdentity, IdentIdHash> const_param_identities;
+        SemaMap<IdentId, query::StableFingerprint128, IdentIdHash> const_arg_values;
         CapabilityMap constraints;
         CapabilityIdentityMap constraints_by_identity;
         SemaIndexTable predicate_indices;
         SemaIndexTable obligation_indices;
         query::ParamEnvKey param_env_key;
+    };
+
+    struct GenericArgumentBundle {
+        std::vector<TypeHandle> type_args;
+        std::vector<query::StableFingerprint128> const_args;
     };
 
     struct TraitMethodCallResolution {
@@ -355,6 +367,7 @@ public:
         IdentId name_id = INVALID_IDENT_ID;
         base::SourceRange range{};
         std::vector<syntax::TypeId> type_args;
+        std::vector<syntax::GenericArgDecl> generic_args;
         bool qualified = false;
     };
 
@@ -395,6 +408,7 @@ public:
         std::string_view struct_name;
         IdentId struct_name_id = INVALID_IDENT_ID;
         std::span<const syntax::TypeId> type_args{};
+        std::span<const syntax::GenericArgDecl> generic_args{};
         std::span<const syntax::FieldInit> field_inits{};
         syntax::TypeId cast_type = syntax::INVALID_TYPE_ID;
         syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
@@ -656,8 +670,17 @@ public:
     [[nodiscard]] bool type_supports_equality_operator(TypeHandle type) const;
     [[nodiscard]] bool type_supports_ordering_operator(TypeHandle type) const;
     [[nodiscard]] bool type_supports_hash_capability(TypeHandle type) const;
+    [[nodiscard]] bool type_is_const_generic_scalar(TypeHandle type) const;
     [[nodiscard]] bool validate_generic_arguments(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    [[nodiscard]] bool validate_generic_argument_bundle(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range);
+    [[nodiscard]] base::Result<query::StableFingerprint128> const_generic_arg_fingerprint(
+        const syntax::GenericArgDecl& arg, TypeHandle expected_type, const base::SourceRange& use_range);
+    [[nodiscard]] base::Result<GenericArgumentBundle> resolve_generic_argument_bundle(
+        const GenericTemplateInfo& info, std::span<const syntax::GenericArgDecl> args,
+        const base::SourceRange& use_range);
+    [[nodiscard]] bool type_arg_is_simple_const_param_name(const syntax::TypeNode& type) const noexcept;
     [[nodiscard]] bool has_generic_params(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] bool has_lifetime_origin_params(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] bool has_generic_constraints(const syntax::ItemNode& item) const noexcept;
@@ -826,10 +849,17 @@ public:
         syntax::TypeId type_id, const syntax::TypeNode& type, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle instantiate_generic_struct(const GenericTemplateInfo& info,
         const syntax::TypeNode& use_type, syntax::TypeId use_type_id, const std::vector<TypeHandle>& args);
+    [[nodiscard]] TypeHandle instantiate_generic_struct(const GenericTemplateInfo& info,
+        const syntax::TypeNode& use_type, syntax::TypeId use_type_id, const GenericArgumentBundle& args);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
         syntax::TypeId use_type_id, const std::vector<TypeHandle>& args);
+    [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id, const GenericArgumentBundle& args);
     [[nodiscard]] TypeHandle instantiate_generic_type_alias(const GenericTemplateInfo& info,
         const syntax::TypeNode& use_type, syntax::TypeId use_type_id, const std::vector<TypeHandle>& args,
+        bool opaque_allowed_as_pointee);
+    [[nodiscard]] TypeHandle instantiate_generic_type_alias(const GenericTemplateInfo& info,
+        const syntax::TypeNode& use_type, syntax::TypeId use_type_id, const GenericArgumentBundle& args,
         bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool infer_generic_arguments(
@@ -867,6 +897,8 @@ public:
         syntax::ModuleId module, IdentId name_id, std::string_view name, const base::SourceRange& range);
     [[nodiscard]] FunctionSignature* instantiate_generic_function(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    [[nodiscard]] FunctionSignature* instantiate_generic_function(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range);
     [[nodiscard]] FunctionSignature* instantiate_generic_method(const GenericTemplateInfo& info, TypeHandle owner_type,
         const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
     [[nodiscard]] FunctionSignature* instantiate_generic_placeholder_function(
@@ -886,18 +918,31 @@ public:
     void populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context);
     void populate_generic_concrete_context(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, GenericContext& context) const;
+    void populate_generic_concrete_context(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, GenericContext& context) const;
     [[nodiscard]] std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_key_suffix(const GenericArgumentBundle& args) const;
     [[nodiscard]] std::string generic_instance_abi_suffix(const query::GenericInstanceKey& key) const;
     [[nodiscard]] std::string generic_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     [[nodiscard]] std::string generic_struct_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_struct_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     [[nodiscard]] std::string generic_enum_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_enum_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     [[nodiscard]] std::string generic_type_alias_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_type_alias_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     [[nodiscard]] std::string generic_function_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_function_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     [[nodiscard]] query::PackageKey query_package_key(syntax::ModuleId module) const noexcept;
     [[nodiscard]] query::ModuleKey query_module_key(syntax::ModuleId module) const noexcept;
     [[nodiscard]] query::ModulePartKey query_module_part_key(
@@ -916,6 +961,8 @@ public:
     [[nodiscard]] query::ParamEnvKey generic_param_env_key(const GenericTemplateInfo& info) const;
     [[nodiscard]] base::Result<GenericInstanceIdentity> generic_instance_identity(
         const GenericTemplateInfo& info, std::span<const TypeHandle> args, query::DefNamespace name_space) const;
+    [[nodiscard]] base::Result<GenericInstanceIdentity> generic_instance_identity(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, query::DefNamespace name_space) const;
     [[nodiscard]] base::Result<std::string> generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
         const GenericInstanceIdentity& identity, TypeHandle return_type, std::span<const TypeHandle> param_types,
         bool is_method, bool is_variadic) const;

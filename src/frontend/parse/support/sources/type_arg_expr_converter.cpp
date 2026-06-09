@@ -144,6 +144,7 @@ syntax::TypeId TypeArgExprConverter::convert(const syntax::ExprId expr, const bo
                 }
                 type.range = this->session_.module.exprs.range(chain_expr.value);
                 type.type_args.assign(payload->type_args.begin(), payload->type_args.end());
+                type.generic_args.assign(payload->generic_args.begin(), payload->generic_args.end());
                 converted = this->session_.module.push_type(std::move(type));
                 break;
             }
@@ -189,7 +190,7 @@ syntax::TypeId TypeArgExprConverter::append_selector(
         return syntax::INVALID_TYPE_ID;
     }
     const syntax::TypeNode base_type = this->session_.module.types[base.value];
-    if (base_type.kind != syntax::TypeKind::named || !base_type.type_args.empty()) {
+    if (base_type.kind != syntax::TypeKind::named || !base_type.type_args.empty() || !base_type.generic_args.empty()) {
         if (report_errors) {
             this->session_.diagnostics.report_at(
                 syntax::Token{TokenKind::invalid, range, {}}, std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));

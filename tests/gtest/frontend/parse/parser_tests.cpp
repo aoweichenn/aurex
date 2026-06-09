@@ -3796,6 +3796,85 @@ TEST(CoreUnit, ParserM2GenericSyntax)
         });
 }
 
+TEST(CoreUnit, ParserParsesM16ConstGenericParametersArgumentsAndArrayLengths)
+{
+    constexpr std::string_view source =
+        "module parser.const_generics;\n"
+        "struct ArrayView[T, const N: usize] { value: T; }\n"
+        "fn len[T, const N: usize](value: [N]T) -> usize { return N; }\n"
+        "fn main() -> usize {\n"
+        "  let value: ArrayView[i32, 4] = ArrayView[i32, 4] { value: 1 };\n"
+        "  return len[i32, 4]([1]);\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "struct ArrayView[T, const N: usize]",
+            "fn len[T, const N: usize]",
+            "param value : [N]T",
+            "ArrayView[i32, 4]",
+            "generic_apply[i32, 4]",
+        });
+
+    const syntax::ItemNode* const view = find_item(module, "ArrayView");
+    ASSERT_NE(view, nullptr);
+    ASSERT_EQ(view->generic_params.size(), 2U);
+    EXPECT_EQ(view->generic_params[0].kind, syntax::GenericParamKind::type);
+    EXPECT_EQ(view->generic_params[1].kind, syntax::GenericParamKind::const_);
+    ASSERT_TRUE(syntax::is_valid(view->generic_params[1].const_type));
+    const syntax::TypeNode& const_param_type = module.types[view->generic_params[1].const_type.value];
+    ASSERT_EQ(const_param_type.kind, syntax::TypeKind::primitive);
+    EXPECT_EQ(const_param_type.primitive, syntax::PrimitiveTypeKind::usize);
+
+    const syntax::ItemNode* const len = find_item(module, "len");
+    ASSERT_NE(len, nullptr);
+    ASSERT_EQ(len->generic_params.size(), 2U);
+    EXPECT_EQ(len->generic_params[1].kind, syntax::GenericParamKind::const_);
+    ASSERT_EQ(len->params.size(), 1U);
+    ASSERT_TRUE(syntax::is_valid(len->params.front().type));
+    const syntax::TypeNode& value_type = module.types[len->params.front().type.value];
+    ASSERT_EQ(value_type.kind, syntax::TypeKind::array);
+    EXPECT_EQ(value_type.array_length.kind, syntax::ArrayLengthKind::const_expr);
+    ASSERT_TRUE(syntax::is_valid(value_type.array_length.expr));
+    ASSERT_EQ(module.exprs.kind(value_type.array_length.expr.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const length_name = module.exprs.name_payload(value_type.array_length.expr.value);
+    ASSERT_NE(length_name, nullptr);
+    EXPECT_EQ(length_name->text, "N");
+
+    const syntax::ItemNode* const main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+    const syntax::StmtNode& local = module.stmts[body.statements.front().value];
+    ASSERT_TRUE(syntax::is_valid(local.declared_type));
+    const syntax::TypeNode& declared_view_type = module.types[local.declared_type.value];
+    ASSERT_EQ(declared_view_type.kind, syntax::TypeKind::named);
+    ASSERT_EQ(declared_view_type.type_args.size(), 1U);
+    ASSERT_EQ(declared_view_type.generic_args.size(), 2U);
+    EXPECT_EQ(declared_view_type.generic_args[0].kind, syntax::GenericArgKind::type);
+    EXPECT_EQ(declared_view_type.generic_args[1].kind, syntax::GenericArgKind::const_expr);
+    ASSERT_TRUE(syntax::is_valid(declared_view_type.generic_args[1].const_expr));
+    EXPECT_EQ(module.exprs.kind(declared_view_type.generic_args[1].const_expr.value),
+        syntax::ExprKind::integer_literal);
+
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements.back().value];
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(return_stmt.return_value.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::generic_apply);
+    const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(call->callee.value);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_EQ(apply->type_args.size(), 1U);
+    ASSERT_EQ(apply->generic_args.size(), 2U);
+    EXPECT_EQ(apply->generic_args[0].kind, syntax::GenericArgKind::type);
+    EXPECT_EQ(apply->generic_args[1].kind, syntax::GenericArgKind::const_expr);
+}
+
 TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex)
 {
     constexpr std::string_view source = "module parser.index_field;\n"
@@ -4186,18 +4265,24 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
     expect_parse_error("module parser.type_slice_start;\n"
                        "fn main() -> []const i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
         "expected expression");
-    expect_parse_diagnostic("module parser.literal_generic_arg;\n"
-                            "fn id[T](value: T) -> T { return value; }\n"
-                            "fn main() -> i32 { return id[1](1); }\n",
-        "expected generic type argument");
-    expect_parse_diagnostic("module parser.parenthesized_generic_arg;\n"
-                            "fn id[T](value: T) -> T { return value; }\n"
-                            "fn main() -> i32 { return id[(1)](1); }\n",
-        "expected generic type argument");
-    expect_parse_diagnostic("module parser.unary_expr_generic_arg;\n"
-                            "fn id[T](value: T) -> T { return value; }\n"
-                            "fn main() -> i32 { let value = 1; return id[-value](value); }\n",
-        "expected generic type argument");
+    {
+        const syntax::AstModule module = parse_success("module parser.literal_generic_arg;\n"
+                                                       "fn id[T](value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { return id[1](1); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[1]"), std::string::npos);
+    }
+    {
+        const syntax::AstModule module = parse_success("module parser.parenthesized_generic_arg;\n"
+                                                       "fn id[T](value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { return id[(1)](1); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[1]"), std::string::npos);
+    }
+    {
+        const syntax::AstModule module = parse_success("module parser.unary_expr_generic_arg;\n"
+                                                       "fn id[T](value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { let value = 1; return id[-value](value); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[<const-expr>]"), std::string::npos);
+    }
     expect_parse_diagnostic("module parser.invalid_selected_generic_arg;\n"
                             "struct Box[T] { value: T; }\n"
                             "fn id[T](value: i32) -> i32 { return value; }\n"

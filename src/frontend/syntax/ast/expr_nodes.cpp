@@ -393,8 +393,24 @@ ExprId ExprNodeList::append_literal(const ExprKind kind, const base::SourceRange
 
 ExprId ExprNodeList::append_name(const base::SourceRange& range, NameExprPayload payload)
 {
-    return this->append_name(range, payload.scope_name, payload.scope_range, payload.text, payload.scope_name_id,
-        payload.text_id, std::move(payload.type_args));
+    return this->append_name_with_generic_args(range, std::move(payload));
+}
+
+ExprId ExprNodeList::append_name_with_generic_args(const base::SourceRange& range, NameExprPayload payload)
+{
+    return this->append_header(ExprKind::name, range,
+        this->emplace_payload(this->payloads_.names, payload.scope_name, payload.scope_range, payload.text,
+            payload.scope_name_id, payload.text_id, this->copy_or_move_list(std::move(payload.type_args)),
+            this->copy_or_move_list(std::move(payload.generic_args))));
+}
+
+ExprId ExprNodeList::append_generic_apply_with_generic_args(
+    const base::SourceRange& range, GenericApplyExprPayload payload)
+{
+    return this->append_header(ExprKind::generic_apply, range,
+        this->emplace_payload(this->payloads_.generic_applies, payload.callee,
+            this->copy_or_move_list(std::move(payload.type_args)),
+            this->copy_or_move_list(std::move(payload.generic_args))));
 }
 
 ExprId ExprNodeList::append_unary(const ExprKind kind, const base::SourceRange& range, const UnaryExprPayload payload)
@@ -504,8 +520,18 @@ ExprId ExprNodeList::append_slice(
 
 ExprId ExprNodeList::append_struct_literal(const base::SourceRange& range, StructLiteralExprPayload payload)
 {
-    return this->append_struct_literal(range, payload.object, payload.scope_name, payload.scope_range, payload.name,
-        payload.scope_name_id, payload.name_id, std::move(payload.type_args), std::move(payload.field_inits));
+    return this->append_struct_literal_with_generic_args(range, std::move(payload));
+}
+
+ExprId ExprNodeList::append_struct_literal_with_generic_args(
+    const base::SourceRange& range, StructLiteralExprPayload payload)
+{
+    return this->append_header(ExprKind::struct_literal, range,
+        this->emplace_payload(this->payloads_.struct_literals, payload.object, payload.scope_name, payload.scope_range,
+            payload.name, payload.scope_name_id, payload.name_id,
+            this->copy_or_move_list(std::move(payload.type_args)),
+            this->copy_or_move_list(std::move(payload.field_inits)),
+            this->copy_or_move_list(std::move(payload.generic_args))));
 }
 
 ExprId ExprNodeList::append_cast_like(
@@ -528,7 +554,16 @@ void ExprNodeList::set_invalid(const base::usize index, const base::SourceRange&
 void ExprNodeList::set_generic_apply(
     const base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload)
 {
-    this->set_generic_apply(index, range, payload.callee, std::move(payload.type_args));
+    this->set_generic_apply_with_generic_args(index, range, std::move(payload));
+}
+
+void ExprNodeList::set_generic_apply_with_generic_args(
+    const base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload)
+{
+    this->set_header(index, ExprKind::generic_apply, range,
+        this->emplace_payload(this->payloads_.generic_applies, payload.callee,
+            this->copy_or_move_list(std::move(payload.type_args)),
+            this->copy_or_move_list(std::move(payload.generic_args))));
 }
 
 void ExprNodeList::set_unary(
@@ -597,8 +632,18 @@ void ExprNodeList::set_slice(
 void ExprNodeList::set_struct_literal(
     const base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload)
 {
-    this->set_struct_literal(index, range, payload.object, payload.scope_name, payload.scope_range, payload.name,
-        payload.scope_name_id, payload.name_id, std::move(payload.type_args), std::move(payload.field_inits));
+    this->set_struct_literal_with_generic_args(index, range, std::move(payload));
+}
+
+void ExprNodeList::set_struct_literal_with_generic_args(
+    const base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload)
+{
+    this->set_header(index, ExprKind::struct_literal, range,
+        this->emplace_payload(this->payloads_.struct_literals, payload.object, payload.scope_name, payload.scope_range,
+            payload.name, payload.scope_name_id, payload.name_id,
+            this->copy_or_move_list(std::move(payload.type_args)),
+            this->copy_or_move_list(std::move(payload.field_inits)),
+            this->copy_or_move_list(std::move(payload.generic_args))));
 }
 
 bool ExprNodeList::retag_block_expr(
@@ -739,13 +784,24 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
     switch (kind) {
         case ExprKind::name: {
             const NameExprPayload* const payload = other.name_payload(index);
-            static_cast<void>(this->append_name(range, payload->scope_name, payload->scope_range, payload->text,
-                payload->scope_name_id, payload->text_id, copy_std_vector(payload->type_args)));
+            NameExprPayload copy;
+            copy.scope_name = payload->scope_name;
+            copy.scope_range = payload->scope_range;
+            copy.text = payload->text;
+            copy.scope_name_id = payload->scope_name_id;
+            copy.text_id = payload->text_id;
+            copy.type_args = copy_detached_ast_vector(payload->type_args);
+            copy.generic_args = copy_detached_ast_vector(payload->generic_args);
+            static_cast<void>(this->append_name_with_generic_args(range, std::move(copy)));
             return;
         }
         case ExprKind::generic_apply: {
             const GenericApplyExprPayload* const payload = other.generic_apply_payload(index);
-            static_cast<void>(this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
+            GenericApplyExprPayload copy;
+            copy.callee = payload->callee;
+            copy.type_args = copy_detached_ast_vector(payload->type_args);
+            copy.generic_args = copy_detached_ast_vector(payload->generic_args);
+            static_cast<void>(this->append_generic_apply_with_generic_args(range, std::move(copy)));
             return;
         }
         case ExprKind::unary: {
@@ -814,9 +870,17 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         }
         case ExprKind::struct_literal: {
             const StructLiteralExprPayload* const payload = other.struct_literal_payload(index);
-            static_cast<void>(this->append_struct_literal(range, payload->object, payload->scope_name,
-                payload->scope_range, payload->name, payload->scope_name_id, payload->name_id,
-                copy_std_vector(payload->type_args), copy_std_vector(payload->field_inits)));
+            StructLiteralExprPayload copy;
+            copy.object = payload->object;
+            copy.scope_name = payload->scope_name;
+            copy.scope_range = payload->scope_range;
+            copy.name = payload->name;
+            copy.scope_name_id = payload->scope_name_id;
+            copy.name_id = payload->name_id;
+            copy.type_args = copy_detached_ast_vector(payload->type_args);
+            copy.field_inits = copy_detached_ast_vector(payload->field_inits);
+            copy.generic_args = copy_detached_ast_vector(payload->generic_args);
+            static_cast<void>(this->append_struct_literal_with_generic_args(range, std::move(copy)));
             return;
         }
         case ExprKind::cast:

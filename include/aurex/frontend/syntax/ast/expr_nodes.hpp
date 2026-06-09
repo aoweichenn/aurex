@@ -25,11 +25,13 @@ struct NameExprPayload {
     IdentId scope_name_id = INVALID_IDENT_ID;
     IdentId text_id = INVALID_IDENT_ID;
     AstArenaVector<TypeId> type_args;
+    AstArenaVector<GenericArgDecl> generic_args;
 };
 
 struct GenericApplyExprPayload {
     ExprId callee = INVALID_EXPR_ID;
     AstArenaVector<TypeId> type_args;
+    AstArenaVector<GenericArgDecl> generic_args;
 };
 
 struct UnaryExprPayload {
@@ -101,6 +103,7 @@ struct StructLiteralExprPayload {
     IdentId name_id = INVALID_IDENT_ID;
     AstArenaVector<TypeId> type_args;
     AstArenaVector<FieldInit> field_inits;
+    AstArenaVector<GenericArgDecl> generic_args;
 };
 
 struct CastExprPayload {
@@ -243,28 +246,36 @@ public:
     [[nodiscard]] ExprId append_literal(ExprKind kind, const base::SourceRange& range, std::string_view text);
     [[nodiscard]] ExprId append_name(const base::SourceRange& range, NameExprPayload payload);
 
+    [[nodiscard]] ExprId append_name_with_generic_args(const base::SourceRange& range, NameExprPayload payload);
+
     template <typename TypeArgAllocator>
     [[nodiscard]] ExprId append_name(const base::SourceRange& range, const std::string_view scope_name,
         const base::SourceRange& scope_range, const std::string_view text, const IdentId scope_name_id,
         const IdentId text_id, std::vector<TypeId, TypeArgAllocator> type_args)
     {
+        AstArenaVector<GenericArgDecl> generic_args = this->copy_type_args_as_generic_args(type_args);
         return this->append_header(ExprKind::name, range,
             this->emplace_payload(this->payloads_.names, scope_name, scope_range, text, scope_name_id, text_id,
-                this->copy_or_move_list(std::move(type_args))));
+                this->copy_or_move_list(std::move(type_args)), std::move(generic_args)));
     }
 
     [[nodiscard]] ExprId append_generic_apply(const base::SourceRange& range, GenericApplyExprPayload payload)
     {
-        return this->append_generic_apply(range, payload.callee, std::move(payload.type_args));
+        return this->append_generic_apply_with_generic_args(range, std::move(payload));
     }
+
+    [[nodiscard]] ExprId append_generic_apply_with_generic_args(
+        const base::SourceRange& range, GenericApplyExprPayload payload);
 
     template <typename TypeArgAllocator>
     [[nodiscard]] ExprId append_generic_apply(
         const base::SourceRange& range, const ExprId callee, std::vector<TypeId, TypeArgAllocator> type_args)
     {
+        AstArenaVector<GenericArgDecl> generic_args = this->copy_type_args_as_generic_args(type_args);
         return this->append_header(ExprKind::generic_apply, range,
             this->emplace_payload(
-                this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args))));
+                this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args)),
+                std::move(generic_args)));
     }
 
     [[nodiscard]] ExprId append_unary(ExprKind kind, const base::SourceRange& range, UnaryExprPayload payload);
@@ -325,16 +336,20 @@ public:
     [[nodiscard]] ExprId append_slice(const base::SourceRange& range, ExprId object, ExprId start, ExprId end);
     [[nodiscard]] ExprId append_struct_literal(const base::SourceRange& range, StructLiteralExprPayload payload);
 
+    [[nodiscard]] ExprId append_struct_literal_with_generic_args(
+        const base::SourceRange& range, StructLiteralExprPayload payload);
+
     template <typename TypeArgAllocator, typename FieldInitAllocator>
     [[nodiscard]] ExprId append_struct_literal(const base::SourceRange& range, const ExprId object,
         const std::string_view scope_name, const base::SourceRange& scope_range, const std::string_view name,
         const IdentId scope_name_id, const IdentId name_id, std::vector<TypeId, TypeArgAllocator> type_args,
         std::vector<FieldInit, FieldInitAllocator> field_inits)
     {
+        AstArenaVector<GenericArgDecl> generic_args = this->copy_type_args_as_generic_args(type_args);
         return this->append_header(ExprKind::struct_literal, range,
             this->emplace_payload(this->payloads_.struct_literals, object, scope_name, scope_range, name, scope_name_id,
                 name_id, this->copy_or_move_list(std::move(type_args)),
-                this->copy_or_move_list(std::move(field_inits))));
+                this->copy_or_move_list(std::move(field_inits)), std::move(generic_args)));
     }
 
     [[nodiscard]] ExprId append_cast_like(ExprKind kind, const base::SourceRange& range, CastExprPayload payload);
@@ -343,13 +358,18 @@ public:
     void set_invalid(base::usize index, const base::SourceRange& range);
     void set_generic_apply(base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload);
 
+    void set_generic_apply_with_generic_args(
+        base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload);
+
     template <typename TypeArgAllocator>
     void set_generic_apply(const base::usize index, const base::SourceRange& range, const ExprId callee,
         std::vector<TypeId, TypeArgAllocator> type_args)
     {
+        AstArenaVector<GenericArgDecl> generic_args = this->copy_type_args_as_generic_args(type_args);
         this->set_header(index, ExprKind::generic_apply, range,
             this->emplace_payload(
-                this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args))));
+                this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args)),
+                std::move(generic_args)));
     }
 
     void set_unary(base::usize index, ExprKind kind, const base::SourceRange& range, UnaryExprPayload payload);
@@ -375,16 +395,20 @@ public:
     void set_slice(base::usize index, const base::SourceRange& range, ExprId object, ExprId start, ExprId end);
     void set_struct_literal(base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload);
 
+    void set_struct_literal_with_generic_args(
+        base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload);
+
     template <typename TypeArgAllocator, typename FieldInitAllocator>
     void set_struct_literal(const base::usize index, const base::SourceRange& range, const ExprId object,
         const std::string_view scope_name, const base::SourceRange& scope_range, const std::string_view name,
         const IdentId scope_name_id, const IdentId name_id, std::vector<TypeId, TypeArgAllocator> type_args,
         std::vector<FieldInit, FieldInitAllocator> field_inits)
     {
+        AstArenaVector<GenericArgDecl> generic_args = this->copy_type_args_as_generic_args(type_args);
         this->set_header(index, ExprKind::struct_literal, range,
             this->emplace_payload(this->payloads_.struct_literals, object, scope_name, scope_range, name, scope_name_id,
                 name_id, this->copy_or_move_list(std::move(type_args)),
-                this->copy_or_move_list(std::move(field_inits))));
+                this->copy_or_move_list(std::move(field_inits)), std::move(generic_args)));
     }
 
     [[nodiscard]] bool retag_block_expr(base::usize index, ExprKind kind, const base::SourceRange& range) noexcept;
@@ -430,6 +454,23 @@ private:
     [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values)
     {
         return this->copy_list(values);
+    }
+
+    template <typename TypeArgAllocator>
+    [[nodiscard]] AstArenaVector<GenericArgDecl> copy_type_args_as_generic_args(
+        const std::vector<TypeId, TypeArgAllocator>& type_args)
+    {
+        AstArenaVector<GenericArgDecl> generic_args = this->make_list<GenericArgDecl>();
+        generic_args.reserve(type_args.size());
+        for (const TypeId type : type_args) {
+            generic_args.push_back(GenericArgDecl{
+                GenericArgKind::type,
+                type,
+                INVALID_EXPR_ID,
+                {},
+            });
+        }
+        return generic_args;
     }
 
     void copy_append_from(const ExprNodeList& other, base::usize index);

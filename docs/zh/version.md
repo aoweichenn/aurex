@@ -1,5 +1,61 @@
 # 版本文档
 
+## M16 Const Generic Frontend / Query / Sema Check-Only
+
+M16 已完成 const generic 的 frontend / query / sema check-only 子集。M16 不实现标准库、不实现 runtime owning
+dyn、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch，也不把 unresolved const-param array lowering 到 runtime
+ABI。M16 的范围是把 M15 选定的 typed scalar const generic 路线变成当前可写、可解析、可检查、可进入 query identity
+的前端能力。
+
+M16 新增或固定：
+
+- `syntax::GenericParamKind::const_`。
+- `syntax::GenericArgKind::{type,const_expr}`。
+- `syntax::ArrayLengthKind::{literal,const_expr}`。
+- `sema::ArrayLengthKind::const_param` 和 `ArrayLengthInfo`。
+- mixed ordered generic args，同时保留 legacy `type_args` 兼容旧调用面。
+- `GenericInstanceKey::const_args`，const argument fingerprint 会进入 generic instance identity。
+- const generic parameter query key：`query::GenericParamKind::const_`。
+- const parameter environment binding：函数体内 `N` 可解析为当前 const generic value。
+- generic template AST span 覆盖 const parameter declared type、mixed const argument expression 和 `[N]T`
+  array length expression。
+
+当前可写示例：
+
+```aurex
+struct ArrayView[T, const N: usize] {
+    value: T;
+}
+
+fn len[T, const N: usize](value: [N]T) -> usize {
+    return N;
+}
+
+fn main() -> usize {
+    let value: ArrayView[i32, 4] = ArrayView[i32, 4] { value: 1 };
+    return len[i32, 4]([1]);
+}
+```
+
+当前规则：
+
+- const parameter 必须写成 `const Name: Type`。
+- const parameter type 只接受 integer、`bool` 和 `char` 标量。
+- const argument 只接受 scalar literal 或当前 generic context 中的 const parameter name；const parameter name
+  转发时必须和目标 const parameter type 一致。
+- type parameter 和 const parameter 按 ordered generic parameter list 检查，类型/值实参不能混用。
+- `[N]T` 是 check-only array length 集成点；它可以进入 canonical identity / fingerprint，但不进入 runtime layout
+  lowering。
+
+M16 明确不支持：
+
+- untyped const parameter。
+- generic const arithmetic，例如 `N + 1`。
+- user function comptime evaluation。
+- const where predicate、const associated value、dyn const equality dispatch。
+- runtime ABI / LLVM lowering for unresolved const-param arrays。
+- 标准库 const generic API、`Box`、allocator 或 owning dyn。
+
 ## M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline
 
 M15 已完成 advanced dyn ownership/runtime boundary 与 const generic boundary 的 design baseline。M15 只落

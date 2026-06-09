@@ -888,10 +888,10 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
         "duplicate generic parameter");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "type_arity_mismatch.ax"))).output,
-        "too few generic type arguments");
+        "too few generic arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "type_arity_too_many.ax"))).output,
-        "too many generic type arguments");
+        "too many generic arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "non_generic_type_args.ax"))).output,
         "type Plain is not generic");
@@ -910,7 +910,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_fn_type_args_too_many.ax")))
             .output,
-        "too many generic function type arguments");
+        "too many generic arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "empty_generic_params_fn.ax"))).output,
         "expected generic type parameter");
@@ -936,7 +936,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "expression_index_not_generic_call.ax")))
             .output,
-        "unknown type: index");
+        "expects a type argument");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_bound_rejected_m2.ax"))).output,
         "generic bounds are not part of M2 syntax");
@@ -1028,10 +1028,10 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
         "does not satisfy capability `Eq`");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_enum_arg_count.ax"))).output,
-        "generic type arguments");
+        "generic arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_alias_arg_count.ax"))).output,
-        "generic type arguments");
+        "generic arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_alias_cycle.ax"))).output,
         "cyclic type alias");
@@ -1862,7 +1862,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "fn id[T](value: T) -> T { return value; }\n"
         "fn main() -> i32 { return id[i32, bool](1); }\n");
     expect_contains(
-        require_failure(aurexc() + " --check " + q(generic_arity)).output, "too many generic function type arguments");
+        require_failure(aurexc() + " --check " + q(generic_arity)).output, "too many generic arguments");
 
     const fs::path generic_prototype = write_source_file(tmp_root() / "generic_prototype.ax",
         "module generic_prototype;\n"

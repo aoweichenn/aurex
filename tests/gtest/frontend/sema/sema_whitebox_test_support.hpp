@@ -758,8 +758,29 @@ void prepare_expr_storage(sema::SemanticAnalyzerCore& analyzer, const syntax::As
 {
     std::string messages;
     for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += std::string(base::severity_name(diagnostic.severity));
+        messages += " ";
+        messages += std::string(base::diagnostic_category_name(diagnostic.category));
+        messages += " ";
+        messages += std::string(base::diagnostic_code_name(diagnostic.code));
+        messages += ": ";
         messages += diagnostic.message;
         messages.push_back('\n');
+        for (const base::DiagnosticLabel& label : diagnostic.labels) {
+            messages += "label: ";
+            messages += label.message;
+            messages.push_back('\n');
+        }
+        for (const base::DiagnosticChild& child : diagnostic.children) {
+            messages += std::string(base::severity_name(child.severity));
+            messages += " ";
+            messages += std::string(base::diagnostic_category_name(child.category));
+            messages += " ";
+            messages += std::string(base::diagnostic_code_name(child.code));
+            messages += ": ";
+            messages += child.message;
+            messages.push_back('\n');
+        }
     }
     return messages;
 }

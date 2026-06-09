@@ -21,6 +21,7 @@ namespace {
 
 constexpr std::string_view SEMA_GENERIC_INSTANCE_SEPARATOR = "$";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_PREFIX = "t";
+constexpr std::string_view SEMA_GENERIC_KEY_CONST_ARG_PREFIX = "c";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_SEPARATOR = ".";
 constexpr std::string_view SEMA_GENERIC_ABI_SUFFIX_PREFIX = "__aurexg";
 constexpr std::string_view SEMA_GENERIC_ABI_GLOBAL_ID_PREFIX = "_k";
@@ -32,8 +33,11 @@ constexpr std::string_view SEMA_GENERIC_OBLIGATION_ID_CONTEXT = "semantic generi
 constexpr std::string_view SEMA_GENERIC_PARAM_ENV_ID_CONTEXT = "semantic generic param env id";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
+constexpr std::string_view SEMA_CONST_GENERIC_LITERAL_FINGERPRINT_TAG = "const-generic-literal:v1";
+constexpr std::string_view SEMA_CONST_GENERIC_PARAM_REF_FINGERPRINT_TAG = "const-generic-param-ref:v1";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_PARAM_TAG = "|param:";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_CONST_PARAM_TAG = "|const-param:";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_CONSTRAINT_TAG = "|constraint:";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_PREDICATE_TAG = "|predicate:";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR = ":";
@@ -140,9 +144,21 @@ struct GenericNodeSpanBuilder {
         this->add_id(stmt, this->module.stmts.size(), this->seen_stmts, this->stmts);
     }
 
+    void add_generic_arg(const syntax::GenericArgDecl& arg)
+    {
+        if (arg.kind == syntax::GenericArgKind::type) {
+            this->add_type(arg.type);
+            return;
+        }
+        this->add_expr(arg.const_expr);
+    }
+
     void collect(const syntax::ItemNode& item)
     {
         this->reserve_initial_worklists(item);
+        for (const syntax::GenericParamDecl& param : item.generic_params) {
+            this->add_type(param.const_type);
+        }
         for (const syntax::ParamDecl& param : item.params) {
             this->add_type(param.type);
         }
@@ -299,6 +315,12 @@ private:
         for (const syntax::TypeId arg : type.type_args) {
             this->add_type(arg);
         }
+        for (const syntax::GenericArgDecl& arg : type.generic_args) {
+            this->add_generic_arg(arg);
+        }
+        if (type.array_length.kind == syntax::ArrayLengthKind::const_expr) {
+            this->add_expr(type.array_length.expr);
+        }
         this->add_type(type.pointee);
         this->add_type(type.array_element);
         this->add_type(type.slice_element);
@@ -323,6 +345,9 @@ private:
                     for (const syntax::TypeId arg : payload->type_args) {
                         this->add_type(arg);
                     }
+                    for (const syntax::GenericArgDecl& arg : payload->generic_args) {
+                        this->add_generic_arg(arg);
+                    }
                 }
                 break;
             case syntax::ExprKind::generic_apply:
@@ -332,6 +357,9 @@ private:
                     this->add_expr(payload->callee);
                     for (const syntax::TypeId arg : payload->type_args) {
                         this->add_type(arg);
+                    }
+                    for (const syntax::GenericArgDecl& arg : payload->generic_args) {
+                        this->add_generic_arg(arg);
                     }
                 }
                 break;
@@ -439,6 +467,9 @@ private:
                     this->add_expr(payload->object);
                     for (const syntax::TypeId arg : payload->type_args) {
                         this->add_type(arg);
+                    }
+                    for (const syntax::GenericArgDecl& arg : payload->generic_args) {
+                        this->add_generic_arg(arg);
                     }
                     for (const syntax::FieldInit& init : payload->field_inits) {
                         this->add_expr(init.value);
@@ -573,9 +604,123 @@ void append_generic_instance_key_suffix(std::string& output, const std::vector<T
     }
 }
 
+[[nodiscard]] SemanticAnalyzerCore::GenericArgumentBundle make_type_only_generic_argument_bundle(
+    const std::vector<TypeHandle>& args)
+{
+    SemanticAnalyzerCore::GenericArgumentBundle bundle;
+    bundle.type_args = args;
+    return bundle;
+}
+
+void append_const_generic_fingerprint(std::string& output, const query::StableFingerprint128 fingerprint)
+{
+    append_decimal(output, fingerprint.primary);
+    output += SEMA_GENERIC_KEY_ARG_SEPARATOR;
+    append_decimal(output, fingerprint.secondary);
+    output += SEMA_GENERIC_KEY_ARG_SEPARATOR;
+    append_decimal(output, fingerprint.byte_count);
+}
+
+void append_generic_instance_key_suffix(
+    std::string& output, const SemanticAnalyzerCore::GenericArgumentBundle& args)
+{
+    append_generic_instance_key_suffix(output, args.type_args);
+    output += SEMA_GENERIC_KEY_ARG_SEPARATOR;
+    output += SEMA_GENERIC_KEY_CONST_ARG_PREFIX;
+    for (base::usize i = 0; i < args.const_args.size(); ++i) {
+        if (i != 0) {
+            output += SEMA_GENERIC_KEY_ARG_SEPARATOR;
+        }
+        append_const_generic_fingerprint(output, args.const_args[i]);
+    }
+}
+
+[[nodiscard]] query::StableFingerprint128 const_generic_literal_fingerprint(
+    const std::string_view literal_kind, const std::string_view literal_text, const std::string_view type_name)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_CONST_GENERIC_LITERAL_FINGERPRINT_TAG);
+    writer.write_string(literal_kind);
+    writer.write_string(type_name);
+    writer.write_string(literal_text);
+    return writer.fingerprint();
+}
+
+[[nodiscard]] query::StableFingerprint128 const_generic_param_ref_fingerprint(
+    const GenericParamIdentity identity, const std::string_view name, const std::string_view type_name)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_CONST_GENERIC_PARAM_REF_FINGERPRINT_TAG);
+    writer.write_u64(identity.value);
+    writer.write_string(name);
+    writer.write_string(type_name);
+    return writer.fingerprint();
+}
+
 void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& source)
 {
     target.assign(source.begin(), source.end());
+}
+
+[[nodiscard]] base::usize generic_ordered_param_index_for_type_param(
+    const SemanticAnalyzerCore::GenericTemplateInfo& info, const base::usize type_param_index) noexcept
+{
+    base::usize seen_type_params = 0;
+    for (base::usize index = 0; index < info.ordered_param_kinds.size(); ++index) {
+        if (info.ordered_param_kinds[index] != syntax::GenericParamKind::type) {
+            continue;
+        }
+        if (seen_type_params == type_param_index) {
+            return index;
+        }
+        ++seen_type_params;
+    }
+    return type_param_index;
+}
+
+[[nodiscard]] std::string_view generic_ordered_param_name(
+    const syntax::AstModule& module, const SemanticAnalyzerCore::GenericTemplateInfo& info, const base::usize index)
+{
+    if (index < info.ordered_params.size()) {
+        const std::string_view interned_name = module.identifier_text(info.ordered_params[index]);
+        if (!interned_name.empty()) {
+            return interned_name;
+        }
+    }
+    if (syntax::is_valid(info.item) && info.item.value < module.items.size()) {
+        const syntax::ItemNode item = module.items[info.item.value];
+        base::usize ordered_index = 0;
+        for (const syntax::GenericParamDecl& param : item.generic_params) {
+            if (param.kind == syntax::GenericParamKind::origin) {
+                continue;
+            }
+            if (ordered_index == index) {
+                return param.name;
+            }
+            ++ordered_index;
+        }
+    }
+    return {};
+}
+
+[[nodiscard]] std::optional<base::SourceRange> generic_ordered_param_range(
+    const syntax::AstModule& module, const SemanticAnalyzerCore::GenericTemplateInfo& info, const base::usize index)
+{
+    if (!syntax::is_valid(info.item) || info.item.value >= module.items.size()) {
+        return std::nullopt;
+    }
+    const syntax::ItemNode item = module.items[info.item.value];
+    base::usize ordered_index = 0;
+    for (const syntax::GenericParamDecl& param : item.generic_params) {
+        if (param.kind == syntax::GenericParamKind::origin) {
+            continue;
+        }
+        if (ordered_index == index) {
+            return param.range;
+        }
+        ++ordered_index;
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -638,7 +783,7 @@ std::string_view capability_name(const CapabilityKind capability) noexcept
 bool SemanticAnalyzerCore::GenericAnalyzer::has_generic_params(const syntax::ItemNode& item) const noexcept
 {
     return std::ranges::any_of(item.generic_params, [](const syntax::GenericParamDecl& param) {
-        return param.kind == syntax::GenericParamKind::type;
+        return param.kind == syntax::GenericParamKind::type || param.kind == syntax::GenericParamKind::const_;
     });
 }
 
@@ -820,21 +965,21 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
     info.predicate_indices.clear();
     info.obligation_indices.clear();
     std::unordered_map<IdentId, base::usize, IdentIdHash> params;
-    params.reserve(item.generic_params.size());
-    for (base::usize index = 0; index < item.generic_params.size(); ++index) {
-        params.emplace(item.generic_params[index].name_id, index);
+    params.reserve(info.params.size());
+    for (base::usize index = 0; index < info.params.size(); ++index) {
+        params.emplace(info.params[index], index);
     }
 
     GenericContext lookup_context = this->core_.make_generic_context();
-    lookup_context.params.reserve(item.generic_params.size());
-    lookup_context.param_identities.reserve(item.generic_params.size());
-    for (base::usize index = 0; index < item.generic_params.size(); ++index) {
-        const syntax::GenericParamDecl& param = item.generic_params[index];
+    lookup_context.params.reserve(info.params.size());
+    lookup_context.param_identities.reserve(info.params.size());
+    for (base::usize index = 0; index < info.params.size(); ++index) {
+        const IdentId param_id = info.params[index];
         const GenericParamIdentity identity = index < info.param_identities.size()
             ? info.param_identities[index]
-            : this->core_.make_generic_param_identity(info, index);
-        lookup_context.params.emplace(param.name_id, this->core_.generic_param_placeholder(info, index));
-        lookup_context.param_identities.emplace(param.name_id, identity);
+            : this->core_.generic_param_identity(info, index);
+        lookup_context.params.emplace(param_id, this->core_.generic_param_placeholder(info, index));
+        lookup_context.param_identities.emplace(param_id, identity);
     }
     GenericAnalysisScope scope(this->core_, info.module, &lookup_context, nullptr, false, info.item);
     for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
@@ -1085,6 +1230,13 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_supports_hash_capability(const 
         || this->core_.state_.checked.types.is_integer(type) || this->core_.state_.checked.types.is_pointer(type);
 }
 
+bool SemanticAnalyzerCore::GenericAnalyzer::type_is_const_generic_scalar(const TypeHandle type) const
+{
+    return is_valid(type)
+        && (this->core_.state_.checked.types.is_integer(type) || this->core_.state_.checked.types.is_bool(type)
+            || this->core_.state_.checked.types.is_char(type));
+}
+
 bool SemanticAnalyzerCore::GenericAnalyzer::validate_generic_arguments(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
@@ -1119,6 +1271,209 @@ bool SemanticAnalyzerCore::GenericAnalyzer::validate_generic_arguments(
         }
     }
     return ok;
+}
+
+bool SemanticAnalyzerCore::GenericAnalyzer::validate_generic_argument_bundle(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range)
+{
+    if (args.type_args.size() != info.params.size()) {
+        this->core_.report_type(use_range,
+            sema_generic_argument_count_message("generic type arguments", info.name, args.type_args.size(),
+                info.params.size()));
+        return false;
+    }
+    base::usize expected_const_count = 0;
+    for (const syntax::GenericParamKind kind : info.ordered_param_kinds) {
+        if (kind == syntax::GenericParamKind::const_) {
+            ++expected_const_count;
+        }
+    }
+    if (args.const_args.size() != expected_const_count) {
+        this->core_.report_type(use_range,
+            sema_generic_argument_count_message(
+                "generic const arguments", info.name, args.const_args.size(), expected_const_count));
+        return false;
+    }
+    for (const TypeHandle arg : args.type_args) {
+        if (!is_valid(arg)) {
+            return false;
+        }
+    }
+    return this->core_.validate_generic_arguments(info, args.type_args, use_range);
+}
+
+bool SemanticAnalyzerCore::GenericAnalyzer::type_arg_is_simple_const_param_name(
+    const syntax::TypeNode& type) const noexcept
+{
+    return type.kind == syntax::TypeKind::named && type.scope_name.empty() && type.scope_parts.empty()
+        && type.type_args.empty() && type.generic_args.empty();
+}
+
+base::Result<query::StableFingerprint128> SemanticAnalyzerCore::GenericAnalyzer::const_generic_arg_fingerprint(
+    const syntax::GenericArgDecl& arg, const TypeHandle expected_type, const base::SourceRange& use_range)
+{
+    const std::string expected_type_name = this->core_.state_.checked.types.display_name(expected_type);
+    if (arg.kind == syntax::GenericArgKind::type) {
+        if (!syntax::is_valid(arg.type) || arg.type.value >= this->core_.ctx_.module.types.size()) {
+            this->core_.report_type(use_range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
+        }
+        const syntax::TypeNode& type = this->core_.ctx_.module.types[arg.type.value];
+        if (!this->type_arg_is_simple_const_param_name(type)
+            || this->core_.state_.flow.current_generic_context == nullptr) {
+            this->core_.report_type(type.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
+        }
+        const auto identity =
+            this->core_.state_.flow.current_generic_context->const_param_identities.find(type.name_id);
+        const auto actual_type =
+            this->core_.state_.flow.current_generic_context->const_params.find(type.name_id);
+        const auto value = this->core_.state_.flow.current_generic_context->const_arg_values.find(type.name_id);
+        if (identity == this->core_.state_.flow.current_generic_context->const_param_identities.end()
+            || actual_type == this->core_.state_.flow.current_generic_context->const_params.end()
+            || value == this->core_.state_.flow.current_generic_context->const_arg_values.end()) {
+            this->core_.report_lookup(type.range, sema_unknown_const_generic_param_message(type.name));
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, sema_unknown_const_generic_param_message(type.name)});
+        }
+        if (!this->core_.state_.checked.types.same(expected_type, actual_type->second)) {
+            this->core_.report_type_mismatch(
+                type.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH), expected_type, actual_type->second);
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH)});
+        }
+        return base::Result<query::StableFingerprint128>::ok(value->second);
+    }
+
+    if (!syntax::is_valid(arg.const_expr) || arg.const_expr.value >= this->core_.ctx_.module.exprs.size()) {
+        this->core_.report_type(use_range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+        return base::Result<query::StableFingerprint128>::fail(
+            base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
+    }
+
+    const ExprView expr = this->core_.expr_view(arg.const_expr);
+    switch (expr.kind) {
+        case syntax::ExprKind::integer_literal:
+            if (!this->core_.state_.checked.types.is_integer(expected_type)) {
+                this->core_.report_type(expr.range, sema_actual_type_note_message("integer literal"));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, "const generic type mismatch"});
+            }
+            if (!this->core_.integer_literal_fits_type(expected_type, expr.text)) {
+                this->core_.report_type(expr.range, sema_integer_literal_out_of_range_message(expected_type_name));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, "const generic integer overflow"});
+            }
+            return base::Result<query::StableFingerprint128>::ok(
+                const_generic_literal_fingerprint("integer", expr.text, expected_type_name));
+        case syntax::ExprKind::bool_literal:
+            if (!this->core_.state_.checked.types.is_bool(expected_type)) {
+                this->core_.report_type(expr.range, sema_actual_type_note_message("bool literal"));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, "const generic type mismatch"});
+            }
+            return base::Result<query::StableFingerprint128>::ok(
+                const_generic_literal_fingerprint("bool", expr.text, expected_type_name));
+        case syntax::ExprKind::char_literal:
+            if (!this->core_.state_.checked.types.is_char(expected_type)) {
+                this->core_.report_type(expr.range, sema_actual_type_note_message("char literal"));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, "const generic type mismatch"});
+            }
+            return base::Result<query::StableFingerprint128>::ok(
+                const_generic_literal_fingerprint("char", expr.text, expected_type_name));
+        case syntax::ExprKind::name: {
+            if (this->core_.state_.flow.current_generic_context == nullptr) {
+                this->core_.report_type(expr.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
+            }
+            const auto actual_type =
+                this->core_.state_.flow.current_generic_context->const_params.find(expr.text_id);
+            const auto found = this->core_.state_.flow.current_generic_context->const_arg_values.find(expr.text_id);
+            if (actual_type == this->core_.state_.flow.current_generic_context->const_params.end()
+                || found == this->core_.state_.flow.current_generic_context->const_arg_values.end()) {
+                this->core_.report_lookup(expr.range, sema_unknown_const_generic_param_message(expr.text));
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, sema_unknown_const_generic_param_message(expr.text)});
+            }
+            if (!this->core_.state_.checked.types.same(expected_type, actual_type->second)) {
+                this->core_.report_type_mismatch(expr.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH),
+                    expected_type, actual_type->second);
+                return base::Result<query::StableFingerprint128>::fail(
+                    base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH)});
+            }
+            return base::Result<query::StableFingerprint128>::ok(found->second);
+        }
+        case syntax::ExprKind::binary:
+        case syntax::ExprKind::unary:
+            this->core_.report_type(expr.range, std::string(SEMA_CONST_GENERIC_ARITHMETIC_UNSUPPORTED));
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARITHMETIC_UNSUPPORTED)});
+        default:
+            this->core_.report_type(expr.range, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED));
+            return base::Result<query::StableFingerprint128>::fail(
+                base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
+    }
+}
+
+base::Result<SemanticAnalyzerCore::GenericArgumentBundle>
+SemanticAnalyzerCore::GenericAnalyzer::resolve_generic_argument_bundle(
+    const GenericTemplateInfo& info, const std::span<const syntax::GenericArgDecl> args,
+    const base::SourceRange& use_range)
+{
+    if (args.size() != info.ordered_params.size()) {
+        this->core_.report_type(use_range,
+            sema_generic_argument_count_message(
+                "generic arguments", info.name, args.size(), info.ordered_params.size()));
+        return base::Result<GenericArgumentBundle>::fail(
+            base::Error{base::ErrorCode::sema_error, "generic argument count mismatch"});
+    }
+
+    GenericArgumentBundle bundle;
+    bundle.type_args.reserve(info.params.size());
+    bundle.const_args.reserve(args.size());
+    for (base::usize index = 0; index < args.size(); ++index) {
+        const syntax::GenericParamKind kind =
+            index < info.ordered_param_kinds.size() ? info.ordered_param_kinds[index] : syntax::GenericParamKind::type;
+        const std::string_view param_name = generic_ordered_param_name(this->core_.ctx_.module, info, index);
+        if (kind == syntax::GenericParamKind::type) {
+            if (args[index].kind != syntax::GenericArgKind::type) {
+                this->core_.report_type(args[index].range, sema_type_generic_argument_expected_message(param_name));
+                return base::Result<GenericArgumentBundle>::fail(
+                    base::Error{base::ErrorCode::sema_error, "expected type generic argument"});
+            }
+            const TypeHandle type_arg = this->core_.resolve_type(args[index].type);
+            if (!is_valid(type_arg)) {
+                return base::Result<GenericArgumentBundle>::fail(
+                    base::Error{base::ErrorCode::sema_error, "invalid type generic argument"});
+            }
+            bundle.type_args.push_back(type_arg);
+            continue;
+        }
+        if (kind == syntax::GenericParamKind::const_) {
+            const TypeHandle const_type =
+                index < info.ordered_const_param_types.size() ? info.ordered_const_param_types[index]
+                                                              : INVALID_TYPE_HANDLE;
+            base::Result<query::StableFingerprint128> fingerprint =
+                this->const_generic_arg_fingerprint(args[index], const_type, args[index].range);
+            if (!fingerprint) {
+                return base::Result<GenericArgumentBundle>::fail(fingerprint.error());
+            }
+            bundle.const_args.push_back(fingerprint.value());
+            continue;
+        }
+        this->core_.report_type(args[index].range, sema_const_generic_argument_expected_message(param_name));
+        return base::Result<GenericArgumentBundle>::fail(
+            base::Error{base::ErrorCode::sema_error, "unsupported generic argument kind"});
+    }
+    if (!this->validate_generic_argument_bundle(info, bundle, use_range)) {
+        return base::Result<GenericArgumentBundle>::fail(
+            base::Error{base::ErrorCode::sema_error, "invalid generic argument bundle"});
+    }
+    return base::Result<GenericArgumentBundle>::ok(std::move(bundle));
 }
 
 bool SemanticAnalyzerCore::GenericAnalyzer::generic_param_has_trait_predicate(
@@ -1266,10 +1621,23 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_template_incremental_
     fingerprint += SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG;
     fingerprint += SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR;
     fingerprint += std::to_string(static_cast<base::u32>(item.kind));
-    for (base::usize param_index = 0; param_index < info.params.size(); ++param_index) {
-        fingerprint += SEMA_GENERIC_TEMPLATE_PARAM_TAG;
-        fingerprint += this->core_.generic_param_name(info, param_index);
-        const auto constraints = info.constraints.find(info.params[param_index]);
+    base::usize type_param_index = 0;
+    for (base::usize param_index = 0; param_index < info.ordered_params.size(); ++param_index) {
+        const bool is_const_param = param_index < info.ordered_param_kinds.size()
+            && info.ordered_param_kinds[param_index] == syntax::GenericParamKind::const_;
+        fingerprint += is_const_param ? SEMA_GENERIC_TEMPLATE_CONST_PARAM_TAG : SEMA_GENERIC_TEMPLATE_PARAM_TAG;
+        fingerprint += generic_ordered_param_name(this->core_.ctx_.module, info, param_index);
+        if (is_const_param) {
+            if (param_index < info.ordered_const_param_types.size()) {
+                fingerprint += SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR;
+                fingerprint += this->core_.state_.checked.types.display_name(info.ordered_const_param_types[param_index]);
+            }
+            continue;
+        }
+        const IdentId type_param_id = type_param_index < info.params.size() ? info.params[type_param_index]
+                                                                            : INVALID_IDENT_ID;
+        ++type_param_index;
+        const auto constraints = info.constraints.find(type_param_id);
         if (constraints == info.constraints.end()) {
             continue;
         }
@@ -1380,7 +1748,16 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     info.stable_id =
         this->core_.stable_definition_id(owner, StableSymbolKind::generic_template, item.name_id, item.name);
     info.params.reserve(item.generic_params.size());
+    info.ordered_params.reserve(item.generic_params.size());
+    info.ordered_param_kinds.reserve(item.generic_params.size());
+    info.ordered_const_param_types.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {
+        if (param.kind == syntax::GenericParamKind::origin) {
+            continue;
+        }
+        info.ordered_params.push_back(param.name_id);
+        info.ordered_param_kinds.push_back(param.kind);
+        info.ordered_const_param_types.push_back(INVALID_TYPE_HANDLE);
         if (param.kind != syntax::GenericParamKind::type) {
             continue;
         }
@@ -1388,6 +1765,29 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     }
     this->core_.populate_generic_template_node_spans(info, item);
     this->core_.populate_generic_param_identities(info);
+    {
+        GenericContext generic_context = this->core_.make_generic_context();
+        this->core_.populate_generic_placeholder_context(info, generic_context);
+        GenericAnalysisScope scope(this->core_, owner, &generic_context, nullptr, false, info.item);
+        base::usize ordered_index = 0;
+        for (const syntax::GenericParamDecl& param : item.generic_params) {
+            if (param.kind == syntax::GenericParamKind::origin) {
+                continue;
+            }
+            if (param.kind == syntax::GenericParamKind::const_) {
+                const TypeHandle const_type = this->core_.resolve_type(param.const_type);
+                if (!this->core_.type_is_const_generic_scalar(const_type)) {
+                    this->core_.report_type(param.range,
+                        sema_const_generic_param_type_message(
+                            param.name, this->core_.state_.checked.types.display_name(const_type)));
+                }
+                if (ordered_index < info.ordered_const_param_types.size()) {
+                    info.ordered_const_param_types[ordered_index] = const_type;
+                }
+            }
+            ++ordered_index;
+        }
+    }
     this->core_.validate_generic_constraints(item, info);
     info.incremental_key = this->core_.stable_incremental_key(
         info.stable_id, this->core_.generic_template_incremental_fingerprint(item, info));
@@ -1515,10 +1915,19 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
 
 void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_param_identities(GenericTemplateInfo& info)
 {
+    info.ordered_param_identities.clear();
+    info.ordered_param_identities.reserve(info.ordered_params.size());
+    for (base::usize index = 0; index < info.ordered_params.size(); ++index) {
+        info.ordered_param_identities.push_back(this->core_.make_generic_param_identity(info, index));
+    }
     info.param_identities.clear();
     info.param_identities.reserve(info.params.size());
     for (base::usize index = 0; index < info.params.size(); ++index) {
-        info.param_identities.push_back(this->core_.make_generic_param_identity(info, index));
+        const base::usize ordered_index = generic_ordered_param_index_for_type_param(info, index);
+        const GenericParamIdentity identity = ordered_index < info.ordered_param_identities.size()
+            ? info.ordered_param_identities[ordered_index]
+            : this->core_.make_generic_param_identity(info, ordered_index);
+        info.param_identities.push_back(identity);
     }
 }
 
@@ -1533,17 +1942,14 @@ GenericParamIdentity SemanticAnalyzerCore::GenericAnalyzer::make_generic_param_i
         : this->core_.ctx_.module.identifier_text(info.name_id);
     hash = mix_generic_identity_text(hash, template_name);
     hash = mix_generic_identity_u64(hash, index);
-    if (index < info.params.size()) {
-        hash = mix_generic_identity_text(hash, this->core_.generic_param_name(info, index));
+    if (index < info.ordered_params.size()) {
+        hash = mix_generic_identity_text(hash, generic_ordered_param_name(this->core_.ctx_.module, info, index));
     }
-    if (syntax::is_valid(info.item) && info.item.value < this->core_.ctx_.module.items.size()) {
-        const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
-        if (index < item.generic_params.size()) {
-            const base::SourceRange range = item.generic_params[index].range;
-            hash = mix_generic_identity_u64(hash, range.source.value);
-            hash = mix_generic_identity_u64(hash, range.begin);
-            hash = mix_generic_identity_u64(hash, range.end);
-        }
+    const std::optional<base::SourceRange> range = generic_ordered_param_range(this->core_.ctx_.module, info, index);
+    if (range.has_value()) {
+        hash = mix_generic_identity_u64(hash, range->source.value);
+        hash = mix_generic_identity_u64(hash, range->begin);
+        hash = mix_generic_identity_u64(hash, range->end);
     }
     return finish_generic_param_identity(hash);
 }
@@ -1599,6 +2005,9 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_placeholder_context
 {
     context.params.clear();
     context.param_identities.clear();
+    context.const_params.clear();
+    context.const_param_identities.clear();
+    context.const_arg_values.clear();
     this->core_.copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
     context.predicate_indices.assign(info.predicate_indices.begin(), info.predicate_indices.end());
@@ -1606,6 +2015,9 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_placeholder_context
     context.param_env_key = info.param_env_key;
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
+    context.const_params.reserve(info.ordered_params.size());
+    context.const_param_identities.reserve(info.ordered_params.size());
+    context.const_arg_values.reserve(info.ordered_params.size());
     context.constraints_by_identity.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size(); ++i) {
         const GenericParamIdentity identity = this->core_.generic_param_identity(info, i);
@@ -1616,13 +2028,38 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_placeholder_context
             context.constraints_by_identity.emplace(identity, this->core_.copy_capability_set(constraints->second));
         }
     }
+    for (base::usize i = 0; i < info.ordered_params.size(); ++i) {
+        if (i >= info.ordered_param_kinds.size() || info.ordered_param_kinds[i] != syntax::GenericParamKind::const_) {
+            continue;
+        }
+        const IdentId param_id = info.ordered_params[i];
+        const GenericParamIdentity identity = i < info.ordered_param_identities.size()
+            ? info.ordered_param_identities[i]
+            : this->core_.make_generic_param_identity(info, i);
+        const TypeHandle const_type =
+            i < info.ordered_const_param_types.size() ? info.ordered_const_param_types[i] : INVALID_TYPE_HANDLE;
+        const std::string_view param_name = generic_ordered_param_name(this->core_.ctx_.module, info, i);
+        const std::string type_name = this->core_.state_.checked.types.display_name(const_type);
+        context.const_params.emplace(param_id, const_type);
+        context.const_param_identities.emplace(param_id, identity);
+        context.const_arg_values.emplace(param_id, const_generic_param_ref_fingerprint(identity, param_name, type_name));
+    }
 }
 
 void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_concrete_context(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, GenericContext& context) const
 {
+    this->populate_generic_concrete_context(info, make_type_only_generic_argument_bundle(args), context);
+}
+
+void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_concrete_context(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, GenericContext& context) const
+{
     context.params.clear();
     context.param_identities.clear();
+    context.const_params.clear();
+    context.const_param_identities.clear();
+    context.const_arg_values.clear();
     this->core_.copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
     context.predicate_indices.assign(info.predicate_indices.begin(), info.predicate_indices.end());
@@ -1630,19 +2067,22 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_concrete_context(
     context.param_env_key = info.param_env_key;
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
+    context.const_params.reserve(info.ordered_params.size());
+    context.const_param_identities.reserve(info.ordered_params.size());
+    context.const_arg_values.reserve(info.ordered_params.size());
     context.constraints_by_identity.reserve(info.params.size());
-    for (base::usize i = 0; i < info.params.size() && i < args.size(); ++i) {
+    for (base::usize i = 0; i < info.params.size() && i < args.type_args.size(); ++i) {
         const GenericParamIdentity identity = this->core_.generic_param_identity(info, i);
         const IdentId param_id = info.params[i];
-        context.params.emplace(param_id, args[i]);
+        context.params.emplace(param_id, args.type_args[i]);
         context.param_identities.emplace(param_id, identity);
         const auto constraints = info.constraints.find(param_id);
         if (constraints == info.constraints.end()) {
             continue;
         }
         context.constraints_by_identity.emplace(identity, this->core_.copy_capability_set(constraints->second));
-        if (is_valid(args[i])) {
-            const TypeInfo& arg_info = this->core_.state_.checked.types.get(args[i]);
+        if (is_valid(args.type_args[i])) {
+            const TypeInfo& arg_info = this->core_.state_.checked.types.get(args.type_args[i]);
             if (arg_info.kind == TypeKind::generic_param) {
                 CapabilitySet& inherited = this->core_.capability_bucket(
                     context.constraints_by_identity, this->core_.generic_param_identity(arg_info));
@@ -1650,13 +2090,38 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_concrete_context(
             }
         }
     }
+    base::usize const_arg_index = 0;
+    for (base::usize i = 0; i < info.ordered_params.size(); ++i) {
+        if (i >= info.ordered_param_kinds.size() || info.ordered_param_kinds[i] != syntax::GenericParamKind::const_) {
+            continue;
+        }
+        const IdentId param_id = info.ordered_params[i];
+        const GenericParamIdentity identity = i < info.ordered_param_identities.size()
+            ? info.ordered_param_identities[i]
+            : this->core_.make_generic_param_identity(info, i);
+        const TypeHandle const_type =
+            i < info.ordered_const_param_types.size() ? info.ordered_const_param_types[i] : INVALID_TYPE_HANDLE;
+        context.const_params.emplace(param_id, const_type);
+        context.const_param_identities.emplace(param_id, identity);
+        if (const_arg_index < args.const_args.size()) {
+            context.const_arg_values.emplace(param_id, args.const_args[const_arg_index]);
+        }
+        ++const_arg_index;
+    }
 }
 
 std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_key_suffix(
     const std::vector<TypeHandle>& args) const
 {
+    return this->generic_instance_key_suffix(make_type_only_generic_argument_bundle(args));
+}
+
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_key_suffix(
+    const GenericArgumentBundle& args) const
+{
     std::string suffix;
-    suffix.reserve(SEMA_GENERIC_KEY_ARG_PREFIX.size() + args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
+    suffix.reserve(SEMA_GENERIC_KEY_ARG_PREFIX.size() + args.type_args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE
+        + SEMA_GENERIC_KEY_CONST_ARG_PREFIX.size() + args.const_args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
     append_generic_instance_key_suffix(suffix, args);
     return suffix;
 }
@@ -1681,10 +2146,17 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_abi_suffix(
 std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
+    return this->generic_instance_key(info, make_type_only_generic_argument_bundle(args));
+}
+
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
     const std::string template_key = this->core_.generic_template_key_prefix(info.module, info.name_id, info.name);
     std::string key;
     key.reserve(template_key.size() + SEMA_GENERIC_INSTANCE_SEPARATOR.size() + SEMA_GENERIC_KEY_ARG_PREFIX.size()
-        + args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
+        + args.type_args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE + SEMA_GENERIC_KEY_CONST_ARG_PREFIX.size()
+        + args.const_args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
     key += template_key;
     key += SEMA_GENERIC_INSTANCE_SEPARATOR;
     append_generic_instance_key_suffix(key, args);
@@ -1697,8 +2169,20 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_struct_instance_key(
     return this->core_.generic_instance_key(info, args);
 }
 
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_struct_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
+    return this->core_.generic_instance_key(info, args);
+}
+
 std::string SemanticAnalyzerCore::GenericAnalyzer::generic_enum_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
+{
+    return this->core_.generic_instance_key(info, args);
+}
+
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_enum_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
 {
     return this->core_.generic_instance_key(info, args);
 }
@@ -1709,8 +2193,20 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_type_alias_instance_k
     return this->core_.generic_instance_key(info, args);
 }
 
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_type_alias_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
+    return this->core_.generic_instance_key(info, args);
+}
+
 std::string SemanticAnalyzerCore::GenericAnalyzer::generic_function_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
+{
+    return this->core_.generic_instance_key(info, args);
+}
+
+std::string SemanticAnalyzerCore::GenericAnalyzer::generic_function_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
 {
     return this->core_.generic_instance_key(info, args);
 }
@@ -2197,17 +2693,14 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
 TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args)
 {
-    if (args.size() != info.params.size()) {
-        this->core_.report_type(use_type.range,
-            sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size()));
-        return INVALID_TYPE_HANDLE;
-    }
-    for (const TypeHandle arg : args) {
-        if (!is_valid(arg)) {
-            return INVALID_TYPE_HANDLE;
-        }
-    }
-    if (!this->core_.validate_generic_arguments(info, args, use_type.range)) {
+    return this->instantiate_generic_struct(info, use_type, syntax::INVALID_TYPE_ID,
+        make_type_only_generic_argument_bundle(args));
+}
+
+TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId, const GenericArgumentBundle& args)
+{
+    if (!this->core_.validate_generic_argument_bundle(info, args, use_type.range)) {
         return INVALID_TYPE_HANDLE;
     }
     const std::string instance_key = this->core_.generic_struct_instance_key(info, args);
@@ -2232,7 +2725,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
 
     const TypeHandle handle = this->core_.state_.checked.types.named_struct(qualified, c_name, false);
     this->core_.state_.checked.types.set_generic_instance(
-        handle, this->core_.generic_template_key_prefix(info.module, info.name_id, info.name), args);
+        handle, this->core_.generic_template_key_prefix(info.module, info.name_id, info.name), args.type_args);
     this->core_.state_.generics.struct_instances[instance_key_id] = handle;
 
     StructInfo struct_info = this->core_.state_.checked.make_struct_info();
@@ -2246,7 +2739,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
     struct_info.stable_id = sema::stable_definition_id(
         this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
     struct_info.generic_instance_key = instance_query_key;
-    struct_info.is_generic_placeholder = std::ranges::any_of(args, [&](const TypeHandle arg) {
+    struct_info.is_generic_placeholder = std::ranges::any_of(args.type_args, [&](const TypeHandle arg) {
         return is_valid(arg) && this->core_.state_.checked.types.get(arg).kind == TypeKind::generic_param;
     });
 
@@ -2304,17 +2797,14 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
 TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args)
 {
-    if (args.size() != info.params.size()) {
-        this->core_.report_type(use_type.range,
-            sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size()));
-        return INVALID_TYPE_HANDLE;
-    }
-    for (const TypeHandle arg : args) {
-        if (!is_valid(arg)) {
-            return INVALID_TYPE_HANDLE;
-        }
-    }
-    if (!this->core_.validate_generic_arguments(info, args, use_type.range)) {
+    return this->instantiate_generic_enum(info, use_type, syntax::INVALID_TYPE_ID,
+        make_type_only_generic_argument_bundle(args));
+}
+
+TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId, const GenericArgumentBundle& args)
+{
+    if (!this->core_.validate_generic_argument_bundle(info, args, use_type.range)) {
         return INVALID_TYPE_HANDLE;
     }
 
@@ -2340,7 +2830,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
 
     const TypeHandle handle = this->core_.state_.checked.types.named_enum(qualified, c_name);
     this->core_.state_.checked.types.set_generic_instance(
-        handle, this->core_.generic_template_key_prefix(info.module, info.name_id, info.name), args);
+        handle, this->core_.generic_template_key_prefix(info.module, info.name_id, info.name), args.type_args);
     this->core_.state_.generics.enum_instances[instance_key_id] = handle;
 
     GenericEnumInstanceInfo enum_instance;
@@ -2378,17 +2868,15 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_type_alias
     const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args,
     const bool opaque_allowed_as_pointee)
 {
-    if (args.size() != info.params.size()) {
-        this->core_.report_type(use_type.range,
-            sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size()));
-        return INVALID_TYPE_HANDLE;
-    }
-    for (const TypeHandle arg : args) {
-        if (!is_valid(arg)) {
-            return INVALID_TYPE_HANDLE;
-        }
-    }
-    if (!this->core_.validate_generic_arguments(info, args, use_type.range)) {
+    return this->instantiate_generic_type_alias(info, use_type, syntax::INVALID_TYPE_ID,
+        make_type_only_generic_argument_bundle(args), opaque_allowed_as_pointee);
+}
+
+TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_type_alias(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId, const GenericArgumentBundle& args,
+    const bool opaque_allowed_as_pointee)
+{
+    if (!this->core_.validate_generic_argument_bundle(info, args, use_type.range)) {
         return INVALID_TYPE_HANDLE;
     }
 
@@ -2778,16 +3266,19 @@ bool SemanticAnalyzerCore::GenericAnalyzer::apply_explicit_generic_method_argume
 FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_placeholder_function(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
-    if (args.size() != info.params.size()) {
-        this->core_.report_type(use_range,
-            sema_generic_argument_count_message(
-                "generic function type arguments", info.name, args.size(), info.params.size()));
+    return this->instantiate_generic_placeholder_function(info, make_type_only_generic_argument_bundle(args), use_range);
+}
+
+FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_placeholder_function(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range)
+{
+    if (!this->validate_generic_argument_bundle(info, args, use_range)) {
         return nullptr;
     }
     const syntax::ItemNode function = this->core_.ctx_.module.items[info.item.value];
 
     for (base::usize i = 0; i < info.params.size(); ++i) {
-        if (!is_valid(args[i])) {
+        if (!is_valid(args.type_args[i])) {
             return nullptr;
         }
     }
@@ -2802,7 +3293,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_pl
         signature.name_id = info.name_id;
         signature.c_name = signature.name;
         signature.stable_id = info.stable_id;
-        signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
+        signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args.type_args);
         signature.module = info.module;
         signature.part_index = info.part_index;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
@@ -2893,24 +3384,19 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_contains_generic_param(const Ty
 FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_function(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
-    if (args.size() != info.params.size()) {
-        this->core_.report_type(use_range,
-            sema_generic_argument_count_message(
-                "generic function type arguments", info.name, args.size(), info.params.size()));
+    return this->instantiate_generic_function(info, make_type_only_generic_argument_bundle(args), use_range);
+}
+
+FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_function(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range)
+{
+    if (!this->validate_generic_argument_bundle(info, args, use_range)) {
         return nullptr;
     }
-    for (const TypeHandle arg : args) {
-        if (!is_valid(arg)) {
-            return nullptr;
-        }
-    }
-    if (!this->core_.validate_generic_arguments(info, args, use_range)) {
-        return nullptr;
-    }
-    if (std::ranges::any_of(args, [&](const TypeHandle arg) {
+    if (std::ranges::any_of(args.type_args, [&](const TypeHandle arg) {
             return this->core_.type_contains_generic_param(arg);
         })) {
-        return this->core_.instantiate_generic_placeholder_function(info, args, use_range);
+        return this->instantiate_generic_placeholder_function(info, args, use_range);
     }
     const IdentId key_id = this->core_.intern_generated_key(this->core_.generic_function_instance_key(info, args));
     const FunctionLookupKey key = this->core_.function_lookup_key(info.module, key_id);
@@ -2948,7 +3434,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         signature.c_name = this->core_.state_.checked.intern_text(this->core_.c_symbol_name(
             info.module, std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(instance_query_key)));
         signature.generic_instance_key = instance_query_key;
-        signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
+        signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args.type_args);
         signature.module = info.module;
         signature.part_index = info.part_index;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
@@ -3403,10 +3889,39 @@ bool SemanticAnalyzerCore::type_supports_hash_capability(const TypeHandle type) 
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).type_supports_hash_capability(type);
 }
 
+bool SemanticAnalyzerCore::type_is_const_generic_scalar(const TypeHandle type) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).type_is_const_generic_scalar(type);
+}
+
 bool SemanticAnalyzerCore::validate_generic_arguments(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
     return GenericAnalyzer(*this).validate_generic_arguments(info, args, use_range);
+}
+
+bool SemanticAnalyzerCore::validate_generic_argument_bundle(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range)
+{
+    return GenericAnalyzer(*this).validate_generic_argument_bundle(info, args, use_range);
+}
+
+base::Result<query::StableFingerprint128> SemanticAnalyzerCore::const_generic_arg_fingerprint(
+    const syntax::GenericArgDecl& arg, const TypeHandle expected_type, const base::SourceRange& use_range)
+{
+    return GenericAnalyzer(*this).const_generic_arg_fingerprint(arg, expected_type, use_range);
+}
+
+base::Result<SemanticAnalyzerCore::GenericArgumentBundle> SemanticAnalyzerCore::resolve_generic_argument_bundle(
+    const GenericTemplateInfo& info, const std::span<const syntax::GenericArgDecl> args,
+    const base::SourceRange& use_range)
+{
+    return GenericAnalyzer(*this).resolve_generic_argument_bundle(info, args, use_range);
+}
+
+bool SemanticAnalyzerCore::type_arg_is_simple_const_param_name(const syntax::TypeNode& type) const noexcept
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).type_arg_is_simple_const_param_name(type);
 }
 
 void SemanticAnalyzerCore::populate_generic_template_node_spans(
@@ -3493,7 +4008,18 @@ void SemanticAnalyzerCore::populate_generic_concrete_context(
     GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).populate_generic_concrete_context(info, args, context);
 }
 
+void SemanticAnalyzerCore::populate_generic_concrete_context(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, GenericContext& context) const
+{
+    GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).populate_generic_concrete_context(info, args, context);
+}
+
 std::string SemanticAnalyzerCore::generic_instance_key_suffix(const std::vector<TypeHandle>& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_key_suffix(args);
+}
+
+std::string SemanticAnalyzerCore::generic_instance_key_suffix(const GenericArgumentBundle& args) const
 {
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_key_suffix(args);
 }
@@ -3509,8 +4035,20 @@ std::string SemanticAnalyzerCore::generic_instance_key(
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_key(info, args);
 }
 
+std::string SemanticAnalyzerCore::generic_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_key(info, args);
+}
+
 std::string SemanticAnalyzerCore::generic_struct_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_struct_instance_key(info, args);
+}
+
+std::string SemanticAnalyzerCore::generic_struct_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
 {
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_struct_instance_key(info, args);
 }
@@ -3521,14 +4059,32 @@ std::string SemanticAnalyzerCore::generic_enum_instance_key(
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_enum_instance_key(info, args);
 }
 
+std::string SemanticAnalyzerCore::generic_enum_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_enum_instance_key(info, args);
+}
+
 std::string SemanticAnalyzerCore::generic_type_alias_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_type_alias_instance_key(info, args);
 }
 
+std::string SemanticAnalyzerCore::generic_type_alias_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_type_alias_instance_key(info, args);
+}
+
 std::string SemanticAnalyzerCore::generic_function_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
+{
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_function_instance_key(info, args);
+}
+
+std::string SemanticAnalyzerCore::generic_function_instance_key(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args) const
 {
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_function_instance_key(info, args);
 }
@@ -3617,14 +4173,34 @@ TypeHandle SemanticAnalyzerCore::instantiate_generic_struct(const GenericTemplat
     return GenericAnalyzer(*this).instantiate_generic_struct(info, use_type, use_type_id, args);
 }
 
+TypeHandle SemanticAnalyzerCore::instantiate_generic_struct(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId use_type_id, const GenericArgumentBundle& args)
+{
+    return GenericAnalyzer(*this).instantiate_generic_struct(info, use_type, use_type_id, args);
+}
+
 TypeHandle SemanticAnalyzerCore::instantiate_generic_enum(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId use_type_id, const std::vector<TypeHandle>& args)
 {
     return GenericAnalyzer(*this).instantiate_generic_enum(info, use_type, use_type_id, args);
 }
 
+TypeHandle SemanticAnalyzerCore::instantiate_generic_enum(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId use_type_id, const GenericArgumentBundle& args)
+{
+    return GenericAnalyzer(*this).instantiate_generic_enum(info, use_type, use_type_id, args);
+}
+
 TypeHandle SemanticAnalyzerCore::instantiate_generic_type_alias(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId use_type_id, const std::vector<TypeHandle>& args,
+    const bool opaque_allowed_as_pointee)
+{
+    return GenericAnalyzer(*this).instantiate_generic_type_alias(
+        info, use_type, use_type_id, args, opaque_allowed_as_pointee);
+}
+
+TypeHandle SemanticAnalyzerCore::instantiate_generic_type_alias(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId use_type_id, const GenericArgumentBundle& args,
     const bool opaque_allowed_as_pointee)
 {
     return GenericAnalyzer(*this).instantiate_generic_type_alias(
@@ -3670,6 +4246,12 @@ bool SemanticAnalyzerCore::type_contains_generic_param(const TypeHandle type) co
 
 FunctionSignature* SemanticAnalyzerCore::instantiate_generic_function(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
+{
+    return GenericAnalyzer(*this).instantiate_generic_function(info, args, use_range);
+}
+
+FunctionSignature* SemanticAnalyzerCore::instantiate_generic_function(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range)
 {
     return GenericAnalyzer(*this).instantiate_generic_function(info, args, use_range);
 }

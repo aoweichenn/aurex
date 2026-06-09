@@ -161,8 +161,15 @@ void push_children_reverse(
 {
     target.kind = query::CanonicalTypeKind::array;
     target.array_count = info.array_count;
-    target.children.resize(1);
-    push_child(pending, info.array_element, target.children.front());
+    const bool has_const_length = info.array_length.kind == ArrayLengthKind::const_param
+        && info.array_length.fingerprint.byte_count != 0;
+    target.children.resize(has_const_length ? 2U : 1U);
+    if (has_const_length) {
+        target.children[0] = query::canonical_const_arg(info.array_length.fingerprint);
+        push_child(pending, info.array_element, target.children[1]);
+    } else {
+        push_child(pending, info.array_element, target.children.front());
+    }
     return base::Result<void>::ok();
 }
 

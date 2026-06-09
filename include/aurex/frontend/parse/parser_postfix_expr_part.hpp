@@ -36,6 +36,8 @@ private:
         syntax::ExprId base, std::span<const BracketArg> args, bool has_type_only_arg, ExprContext context) const;
     [[nodiscard]] std::optional<syntax::AstArenaVector<syntax::TypeId>> bracket_args_to_type_args(
         std::span<const BracketArg> args, bool report_errors);
+    [[nodiscard]] std::optional<syntax::GenericApplyExprPayload> bracket_args_to_generic_apply_payload(
+        syntax::ExprId callee, std::span<const BracketArg> args, bool report_errors);
     [[nodiscard]] syntax::TypeId bracket_arg_expr_to_type(syntax::ExprId expr, bool report_errors);
     [[nodiscard]] syntax::TypeId append_type_selector(
         syntax::TypeId base, std::string_view name, const base::SourceRange& range, bool report_errors);

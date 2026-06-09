@@ -891,6 +891,37 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "type " + std::string(type_name) + " does not satisfy capability `" + std::string(capability) + "`";
 }
 
+[[nodiscard]] inline std::string sema_const_generic_param_type_message(
+    const std::string_view param, const std::string_view type_name)
+{
+    return "const generic parameter `" + std::string(param)
+        + "` must use an integer, bool, or char type, got " + std::string(type_name);
+}
+
+[[nodiscard]] inline std::string sema_const_generic_argument_expected_message(const std::string_view param)
+{
+    return "generic parameter `" + std::string(param) + "` expects a const argument";
+}
+
+[[nodiscard]] inline std::string sema_type_generic_argument_expected_message(const std::string_view param)
+{
+    return "generic parameter `" + std::string(param) + "` expects a type argument";
+}
+
+inline constexpr std::string_view SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED =
+    "const generic argument must be a scalar literal or const generic parameter name";
+
+inline constexpr std::string_view SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH =
+    "const generic argument type mismatch";
+
+inline constexpr std::string_view SEMA_CONST_GENERIC_ARITHMETIC_UNSUPPORTED =
+    "generic const expressions are not supported yet";
+
+[[nodiscard]] inline std::string sema_unknown_const_generic_param_message(const std::string_view name)
+{
+    return "unknown const generic parameter `" + std::string(name) + "`";
+}
+
 [[nodiscard]] inline std::string sema_cyclic_type_alias_message(const std::string_view name)
 {
     return "cyclic type alias: " + std::string(name);

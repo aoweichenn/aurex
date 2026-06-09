@@ -52,6 +52,7 @@ constexpr std::string_view SEMA_TYPE_ORIGIN_KEY_SEPARATOR = " | ";
 constexpr base::usize SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE = 16;
 constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
 constexpr std::size_t SEMA_TYPE_HASH_TRAIT_OBJECT_SHIFT = 17U;
+constexpr std::size_t SEMA_TYPE_HASH_ARRAY_LENGTH_SHIFT = 11U;
 
 enum class TypeDisplayTaskKind {
     type,
@@ -406,6 +407,7 @@ void TypeTable::rebind_interned_texts() noexcept
         rebind_interned_text(info.c_name, this->texts_);
         rebind_interned_text(info.reference_origin_key, this->texts_);
         rebind_interned_text(info.generic_origin_key, this->texts_);
+        rebind_interned_text(info.array_length.const_param_name, this->texts_);
         for (TraitObjectAssociatedTypeEquality& equality : info.trait_object_associated_equalities) {
             rebind_interned_text(equality.name, this->texts_);
         }
@@ -474,6 +476,8 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other)
     copy.pointee = other.pointee;
     copy.reference_origin_key = this->intern_text(other.reference_origin_key);
     copy.array_count = other.array_count;
+    copy.array_length = other.array_length;
+    copy.array_length.const_param_name = this->intern_text(other.array_length.const_param_name);
     copy.array_element = other.array_element;
     copy.slice_mutability = other.slice_mutability;
     copy.slice_element = other.slice_element;
@@ -594,7 +598,10 @@ TypeHandle TypeTable::reference_with_origin_key(
 
 TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element)
 {
-    const ArrayKey key{count, element.value};
+    ArrayLengthInfo length;
+    length.kind = ArrayLengthKind::literal;
+    length.literal = count;
+    const ArrayKey key{length, element.value};
     if (const auto found = this->array_types_.find(key); found != this->array_types_.end()) {
         return found->second;
     }
@@ -602,6 +609,28 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element)
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::array;
     info.array_count = count;
+    info.array_length = length;
+    info.array_element = element;
+    info.contains_array = true;
+    const TypeHandle handle = this->push(std::move(info));
+    this->array_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::array_with_length(ArrayLengthInfo length, const TypeHandle element)
+{
+    if (length.kind == ArrayLengthKind::literal) {
+        return this->array(length.literal, element);
+    }
+    const ArrayKey key{length, element.value};
+    if (const auto found = this->array_types_.find(key); found != this->array_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info = this->make_type_info();
+    info.kind = TypeKind::array;
+    info.array_count = 0;
+    info.array_length = std::move(length);
     info.array_element = element;
     info.contains_array = true;
     const TypeHandle handle = this->push(std::move(info));
@@ -1026,7 +1055,11 @@ std::string TypeTable::display_name(const TypeHandle type) const
                 break;
             case TypeKind::array:
                 name.append(SEMA_TYPE_DISPLAY_ARRAY_OPEN);
-                name += std::to_string(info.array_count);
+                if (info.array_length.kind == ArrayLengthKind::const_param && !info.array_length.const_param_name.empty()) {
+                    name += info.array_length.const_param_name.view();
+                } else {
+                    name += std::to_string(info.array_count);
+                }
                 name.append(SEMA_TYPE_DISPLAY_ARRAY_CLOSE);
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.array_element, {}});
                 break;
@@ -1241,7 +1274,13 @@ std::size_t TypeTable::ReferenceKeyHash::operator()(const ReferenceKey& key) con
 
 std::size_t TypeTable::ArrayKeyHash::operator()(const ArrayKey& key) const noexcept
 {
-    return static_cast<std::size_t>(key.element) ^ (static_cast<std::size_t>(key.count) * SEMA_TYPE_HASH_MULTIPLIER);
+    std::size_t hash = static_cast<std::size_t>(key.element)
+        ^ (static_cast<std::size_t>(key.length.literal) * SEMA_TYPE_HASH_MULTIPLIER);
+    hash ^= static_cast<std::size_t>(key.length.kind == ArrayLengthKind::const_param ? 1U : 0U)
+        << SEMA_TYPE_HASH_ARRAY_LENGTH_SHIFT;
+    hash ^= static_cast<std::size_t>(key.length.const_param_identity.value) * SEMA_TYPE_HASH_MULTIPLIER;
+    hash ^= query::stable_hash_value(key.length.fingerprint) * SEMA_TYPE_HASH_MULTIPLIER;
+    return hash;
 }
 
 std::size_t TypeTable::SliceKeyHash::operator()(const SliceKey& key) const noexcept

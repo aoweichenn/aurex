@@ -29,7 +29,10 @@ private:
     void parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic);
     [[nodiscard]] bool recover_function_type_param_separator(bool& is_variadic) const;
     [[nodiscard]] syntax::TypeId parse_primitive_type() const;
-    void parse_generic_type_args(std::vector<syntax::TypeId>& args);
+    [[nodiscard]] syntax::ArrayLengthDecl parse_array_length();
+    [[nodiscard]] syntax::ExprId parse_const_generic_expr_atom(std::string message) const;
+    [[nodiscard]] syntax::GenericArgDecl parse_generic_arg();
+    void parse_generic_type_args(std::vector<syntax::TypeId>& type_args, std::vector<syntax::GenericArgDecl>& args);
     [[nodiscard]] bool recover_generic_type_arg_separator() const;
     void reject_legacy_angle_type_args() const;
     void expect_array_length_end() const;

@@ -27,6 +27,7 @@ struct NamedTypePayload {
     AstArenaVector<IdentId> scope_part_ids;
     IdentId name_id = INVALID_IDENT_ID;
     AstArenaVector<TypeId> type_args;
+    AstArenaVector<GenericArgDecl> generic_args;
 };
 
 struct PointerTypePayload {
@@ -46,6 +47,7 @@ struct ReferenceTypePayload {
 
 struct ArrayTypePayload {
     base::u64 count = 0;
+    ArrayLengthDecl length;
     TypeId element = INVALID_TYPE_ID;
 };
 
@@ -71,6 +73,7 @@ struct DynTraitTypePayload {
     AstArenaVector<IdentId> scope_part_ids;
     IdentId name_id = INVALID_IDENT_ID;
     AstArenaVector<TypeId> type_args;
+    AstArenaVector<GenericArgDecl> generic_args;
     AstArenaVector<AssociatedTypeConstraintDecl> associated_type_constraints;
     AstArenaVector<DynTraitPrincipalDecl> principals;
 };

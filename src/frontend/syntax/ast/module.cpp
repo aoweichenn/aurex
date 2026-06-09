@@ -67,13 +67,13 @@ ExprId AstModule::push_literal_expr(const ExprKind kind, const base::SourceRange
 
 ExprId AstModule::push_name_expr(const base::SourceRange& range, NameExprPayload payload)
 {
-    return this->push_name_expr(range, payload.scope_name, payload.scope_range, payload.text,
-        std::move(payload.type_args), payload.scope_name_id, payload.text_id);
+    this->intern_name_expr_payload(payload);
+    return this->exprs.append_name_with_generic_args(range, std::move(payload));
 }
 
 ExprId AstModule::push_generic_apply_expr(const base::SourceRange& range, GenericApplyExprPayload payload)
 {
-    return this->push_generic_apply_expr(range, payload.callee, std::move(payload.type_args));
+    return this->exprs.append_generic_apply_with_generic_args(range, std::move(payload));
 }
 
 ExprId AstModule::push_unary_expr(const ExprKind kind, const base::SourceRange& range, const UnaryExprPayload payload)
@@ -181,8 +181,8 @@ ExprId AstModule::push_slice_expr(
 
 ExprId AstModule::push_struct_literal_expr(const base::SourceRange& range, StructLiteralExprPayload payload)
 {
-    return this->push_struct_literal_expr(range, payload.object, payload.scope_name, payload.scope_range, payload.name,
-        std::move(payload.type_args), std::move(payload.field_inits), payload.scope_name_id, payload.name_id);
+    this->intern_struct_literal_payload(payload);
+    return this->exprs.append_struct_literal_with_generic_args(range, std::move(payload));
 }
 
 ExprId AstModule::push_cast_like_expr(
@@ -231,7 +231,7 @@ void AstModule::set_invalid_expr(const base::usize index, const base::SourceRang
 void AstModule::set_generic_apply_expr(
     const base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload)
 {
-    this->exprs.set_generic_apply(index, range, std::move(payload));
+    this->exprs.set_generic_apply_with_generic_args(index, range, std::move(payload));
 }
 
 void AstModule::set_unary_expr(
@@ -301,7 +301,7 @@ void AstModule::set_struct_literal_expr(
     const base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload)
 {
     this->intern_struct_literal_payload(payload);
-    this->exprs.set_struct_literal(index, range, std::move(payload));
+    this->exprs.set_struct_literal_with_generic_args(index, range, std::move(payload));
 }
 
 void AstModule::set_item(const base::usize index, ItemNode node)

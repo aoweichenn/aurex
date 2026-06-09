@@ -209,6 +209,15 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_PARAMETER = "expect
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_PARAMETER_NAME = "expected generic type parameter name";
 
+inline constexpr std::string_view PARSER_EXPECT_CONST_GENERIC_PARAMETER_NAME =
+    "expected const generic parameter name";
+
+inline constexpr std::string_view PARSER_EXPECT_CONST_GENERIC_PARAMETER_COLON =
+    "expected ':' after const generic parameter name";
+
+inline constexpr std::string_view PARSER_EXPECT_CONST_GENERIC_PARAMETER_TYPE =
+    "expected const generic parameter type";
+
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expected ']' after generic parameter list";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or ']' after generic parameter";
@@ -358,6 +367,9 @@ inline constexpr std::string_view PARSER_EXPECT_ITEM_NAME_AFTER_SCOPE = "expecte
 inline constexpr std::string_view PARSER_EXPECT_STRUCT_LITERAL_END = "expected '}' after struct literal";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGUMENT = "expected generic type argument";
+
+inline constexpr std::string_view PARSER_EXPECT_GENERIC_ARGUMENT =
+    "expected generic type or const argument";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR =
     "expected ',' or ']' after generic type argument";

@@ -288,6 +288,7 @@ bool is_trivia_token(const TokenKind kind) noexcept
 namespace {
 
 std::string dyn_trait_principal_label(const AstModule& module, TypeId id);
+std::string type_label(const AstModule& module, TypeId id);
 
 void indent(std::ostringstream& out, const int depth)
 {
@@ -307,6 +308,7 @@ struct ExprDumpView {
     std::string_view scope_name;
     std::string_view text;
     std::span<const TypeId> type_args{};
+    std::span<const GenericArgDecl> generic_args{};
     UnaryOp unary_op = UnaryOp::logical_not;
     ExprId unary_operand = INVALID_EXPR_ID;
     ExprId try_operand = INVALID_EXPR_ID;
@@ -361,12 +363,14 @@ struct ExprDumpView {
             view.scope_name = payload.scope_name;
             view.text = payload.text;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             break;
         }
         case ExprKind::generic_apply: {
             const GenericApplyExprPayload& payload = *module.exprs.generic_apply_payload(id.value);
             view.callee = payload.callee;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             break;
         }
         case ExprKind::unary: {
@@ -451,6 +455,7 @@ struct ExprDumpView {
             view.scope_name = payload.scope_name;
             view.struct_name = payload.name;
             view.type_args = readonly_span(payload.type_args);
+            view.generic_args = readonly_span(payload.generic_args);
             view.field_inits = readonly_span(payload.field_inits);
             break;
         }
@@ -522,6 +527,66 @@ std::string_view primitive_name(const PrimitiveTypeKind kind)
     return "unknown";
 }
 
+std::string const_expr_label(const AstModule& module, const ExprId id)
+{
+    if (!is_valid(id) || id.value >= module.exprs.size()) {
+        return "<invalid-const>";
+    }
+    const ExprKind kind = module.exprs.kind(id.value);
+    if (const LiteralExprPayload* const literal = module.exprs.literal_payload(id.value); literal != nullptr) {
+        return std::string(literal->text);
+    }
+    if (kind == ExprKind::name) {
+        const NameExprPayload* const payload = module.exprs.name_payload(id.value);
+        if (payload == nullptr) {
+            return "<invalid-const>";
+        }
+        std::string label;
+        if (!payload->scope_name.empty()) {
+            label += payload->scope_name;
+            label += ".";
+        }
+        label += payload->text;
+        return label;
+    }
+    return "<const-expr>";
+}
+
+void append_generic_arg_label(std::ostringstream& out, const AstModule& module, const GenericArgDecl& arg)
+{
+    if (arg.kind == GenericArgKind::type) {
+        out << type_label(module, arg.type);
+        return;
+    }
+    out << const_expr_label(module, arg.const_expr);
+}
+
+void append_generic_args_label(std::ostringstream& out, const AstModule& module,
+    const std::span<const GenericArgDecl> generic_args, const std::span<const TypeId> type_args)
+{
+    if (!generic_args.empty()) {
+        out << "[";
+        for (base::usize i = 0; i < generic_args.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            append_generic_arg_label(out, module, generic_args[i]);
+        }
+        out << "]";
+        return;
+    }
+    if (!type_args.empty()) {
+        out << "[";
+        for (base::usize i = 0; i < type_args.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << type_label(module, type_args[i]);
+        }
+        out << "]";
+    }
+}
+
 std::string type_label(const AstModule& module, const TypeId id)
 {
     if (!is_valid(id) || id.value >= module.types.size()) {
@@ -542,16 +607,7 @@ std::string type_label(const AstModule& module, const TypeId id)
                 out << type.scope_name << ".";
             }
             out << type.name;
-            if (!type.type_args.empty()) {
-                out << "[";
-                for (base::usize i = 0; i < type.type_args.size(); ++i) {
-                    if (i != 0) {
-                        out << ", ";
-                    }
-                    out << type_label(module, type.type_args[i]);
-                }
-                out << "]";
-            }
+            append_generic_args_label(out, module, type.generic_args, type.type_args);
             break;
         case TypeKind::dyn_trait:
             out << "dyn ";
@@ -573,15 +629,26 @@ std::string type_label(const AstModule& module, const TypeId id)
                     out << type.scope_name << ".";
                 }
                 out << type.name;
-                if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
+                if (!type.generic_args.empty() || !type.type_args.empty()
+                    || !type.associated_type_constraints.empty()) {
                     out << "[";
                     bool first = true;
-                    for (const TypeId arg : type.type_args) {
-                        if (!first) {
-                            out << ", ";
+                    if (!type.generic_args.empty()) {
+                        for (const GenericArgDecl& arg : type.generic_args) {
+                            if (!first) {
+                                out << ", ";
+                            }
+                            first = false;
+                            append_generic_arg_label(out, module, arg);
                         }
-                        first = false;
-                        out << type_label(module, arg);
+                    } else {
+                        for (const TypeId arg : type.type_args) {
+                            if (!first) {
+                                out << ", ";
+                            }
+                            first = false;
+                            out << type_label(module, arg);
+                        }
                     }
                     for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
                         if (!first) {
@@ -619,7 +686,13 @@ std::string type_label(const AstModule& module, const TypeId id)
             out << type_label(module, type.pointee);
             break;
         case TypeKind::array:
-            out << "[" << type.array_count << "]" << type_label(module, type.array_element);
+            out << "[";
+            if (type.array_length.kind == ArrayLengthKind::const_expr) {
+                out << const_expr_label(module, type.array_length.expr);
+            } else {
+                out << type.array_count;
+            }
+            out << "]" << type_label(module, type.array_element);
             break;
         case TypeKind::slice:
             out << "[]" << (type.slice_mutability == PointerMutability::mut ? "mut " : "const ");
@@ -682,15 +755,25 @@ std::string dyn_trait_principal_label(const AstModule& module, const TypeId id)
         out << type.scope_name << ".";
     }
     out << type.name;
-    if (!type.type_args.empty() || !type.associated_type_constraints.empty()) {
+    if (!type.generic_args.empty() || !type.type_args.empty() || !type.associated_type_constraints.empty()) {
         out << "[";
         bool first = true;
-        for (const TypeId arg : type.type_args) {
-            if (!first) {
-                out << ", ";
+        if (!type.generic_args.empty()) {
+            for (const GenericArgDecl& arg : type.generic_args) {
+                if (!first) {
+                    out << ", ";
+                }
+                first = false;
+                append_generic_arg_label(out, module, arg);
             }
-            first = false;
-            out << type_label(module, arg);
+        } else {
+            for (const TypeId arg : type.type_args) {
+                if (!first) {
+                    out << ", ";
+                }
+                first = false;
+                out << type_label(module, arg);
+            }
         }
         for (const AssociatedTypeConstraintDecl& constraint : type.associated_type_constraints) {
             if (!first) {
@@ -1057,16 +1140,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             out << expr.scope_name << ".";
         }
         out << expr.text << "`";
-        if (!expr.type_args.empty()) {
-            out << "[";
-            for (base::usize i = 0; i < expr.type_args.size(); ++i) {
-                if (i != 0) {
-                    out << ", ";
-                }
-                out << type_label(module, expr.type_args[i]);
-            }
-            out << "]";
-        }
+        append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     }
     if (!expr.field_name.empty()) {
         out << " ." << expr.field_name;
@@ -1077,28 +1151,12 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             out << expr.scope_name << ".";
         }
         out << expr.struct_name;
-        if (!expr.type_args.empty()) {
-            out << "[";
-            for (base::usize i = 0; i < expr.type_args.size(); ++i) {
-                if (i != 0) {
-                    out << ", ";
-                }
-                out << type_label(module, expr.type_args[i]);
-            }
-            out << "]";
-        }
+        append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     } else if (expr.kind == ExprKind::struct_literal && is_valid(expr.object)) {
         out << " <selector>";
     }
-    if (expr.kind == ExprKind::generic_apply && !expr.type_args.empty()) {
-        out << "[";
-        for (base::usize i = 0; i < expr.type_args.size(); ++i) {
-            if (i != 0) {
-                out << ", ";
-            }
-            out << type_label(module, expr.type_args[i]);
-        }
-        out << "]";
+    if (expr.kind == ExprKind::generic_apply && (!expr.generic_args.empty() || !expr.type_args.empty())) {
+        append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     }
     if (is_valid(expr.cast_type)) {
         out << " to " << type_label(module, expr.cast_type);
@@ -1222,8 +1280,13 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
                 }
                 if (item.generic_params[i].kind == GenericParamKind::origin) {
                     out << "origin ";
+                } else if (item.generic_params[i].kind == GenericParamKind::const_) {
+                    out << "const ";
                 }
                 out << item.generic_params[i].name;
+                if (item.generic_params[i].kind == GenericParamKind::const_) {
+                    out << ": " << type_label(module, item.generic_params[i].const_type);
+                }
             }
             out << "]";
         }

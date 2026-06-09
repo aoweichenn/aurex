@@ -36,6 +36,19 @@ constexpr base::u64 SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_KEY_MARKER = 0x53454d41474
 constexpr base::usize SEMA_GENERIC_PARAM_ENV_PREDICATE_SIZE_ESTIMATE = 16;
 constexpr char SEMA_GENERIC_TEMPLATE_KEY_SEPARATOR = ':';
 
+[[nodiscard]] query::GenericParamKind map_generic_param_kind(const syntax::GenericParamKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::GenericParamKind::type:
+            return query::GenericParamKind::type;
+        case syntax::GenericParamKind::const_:
+            return query::GenericParamKind::const_;
+        case syntax::GenericParamKind::origin:
+            return query::GenericParamKind::lifetime;
+    }
+    return query::GenericParamKind::type;
+}
+
 [[nodiscard]] base::Result<void> append_canonical_type_key(query::StableKeyWriter& writer, const TypeTable& types,
     const TypeHandle type, const CanonicalTypeKeyResolver& resolver)
 {
@@ -178,6 +191,20 @@ void SemanticAnalyzerCore::index_generic_param_query_keys(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
     const query::DefKey owner_key = this->generic_template_query_key(info, name_space);
+    if (!info.ordered_param_identities.empty()) {
+        for (base::usize index = 0; index < info.ordered_param_identities.size(); ++index) {
+            const GenericParamIdentity identity = info.ordered_param_identities[index];
+            if (!is_valid(identity)) {
+                continue;
+            }
+            const syntax::GenericParamKind syntax_kind = index < info.ordered_param_kinds.size()
+                ? info.ordered_param_kinds[index]
+                : syntax::GenericParamKind::type;
+            this->state_.generics.param_query_keys[identity] = query::generic_param_key(
+                owner_key, static_cast<base::u32>(index), map_generic_param_kind(syntax_kind));
+        }
+        return;
+    }
     for (base::usize index = 0; index < info.param_identities.size(); ++index) {
         const GenericParamIdentity identity = info.param_identities[index];
         if (!is_valid(identity)) {
@@ -238,6 +265,15 @@ std::optional<query::GenericParamKey> SemanticAnalyzerCore::canonical_generic_pa
 {
     if (!is_valid(info.generic_identity)) {
         return std::nullopt;
+    }
+    for (base::usize index = 0; index < owner.ordered_param_identities.size(); ++index) {
+        if (owner.ordered_param_identities[index] == info.generic_identity) {
+            const syntax::GenericParamKind syntax_kind = index < owner.ordered_param_kinds.size()
+                ? owner.ordered_param_kinds[index]
+                : syntax::GenericParamKind::type;
+            return query::generic_param_key(
+                owner_key, static_cast<base::u32>(index), map_generic_param_kind(syntax_kind));
+        }
     }
     for (base::usize index = 0; index < owner.param_identities.size(); ++index) {
         if (owner.param_identities[index] == info.generic_identity) {
@@ -302,11 +338,19 @@ query::ParamEnvKey SemanticAnalyzerCore::generic_param_env_key(const GenericTemp
 base::Result<SemanticAnalyzerCore::GenericInstanceIdentity> SemanticAnalyzerCore::generic_instance_identity(
     const GenericTemplateInfo& info, const std::span<const TypeHandle> args, const query::DefNamespace name_space) const
 {
+    GenericArgumentBundle bundle;
+    bundle.type_args.assign(args.begin(), args.end());
+    return this->generic_instance_identity(info, bundle, name_space);
+}
+
+base::Result<SemanticAnalyzerCore::GenericInstanceIdentity> SemanticAnalyzerCore::generic_instance_identity(
+    const GenericTemplateInfo& info, const GenericArgumentBundle& args, const query::DefNamespace name_space) const
+{
     const query::DefKey template_key = this->generic_template_query_key(info, name_space);
     GenericInstanceCanonicalResolver resolver(*this, info, template_key);
     std::vector<query::CanonicalTypeKey> canonical_args;
-    canonical_args.reserve(args.size());
-    for (const TypeHandle arg : args) {
+    canonical_args.reserve(args.type_args.size());
+    for (const TypeHandle arg : args.type_args) {
         base::Result<query::CanonicalTypeKey> canonical_arg =
             build_canonical_type_key(this->state_.checked.types, arg, resolver);
         if (!canonical_arg) {
@@ -318,8 +362,8 @@ base::Result<SemanticAnalyzerCore::GenericInstanceIdentity> SemanticAnalyzerCore
         canonical_args.push_back(canonical_arg.take_value());
     }
 
-    query::GenericInstanceKey key = query::generic_instance_key(template_key, canonical_args,
-        std::span<const query::StableFingerprint128>{}, this->generic_param_env_key(info));
+    query::GenericInstanceKey key =
+        query::generic_instance_key(template_key, canonical_args, args.const_args, this->generic_param_env_key(info));
     std::string fingerprint_text(SEMA_GENERIC_INSTANCE_FINGERPRINT_PREFIX);
     fingerprint_text += query::debug_string(query::stable_key_fingerprint(key));
     return base::Result<GenericInstanceIdentity>::ok(GenericInstanceIdentity{

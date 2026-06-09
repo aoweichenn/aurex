@@ -26,8 +26,17 @@ public:
     bool type_supports_equality_operator(const TypeHandle type) const;
     bool type_supports_ordering_operator(const TypeHandle type) const;
     bool type_supports_hash_capability(const TypeHandle type) const;
+    bool type_is_const_generic_scalar(const TypeHandle type) const;
     bool validate_generic_arguments(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    bool validate_generic_argument_bundle(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range);
+    base::Result<query::StableFingerprint128> const_generic_arg_fingerprint(
+        const syntax::GenericArgDecl& arg, TypeHandle expected_type, const base::SourceRange& use_range);
+    base::Result<GenericArgumentBundle> resolve_generic_argument_bundle(
+        const GenericTemplateInfo& info, std::span<const syntax::GenericArgDecl> args,
+        const base::SourceRange& use_range);
+    [[nodiscard]] bool type_arg_is_simple_const_param_name(const syntax::TypeNode& type) const noexcept;
     [[nodiscard]] bool type_satisfies_trait_predicate(
         TypeHandle type, const TraitPredicate& predicate, const base::SourceRange& use_range);
     [[nodiscard]] bool generic_param_has_trait_predicate(TypeHandle param, const TraitPredicate& predicate) const;
@@ -47,15 +56,25 @@ public:
     void populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context);
     void populate_generic_concrete_context(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, GenericContext& context) const;
+    void populate_generic_concrete_context(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, GenericContext& context) const;
     std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
+    std::string generic_instance_key_suffix(const GenericArgumentBundle& args) const;
     std::string generic_instance_abi_suffix(const query::GenericInstanceKey& key) const;
     std::string generic_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    std::string generic_instance_key(const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     std::string generic_struct_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    std::string generic_struct_instance_key(const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     std::string generic_enum_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    std::string generic_enum_instance_key(const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     std::string generic_type_alias_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    std::string generic_type_alias_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     std::string generic_function_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    std::string generic_function_instance_key(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args) const;
     const SemanticAnalyzerCore::GenericTemplateInfo* find_generic_struct_in_visible_modules(
         const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown);
     const SemanticAnalyzerCore::GenericTemplateInfo* find_generic_struct_in_module(const syntax::ModuleId module,
@@ -82,10 +101,16 @@ public:
         const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown);
     TypeHandle instantiate_generic_struct(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
         syntax::TypeId use_type_id, const std::vector<TypeHandle>& args);
+    TypeHandle instantiate_generic_struct(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id, const GenericArgumentBundle& args);
     TypeHandle instantiate_generic_enum(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
         syntax::TypeId use_type_id, const std::vector<TypeHandle>& args);
+    TypeHandle instantiate_generic_enum(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id, const GenericArgumentBundle& args);
     TypeHandle instantiate_generic_type_alias(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
         syntax::TypeId use_type_id, const std::vector<TypeHandle>& args, const bool opaque_allowed_as_pointee);
+    TypeHandle instantiate_generic_type_alias(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id, const GenericArgumentBundle& args, const bool opaque_allowed_as_pointee);
     bool unify_generic_type(const TypeHandle pattern, const TypeHandle actual,
         std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred) const;
     bool infer_generic_arguments(
@@ -100,9 +125,13 @@ public:
         std::vector<TypeHandle>& args);
     FunctionSignature* instantiate_generic_placeholder_function(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    FunctionSignature* instantiate_generic_placeholder_function(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range);
     bool type_contains_generic_param(const TypeHandle type) const;
     FunctionSignature* instantiate_generic_function(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    FunctionSignature* instantiate_generic_function(
+        const GenericTemplateInfo& info, const GenericArgumentBundle& args, const base::SourceRange& use_range);
     FunctionSignature* instantiate_generic_method(const GenericTemplateInfo& info, const TypeHandle owner_type,
         const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
     FunctionSignature* find_generic_method_in_visible_modules(const TypeHandle owner_type, const IdentId name_id,

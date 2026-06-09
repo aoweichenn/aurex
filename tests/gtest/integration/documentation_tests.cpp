@@ -179,7 +179,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+        "当前最高优先级：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -282,7 +282,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+        "当前最高优先级：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md", "M10 已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11a 也已结束");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M10d 已完成 hardening/release closure");
@@ -318,7 +318,8 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
-    expect_document_contains("docs/zh/README.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
+    expect_document_contains(
+        "docs/zh/README.md", "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -328,7 +329,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "FunctionDynAbiFacts");
     expect_document_contains("docs/zh/README.md", "composition_projections");
     expect_document_contains("docs/zh/README.md", "combo.draw()");
-    expect_document_contains("docs/zh/progress.md", "阶段：M13a Advanced Dyn Remaining Policy Design Baseline");
+    expect_document_contains(
+        "docs/zh/progress.md", "阶段：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+    expect_document_contains(
+        "docs/zh/progress.md", "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 已完成");
+    expect_document_contains("docs/zh/progress.md", "dynproject[SourcePrincipal, TargetSupertrait](view)");
+    expect_document_contains("docs/zh/progress.md", "CompositionProjectionFact{kind=composition_to_supertrait}");
     expect_document_contains("docs/zh/progress.md", "M13a Advanced Dyn Remaining Policy Design Baseline 已完成");
     expect_document_contains("docs/zh/progress.md", "m13a_dyn_advanced_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "M12b Direct Composition Dispatch Hardening / Release Closure 已完成");
@@ -350,7 +356,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "ready_for_future_stage");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+        "当前最高优先级：M13c Borrowed Composition-To-Supertrait IR / Backend Runtime");
     expect_document_contains("docs/zh/next-steps.md",
         "M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set");
     expect_document_contains("docs/zh/next-steps.md", "M11b 也已结束");
@@ -360,10 +366,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M12a 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M12b 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M13a 也已结束");
+    expect_document_contains("docs/zh/next-steps.md", "M13b 也已结束");
     expect_document_contains("docs/zh/next-steps.md", "M12b hardening/release");
     expect_document_contains("docs/zh/next-steps.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
     expect_document_contains("docs/zh/next-steps.md",
         "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+    expect_document_contains(
+        "docs/zh/next-steps.md", "M13c Borrowed Composition-To-Supertrait IR / Backend Runtime");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M11a 已选择 principal-set borrowed dyn composition design/query gate");
     expect_document_contains("docs/zh/language-feature-inventory.md",
@@ -374,17 +383,27 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M12b 已完成 receiver-access binding");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M13a 已选择 borrowed composition-to-supertrait explicit projection");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M13b 已支持 `dynproject[Child, Parent](view)` check-only 显式投影");
     expect_document_contains("docs/zh/language-manual.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
+    expect_document_contains(
+        "docs/zh/language-manual.md",
+        "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
     expect_document_contains("docs/zh/language-manual.md", "m13a_dyn_advanced_design_gate_baseline");
     expect_document_contains("docs/zh/language-manual.md", "composes_existing_metadata_policies");
+    expect_document_contains("docs/zh/language-manual.md", "dynproject[SourcePrincipal, TargetSupertrait](view)");
+    expect_document_contains("docs/zh/language-manual.md", "dynproject[Child, Parent](view)");
     expect_document_contains("docs/zh/language-manual.md", "M12b direct composition dispatch release closure");
     expect_document_contains("docs/zh/language-manual.md", "dyn (Draw + Debug)");
     expect_document_contains("docs/zh/language-manual.md", "M11e borrowed principal-set composition release closure");
     expect_document_contains("docs/zh/language-manual.md", "composition_projections");
     expect_document_contains("docs/zh/language-manual.md", "view.draw()");
-    expect_document_contains("docs/zh/usage.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
+    expect_document_contains(
+        "docs/zh/usage.md", "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
     expect_document_contains("docs/zh/usage.md", "m13a_dyn_advanced_design_gate_baseline");
     expect_document_contains("docs/zh/usage.md", "score_direct");
+    expect_document_contains("docs/zh/usage.md", "score_supertrait");
+    expect_document_contains("docs/zh/usage.md", "dynproject[Render, Draw](view)");
     expect_document_contains("docs/zh/usage.md", "composition_metadata=principal_set_metadata_v1");
 
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
@@ -483,6 +502,11 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "do_not_add_new_principal_set_metadata_policy");
     expect_document_contains("docs/zh/m13-advanced-dyn-design.md",
         "M13b frontend/query/sema check-only");
+    expect_document_contains("docs/zh/m13-advanced-dyn-design.md",
+        "dynproject[SourcePrincipal, TargetSupertrait](view)");
+    expect_document_contains("docs/zh/version.md",
+        "## M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
+    expect_document_contains("docs/zh/version.md", "supertrait_projections");
     expect_document_contains("docs/zh/version.md", "PrincipalSetCompositionFacts");
     expect_document_contains("docs/zh/next-steps.md",
         "M11e Principal-Set Composition Hardening / Release Closure");

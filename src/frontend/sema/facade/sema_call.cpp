@@ -15,7 +15,10 @@ namespace aurex::sema {
 namespace {
 
 constexpr base::u32 SEMA_RECEIVER_ARGUMENT_COUNT = 1;
+constexpr base::usize SEMA_DYNPROJECT_REQUIRED_TYPE_ARGS = 2;
+constexpr base::usize SEMA_DYNPROJECT_REQUIRED_ARGS = 1;
 constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
+constexpr std::string_view SEMA_DYNPROJECT_INTRINSIC_NAME = "dynproject";
 
 [[nodiscard]] std::string module_selector_path_name(const std::vector<std::string_view>& parts)
 {
@@ -43,6 +46,38 @@ constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
 [[nodiscard]] bool sema_call_valid_expr(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
 {
     return syntax::is_valid(expr) && expr.value < module.exprs.size();
+}
+
+[[nodiscard]] bool is_unqualified_dynproject_selector(
+    const SemanticAnalyzerCore::NamedTypeSelector& selector) noexcept
+{
+    return !selector.qualified && selector.name == SEMA_DYNPROJECT_INTRINSIC_NAME;
+}
+
+[[nodiscard]] bool is_single_trait_object(const TypeTable& types, const TypeHandle type) noexcept
+{
+    return is_valid(type) && type.value < types.size()
+        && types.get(type).kind == TypeKind::trait_object
+        && types.get(type).trait_object_principal_types.empty()
+        && query::is_valid(types.get(type).trait_object_key);
+}
+
+[[nodiscard]] syntax::TypeNode make_dyn_trait_type_from_selector(
+    const syntax::TypeNode& source_type, const base::SourceRange& fallback_range)
+{
+    syntax::TypeNode dyn_trait;
+    dyn_trait.kind = syntax::TypeKind::dyn_trait;
+    dyn_trait.range = source_type.range.empty() ? fallback_range : source_type.range;
+    dyn_trait.scope_name = source_type.scope_name;
+    dyn_trait.scope_range = source_type.scope_range;
+    dyn_trait.scope_parts = source_type.scope_parts;
+    dyn_trait.scope_name_id = source_type.scope_name_id;
+    dyn_trait.scope_part_ids = source_type.scope_part_ids;
+    dyn_trait.name = source_type.name;
+    dyn_trait.name_id = source_type.name_id;
+    dyn_trait.type_args = source_type.type_args;
+    dyn_trait.associated_type_constraints = source_type.associated_type_constraints;
+    return dyn_trait;
 }
 
 [[nodiscard]] std::optional<syntax::ExprId> receiver_expr_for_call_callee(
@@ -475,6 +510,9 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
     const SemanticAnalyzerCore::ExprView callee = this->expr_view(expr.callee);
     if (callee.kind == syntax::ExprKind::generic_apply) {
         const NamedTypeSelector selector = this->resolve_named_type_selector(expr.callee, false);
+        if (is_unqualified_dynproject_selector(selector)) {
+            return this->analyze_dynproject_intrinsic_call(expr_id, expr, callee);
+        }
         if (selector.name.empty()) {
             if (syntax::is_valid(callee.callee) && callee.callee.value < this->ctx_.module.exprs.size()) {
                 const SemanticAnalyzerCore::ExprView generic_callee = this->expr_view(callee.callee);
@@ -518,6 +556,89 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
         return this->analyze_field_call_expr(expr_id, expr, callee, name, expected_type);
     }
     return this->analyze_function_call_expr(expr_id, expr, callee, name, expected_type);
+}
+
+TypeHandle SemanticAnalyzerCore::analyze_dynproject_intrinsic_call(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzerCore::ExprView& expr,
+    const SemanticAnalyzerCore::ExprView& generic_apply)
+{
+    if (generic_apply.type_args.size() != SEMA_DYNPROJECT_REQUIRED_TYPE_ARGS) {
+        this->report_type(generic_apply.range, std::string(sema::SEMA_DYNPROJECT_TYPE_ARGUMENT_COUNT));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    if (expr.args.size() != SEMA_DYNPROJECT_REQUIRED_ARGS) {
+        this->report_type(expr.range, std::string(sema::SEMA_DYNPROJECT_ARGUMENT_COUNT));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    auto resolve_dyn_trait_projection_type =
+        [&](const syntax::TypeId type_id, const std::string_view diagnostic) -> TypeHandle {
+        if (!syntax::is_valid(type_id) || type_id.value >= this->ctx_.module.types.size()) {
+            this->report_type(generic_apply.range, std::string(diagnostic));
+            return INVALID_TYPE_HANDLE;
+        }
+        const syntax::TypeNode source_type = this->ctx_.module.types[type_id.value];
+        const syntax::TypeId dyn_trait_type =
+            this->ctx_.module.push_type(make_dyn_trait_type_from_selector(source_type, generic_apply.range));
+        const TypeHandle resolved = this->resolve_type(dyn_trait_type);
+        if (!is_single_trait_object(this->state_.checked.types, resolved)) {
+            this->report_type(source_type.range, std::string(diagnostic));
+            return INVALID_TYPE_HANDLE;
+        }
+        return resolved;
+    };
+
+    const TypeHandle source_principal_type =
+        resolve_dyn_trait_projection_type(generic_apply.type_args[0], SEMA_DYNPROJECT_SOURCE_PRINCIPAL);
+    const TypeHandle target_supertrait_type =
+        resolve_dyn_trait_projection_type(generic_apply.type_args[1], SEMA_DYNPROJECT_TARGET_SUPERTRAIT);
+    if (!is_valid(source_principal_type) || !is_valid(target_supertrait_type)) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const TypeHandle argument_type = this->analyze_expr(expr.args.front());
+    if (!this->state_.checked.types.is_reference(argument_type)) {
+        this->report_type(call_expr_range_or(this->ctx_.module, expr.args.front(), expr.range),
+            std::string(SEMA_DYNPROJECT_ARGUMENT_COMPOSITION));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    const TypeInfo& argument_ref = this->state_.checked.types.get(argument_type);
+    if (!is_valid(argument_ref.pointee) || argument_ref.pointee.value >= this->state_.checked.types.size()) {
+        this->report_type(call_expr_range_or(this->ctx_.module, expr.args.front(), expr.range),
+            std::string(SEMA_DYNPROJECT_ARGUMENT_COMPOSITION));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    const TypeInfo& composition_object = this->state_.checked.types.get(argument_ref.pointee);
+    if (composition_object.kind != TypeKind::trait_object
+        || composition_object.trait_object_principal_types.empty()
+        || composition_object.trait_object_principal_set_identity.byte_count == 0) {
+        this->report_type(call_expr_range_or(this->ctx_.module, expr.args.front(), expr.range),
+            std::string(SEMA_DYNPROJECT_ARGUMENT_COMPOSITION));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const bool source_in_composition =
+        std::ranges::any_of(composition_object.trait_object_principal_types, [&](const TypeHandle principal) {
+            return this->state_.checked.types.same(principal, source_principal_type);
+        });
+    if (!source_in_composition) {
+        this->report_type(generic_apply.range, std::string(SEMA_DYNPROJECT_SOURCE_NOT_IN_COMPOSITION));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const TypeInfo& source_principal = this->state_.checked.types.get(source_principal_type);
+    const TypeInfo& target_supertrait = this->state_.checked.types.get(target_supertrait_type);
+    if (this->find_supertrait_edge_path(source_principal, target_supertrait) == nullptr) {
+        this->report_type(generic_apply.range, std::string(SEMA_DYNPROJECT_TARGET_NOT_SUPERTRAIT));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const TypeHandle target_reference_type =
+        this->state_.checked.types.reference(argument_ref.pointer_mutability, target_supertrait_type);
+    this->record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
+        expr.args.front(), argument_type, target_reference_type, source_principal_type, expr.range);
+    return this->record_expr_type(expr_id, target_reference_type);
 }
 
 TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(const syntax::ExprId expr_id,

@@ -1,5 +1,48 @@
 # 版本文档
 
+## M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
+
+M13b 已完成 borrowed composition-to-supertrait explicit projection 的 frontend / query / sema check-only 子集。
+当前用户可写：
+
+```aurex
+dynproject[SourcePrincipal, TargetSupertrait](view)
+```
+
+示例：
+
+```aurex
+trait Parent { fn parent(self: &Self) -> i32; }
+trait Child: Parent { fn child(self: &Self) -> i32; }
+trait Debug { fn debug(self: &Self) -> i32; }
+
+fn score(view: &dyn (Child + Debug)) -> i32 {
+    let parent: &dyn Parent = dynproject[Child, Parent](view);
+    return parent.parent();
+}
+```
+
+M13b 新增或固定：
+
+- `dynproject` 是 sema 识别的上下文 intrinsic，不是新的 lexer keyword；当前只对未限定
+  `dynproject[...]()` 调用形状生效。
+- `dynproject[...]` 必须恰好有两个 type arguments 和一个 value argument。
+- 第一个 type argument 必须解析为 source principal trait object，且该 principal 必须存在于 source
+  `&dyn (A + B)` / `&mut dyn (A + B)` composition 中。
+- 第二个 type argument 必须解析为 target supertrait trait object，且必须能从 source principal 的
+  direct/transitive supertrait path 到达。
+- 成功表达式返回 `&dyn TargetSupertrait` 或 `&mut dyn TargetSupertrait`，borrow kind 来自 source view；
+  后续 contextual assignment 可把 `&mut dyn Target` 降级为 `&dyn Target`。
+- 成功后记录 `CompositionProjectionFact{kind=composition_to_supertrait}`，summary/dump/fingerprint 暴露
+  `supertrait_projections`。
+- 负例覆盖 type-arg arity、value-arg arity、source/target 非 trait、argument 非 composition、source 不在
+  composition、target 不是 source 的 supertrait、隐式 assignment 以及 direct parent method dispatch。
+
+M13b 继续保持 no-std/compiler frontend 边界：不实现标准库、不实现 owning dyn、不实现 `Box<dyn Trait>`、
+不实现 allocator API/policy、不实现 dynamic Drop dispatch、不实现 trait-object destructor ABI、不实现 bare
+`dyn A + B` syntax，也不做 IR/backend runtime lowering。`let parent: &dyn Parent = view;` 和
+`view.parent()` 仍被拒绝。M13c 的下一步才会把 checked fact 降低为 runtime 路径。
+
 ## M13a Advanced Dyn Remaining Policy Design Baseline
 
 M13a 已完成 advanced dyn 剩余能力的 policy selection 和 query design gate。M13a 选择

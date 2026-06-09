@@ -75,6 +75,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/sema/sema_whitebox_tests.cpp
         tests/gtest/frontend/sema/statement_tests.cpp
         tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp
+        tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp
         tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
         tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
         tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
@@ -159,6 +160,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/sema_whitebox_tests.cpp
             tests/gtest/frontend/sema/statement_tests.cpp
             tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp
+            tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp
             tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
             tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
             tests/gtest/frontend/sema/trait_tests.cpp

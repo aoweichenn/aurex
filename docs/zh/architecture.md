@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M13a Advanced Dyn Remaining Policy Design Baseline。M2 已移除标准库层：
+当前架构基线是 M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -49,7 +49,10 @@
   descriptor 去重、query/cache fingerprint drift 和 broader negative matrix。M13a 已把下一条 advanced dyn 主线
   选为 borrowed composition-to-supertrait explicit projection，并固定 `m13a_dyn_advanced_design_gate_baseline`
   query gate；该主线组合已有 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`，不新增 runtime
-  metadata，也不打开隐式 composition-to-supertrait direct call。
+  metadata，也不打开隐式 composition-to-supertrait direct call。M13b 已把该主线的 frontend/query/sema check-only
+  子集落成 `dynproject[SourcePrincipal, TargetSupertrait](view)`，记录
+  `CompositionProjectionFact{kind=composition_to_supertrait}` 和 `supertrait_projections` query summary；IR/backend
+  runtime lowering 留给 M13c。
 - owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、多 trait object
   composition-to-supertrait 隐式多步 direct dispatch、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。

@@ -61,6 +61,8 @@ constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F64 = "f64";
 constexpr int SEMA_TUPLE_FIELD_INDEX_DECIMAL_BASE = 10;
 constexpr std::string_view SEMA_PRINCIPAL_SET_WITNESS_TAG = "sema.principal_set.witness.v1";
 constexpr std::string_view SEMA_PRINCIPAL_SET_PROJECTION_TAG = "sema.principal_set.projection.v1";
+constexpr std::string_view SEMA_PRINCIPAL_SET_SUPERTRAIT_PROJECTION_TAG =
+    "sema.principal_set.supertrait_projection.v1";
 
 struct IntegerLiteralParts {
     std::string_view digits;
@@ -202,6 +204,30 @@ struct TupleFieldIndexParse {
     writer.write_string(types.display_name(target_type));
     writer.write_fingerprint(principal_set_identity);
     query::append_stable_key(writer, principal);
+    writer.write_u8(static_cast<base::u8>(borrow_kind));
+    return writer.fingerprint();
+}
+
+[[nodiscard]] query::StableFingerprint128 principal_composition_supertrait_projection_fingerprint(
+    const TypeTable& types,
+    const TypeHandle source_type,
+    const TypeHandle source_principal_type,
+    const TypeHandle target_type,
+    const query::StableFingerprint128 principal_set_identity,
+    const query::TraitObjectTypeKey& source_principal,
+    const query::TraitObjectTypeKey& target_object,
+    const query::StableFingerprint128 edge_fingerprint,
+    const query::DynBorrowKind borrow_kind)
+{
+    query::StableKeyWriter writer;
+    writer.write_string(SEMA_PRINCIPAL_SET_SUPERTRAIT_PROJECTION_TAG);
+    writer.write_string(types.display_name(source_type));
+    writer.write_string(types.display_name(source_principal_type));
+    writer.write_string(types.display_name(target_type));
+    writer.write_fingerprint(principal_set_identity);
+    query::append_stable_key(writer, source_principal);
+    query::append_stable_key(writer, target_object);
+    writer.write_fingerprint(edge_fingerprint);
     writer.write_u8(static_cast<base::u8>(borrow_kind));
     return writer.fingerprint();
 }
@@ -791,6 +817,88 @@ void SemanticAnalyzerCore::record_borrowed_dyn_trait_composition_projection_if_n
     projection.projection_path = principal_composition_projection_fingerprint(this->state_.checked.types,
         source_object_type, target_object_type, source_object.trait_object_principal_set_identity,
         target_object.trait_object_key, borrow_kind);
+    projection.borrow_kind = borrow_kind;
+    projection.source_view_name = this->state_.checked.types.display_name(source_object_type);
+    projection.target_view_name = this->state_.checked.types.display_name(target_object_type);
+
+    if (!std::ranges::any_of(this->state_.checked.principal_set_composition_facts.projections,
+            [&](const query::CompositionProjectionFact& existing) {
+                return existing.projection_path == projection.projection_path;
+            })) {
+        query::record_composition_projection_fact(
+            this->state_.checked.principal_set_composition_facts, std::move(projection));
+    }
+    this->state_.checked.principal_set_composition_facts.fingerprint =
+        query::principal_set_composition_facts_fingerprint(this->state_.checked.principal_set_composition_facts);
+    this->record_coercion(expr, from_type, to_type, CoercionKind::borrowed_dyn_trait);
+}
+
+void SemanticAnalyzerCore::record_borrowed_dyn_trait_composition_supertrait_projection_if_needed(
+    const syntax::ExprId expr,
+    const TypeHandle from_type,
+    const TypeHandle to_type,
+    const TypeHandle source_principal_type,
+    const base::SourceRange& range)
+{
+    if (!syntax::is_valid(expr)
+        || !this->state_.checked.types.is_reference(from_type)
+        || !this->state_.checked.types.is_reference(to_type)
+        || !is_valid(source_principal_type) || source_principal_type.value >= this->state_.checked.types.size()) {
+        return;
+    }
+
+    const TypeInfo& source_ref = this->state_.checked.types.get(from_type);
+    const TypeInfo& target_ref = this->state_.checked.types.get(to_type);
+    if (target_ref.pointer_mutability == PointerMutability::mut
+        && source_ref.pointer_mutability != PointerMutability::mut) {
+        return;
+    }
+    if (!is_valid(source_ref.pointee) || source_ref.pointee.value >= this->state_.checked.types.size()
+        || !is_valid(target_ref.pointee) || target_ref.pointee.value >= this->state_.checked.types.size()) {
+        return;
+    }
+
+    const TypeHandle source_object_type = source_ref.pointee;
+    const TypeHandle target_object_type = target_ref.pointee;
+    const TypeInfo& source_object = this->state_.checked.types.get(source_object_type);
+    const TypeInfo& source_principal = this->state_.checked.types.get(source_principal_type);
+    const TypeInfo& target_object = this->state_.checked.types.get(target_object_type);
+    if (source_object.kind != TypeKind::trait_object || target_object.kind != TypeKind::trait_object
+        || source_principal.kind != TypeKind::trait_object
+        || source_object.trait_object_principal_types.empty()
+        || source_object.trait_object_principal_set_identity.byte_count == 0
+        || !query::is_valid(source_principal.trait_object_key)
+        || !query::is_valid(target_object.trait_object_key)) {
+        return;
+    }
+    if (!std::ranges::any_of(source_object.trait_object_principal_types, [&](const TypeHandle principal) {
+            return this->state_.checked.types.same(principal, source_principal_type);
+        })) {
+        return;
+    }
+
+    const TraitSupertraitEdgeFact* const edge = this->find_supertrait_edge_path(source_principal, target_object);
+    if (edge == nullptr) {
+        return;
+    }
+
+    base::Result<query::CanonicalTypeKey> source_key = this->checked_canonical_type_key(source_object_type);
+    if (!source_key) {
+        this->report_internal_contract(range, source_key.error().message);
+        return;
+    }
+
+    const query::DynBorrowKind borrow_kind = principal_set_borrow_kind(target_ref.pointer_mutability);
+    query::CompositionProjectionFact projection;
+    projection.principal_set_identity = source_object.trait_object_principal_set_identity;
+    projection.kind = query::PrincipalSetProjectionKind::composition_to_supertrait;
+    projection.concrete_type = source_key.take_value();
+    projection.source_principal = source_principal.trait_object_key;
+    projection.target_object = target_object.trait_object_key;
+    projection.projection_path = principal_composition_supertrait_projection_fingerprint(this->state_.checked.types,
+        source_object_type, source_principal_type, target_object_type,
+        source_object.trait_object_principal_set_identity, source_principal.trait_object_key,
+        target_object.trait_object_key, edge->edge_fingerprint, borrow_kind);
     projection.borrow_kind = borrow_kind;
     projection.source_view_name = this->state_.checked.types.display_name(source_object_type);
     projection.target_view_name = this->state_.checked.types.display_name(target_object_type);

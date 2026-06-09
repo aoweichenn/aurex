@@ -345,6 +345,27 @@ inline constexpr std::string_view SEMA_EXPLICIT_GENERIC_CALL_SYNTAX =
 inline constexpr std::string_view SEMA_CALLEE_FUNCTION_NAME =
     "callee must be a function value; explicit generic calls use '[...]', for example id[i32](...)";
 
+inline constexpr std::string_view SEMA_DYNPROJECT_TYPE_ARGUMENT_COUNT =
+    "dynproject requires exactly two type arguments";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_ARGUMENT_COUNT =
+    "dynproject requires exactly one argument";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_SOURCE_PRINCIPAL =
+    "dynproject source must be a dyn trait principal";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_TARGET_SUPERTRAIT =
+    "dynproject target must be a dyn trait supertrait";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_ARGUMENT_COMPOSITION =
+    "dynproject argument must be a borrowed dyn trait composition";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_SOURCE_NOT_IN_COMPOSITION =
+    "dynproject source principal is not in the composition";
+
+inline constexpr std::string_view SEMA_DYNPROJECT_TARGET_NOT_SUPERTRAIT =
+    "dynproject target is not a supertrait of the selected source principal";
+
 inline constexpr std::string_view SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH =
     "enum payload constructor argument type mismatch";
 

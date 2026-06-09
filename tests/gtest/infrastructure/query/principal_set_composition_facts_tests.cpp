@@ -92,7 +92,8 @@ struct PrincipalSetFixture {
     fixture.draw_object = test_object_key("Draw", origin, "Draw");
     fixture.debug_object = test_object_key("Debug", origin, "Debug");
     fixture.display_object = test_object_key("Display", origin, "Display");
-    fixture.super_object = test_object_key("Renderable", origin, "Renderable");
+    fixture.super_object = test_object_key(
+        "Renderable", query::stable_fingerprint("origin:Renderable"), "Renderable");
     fixture.draw_layout = test_layout_key(fixture.concrete_type, fixture.draw_object, "Canvas:Draw");
     fixture.debug_layout = test_layout_key(fixture.concrete_type, fixture.debug_object, "Canvas:Debug");
     fixture.display_layout = test_layout_key(fixture.concrete_type, fixture.display_object, "Canvas:Display");
@@ -421,12 +422,16 @@ TEST(QueryUnit, PrincipalSetCompositionFactsValidationRejectsBoundaryDrift)
         fixture.super_object,
         query::DynBorrowKind::shared);
     EXPECT_TRUE(query::is_valid(projection));
+    EXPECT_NE(projection.source_principal.object_origin, projection.target_object.object_origin);
     projection.data_pointer_preserved = false;
     EXPECT_FALSE(query::is_valid(projection));
     projection.data_pointer_preserved = true;
     projection.origin_preserved = false;
     EXPECT_FALSE(query::is_valid(projection));
     projection.origin_preserved = true;
+    projection.target_object = projection.source_principal;
+    EXPECT_FALSE(query::is_valid(projection));
+    projection.target_object = fixture.super_object;
     projection.kind = static_cast<query::PrincipalSetProjectionKind>(QUERY_TEST_INVALID_ENUM_VALUE);
     EXPECT_FALSE(query::is_valid(projection));
 }

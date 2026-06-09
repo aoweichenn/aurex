@@ -613,6 +613,9 @@ bool is_valid(const CompositionProjectionFact& fact) noexcept
         && fact.source_principal.principal_trait == fact.target_object.principal_trait) {
         return false;
     }
+    if (fact.kind == PrincipalSetProjectionKind::composition_to_supertrait) {
+        return true;
+    }
     return fact.kind == PrincipalSetProjectionKind::concrete_to_composition
         || fact.source_principal.object_origin == fact.target_object.object_origin;
 }
@@ -821,6 +824,7 @@ std::string dump_principal_set_composition_facts(
            << " associated_equality_merges=" << facts.summary.associated_equality_merge_count
            << " conflicts=" << facts.summary.associated_equality_conflict_count
            << " projections=" << facts.summary.projection_count
+           << " supertrait_projections=" << facts.summary.supertrait_projection_count
            << " metadata="
            << principal_set_metadata_policy_name(PrincipalSetMetadataPolicy::principal_set_metadata_v1)
            << " fingerprint=" << debug_string(principal_set_composition_facts_fingerprint(facts)) << '\n';

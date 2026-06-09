@@ -1,9 +1,31 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M13a Advanced Dyn Remaining Policy Design Baseline
+阶段：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only
 
 ## 总体状态
+
+2026-06-09：M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 已完成。M13b 仍不实现
+标准库、owning dyn、`Box<dyn Trait>`、allocator、dynamic Drop dispatch、新 runtime metadata 或 IR/backend
+runtime lowering；它只把 M13a 选定的 borrowed composition-to-supertrait explicit projection 落到 frontend、
+query fact 和 sema check-only 层。
+
+当前用户可写的显式投影语法是：
+
+```aurex
+dynproject[SourcePrincipal, TargetSupertrait](view)
+```
+
+其中 `view` 必须是 `&dyn (A + B)` 或 `&mut dyn (A + B)` borrowed principal-set composition；
+`SourcePrincipal` 必须是 composition 中的某个 principal，`TargetSupertrait` 必须能从该 source principal 的
+direct/transitive supertrait path 到达。成功后，表达式类型为 `&dyn TargetSupertrait` 或
+`&mut dyn TargetSupertrait`，并记录 `CompositionProjectionFact{kind=composition_to_supertrait}`。`&mut`
+source 可以在后续上下文中降级到 shared target；shared source 仍不能升级成 mutable target。
+
+M13b 明确保持 M12b 的边界：`view.parent()` 这类 composition-to-supertrait direct call 仍被拒绝，
+`let parent: &dyn Parent = view;` 这种隐式 composition 到 supertrait coercion 也仍被拒绝。M13c 的下一步才是把
+已经 checked 的 fact 降低为 runtime 路径，预期复用 `trait_object_composition_project` +
+`trait_object_upcast` 等价组合，而不是引入新的 composition-supertrait metadata policy。
 
 2026-06-09：M13a Advanced Dyn Remaining Policy Design Baseline 已完成。M13a 没有实现标准库、owning dyn、
 `Box<dyn Trait>`、allocator、dynamic Drop dispatch、新 runtime metadata 或隐式 composition-to-supertrait direct

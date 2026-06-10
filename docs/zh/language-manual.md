@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
-日期：2026-06-09
-阶段：M16 Const Generic Frontend / Query / Sema Check-Only，建立在 M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+日期：2026-06-10
+阶段：M17 Dyn Ownership Runtime Preparation，建立在 M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -107,6 +107,12 @@ A | B         表示二选一
   `CompositionProjectionFact{kind=composition_to_supertrait}`，并 lowering 为
   `trait_object_composition_project` + `trait_object_upcast`。`FunctionDynAbiFacts::composition_supertrait_chains`、
   lower-IR query fingerprint、IDE semantic fact/hover 和 verifier negative matrix 已固定该 runtime chain。
+- 查询 M17 dyn ownership runtime preparation facts：`DynOwnershipRuntimeFacts`、
+  `DynOwnedContainerBoundaryFact`、`DynErasedDropGlueBoundaryFact`、`DynAllocatorBoundaryFact`、
+  `DynCleanupDropckBoundaryFact`、`dyn_ownership_runtime_facts_fingerprint()`、
+  `summarize_dyn_ownership_runtime_facts()`、`dump_dyn_ownership_runtime_facts()` 和
+  `m17_dyn_ownership_runtime_preparation_baseline()` 已固定 future owning dyn、erased drop glue、allocator 与
+  cleanup/dropck boundary。它们是 compiler/query/tooling facts，不是用户可写 owning dyn 语法。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -118,7 +124,9 @@ A | B         表示二选一
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
   歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
   generic const arithmetic 或 `<T>` 风格泛型。M16 已打开 typed scalar const generic check-only 子集，但没有
-  comptime arithmetic、const where predicate、runtime const-param array ABI 或标准库 const generic API。
+  comptime arithmetic、const where predicate、runtime const-param array ABI 或标准库 const generic API。M17 已新增
+  owning dyn runtime preparation facts，但 validation 仍会拒绝 standard library、`Box` surface、allocator API、
+  runtime lowering、dynamic Drop dispatch 或 borrowed vtable destructor slot 被标成已实现。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
 - 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、indexed move-out 或 `replace` / `take` / `swap` 内建；本地 tuple 元素 partial move/reinit 已支持，但 array/slice/index place 仍保守。
 - 本阶段明确不实现任何标准库 API 或标准库拥有型资源 wrapper；资源语义收口只发生在 compiler facts、IR marker、

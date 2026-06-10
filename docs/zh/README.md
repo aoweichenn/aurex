@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M16 Const Generic Frontend / Query / Sema Check-Only**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M17 Dyn Ownership Runtime Preparation**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -56,7 +56,11 @@ parser/AST/query/sema check-only：当前可写 `struct ArrayView[T, const N: us
 `[N]T`，`GenericInstanceKey::const_args` 会携带 const argument fingerprint，函数体内 `return N;` 可解析为 const
 generic value。M16 仍不实现标准库、owning dyn runtime、`Box<dyn Trait>`、dynamic Drop dispatch、runtime ABI lowering
 for unresolved const-param arrays、generic const arithmetic、const where predicate、associated const 或 dyn const
-equality dispatch。
+equality dispatch。M17 已完成 dyn ownership runtime preparation：`DynOwnershipRuntimeFacts`、
+`DynOwnedContainerBoundaryFact`、`DynErasedDropGlueBoundaryFact`、`DynAllocatorBoundaryFact` 和
+`DynCleanupDropckBoundaryFact` 固定 future owning dyn、erased drop glue、allocator 与 cleanup/dropck boundary；
+`m17_dyn_ownership_runtime_preparation_baseline()`、summary/dump/fingerprint 和 validation 会拒绝把 M17 伪装成已经
+实现标准库、`Box<dyn Trait>`、allocator API、owning dyn user value、runtime ABI lowering 或 dynamic Drop dispatch。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -108,6 +112,7 @@ equality dispatch。
 - [Aurex M14 Borrowed Dyn View Path Inference Release Baseline](m14-borrowed-dyn-view-path-release.md)
 - [Aurex M15 Advanced Dyn Ownership / Const Generic Boundary Design Baseline](m15-advanced-dyn-const-generic-design.md)
 - [Aurex M16 Const Generic Frontend / Query / Sema Check-Only Release Baseline](m16-const-generic-check-only-release.md)
+- [Aurex M17 Dyn Ownership Runtime Preparation Release Baseline](m17-dyn-ownership-runtime-prep-release.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

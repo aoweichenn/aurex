@@ -1,5 +1,38 @@
 # 版本文档
 
+## M17 Dyn Ownership Runtime Preparation
+
+M17 已完成 dyn ownership runtime preparation 的 compiler/query/tooling 事实边界。M17 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做 runtime ABI
+lowering。M17 的目标是把 future owning dyn、erased drop glue、allocator 和 cleanup/dropck runtime boundary 先变成
+稳定 facts、summary、dump、fingerprint 和 validation。
+
+M17 新增或固定：
+
+- `DynOwnershipRuntimeFacts`。
+- `DynOwnedContainerBoundaryFact`，固定 `owning_dyn_container_v1` 和 `owning_dyn_metadata_v1`。
+- `DynErasedDropGlueBoundaryFact`，固定 `dynamic_drop_metadata_v1`、`erased_drop_glue_identity_fact`、
+  `dynamic_drop_slot_layout_fact` 和 `dropck_erased_receiver_fact`。
+- `DynAllocatorBoundaryFact`，固定 `allocator_placement_policy_v1`、`allocator_metadata_v1`、
+  `allocator_identity_fact`、`allocator_placement_policy_fact` 和 `owned_dyn_deallocation_policy_fact`。
+- `DynCleanupDropckBoundaryFact`，把 cleanup/resource/dropck facts 桥接到 future erased drop boundary。
+- `DynOwnershipRuntimeSummary`，统计 standard-library blocker、runtime-lowering blocker、`Box` surface blocker、
+  allocator API blocker、dynamic-drop blocker、borrowed-vtable destructor-free 和 cleanup/dropck bridge。
+- `dyn_ownership_runtime_facts_fingerprint()`、`summarize_dyn_ownership_runtime_facts()`、
+  `dump_dyn_ownership_runtime_facts()`。
+- `m17_dyn_ownership_runtime_preparation_baseline()` 和
+  `is_valid_m17_dyn_ownership_runtime_preparation_baseline()`。
+
+M17 validation 明确拒绝：
+
+- 把 standard library、allocator API、`Box` surface、owning dyn user value 或 runtime ABI lowering 标记成已实现。
+- 把 dynamic Drop dispatch 标记成已实现。
+- 把 destructor slot 加进 borrowed vtable 或让 `borrowed_methods_only_v1` 承担 owning/drop ABI。
+- 让 summary 或 stable fingerprint 与当前 facts 漂移。
+
+下一阶段建议进入 M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate；M18 仍应先补 runtime-boundary
+设计和 query/tooling hardening，不应直接实现标准库 API。
+
 ## M16 Const Generic Frontend / Query / Sema Check-Only
 
 M16 已完成 const generic 的 frontend / query / sema check-only 子集。M16 不实现标准库、不实现 runtime owning

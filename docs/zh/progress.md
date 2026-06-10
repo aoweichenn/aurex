@@ -1,9 +1,29 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M16 Const Generic Frontend / Query / Sema Check-Only
+阶段：M17 Dyn Ownership Runtime Preparation
 
 ## 总体状态
+
+2026-06-10：M17 Dyn Ownership Runtime Preparation 已完成。M17 不实现标准库、不实现 `Box<dyn Trait>`、
+不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做 runtime ABI lowering；
+它只把 future owning dyn / erased drop glue / allocator / cleanup-dropck runtime boundary 固定为 compiler/query/tooling
+facts。
+
+M17 新增 `DynOwnershipRuntimeFacts`、`DynOwnedContainerBoundaryFact`、`DynErasedDropGlueBoundaryFact`、
+`DynAllocatorBoundaryFact`、`DynCleanupDropckBoundaryFact` 和 `DynOwnershipRuntimeSummary`。Baseline 入口是
+`m17_dyn_ownership_runtime_preparation_baseline()`；validation 入口是
+`is_valid_m17_dyn_ownership_runtime_preparation_baseline()`。Summary、dump 和
+`dyn_ownership_runtime_facts_fingerprint()` 会覆盖 `owning_dyn_container_v1`、
+`owning_dyn_metadata_v1`、`dynamic_drop_metadata_v1`、`allocator_placement_policy_v1`、
+`allocator_metadata_v1`、`cleanup_dropck_boundary_v1`、`erased_drop_glue_identity_fact`、
+`dynamic_drop_slot_layout_fact`、`dropck_erased_receiver_fact` 和 allocator/deallocation boundary facts。
+
+M17 的硬边界是：borrowed vtable 仍保持 destructor-free；standard-library blocker、runtime-lowering blocker、
+`Box` surface blocker、allocator API blocker 和 dynamic-drop blocker 都是 validation 不变量。任何把 M17 facts
+改成“标准库已实现”“allocator API 已实现”“runtime lowering 已实现”或“borrowed vtable 已有 destructor slot”的状态都会被
+query validation 拒绝。新增收口文档见
+[Aurex M17 Dyn Ownership Runtime Preparation Release Baseline](m17-dyn-ownership-runtime-prep-release.md)。
 
 2026-06-09：M16 Const Generic Frontend / Query / Sema Check-Only 已完成。M16 不实现标准库、
 不实现 owning dyn runtime、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch，也不做 runtime ABI lowering

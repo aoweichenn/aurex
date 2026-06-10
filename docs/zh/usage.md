@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M20a Owned Dyn Runtime Admission Design Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier/admission boundary facts 本身展开。
+本文描述当前 **M20b Owned Dyn IR Shape Prototype Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier/admission/shape facts 本身展开。
 
 M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` /
 `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的
@@ -38,6 +38,13 @@ M20a 新增 `m20_owned_dyn_runtime_admission_gate_baseline()`、`OwnedDynRuntime
 owned object layout、erased drop identity、allocator identity、runtime lowering ABI、`Box<dyn Trait>` surface 和
 borrowed dyn ABI separation 的后续顺序；仍不新增任何标准库 API、`Box<dyn Trait>` runtime、allocator API 或
 executable runtime。
+
+M20b 新增 `m20b_owned_dyn_ir_shape_prototype_gate_baseline()`、`OwnedDynIrShapePrototypeGate`、
+`OwnedDynIrShapePrototypeFact`、`OwnedDynObjectLayoutPrototype` 和
+`ir::owned_dyn_ir_shape_prototype_gate()`。Compiler-owned prototype 固定为 `{*mut u8 data, *const u8 vtable}` two-field
+handle；IR dump/fingerprint/verifier 和 query adapter 都能看见该形状。它不是用户可写 Aurex 语法，也不允许用户构造
+owning dyn value；drop identity、allocator identity、runtime ABI lowering、backend helper、标准库和
+`Box<dyn Trait>` 仍保持 blocked。
 
 ## 构建
 

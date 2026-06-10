@@ -53,6 +53,11 @@ inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID{GlobalConstantId::I
 inline constexpr base::u32 IR_INVALID_VTABLE_SLOT = std::numeric_limits<base::u32>::max();
 inline constexpr base::u32 IR_INVALID_VTABLE_SUPERTRAIT_EDGE = std::numeric_limits<base::u32>::max();
 inline constexpr base::u32 IR_INVALID_PRINCIPAL_INDEX = std::numeric_limits<base::u32>::max();
+inline constexpr base::u32 IR_OWNED_DYN_OBJECT_DATA_POINTER_FIELD = 0U;
+inline constexpr base::u32 IR_OWNED_DYN_OBJECT_VTABLE_POINTER_FIELD = 1U;
+inline constexpr base::u32 IR_OWNED_DYN_OBJECT_HANDLE_FIELD_COUNT = 2U;
+inline constexpr base::u32 IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED =
+    std::numeric_limits<base::u32>::max();
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept
 {
@@ -291,6 +296,38 @@ struct PrincipalSetMetadataLayoutKeyHash {
     [[nodiscard]] std::size_t operator()(PrincipalSetMetadataLayoutKey key) const noexcept;
 };
 
+enum class OwnedDynObjectLayoutPrototypePolicy : base::u8 {
+    compiler_owned_handle_metadata_v1 = 1,
+};
+
+[[nodiscard]] std::string_view owned_dyn_object_layout_prototype_policy_name(
+    OwnedDynObjectLayoutPrototypePolicy policy) noexcept;
+[[nodiscard]] bool is_valid(OwnedDynObjectLayoutPrototypePolicy policy) noexcept;
+
+struct OwnedDynObjectLayoutPrototype {
+    query::TraitObjectTypeKey object_type_key;
+    sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle data_pointer_type = sema::INVALID_TYPE_HANDLE;
+    sema::TypeHandle vtable_pointer_type = sema::INVALID_TYPE_HANDLE;
+    IrTextId symbol = INVALID_IR_TEXT_ID;
+    OwnedDynObjectLayoutPrototypePolicy policy =
+        OwnedDynObjectLayoutPrototypePolicy::compiler_owned_handle_metadata_v1;
+    base::u32 handle_field_count = IR_OWNED_DYN_OBJECT_HANDLE_FIELD_COUNT;
+    base::u32 data_pointer_field_index = IR_OWNED_DYN_OBJECT_DATA_POINTER_FIELD;
+    base::u32 vtable_pointer_field_index = IR_OWNED_DYN_OBJECT_VTABLE_POINTER_FIELD;
+    base::u32 erased_drop_runtime_slot = IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED;
+    base::u32 allocator_runtime_slot = IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED;
+    bool compiler_owned = true;
+    bool borrowed_abi_unchanged = true;
+    bool standard_library_blocked = true;
+    bool box_surface_blocked = true;
+    bool owning_dyn_user_value_blocked = true;
+    bool allocator_api_blocked = true;
+    bool runtime_lowering_blocked = true;
+    bool dynamic_drop_runtime_blocked = true;
+    bool backend_helper_blocked = true;
+};
+
 struct Value {
     Value();
     explicit Value(base::BumpAllocator& arena);
@@ -411,6 +448,9 @@ public:
     [[nodiscard]] PrincipalSetMetadataLayout make_principal_set_metadata_layout();
     [[nodiscard]] PrincipalSetMetadataLayout clone_principal_set_metadata_layout(
         const PrincipalSetMetadataLayout& other);
+    [[nodiscard]] OwnedDynObjectLayoutPrototype make_owned_dyn_object_layout_prototype();
+    [[nodiscard]] OwnedDynObjectLayoutPrototype clone_owned_dyn_object_layout_prototype(
+        const OwnedDynObjectLayoutPrototype& other);
 
     template <typename T>
     [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> source_values)
@@ -430,6 +470,7 @@ public:
     IrVector<RecordLayout> records;
     IrVector<TraitObjectVTableLayout> trait_object_vtables;
     IrVector<PrincipalSetMetadataLayout> principal_set_metadata_layouts;
+    IrVector<OwnedDynObjectLayoutPrototype> owned_dyn_object_layout_prototypes;
     IrVector<Value> values;
     IrVector<Function> functions;
     RecordIndexMap record_indices;

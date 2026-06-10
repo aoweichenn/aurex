@@ -1,9 +1,27 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20a Owned Dyn Runtime Admission Design Gate
+阶段：M20b Owned Dyn IR Shape Prototype Gate
 
 ## 总体状态
+
+2026-06-10：M20b Owned Dyn IR Shape Prototype Gate 已完成。M20b 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
+runtime helper call，也不做 runtime ABI lowering；它把 M20a admission gate 的 owned object layout prerequisite
+落成 compiler-owned IR shape prototype、query facts、dump/fingerprint 和 verifier negative matrix。
+
+M20b 新增 `OwnedDynObjectLayoutPrototype`、
+`OwnedDynObjectLayoutPrototypePolicy::compiler_owned_handle_metadata_v1` 和
+`Module::owned_dyn_object_layout_prototypes`。Prototype 固定为 two-field handle：field 0 是 `*mut u8` erased payload
+pointer，field 1 是 `*const u8` borrowed vtable pointer；erased drop runtime slot 和 allocator runtime slot 都保持
+blocked sentinel。IR dump、layout ABI fingerprint、Module copy/move 和 verifier 已全部消费该 prototype。
+
+M20b 同时新增 `OwnedDynIrShapePrototypeGate`、`OwnedDynIrShapePrototypeFact`、
+`OwnedDynIrShapePrototypeSummary`、`m20b_owned_dyn_ir_shape_prototype_gate_baseline()` 和
+`owned_dyn_ir_shape_prototype_gate()` IR adapter。Gate 固定 handle/data/vtable/drop-placeholder/
+allocator-placeholder/runtime-blocker 六类 facts，并继续要求 borrowed ABI unchanged、stdlib/Box/owning-user-value/
+allocator/runtime/dynamic-drop/backend-helper 全部 blocked。新增收口文档见
+[Aurex M20b Owned Dyn IR Shape Prototype Gate Release Baseline](m20-owned-dyn-ir-shape-prototype-release.md)。
 
 2026-06-10：M20a Owned Dyn Runtime Admission Design Gate 已完成。M20a 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend

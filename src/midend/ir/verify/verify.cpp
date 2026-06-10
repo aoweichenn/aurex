@@ -69,6 +69,7 @@ public:
         }
         this->verify_trait_object_vtables();
         this->verify_principal_set_metadata_layouts();
+        this->verify_owned_dyn_object_layout_prototypes();
         for (base::usize i = 0; i < this->module_.functions.size(); ++i) {
             this->verify_function(FunctionId{static_cast<base::u32>(i)}, this->module_.functions[i]);
         }
@@ -1226,6 +1227,70 @@ private:
         }
     }
 
+    void verify_owned_dyn_object_layout_prototypes()
+    {
+        std::unordered_set<base::u64> seen_objects;
+        seen_objects.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
+        std::unordered_set<IrTextId, sema::IdentIdHash> seen_symbols;
+        seen_symbols.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
+        for (const OwnedDynObjectLayoutPrototype& prototype : this->module_.owned_dyn_object_layout_prototypes) {
+            if (!query::is_valid(prototype.object_type_key)
+                || !is_valid(prototype.policy)
+                || !seen_objects.insert(prototype.object_type_key.global_id).second
+                || !this->module_.has_text(prototype.symbol)
+                || this->text(prototype.symbol).empty()
+                || !seen_symbols.insert(prototype.symbol).second) {
+                this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE));
+            }
+            this->verify_type(prototype.object_type, "owned dyn prototype object type");
+            this->verify_type(prototype.data_pointer_type, "owned dyn prototype data pointer");
+            this->verify_type(prototype.vtable_pointer_type, "owned dyn prototype vtable pointer");
+            if (!this->is_single_trait_object_type(prototype.object_type)
+                || this->module_.types.get(prototype.object_type).trait_object_key
+                    != prototype.object_type_key) {
+                this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_TYPE));
+            }
+            if (!this->is_pointer_to_builtin(
+                    prototype.data_pointer_type,
+                    sema::PointerMutability::mut,
+                    sema::BuiltinType::u8)
+                || !this->is_pointer_to_builtin(
+                    prototype.vtable_pointer_type,
+                    sema::PointerMutability::const_,
+                    sema::BuiltinType::u8)) {
+                this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_POINTER));
+            }
+            this->verify_owned_dyn_object_shape(prototype);
+            this->verify_owned_dyn_object_blockers(prototype);
+        }
+    }
+
+    void verify_owned_dyn_object_shape(const OwnedDynObjectLayoutPrototype& prototype)
+    {
+        if (prototype.handle_field_count != IR_OWNED_DYN_OBJECT_HANDLE_FIELD_COUNT
+            || prototype.data_pointer_field_index != IR_OWNED_DYN_OBJECT_DATA_POINTER_FIELD
+            || prototype.vtable_pointer_field_index != IR_OWNED_DYN_OBJECT_VTABLE_POINTER_FIELD
+            || prototype.erased_drop_runtime_slot != IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED
+            || prototype.allocator_runtime_slot != IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED) {
+            this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_SHAPE));
+        }
+    }
+
+    void verify_owned_dyn_object_blockers(const OwnedDynObjectLayoutPrototype& prototype)
+    {
+        if (!prototype.compiler_owned
+            || !prototype.borrowed_abi_unchanged
+            || !prototype.standard_library_blocked
+            || !prototype.box_surface_blocked
+            || !prototype.owning_dyn_user_value_blocked
+            || !prototype.allocator_api_blocked
+            || !prototype.runtime_lowering_blocked
+            || !prototype.dynamic_drop_runtime_blocked
+            || !prototype.backend_helper_blocked) {
+            this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_BLOCKED));
+        }
+    }
+
     void verify_vtable_supertrait_edge(const TraitObjectVTableLayout& layout,
         const TraitObjectVTableSupertraitEdge& edge, std::unordered_set<base::u32>& seen_edges)
     {
@@ -1788,6 +1853,19 @@ private:
         const sema::TypeInfo& pointer = this->module_.types.get(type);
         return pointer.pointer_mutability == sema::PointerMutability::const_
             && this->module_.types.same(pointer.pointee, this->module_.types.builtin(sema::BuiltinType::u8));
+    }
+
+    [[nodiscard]] bool is_pointer_to_builtin(
+        const sema::TypeHandle type,
+        const sema::PointerMutability mutability,
+        const sema::BuiltinType pointee) const noexcept
+    {
+        if (!this->module_.types.is_pointer(type)) {
+            return false;
+        }
+        const sema::TypeInfo& pointer = this->module_.types.get(type);
+        return pointer.pointer_mutability == mutability
+            && this->module_.types.same(pointer.pointee, this->module_.types.builtin(pointee));
     }
 
     [[nodiscard]] bool is_u8_slice(const sema::TypeHandle type) const noexcept

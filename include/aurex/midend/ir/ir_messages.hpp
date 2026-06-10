@@ -228,6 +228,21 @@ inline constexpr std::string_view IR_VERIFY_PRINCIPAL_SET_METADATA_WITNESS =
 inline constexpr std::string_view IR_VERIFY_PRINCIPAL_SET_METADATA_LAYOUT_TYPE =
     "dyn trait principal-set metadata layout does not match concrete/composition types";
 
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE =
+    "owned dyn object layout prototype is invalid";
+
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_TYPE =
+    "owned dyn object layout prototype does not match its dyn trait object type";
+
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_POINTER =
+    "owned dyn object layout prototype pointer field is invalid";
+
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_SHAPE =
+    "owned dyn object layout prototype must remain a two-field data/vtable handle";
+
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_BLOCKED =
+    "owned dyn object layout prototype must keep stdlib/runtime surfaces blocked";
+
 inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_COMPOSITION_PACK_RESULT =
     "dyn composition pack result must be a reference to a principal-set dyn trait";
 

@@ -408,6 +408,35 @@ std::string dump_module(const Module& module)
         }
         out << "}\n";
     }
+    for (const OwnedDynObjectLayoutPrototype& prototype : module.owned_dyn_object_layout_prototypes) {
+        out << "owned_dyn_object_layout_prototype @" << module.text(prototype.symbol)
+            << " object=" << module.types.display_name(prototype.object_type)
+            << " key=" << prototype.object_type_key.global_id
+            << " policy=" << owned_dyn_object_layout_prototype_policy_name(prototype.policy)
+            << " fields=" << prototype.handle_field_count
+            << " data_field=" << prototype.data_pointer_field_index
+            << ":" << module.types.display_name(prototype.data_pointer_type)
+            << " vtable_field=" << prototype.vtable_pointer_field_index
+            << ":" << module.types.display_name(prototype.vtable_pointer_type)
+            << " drop_slot="
+            << (prototype.erased_drop_runtime_slot == IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED
+                       ? std::string_view{"blocked"}
+                       : std::string_view{"unexpected"})
+            << " allocator_slot="
+            << (prototype.allocator_runtime_slot == IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED
+                       ? std::string_view{"blocked"}
+                       : std::string_view{"unexpected"})
+            << " compiler_owned=" << (prototype.compiler_owned ? "yes" : "no")
+            << " borrowed_abi_unchanged=" << (prototype.borrowed_abi_unchanged ? "yes" : "no")
+            << " stdlib_blocked=" << (prototype.standard_library_blocked ? "yes" : "no")
+            << " box_blocked=" << (prototype.box_surface_blocked ? "yes" : "no")
+            << " owning_value_blocked=" << (prototype.owning_dyn_user_value_blocked ? "yes" : "no")
+            << " allocator_api_blocked=" << (prototype.allocator_api_blocked ? "yes" : "no")
+            << " runtime_blocked=" << (prototype.runtime_lowering_blocked ? "yes" : "no")
+            << " dynamic_drop_blocked=" << (prototype.dynamic_drop_runtime_blocked ? "yes" : "no")
+            << " backend_helper_blocked=" << (prototype.backend_helper_blocked ? "yes" : "no")
+            << "\n";
+    }
     for (const Function& function : module.functions) {
         out << "fn " << module.text(function.name) << "(";
         for (base::usize i = 0; i < function.signature_params.size(); ++i) {

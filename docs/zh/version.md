@@ -1,5 +1,38 @@
 # 版本文档
 
+## M20b Owned Dyn IR Shape Prototype Gate
+
+M20b 已完成 owned dyn IR shape prototype gate。M20b 不实现标准库、不实现 `Box<dyn Trait>`、不实现 allocator
+API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend runtime helper call，也不做 runtime
+ABI lowering。M20b 的目标是把 M20a admission gate 要求的 owned object layout prerequisite 落成 compiler-owned
+IR 形状和 verifier/query 不变量。
+
+M20b 新增或固定：
+
+- `OwnedDynObjectLayoutPrototype` 和
+  `OwnedDynObjectLayoutPrototypePolicy::compiler_owned_handle_metadata_v1`。
+- `ir::Module::owned_dyn_object_layout_prototypes` 及其 copy/move/clone/reserve 支持。
+- two-field owned dyn handle prototype：field 0 是 `*mut u8` erased payload pointer，field 1 是
+  `*const u8` borrowed vtable pointer。
+- blocked erased-drop slot 和 allocator slot，不提供可执行 runtime identity。
+- `owned_dyn_object_layout_prototype` IR dump 和 layout ABI fingerprint。
+- IR verifier 对 object key/type、pointer type、field count/index、blocked runtime slot 和 stdlib/runtime blocker
+  matrix 的硬校验。
+- `OwnedDynIrShapePrototypeGate`、六类 shape facts、summary/dump/fingerprint 和 validation。
+- `m20b_owned_dyn_ir_shape_prototype_gate_baseline()` 和
+  `ir::owned_dyn_ir_shape_prototype_gate(const Module&)`。
+
+M20b validation 明确拒绝：
+
+- object key/type 漂移、缺失/重复 symbol 或重复 object key。
+- data pointer 不是 `*mut u8`，或 vtable pointer 不是 `*const u8`。
+- two-field handle shape、field index 或 blocked runtime slot 漂移。
+- 把 standard library、`Box<dyn Trait>`、owning dyn user value、allocator API、runtime lowering、
+  backend helper 或 dynamic Drop runtime 标记成已实现。
+- 让 query summary、fingerprint 或 M20a admission gate 引用与当前 facts 漂移。
+
+下一阶段建议进入 M20c Drop / Allocator Identity Prerequisite Gate；M20c 仍不应直接实现标准库 API。
+
 ## M20a Owned Dyn Runtime Admission Design Gate
 
 M20a 已完成 owned dyn runtime admission design gate。M20a 不实现标准库、不实现

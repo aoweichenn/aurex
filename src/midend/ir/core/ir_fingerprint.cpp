@@ -182,6 +182,34 @@ void mix_principal_set_metadata_layout(
     }
 }
 
+void mix_owned_dyn_object_layout_prototype(
+    query::StableHashBuilder& builder,
+    const Module& module,
+    const OwnedDynObjectLayoutPrototype& prototype)
+{
+    builder.mix_u64(prototype.object_type_key.global_id);
+    builder.mix_fingerprint(query::stable_key_fingerprint(prototype.object_type_key));
+    mix_type(builder, module, prototype.object_type);
+    mix_type(builder, module, prototype.data_pointer_type);
+    mix_type(builder, module, prototype.vtable_pointer_type);
+    mix_text(builder, module, prototype.symbol);
+    builder.mix_u8(static_cast<base::u8>(prototype.policy));
+    builder.mix_u32(prototype.handle_field_count);
+    builder.mix_u32(prototype.data_pointer_field_index);
+    builder.mix_u32(prototype.vtable_pointer_field_index);
+    builder.mix_u32(prototype.erased_drop_runtime_slot);
+    builder.mix_u32(prototype.allocator_runtime_slot);
+    builder.mix_bool(prototype.compiler_owned);
+    builder.mix_bool(prototype.borrowed_abi_unchanged);
+    builder.mix_bool(prototype.standard_library_blocked);
+    builder.mix_bool(prototype.box_surface_blocked);
+    builder.mix_bool(prototype.owning_dyn_user_value_blocked);
+    builder.mix_bool(prototype.allocator_api_blocked);
+    builder.mix_bool(prototype.runtime_lowering_blocked);
+    builder.mix_bool(prototype.dynamic_drop_runtime_blocked);
+    builder.mix_bool(prototype.backend_helper_blocked);
+}
+
 void mix_function_signature(query::StableHashBuilder& builder, const Module& module, const Function& function)
 {
     mix_text(builder, module, function.name);
@@ -342,6 +370,10 @@ query::QueryResultFingerprint layout_abi_fingerprint(const Module& module)
     builder.mix_u64(module.principal_set_metadata_layouts.size());
     for (const PrincipalSetMetadataLayout& layout : module.principal_set_metadata_layouts) {
         mix_principal_set_metadata_layout(builder, module, layout);
+    }
+    builder.mix_u64(module.owned_dyn_object_layout_prototypes.size());
+    for (const OwnedDynObjectLayoutPrototype& prototype : module.owned_dyn_object_layout_prototypes) {
+        mix_owned_dyn_object_layout_prototype(builder, module, prototype);
     }
     builder.mix_u64(module.functions.size());
     for (const Function& function : module.functions) {

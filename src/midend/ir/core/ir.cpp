@@ -38,6 +38,21 @@ std::string_view cleanup_abi_policy_name(const CleanupAbiPolicy policy) noexcept
     return "invalid";
 }
 
+std::string_view owned_dyn_object_layout_prototype_policy_name(
+    const OwnedDynObjectLayoutPrototypePolicy policy) noexcept
+{
+    switch (policy) {
+        case OwnedDynObjectLayoutPrototypePolicy::compiler_owned_handle_metadata_v1:
+            return "compiler_owned_handle_metadata_v1";
+    }
+    return "invalid";
+}
+
+bool is_valid(const OwnedDynObjectLayoutPrototypePolicy policy) noexcept
+{
+    return policy == OwnedDynObjectLayoutPrototypePolicy::compiler_owned_handle_metadata_v1;
+}
+
 RecordLayout::RecordLayout() = default;
 
 RecordLayout::RecordLayout(base::BumpAllocator& arena) : fields(base::BumpAllocatorAdapter<RecordField>{arena})
@@ -93,6 +108,7 @@ Module::Module()
     : arena_(std::make_unique<base::BumpAllocator>()), constants(this->make_vector<GlobalConstant>()),
       records(this->make_vector<RecordLayout>()), trait_object_vtables(this->make_vector<TraitObjectVTableLayout>()),
       principal_set_metadata_layouts(this->make_vector<PrincipalSetMetadataLayout>()),
+      owned_dyn_object_layout_prototypes(this->make_vector<OwnedDynObjectLayoutPrototype>()),
       values(this->make_vector<Value>()), functions(this->make_vector<Function>()),
       record_indices(this->make_map<base::u32, base::u32>())
 {
@@ -118,6 +134,7 @@ Module::Module(Module&& other) noexcept
       constants(std::move(other.constants)), records(std::move(other.records)),
       trait_object_vtables(std::move(other.trait_object_vtables)),
       principal_set_metadata_layouts(std::move(other.principal_set_metadata_layouts)),
+      owned_dyn_object_layout_prototypes(std::move(other.owned_dyn_object_layout_prototypes)),
       values(std::move(other.values)), functions(std::move(other.functions)),
       record_indices(std::move(other.record_indices))
 {
@@ -291,6 +308,20 @@ PrincipalSetMetadataLayout Module::clone_principal_set_metadata_layout(const Pri
     return copy;
 }
 
+OwnedDynObjectLayoutPrototype Module::make_owned_dyn_object_layout_prototype()
+{
+    this->ensure_arena();
+    return OwnedDynObjectLayoutPrototype{};
+}
+
+OwnedDynObjectLayoutPrototype Module::clone_owned_dyn_object_layout_prototype(
+    const OwnedDynObjectLayoutPrototype& other)
+{
+    OwnedDynObjectLayoutPrototype copy = this->make_owned_dyn_object_layout_prototype();
+    copy = other;
+    return copy;
+}
+
 void Module::reserve(const base::usize value_count, const base::usize function_count, const base::usize record_count,
     const base::usize constant_count)
 {
@@ -300,6 +331,7 @@ void Module::reserve(const base::usize value_count, const base::usize function_c
     this->constants.reserve(constant_count);
     this->trait_object_vtables.reserve(function_count);
     this->principal_set_metadata_layouts.reserve(function_count);
+    this->owned_dyn_object_layout_prototypes.reserve(function_count);
     this->record_indices.reserve(record_count);
     this->identifiers.reserve(value_count + function_count + record_count + constant_count);
 }
@@ -313,6 +345,7 @@ void Module::swap(Module& other) noexcept
     this->records.swap(other.records);
     this->trait_object_vtables.swap(other.trait_object_vtables);
     this->principal_set_metadata_layouts.swap(other.principal_set_metadata_layouts);
+    this->owned_dyn_object_layout_prototypes.swap(other.owned_dyn_object_layout_prototypes);
     this->values.swap(other.values);
     this->functions.swap(other.functions);
     this->record_indices.swap(other.record_indices);
@@ -348,6 +381,12 @@ void Module::copy_from(const Module& other)
         this->principal_set_metadata_layouts.push_back(this->clone_principal_set_metadata_layout(layout));
     }
 
+    this->owned_dyn_object_layout_prototypes.clear();
+    this->owned_dyn_object_layout_prototypes.reserve(other.owned_dyn_object_layout_prototypes.size());
+    for (const OwnedDynObjectLayoutPrototype& prototype : other.owned_dyn_object_layout_prototypes) {
+        this->owned_dyn_object_layout_prototypes.push_back(this->clone_owned_dyn_object_layout_prototype(prototype));
+    }
+
     this->values.clear();
     this->values.reserve(other.values.size());
     for (const Value& value : other.values) {
@@ -377,6 +416,7 @@ void Module::ensure_arena()
     this->records = this->make_vector<RecordLayout>();
     this->trait_object_vtables = this->make_vector<TraitObjectVTableLayout>();
     this->principal_set_metadata_layouts = this->make_vector<PrincipalSetMetadataLayout>();
+    this->owned_dyn_object_layout_prototypes = this->make_vector<OwnedDynObjectLayoutPrototype>();
     this->values = this->make_vector<Value>();
     this->functions = this->make_vector<Function>();
     this->record_indices = this->make_map<base::u32, base::u32>();

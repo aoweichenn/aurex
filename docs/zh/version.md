@@ -1,5 +1,34 @@
 # 版本文档
 
+## M20a Owned Dyn Runtime Admission Design Gate
+
+M20a 已完成 owned dyn runtime admission design gate。M20a 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend
+runtime helper call，也不做 runtime ABI lowering。M20a 的目标是把 M17/M18/M19 的 runtime facts、boundary gate
+和 IR/verifier facts 汇总成后续 owned dyn runtime 的准入门禁。
+
+M20a 新增或固定：
+
+- `OwnedDynRuntimeAdmissionGate`。
+- `OwnedDynRuntimeAdmissionFact`。
+- `OwnedDynRuntimeAdmissionSummary`。
+- `OwnedDynRuntimeAdmissionCapability`。
+- `OwnedDynRuntimeAdmissionStage`。
+- `OwnedDynRuntimeAdmissionPolicy`。
+- `m20_owned_dyn_runtime_admission_gate_baseline()`。
+- `owned_dyn_runtime_admission_gate_fingerprint()`、summary、dump 和 validation。
+- 对 M17 runtime facts、M18 boundary gate 和 M19 IR/verifier facts fingerprint 的稳定引用。
+
+M20a validation 明确拒绝：
+
+- 删除 M17/M18/M19 baseline 引用或让嵌入 fingerprint 漂移。
+- 把 standard library API、`Box<dyn Trait>` surface、allocator API、owning dyn user value、runtime ABI lowering、
+  backend runtime helper call 或 dynamic Drop runtime 标记成已实现。
+- 把 borrowed dyn ABI 改成携带 owning/drop metadata。
+- 跳过 owned layout、erased drop identity 或 allocator identity，直接进入 runtime lowering 或 `Box<dyn Trait>`。
+
+下一阶段建议进入 M20b Owned Dyn IR Shape Prototype Gate；M20b 仍不应直接实现标准库 API。
+
 ## M19 Dyn Ownership Runtime IR / Verifier Preparation
 
 M19 已完成 dyn ownership runtime 的 IR / verifier preparation。M19 不实现标准库、不实现

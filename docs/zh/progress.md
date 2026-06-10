@@ -1,9 +1,26 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M19 Dyn Ownership Runtime IR / Verifier Preparation
+阶段：M20a Owned Dyn Runtime Admission Design Gate
 
 ## 总体状态
+
+2026-06-10：M20a Owned Dyn Runtime Admission Design Gate 已完成。M20a 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend
+runtime helper call，也不做 runtime ABI lowering；它把 M17 runtime facts、M18 boundary gate 和 M19 IR/verifier
+facts 汇总为 owned dyn runtime admission gate。
+
+M20a 新增 `OwnedDynRuntimeAdmissionGate`、`OwnedDynRuntimeAdmissionFact`、
+`OwnedDynRuntimeAdmissionSummary`、`OwnedDynRuntimeAdmissionCapability`、
+`OwnedDynRuntimeAdmissionStage` 和 `OwnedDynRuntimeAdmissionPolicy`。Baseline 入口是
+`m20_owned_dyn_runtime_admission_gate_baseline()`；summary、dump、fingerprint 和 validation 会固定
+owned object layout、erased drop identity、allocator identity、runtime lowering ABI、`Box<dyn Trait>` surface 和
+borrowed dyn ABI separation 的后续准入顺序。
+
+M20a 的硬边界是：必须引用有效的 M17/M18/M19 baseline fingerprint；borrowed dyn ABI 仍保持 destructor-free；
+standard-library API、`Box<dyn Trait>` surface、owning dyn user value、allocator API、runtime lowering、dynamic
+Drop runtime 和 backend helper 都仍是 blocker。新增收口文档见
+[Aurex M20a Owned Dyn Runtime Admission Design Gate Release Baseline](m20-owned-dyn-runtime-admission-gate-release.md)。
 
 2026-06-10：M19 Dyn Ownership Runtime IR / Verifier Preparation 已完成。M19 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend

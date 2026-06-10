@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M19 Dyn Ownership Runtime IR / Verifier Preparation** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier boundary facts 本身展开。
+本文描述当前 **M20a Owned Dyn Runtime Admission Design Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier/admission boundary facts 本身展开。
 
 M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` /
 `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的
@@ -31,6 +31,13 @@ M19 新增 `m19_dyn_ownership_runtime_ir_verifier_baseline()`、
 `CleanupAbiPolicy::dynamic_erased_drop_blocked` blocked negative sentinel。它只让 borrowed vtable destructor-free、
 static cleanup-only、erased drop identity prerequisite、allocator identity prerequisite、owned dyn object placeholder
 blocker 和 runtime-lowering blocker 成为 IR/verifier 可见 facts；不新增任何标准库或 executable runtime。
+
+M20a 新增 `m20_owned_dyn_runtime_admission_gate_baseline()`、`OwnedDynRuntimeAdmissionGate`、
+`OwnedDynRuntimeAdmissionFact`、`OwnedDynRuntimeAdmissionCapability`、`OwnedDynRuntimeAdmissionStage` 和
+`OwnedDynRuntimeAdmissionPolicy`。它把 M17/M18/M19 facts 汇总成 owned dyn runtime admission gate，固定
+owned object layout、erased drop identity、allocator identity、runtime lowering ABI、`Box<dyn Trait>` surface 和
+borrowed dyn ABI separation 的后续顺序；仍不新增任何标准库 API、`Box<dyn Trait>` runtime、allocator API 或
+executable runtime。
 
 ## 构建
 

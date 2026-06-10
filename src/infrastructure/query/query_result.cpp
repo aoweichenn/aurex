@@ -39,6 +39,11 @@ bool is_valid(const ProjectGraphQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const DynOwnershipRuntimeBoundaryGateQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const FileContentQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -187,6 +192,25 @@ std::optional<QueryRecord> project_graph_query_record(const ProjectGraphQueryInp
 std::optional<QueryRecord> project_graph_query_record(const ProjectKey key, const QueryResultFingerprint result)
 {
     return project_graph_query_record(ProjectGraphQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> dyn_ownership_runtime_boundary_gate_query_record(
+    const DynOwnershipRuntimeBoundaryGateQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::dyn_ownership_runtime_boundary_gate, stable_key_fingerprint(input.key),
+        stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> dyn_ownership_runtime_boundary_gate_query_record(
+    const ProjectKey key, const QueryResultFingerprint result)
+{
+    return dyn_ownership_runtime_boundary_gate_query_record(DynOwnershipRuntimeBoundaryGateQueryInput{
         key,
         result,
     });

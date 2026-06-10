@@ -31,6 +31,8 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << total_query_execution_count(result.reused)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED << total_query_execution_count(result.recomputed)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PROJECT_GRAPHS << result.reused.project_graphs
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES
+           << result.reused.dyn_ownership_runtime_boundary_gates
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS << result.reused.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES << result.reused.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES << result.reused.parse_files
@@ -49,6 +51,8 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS << result.reused.lower_function_irs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS << result.reused.diagnostics
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PROJECT_GRAPHS << result.recomputed.project_graphs
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES
+           << result.recomputed.dyn_ownership_runtime_boundary_gates
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FILE_CONTENTS << result.recomputed.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES << result.recomputed.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES << result.recomputed.parse_files
@@ -81,6 +85,8 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED << total_query_execution_count(stats.seeded)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED << total_query_execution_count(stats.evaluated)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PROJECT_GRAPHS << stats.seeded.project_graphs
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES
+           << stats.seeded.dyn_ownership_runtime_boundary_gates
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS << stats.seeded.file_contents
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES << stats.seeded.lex_files
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES << stats.seeded.parse_files
@@ -100,7 +106,10 @@ namespace aurex::driver::incremental_cache_detail {
            << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS
            << stats.seeded.lower_function_irs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
            << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PROJECT_GRAPHS
-           << stats.evaluated.project_graphs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
+           << stats.evaluated.project_graphs
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES
+           << stats.evaluated.dyn_ownership_runtime_boundary_gates
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
            << stats.evaluated.file_contents << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES
            << stats.evaluated.lex_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES
            << stats.evaluated.parse_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_PARTS

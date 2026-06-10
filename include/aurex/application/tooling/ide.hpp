@@ -8,6 +8,7 @@
 #include <aurex/infrastructure/pipeline/stage.hpp>
 #include <aurex/infrastructure/query/cleanup_marker_facts.hpp>
 #include <aurex/infrastructure/query/dyn_abi_facts.hpp>
+#include <aurex/infrastructure/query/dyn_ownership_runtime_boundary_gate.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
 #include <aurex/infrastructure/query/query_context.hpp>
 
@@ -69,6 +70,7 @@ enum class IdeSemanticFactKind : base::u8 {
     body_loan_check,
     cleanup_marker_facts,
     dyn_abi_facts,
+    dyn_ownership_runtime_boundary_gate,
 };
 
 struct IdeSemanticFact {
@@ -104,6 +106,7 @@ struct IdeSnapshot {
     sema::CheckedModule checked;
     std::vector<query::FunctionCleanupMarkerFacts> cleanup_marker_facts;
     std::vector<query::FunctionDynAbiFacts> dyn_abi_facts;
+    query::DynOwnershipRuntimeBoundaryGate dyn_ownership_runtime_boundary_gate;
     IdeQuerySnapshot query;
     std::vector<IdeDiagnostic> diagnostics;
     IdeModulePartContext source_part;

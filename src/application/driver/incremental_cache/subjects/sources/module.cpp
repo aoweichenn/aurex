@@ -973,6 +973,10 @@ void collect_project_graph_query_subjects(
         model.key,
         project_graph_result_fingerprint(model, modules),
     });
+    collection.dyn_ownership_runtime_boundary_gates.push_back(DynOwnershipRuntimeBoundaryGateQuerySubject{
+        model.key,
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline(),
+    });
     for (ModuleGraphQuerySubject& subject : collection.module_graphs) {
         subject.project = model.key;
     }

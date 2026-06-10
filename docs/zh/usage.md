@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M17 Dyn Ownership Runtime Preparation** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query boundary facts 本身展开。
+本文描述当前 **M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query boundary facts 本身展开。
 
 M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` /
 `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的
@@ -17,9 +17,13 @@ M15 新增 `m15_dyn_advanced_design_gate_baseline()` 和 `m15_const_generic_desi
 gate，用于固定 owning dyn/runtime boundary 与 const generic 后续实现路线。M16 已打开用户可写 const generic
 check-only 子集。M17 新增 `m17_dyn_ownership_runtime_preparation_baseline()`、`DynOwnershipRuntimeFacts`、
 owned container / erased drop glue / allocator / cleanup-dropck boundary facts、summary/dump/fingerprint 和 validation，
-用于固定 future runtime/standard-library boundary。当前仍不实现 bare `dyn A + B`、标准库、owning dyn 用户值、
-`Box<dyn Trait>`、allocator API、runtime ABI lowering、dynamic Drop dispatch、歧义 composition-to-supertrait
-多步自动选择、generic const arithmetic、const where predicate、associated const 或 dyn const equality dispatch。
+用于固定 future runtime/standard-library boundary。M18 新增 `m18_dyn_ownership_runtime_boundary_gate_baseline()`、
+`DynOwnershipRuntimeBoundaryGate`、`DynOwnershipRuntimeBoundaryCheckpointFact`、
+`DynOwnershipRuntimeLoweringDesignGateFact` 和 `dyn_ownership_runtime_boundary_gate` project-level query，把 M17 facts
+接入 query/cache/tooling/reuse/workspace index，并把 future IR/verifier/runtime lowering prerequisites 固定为可验证
+facts。当前仍不实现 bare `dyn A + B`、标准库、owning dyn 用户值、`Box<dyn Trait>`、allocator API、runtime ABI
+lowering、dynamic Drop dispatch、歧义 composition-to-supertrait 多步自动选择、generic const arithmetic、const where
+predicate、associated const 或 dyn const equality dispatch。
 
 ## 构建
 

@@ -13,6 +13,8 @@ bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noex
         case QueryKind::file_content:
         case QueryKind::function_body_syntax:
             return false;
+        case QueryKind::dyn_ownership_runtime_boundary_gate:
+            return edge.dependency.kind == QueryKind::project_graph;
         case QueryKind::module_graph:
             return edge.dependency.kind == QueryKind::project_graph || edge.dependency.kind == QueryKind::module_part;
         case QueryKind::lex_file:

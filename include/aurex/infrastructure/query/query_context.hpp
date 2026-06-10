@@ -40,6 +40,7 @@ public:
     void set_lower_function_ir_provider(LowerFunctionIRProvider provider);
     void set_lower_generic_instance_ir_provider(LowerGenericInstanceIRProvider provider);
     void set_diagnostics_provider(DiagnosticsProvider provider);
+    void set_dyn_ownership_runtime_boundary_gate_provider(DynOwnershipRuntimeBoundaryGateProvider provider);
     [[nodiscard]] QueryEvaluationResult evaluate_file_content(const FileContentProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_lex_file(const LexFileProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_parse_file(const ParseFileProviderInput& input);
@@ -61,6 +62,8 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_lower_generic_instance_ir(
         const LowerGenericInstanceIRProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_diagnostics(const DiagnosticsProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_dyn_ownership_runtime_boundary_gate(
+        const DynOwnershipRuntimeBoundaryGateProviderInput& input);
     [[nodiscard]] bool seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies = {});
     [[nodiscard]] bool invalidate(QueryKey key);
     [[nodiscard]] const QueryNode* find(QueryKey key) const;

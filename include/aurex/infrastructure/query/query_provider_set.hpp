@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/infrastructure/query/diagnostics_query.hpp>
+#include <aurex/infrastructure/query/dyn_ownership_runtime_boundary_gate.hpp>
 #include <aurex/infrastructure/query/function_body_syntax_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_body_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_signature_query.hpp>
@@ -45,6 +46,8 @@ using FunctionBodySyntaxProvider =
 using TypeCheckBodyProvider =
     std::function<std::optional<TypeCheckBodyProviderOutput>(const TypeCheckBodyProviderInput&)>;
 using DiagnosticsProvider = std::function<std::optional<DiagnosticsProviderOutput>(const DiagnosticsProviderInput&)>;
+using DynOwnershipRuntimeBoundaryGateProvider = std::function<std::optional<
+    DynOwnershipRuntimeBoundaryGateProviderOutput>(const DynOwnershipRuntimeBoundaryGateProviderInput&)>;
 using FileContentProvider = std::function<std::optional<FileContentProviderOutput>(const FileContentProviderInput&)>;
 using LexFileProvider = std::function<std::optional<LexFileProviderOutput>(const LexFileProviderInput&)>;
 using ParseFileProvider = std::function<std::optional<ParseFileProviderOutput>(const ParseFileProviderInput&)>;
@@ -68,6 +71,7 @@ struct QueryProviderOverrides final {
     LowerFunctionIRProvider lower_function_ir;
     LowerGenericInstanceIRProvider lower_generic_instance_ir;
     DiagnosticsProvider diagnostics;
+    DynOwnershipRuntimeBoundaryGateProvider dyn_ownership_runtime_boundary_gate;
 };
 
 class QueryProviderSet final {
@@ -98,6 +102,7 @@ public:
     void set_lower_function_ir_provider(LowerFunctionIRProvider provider);
     void set_lower_generic_instance_ir_provider(LowerGenericInstanceIRProvider provider);
     void set_diagnostics_provider(DiagnosticsProvider provider);
+    void set_dyn_ownership_runtime_boundary_gate_provider(DynOwnershipRuntimeBoundaryGateProvider provider);
 
     [[nodiscard]] std::optional<FileContentProviderOutput> provide_file_content(
         const FileContentProviderInput& input) const;
@@ -132,6 +137,8 @@ public:
         const LowerGenericInstanceIRProviderInput& input) const;
     [[nodiscard]] std::optional<DiagnosticsProviderOutput> provide_diagnostics(
         const DiagnosticsProviderInput& input) const;
+    [[nodiscard]] std::optional<DynOwnershipRuntimeBoundaryGateProviderOutput>
+    provide_dyn_ownership_runtime_boundary_gate(const DynOwnershipRuntimeBoundaryGateProviderInput& input) const;
 
 private:
     FileContentProvider file_content_provider_;
@@ -152,6 +159,7 @@ private:
     LowerFunctionIRProvider lower_function_ir_provider_;
     LowerGenericInstanceIRProvider lower_generic_instance_ir_provider_;
     DiagnosticsProvider diagnostics_provider_;
+    DynOwnershipRuntimeBoundaryGateProvider dyn_ownership_runtime_boundary_gate_provider_;
 };
 
 } // namespace aurex::query

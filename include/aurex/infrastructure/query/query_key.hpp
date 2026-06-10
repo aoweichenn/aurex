@@ -34,6 +34,7 @@ enum class QueryKind : base::u8 {
     lower_function_ir,
     module_package_exports,
     module_part,
+    dyn_ownership_runtime_boundary_gate,
 };
 
 enum class SourceRole : base::u8 {

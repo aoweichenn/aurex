@@ -2,6 +2,7 @@
 
 #include <aurex/application/driver/module_loader.hpp>
 #include <aurex/frontend/sema/identifier.hpp>
+#include <aurex/infrastructure/query/dyn_ownership_runtime_boundary_gate.hpp>
 #include <aurex/infrastructure/query/query_context.hpp>
 #include <aurex/infrastructure/query/query_result.hpp>
 #include <aurex/infrastructure/query/query_reuse.hpp>
@@ -31,6 +32,7 @@ struct QueryCollection {
 struct QueryKindExecutionCounts {
     base::usize total = 0;
     base::usize project_graphs = 0;
+    base::usize dyn_ownership_runtime_boundary_gates = 0;
     base::usize file_contents = 0;
     base::usize lex_files = 0;
     base::usize parse_files = 0;
@@ -102,6 +104,11 @@ struct FileContentQuerySubject {
 struct ProjectGraphQuerySubject {
     query::ProjectKey key;
     query::QueryResultFingerprint result;
+};
+
+struct DynOwnershipRuntimeBoundaryGateQuerySubject {
+    query::ProjectKey key;
+    query::DynOwnershipRuntimeBoundaryGate gate;
 };
 
 struct LexFileQuerySubject {
@@ -210,6 +217,7 @@ struct DiagnosticsQuerySubject {
 
 enum class QuerySubjectKind : base::u8 {
     project_graph,
+    dyn_ownership_runtime_boundary_gate,
     file_content,
     lex_file,
     parse_file,
@@ -249,6 +257,7 @@ struct QuerySubjectCollection {
     std::vector<LowerFunctionIRQuerySubject> lower_function_irs;
     std::vector<FileContentQuerySubject> file_contents;
     std::vector<ProjectGraphQuerySubject> project_graphs;
+    std::vector<DynOwnershipRuntimeBoundaryGateQuerySubject> dyn_ownership_runtime_boundary_gates;
     std::vector<LexFileQuerySubject> lex_files;
     std::vector<ParseFileQuerySubject> parse_files;
     std::vector<DiagnosticsQuerySubject> diagnostics;

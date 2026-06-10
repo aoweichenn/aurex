@@ -1,5 +1,41 @@
 # 版本文档
 
+## M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate
+
+M18 已完成 dyn ownership runtime boundary hardening / lowering design gate。M18 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做 runtime ABI
+lowering。M18 的目标是把 M17 facts 接到 query/cache/tooling/reuse/workspace 边界，并把 future IR/verifier/runtime
+lowering prerequisites 固定为可验证的 project-level facts。
+
+M18 新增或固定：
+
+- `DynOwnershipRuntimeBoundaryGate`。
+- `DynOwnershipRuntimeBoundaryCheckpointFact`，覆盖 `query_cache_projection`、`tooling_projection`、
+  `reuse_boundary`、`ir_verifier_planning`、`borrowed_abi_guard` 和 `runtime_lowering_gate`。
+- `DynOwnershipRuntimeLoweringDesignGateFact`，记录 future IR owned object placeholder、erased drop identity、
+  allocator identity、borrowed-vtable destructor verifier guard、missing-erased-receiver guard 和
+  stdlib-before-runtime-lowering guard。
+- `DynOwnershipRuntimeBoundarySummary`，统计 M17 reference、standard-library blocker、runtime-lowering blocker、
+  `Box` surface blocker、owning dyn user value blocker、allocator API blocker、dynamic-drop blocker、
+  borrowed-metadata destructor-free 和 lowering design gate。
+- `m18_dyn_ownership_runtime_boundary_gate_baseline()`、
+  `dyn_ownership_runtime_boundary_gate_fingerprint()`、
+  `dyn_ownership_runtime_boundary_gate_result_fingerprint()`、summary 和 dump。
+- `QueryKind::dyn_ownership_runtime_boundary_gate`，使用 `ProjectKey` stable identity，且依赖同一个 `ProjectKey` 的
+  `project_graph`。
+- Incremental cache subject/order/profile/reuse、IDE semantic fact、tooling session reuse 和 workspace index 投影。
+
+M18 validation 明确拒绝：
+
+- 把 standard library、allocator API、`Box` surface、owning dyn user value 或 runtime ABI lowering 标记成已实现。
+- 把 dynamic Drop dispatch 标记成已实现。
+- 把 destructor slot 加进 borrowed vtable 或让 borrowed vtable metadata 承担 owning/drop ABI。
+- 让 M18 provider 依赖非 `project_graph` query、依赖其他项目的 project graph，或带多个 project graph 依赖。
+- 让 summary、stable fingerprint 或嵌入的 M17 facts 与当前 facts 漂移。
+
+下一阶段建议进入 M19 Dyn Ownership Runtime IR / Verifier Preparation；M19 仍应先补 verifier-visible IR 形状和负例矩阵，
+不应直接实现标准库 API。
+
 ## M17 Dyn Ownership Runtime Preparation
 
 M17 已完成 dyn ownership runtime preparation 的 compiler/query/tooling 事实边界。M17 不实现标准库、不实现

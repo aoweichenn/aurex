@@ -10,6 +10,8 @@ namespace aurex::driver::incremental_cache_detail {
     switch (kind) {
         case query::QueryKind::project_graph:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_PROJECT_GRAPH_RANK;
+        case query::QueryKind::dyn_ownership_runtime_boundary_gate:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE_RANK;
         case query::QueryKind::file_content:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK;
         case query::QueryKind::lex_file:

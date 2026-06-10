@@ -390,6 +390,8 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(snapshot.query.source_stage.lex_config.retain_trivia);
     EXPECT_TRUE(snapshot.query.source_stage.parser_config.build_lossless_tree);
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::file_content));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::project_graph));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::dyn_ownership_runtime_boundary_gate));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lex_file));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::parse_file));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_graph));
@@ -401,6 +403,8 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::type_check_body));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::diagnostics));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lex_file, query::QueryKind::file_content));
+    EXPECT_TRUE(has_dependency_kind(
+        snapshot, query::QueryKind::dyn_ownership_runtime_boundary_gate, query::QueryKind::project_graph));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::parse_file, query::QueryKind::lex_file));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::module_part, query::QueryKind::parse_file));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::item_list, query::QueryKind::module_graph));
@@ -415,6 +419,14 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
         snapshot, tooling::IdeSemanticFactKind::function_body_syntax, query::QueryKind::function_body_syntax, "add"));
     EXPECT_TRUE(has_semantic_fact_kind(
         snapshot, tooling::IdeSemanticFactKind::type_check_body, query::QueryKind::type_check_body, "main"));
+    const tooling::IdeSemanticFact* const dyn_boundary_fact =
+        find_semantic_fact(snapshot, tooling::IdeSemanticFactKind::dyn_ownership_runtime_boundary_gate,
+            query::QueryKind::dyn_ownership_runtime_boundary_gate, "dyn_ownership_runtime_boundary_gate");
+    ASSERT_NE(dyn_boundary_fact, nullptr);
+    EXPECT_NE(dyn_boundary_fact->detail.find("M18 Dyn Ownership Runtime Boundary Hardening"), std::string::npos);
+    EXPECT_NE(dyn_boundary_fact->detail.find("standard_library_blocked=6"), std::string::npos);
+    EXPECT_NE(dyn_boundary_fact->detail.find("runtime_lowering_blocked=6"), std::string::npos);
+    EXPECT_NE(dyn_boundary_fact->detail.find("lowering_runtime_implemented=0"), std::string::npos);
     expect_primary_source_part(snapshot.source_part, "ide.snapshot");
     EXPECT_EQ(
         IDE_TOOLING_SOURCE.substr(snapshot.source_part.module_range.begin, snapshot.source_part.module_range.length()),

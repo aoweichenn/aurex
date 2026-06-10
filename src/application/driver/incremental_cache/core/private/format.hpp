@@ -216,6 +216,7 @@ struct QueryKindCacheName {
 
 constexpr auto INCREMENTAL_CACHE_QUERY_KIND_NAMES = std::to_array<QueryKindCacheName>({
     {query::QueryKind::project_graph, "project_graph"},
+    {query::QueryKind::dyn_ownership_runtime_boundary_gate, "dyn_ownership_runtime_boundary_gate"},
     {query::QueryKind::file_content, "file_content"},
     {query::QueryKind::lex_file, "lex_file"},
     {query::QueryKind::parse_file, "parse_file"},

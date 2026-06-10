@@ -25,6 +25,8 @@ constexpr std::string_view TOOLING_INDEX_KIND_PLACE_STATE = "place_state";
 constexpr std::string_view TOOLING_INDEX_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view TOOLING_INDEX_KIND_CLEANUP_MARKER_FACTS = "cleanup_marker_facts";
 constexpr std::string_view TOOLING_INDEX_KIND_DYN_ABI_FACTS = "dyn_abi_facts";
+constexpr std::string_view TOOLING_INDEX_KIND_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE =
+    "dyn_ownership_runtime_boundary_gate";
 constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
 
 [[nodiscard]] const base::SourceFile* tooling_index_source_file_for_range(
@@ -105,6 +107,8 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
             return TOOLING_INDEX_KIND_CLEANUP_MARKER_FACTS;
         case IdeSemanticFactKind::dyn_abi_facts:
             return TOOLING_INDEX_KIND_DYN_ABI_FACTS;
+        case IdeSemanticFactKind::dyn_ownership_runtime_boundary_gate:
+            return TOOLING_INDEX_KIND_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE;
     }
     return TOOLING_INDEX_KIND_ITEM_SIGNATURE;
 }

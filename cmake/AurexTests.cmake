@@ -21,6 +21,7 @@ if(BUILD_TESTING)
     add_executable(aurex_query_tests
         tests/gtest/infrastructure/query/const_generic_design_gate_tests.cpp
         tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
+        tests/gtest/infrastructure/query/dyn_ownership_runtime_boundary_gate_tests.cpp
         tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
         tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
         tests/gtest/infrastructure/query/query_key_tests.cpp
@@ -140,6 +141,7 @@ if(BUILD_TESTING)
             tests/gtest/infrastructure/query/query_key_tests.cpp
             tests/gtest/infrastructure/query/const_generic_design_gate_tests.cpp
             tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
+            tests/gtest/infrastructure/query/dyn_ownership_runtime_boundary_gate_tests.cpp
             tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
             tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
             tests/gtest/infrastructure/query/query_robustness_tests.cpp

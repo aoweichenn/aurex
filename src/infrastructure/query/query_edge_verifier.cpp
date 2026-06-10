@@ -25,6 +25,12 @@ namespace {
     return dependent_key == dependency_key && stable_key_has_generic_instance_key_layout(dependent_key);
 }
 
+[[nodiscard]] bool stable_project_keys_match(
+    const std::string_view dependent_key, const std::string_view dependency_key) noexcept
+{
+    return dependent_key == dependency_key && stable_key_has_project_key_layout(dependent_key);
+}
+
 [[nodiscard]] bool stable_module_part_depends_on_parse_file(
     const std::string_view dependent_key, const std::string_view dependency_key) noexcept
 {
@@ -81,6 +87,8 @@ namespace {
                     && stable_key_has_project_key_layout(dependency_key);
             }
             return stable_module_graph_depends_on_module_part(dependent_key, dependency_key);
+        case QueryKind::dyn_ownership_runtime_boundary_gate:
+            return stable_project_keys_match(dependent_key, dependency_key);
         case QueryKind::item_list:
             return stable_module_keys_match(dependent_key, dependency_key);
         case QueryKind::module_exports:

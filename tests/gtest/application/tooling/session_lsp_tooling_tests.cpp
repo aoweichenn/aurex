@@ -456,6 +456,16 @@ constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
     return found == facts.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const tooling::IdeSemanticFact* find_semantic_fact(
+    const std::vector<tooling::IdeSemanticFact>& facts, const tooling::IdeSemanticFactKind kind,
+    const std::string_view name) noexcept
+{
+    const auto found = std::ranges::find_if(facts, [kind, name](const tooling::IdeSemanticFact& fact) {
+        return fact.kind == kind && fact.name == name && fact.checked;
+    });
+    return found == facts.end() ? nullptr : &*found;
+}
+
 void append_cleanup_marker_query_record(tooling::IdeSnapshot& snapshot, const tooling::IdeSemanticFact& fact,
     const query::QueryResultFingerprint result)
 {
@@ -1622,6 +1632,21 @@ TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
     EXPECT_TRUE(contains_reuse_fact(cleanup_fact_plan, tooling::ToolingReuseFactStatus::unchanged,
         TOOLING_CLEANUP_MARKER_FACT_NAME, TOOLING_CLEANUP_MARKER_FACT_KIND));
 
+    const tooling::IdeSemanticFact* const dyn_boundary_fact = find_semantic_fact(
+        before.query.semantic_facts, tooling::IdeSemanticFactKind::dyn_ownership_runtime_boundary_gate,
+        "dyn_ownership_runtime_boundary_gate");
+    ASSERT_NE(dyn_boundary_fact, nullptr);
+    tooling::IdeSnapshot dyn_boundary_before = before;
+    tooling::IdeSnapshot dyn_boundary_after = before;
+    dyn_boundary_before.query.semantic_facts = {*dyn_boundary_fact};
+    dyn_boundary_after.query.semantic_facts = {*dyn_boundary_fact};
+    const tooling::ToolingReusePlan dyn_boundary_plan =
+        tooling::tooling_plan_reuse(dyn_boundary_before, dyn_boundary_after, impact);
+    EXPECT_TRUE(dyn_boundary_plan.valid);
+    EXPECT_FALSE(dyn_boundary_plan.summary.body_local);
+    EXPECT_TRUE(contains_reuse_fact(dyn_boundary_plan, tooling::ToolingReuseFactStatus::unchanged,
+        "dyn_ownership_runtime_boundary_gate", "dyn_ownership_runtime_boundary_gate"));
+
     const tooling::ToolingReusePlan empty_plan =
         tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
     EXPECT_FALSE(empty_plan.valid);
@@ -1857,6 +1882,11 @@ TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
     EXPECT_NE(find_index_fact(left_definitions, "left", "item_signature"), nullptr);
 
     const std::vector<tooling::ToolingIndexedSemanticFact> left_facts = session.workspace_index().all_facts();
+    const tooling::ToolingIndexedSemanticFact* const dyn_boundary_fact =
+        find_index_fact(left_facts, "dyn_ownership_runtime_boundary_gate", "dyn_ownership_runtime_boundary_gate");
+    ASSERT_NE(dyn_boundary_fact, nullptr);
+    EXPECT_NE(dyn_boundary_fact->detail.find("M18 Dyn Ownership Runtime Boundary Hardening"), std::string::npos);
+    EXPECT_NE(dyn_boundary_fact->detail.find("standard_library_blocked=6"), std::string::npos);
     const tooling::ToolingIndexedSemanticFact* const left_body =
         find_index_fact(left_facts, "left", "function_body_syntax");
     ASSERT_NE(left_body, nullptr);

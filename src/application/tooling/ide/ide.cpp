@@ -8,6 +8,7 @@
 #include <aurex/frontend/syntax/core/module.hpp>
 #include <aurex/infrastructure/pipeline/stage.hpp>
 #include <aurex/infrastructure/query/diagnostics_query.hpp>
+#include <aurex/infrastructure/query/dyn_ownership_runtime_boundary_gate.hpp>
 #include <aurex/infrastructure/query/function_body_syntax_query.hpp>
 #include <aurex/infrastructure/query/generic_template_signature_query.hpp>
 #include <aurex/infrastructure/query/item_list_query.hpp>
@@ -16,6 +17,7 @@
 #include <aurex/infrastructure/query/module_exports_query.hpp>
 #include <aurex/infrastructure/query/module_graph_query.hpp>
 #include <aurex/infrastructure/query/module_part_query.hpp>
+#include <aurex/infrastructure/query/project_graph_query.hpp>
 #include <aurex/infrastructure/query/stable_hash.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
 
@@ -44,6 +46,7 @@ constexpr std::string_view IDE_CONTENT_RESULT_MARKER = "ide-content:v1";
 constexpr std::string_view IDE_LEX_RESULT_MARKER = "ide-lex:v1";
 constexpr std::string_view IDE_PARSE_RESULT_MARKER = "ide-parse:v1";
 constexpr std::string_view IDE_DIAGNOSTICS_RESULT_MARKER = "ide-diagnostics:v1";
+constexpr std::string_view IDE_PROJECT_GRAPH_RESULT_MARKER = "ide-project-graph:v1";
 constexpr std::string_view IDE_MODULE_GRAPH_RESULT_MARKER = "module-graph:v1";
 constexpr std::string_view IDE_MODULE_PART_RESULT_MARKER = "module-part:v1";
 constexpr std::string_view IDE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
@@ -65,6 +68,8 @@ constexpr std::string_view IDE_SEMANTIC_FACT_DROPCK_FACTS = "dropck_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_PLACE_STATE = "place_state";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SEMANTIC_FACT_DYN_ABI_FACTS = "dyn_abi_facts";
+constexpr std::string_view IDE_SEMANTIC_FACT_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE =
+    "dyn_ownership_runtime_boundary_gate";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM = "enum";
@@ -561,6 +566,24 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return query::module_key_from_stable_id(snapshot.query.source_stage.file.package, query::stable_module_id(parts));
 }
 
+[[nodiscard]] query::ProjectKey project_key_for_snapshot(const IdeSnapshot& snapshot) noexcept
+{
+    return query::project_key(snapshot.query.source_stage.file.package.identity);
+}
+
+[[nodiscard]] base::SourceRange full_source_range_for_snapshot(const IdeSnapshot& snapshot) noexcept
+{
+    const base::SourceFile* const file = snapshot.sources.try_get(snapshot.source_id);
+    const base::usize size = file == nullptr ? 0U : file->text().size();
+    return base::SourceRange{snapshot.source_id, 0U, size};
+}
+
+[[nodiscard]] base::SourceRange project_fact_range_for_snapshot(const IdeSnapshot& snapshot) noexcept
+{
+    return snapshot.source_part.module_range.well_formed() ? snapshot.source_part.module_range
+                                                           : full_source_range_for_snapshot(snapshot);
+}
+
 [[nodiscard]] std::string module_path_display_name(const syntax::ModulePath& path)
 {
     std::string result;
@@ -571,6 +594,21 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         result.append(part);
     }
     return result;
+}
+
+[[nodiscard]] query::QueryResultFingerprint ide_project_graph_result_fingerprint(
+    const IdeSnapshot& snapshot, const query::ProjectKey key) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_PROJECT_GRAPH_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_fingerprint(query::stable_key_fingerprint(snapshot.query.source_stage.file.package));
+    builder.mix_string(module_path_display_name(snapshot.ast.module_path));
+    builder.mix_bool(snapshot.parsed);
+    builder.mix_bool(snapshot.checked_semantics);
+    builder.mix_fingerprint(query::stable_key_fingerprint(snapshot.query.source_stage.file));
+    builder.mix_fingerprint(query::stable_key_fingerprint(snapshot.source_part.part_key));
+    return query::query_result_fingerprint(builder.finish());
 }
 
 [[nodiscard]] std::filesystem::path ide_canonical_or_absolute(const std::filesystem::path& path)
@@ -2395,6 +2433,51 @@ void evaluate_module_query_surface(
     }));
 }
 
+void evaluate_dyn_ownership_runtime_boundary_gate_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
+{
+    const query::ProjectKey project = project_key_for_snapshot(snapshot);
+    if (!query::is_valid(project)) {
+        return;
+    }
+
+    const query::QueryResultFingerprint project_result = ide_project_graph_result_fingerprint(snapshot, project);
+    seed_reusable_query_record(context, incremental, query::project_graph_query_record(project, project_result));
+    static_cast<void>(context.evaluate_project_graph(query::ProjectGraphProviderInput{
+        project,
+        project_result,
+    }));
+
+    snapshot.dyn_ownership_runtime_boundary_gate = query::m18_dyn_ownership_runtime_boundary_gate_baseline();
+    const query::QueryResultFingerprint gate_result =
+        query::dyn_ownership_runtime_boundary_gate_result_fingerprint(snapshot.dyn_ownership_runtime_boundary_gate);
+    seed_reusable_query_record(
+        context, incremental, query::dyn_ownership_runtime_boundary_gate_query_record(project, gate_result));
+    const query::QueryEvaluationResult result =
+        context.evaluate_dyn_ownership_runtime_boundary_gate(query::DynOwnershipRuntimeBoundaryGateProviderInput{
+            project,
+            snapshot.dyn_ownership_runtime_boundary_gate,
+        });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+
+    const std::optional<query::QueryKey> query_key = query::dyn_ownership_runtime_boundary_gate_query_key(project);
+    if (!query_key.has_value()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::dyn_ownership_runtime_boundary_gate;
+    fact.query = *query_key;
+    fact.range = project_fact_range_for_snapshot(snapshot);
+    fact.name = std::string(IDE_SEMANTIC_FACT_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE);
+    fact.detail =
+        query::summarize_dyn_ownership_runtime_boundary_gate(snapshot.dyn_ownership_runtime_boundary_gate);
+    fact.part_index = snapshot.source_part.part_index;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void append_semantic_query_surface(IdeSnapshot& snapshot, const query::QueryContext& context)
 {
     std::vector<query::QueryRecord> records = context.completed_records();
@@ -2407,6 +2490,7 @@ void evaluate_semantic_queries(IdeSnapshot& snapshot, const IdeIncrementalSnapsh
 {
     query::QueryContext context;
     evaluate_module_query_surface(context, snapshot, incremental);
+    evaluate_dyn_ownership_runtime_boundary_gate_query(context, snapshot, incremental);
     if (snapshot.checked_semantics) {
         evaluate_checked_item_signature_queries(context, snapshot, incremental);
         evaluate_checked_function_body_queries(context, snapshot, incremental);

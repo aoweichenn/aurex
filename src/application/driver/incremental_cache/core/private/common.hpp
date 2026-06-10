@@ -62,6 +62,8 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED = ",
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED = ",reused=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED = ",recomputed=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PROJECT_GRAPHS = ",reused_project_graphs=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES =
+    ",reused_dyn_ownership_runtime_boundary_gates=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS = ",reused_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES = ",reused_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES = ",reused_parse_files=";
@@ -87,6 +89,8 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_F
     ",recomputed_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PROJECT_GRAPHS =
     ",recomputed_project_graphs=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES =
+    ",recomputed_dyn_ownership_runtime_boundary_gates=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES = ",recomputed_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES = ",recomputed_parse_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_PARTS =
@@ -119,6 +123,8 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED = ",evaluated=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PROJECT_GRAPHS =
     ",seeded_project_graphs=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES =
+    ",seeded_dyn_ownership_runtime_boundary_gates=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS =
     ",seeded_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES = ",seeded_lex_files=";
@@ -148,6 +154,9 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUA
     ",evaluated_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PROJECT_GRAPHS =
     ",evaluated_project_graphs=";
+inline constexpr std::string_view
+    INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATES =
+        ",evaluated_dyn_ownership_runtime_boundary_gates=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES = ",evaluated_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES =
     ",evaluated_parse_files=";
@@ -177,21 +186,22 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUA
     ",evaluated_diagnostics=";
 
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_PROJECT_GRAPH_RANK = 0;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK = 1;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK = 2;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK = 3;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_PART_RANK = 4;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK = 5;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK = 6;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK = 7;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK = 8;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK = 9;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK = 10;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK = 11;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 12;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 13;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 14;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 15;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE_RANK = 1;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK = 2;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK = 3;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK = 4;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_PART_RANK = 5;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK = 6;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK = 7;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK = 8;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK = 9;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK = 10;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK = 11;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK = 12;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 13;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 14;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 15;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 16;
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK = std::numeric_limits<base::usize>::max();
 
 } // namespace aurex::driver::incremental_cache_detail

@@ -9,6 +9,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
         case QuerySubjectKind::project_graph:
             counts.project_graphs += 1;
             return;
+        case QuerySubjectKind::dyn_ownership_runtime_boundary_gate:
+            counts.dyn_ownership_runtime_boundary_gates += 1;
+            return;
         case QuerySubjectKind::file_content:
             counts.file_contents += 1;
             return;
@@ -69,6 +72,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
     switch (kind) {
         case query::QueryKind::project_graph:
             counts.project_graphs += 1;
+            return;
+        case query::QueryKind::dyn_ownership_runtime_boundary_gate:
+            counts.dyn_ownership_runtime_boundary_gates += 1;
             return;
         case query::QueryKind::file_content:
             counts.file_contents += 1;

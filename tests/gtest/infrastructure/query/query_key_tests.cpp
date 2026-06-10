@@ -1,5 +1,6 @@
 #include <aurex/infrastructure/query/diagnostics_query.hpp>
 #include <aurex/infrastructure/query/dyn_abi_facts.hpp>
+#include <aurex/infrastructure/query/dyn_ownership_runtime_boundary_gate.hpp>
 #include <aurex/infrastructure/query/function_body_syntax_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_body_query.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
@@ -1275,6 +1276,8 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     const std::string producer_bytes = query::stable_serialize(producer);
 
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::project_graph, project_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(
+        query::QueryKind::dyn_ownership_runtime_boundary_gate, project_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lex_file, lex_file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::parse_file, parse_file_bytes));
@@ -1296,6 +1299,8 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
 
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, lex_file_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::project_graph, module_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(
+        query::QueryKind::dyn_ownership_runtime_boundary_gate, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_part, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, module_bytes));
@@ -1560,6 +1565,7 @@ TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer)
 TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
 {
     const query::PackageKey package = test_package();
+    const query::ProjectKey project = test_project_key();
     const query::ModuleKey module = test_module(package);
     const query::DefKey function_def = test_function_def(module);
     const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
@@ -1581,6 +1587,40 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_NE(exports_result.global_id, 0U);
 
     const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::QueryResultFingerprint project_graph_result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROJECT_GRAPH));
+    const query::ProjectGraphQueryInput project_graph_input{
+        project,
+        project_graph_result,
+    };
+    EXPECT_TRUE(query::is_valid(project_graph_input));
+    const std::optional<query::QueryRecord> project_graph_record =
+        query::project_graph_query_record(project_graph_input);
+    ASSERT_TRUE(project_graph_record.has_value());
+    EXPECT_TRUE(query::is_valid(*project_graph_record));
+    EXPECT_EQ(project_graph_record->key.kind, query::QueryKind::project_graph);
+    EXPECT_EQ(project_graph_record->key.payload, query::stable_key_fingerprint(project));
+    EXPECT_EQ(project_graph_record->stable_key_bytes, query::stable_serialize(project));
+    EXPECT_EQ(project_graph_record->result, project_graph_result);
+
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
+    const query::QueryResultFingerprint dyn_boundary_result =
+        query::dyn_ownership_runtime_boundary_gate_result_fingerprint(gate);
+    const query::DynOwnershipRuntimeBoundaryGateQueryInput dyn_boundary_input{
+        project,
+        dyn_boundary_result,
+    };
+    EXPECT_TRUE(query::is_valid(dyn_boundary_input));
+    const std::optional<query::QueryRecord> dyn_boundary_record =
+        query::dyn_ownership_runtime_boundary_gate_query_record(dyn_boundary_input);
+    ASSERT_TRUE(dyn_boundary_record.has_value());
+    EXPECT_TRUE(query::is_valid(*dyn_boundary_record));
+    EXPECT_EQ(dyn_boundary_record->key.kind, query::QueryKind::dyn_ownership_runtime_boundary_gate);
+    EXPECT_EQ(dyn_boundary_record->key.payload, query::stable_key_fingerprint(project));
+    EXPECT_EQ(dyn_boundary_record->stable_key_bytes, query::stable_serialize(project));
+    EXPECT_EQ(dyn_boundary_record->result, dyn_boundary_result);
+
     const std::optional<query::QueryRecord> file_content_record =
         query::file_content_query_record(source_subject.file, source_subject.content);
     ASSERT_TRUE(file_content_record.has_value());
@@ -1798,7 +1838,9 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(diagnostics_record->key.payload, query::stable_key_fingerprint(item_record->key));
     EXPECT_EQ(diagnostics_record->stable_key_bytes, query::stable_serialize(item_record->key));
 
-    const std::array<const query::QueryRecord*, 14> records_with_stable_identity{
+    const std::array<const query::QueryRecord*, 16> records_with_stable_identity{
+        &*project_graph_record,
+        &*dyn_boundary_record,
         &*file_content_record,
         &*lex_file_record,
         &*parse_file_record,
@@ -1873,6 +1915,31 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
         query::ParseFileQueryInput{source_subject.parse_file, query::QueryResultFingerprint{}})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::ModuleGraphQueryInput{}));
+    EXPECT_FALSE(query::is_valid(query::ProjectGraphQueryInput{}));
+    EXPECT_FALSE(query::is_valid(query::DynOwnershipRuntimeBoundaryGateQueryInput{}));
+    EXPECT_FALSE(query::project_graph_query_record(
+                     query::ProjectGraphQueryInput{query::ProjectKey{}, project_graph_result})
+                     .has_value());
+    EXPECT_FALSE(query::project_graph_query_record(
+                     query::ProjectGraphQueryInput{project, query::QueryResultFingerprint{}})
+                     .has_value());
+    EXPECT_FALSE(query::project_graph_query_record(query::ProjectKey{}, project_graph_result).has_value());
+    EXPECT_FALSE(query::project_graph_query_record(project, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::dyn_ownership_runtime_boundary_gate_query_record(
+                     query::DynOwnershipRuntimeBoundaryGateQueryInput{query::ProjectKey{}, dyn_boundary_result})
+                     .has_value());
+    EXPECT_FALSE(query::dyn_ownership_runtime_boundary_gate_query_record(
+                     query::DynOwnershipRuntimeBoundaryGateQueryInput{
+                         project,
+                         query::QueryResultFingerprint{},
+                     })
+                     .has_value());
+    EXPECT_FALSE(query::dyn_ownership_runtime_boundary_gate_query_record(
+                     query::ProjectKey{}, dyn_boundary_result)
+                     .has_value());
+    EXPECT_FALSE(query::dyn_ownership_runtime_boundary_gate_query_record(
+                     project, query::QueryResultFingerprint{})
+                     .has_value());
     EXPECT_FALSE(query::is_valid(query::ModulePartQueryInput{}));
     EXPECT_FALSE(
         query::module_part_query_record(query::ModulePartQueryInput{query::ModulePartKey{}, module_part_result})
@@ -2099,8 +2166,11 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
 
     query::QueryContext context;
     query::QueryExecutor executor{context};
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
     std::vector<query::QueryRequest> requests{
         query::QueryRequest{query::ProjectGraphProviderInput{project, test_query_result(QUERY_TEST_PROJECT_GRAPH)}},
+        query::QueryRequest{query::DynOwnershipRuntimeBoundaryGateProviderInput{project, gate}},
         query::QueryRequest{query::FileContentProviderInput{source_subject.file, source_subject.content}},
         query::QueryRequest{query::LexFileProviderInput{source_subject.lex_file, source_subject.tokens}},
         query::QueryRequest{query::ParseFileProviderInput{source_subject.parse_file, source_subject.syntax}},
@@ -2315,6 +2385,10 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
 
     const std::array accepted_edges{
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::file_content)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::dyn_ownership_runtime_boundary_gate),
+            make_key(query::QueryKind::project_graph),
+        },
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::parse_file)},
         query::QueryDependencyEdge{
@@ -2387,6 +2461,10 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
 
     const std::array rejected_edges{
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::parse_file)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::dyn_ownership_runtime_boundary_gate),
+            make_key(query::QueryKind::file_content),
+        },
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::file_content)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_graph), make_key(query::QueryKind::lex_file)},
@@ -2463,6 +2541,11 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
         query::module_graph_query_record(module, test_query_result(QUERY_TEST_MODULE_GRAPH));
     const std::optional<query::QueryRecord> project_graph_record =
         query::project_graph_query_record(project, test_query_result(QUERY_TEST_PROJECT_GRAPH));
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
+    const std::optional<query::QueryRecord> dyn_boundary_record =
+        query::dyn_ownership_runtime_boundary_gate_query_record(
+            project, query::dyn_ownership_runtime_boundary_gate_result_fingerprint(gate));
     const std::optional<query::QueryRecord> item_list_record =
         query::item_list_query_record(module, test_query_result(QUERY_TEST_ITEM_LIST));
     const std::optional<query::QueryRecord> exports_record =
@@ -2481,6 +2564,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
         query::lower_function_ir_query_record(function_body, test_query_result(QUERY_TEST_LOWER_FUNCTION_IR));
     ASSERT_TRUE(module_graph_record.has_value());
     ASSERT_TRUE(project_graph_record.has_value());
+    ASSERT_TRUE(dyn_boundary_record.has_value());
     ASSERT_TRUE(item_list_record.has_value());
     ASSERT_TRUE(exports_record.has_value());
     ASSERT_TRUE(reexported_exports_record.has_value());
@@ -2491,6 +2575,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
     ASSERT_TRUE(lower_body_record.has_value());
 
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*module_graph_record, *project_graph_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*dyn_boundary_record, *project_graph_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*module_graph_record, *module_part_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_list_record, *module_graph_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *item_list_record));
@@ -2573,6 +2658,23 @@ TEST(QueryUnit, QueryEdgeVerifierRejectsMalformedKindsAndStableIdentities)
         query::QueryDependencyEdgeValidationStatus::invalid_kind);
     EXPECT_EQ(query::validate_query_dependency_edge_records(*malformed_exports_record, *malformed_other_exports_record),
         query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const query::ProjectKey project = test_project_key();
+    const query::ProjectKey wrong_project = query::project_key(query::stable_fingerprint("wrong M18 project"));
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
+    const query::QueryResultFingerprint dyn_boundary_result =
+        query::dyn_ownership_runtime_boundary_gate_result_fingerprint(gate);
+    const std::optional<query::QueryRecord> dyn_boundary_record =
+        query::dyn_ownership_runtime_boundary_gate_query_record(project, dyn_boundary_result);
+    const std::optional<query::QueryRecord> wrong_project_graph_record =
+        query::project_graph_query_record(wrong_project, test_query_result(QUERY_TEST_PROJECT_GRAPH));
+    ASSERT_TRUE(dyn_boundary_record.has_value());
+    ASSERT_TRUE(wrong_project_graph_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*dyn_boundary_record, *wrong_project_graph_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*dyn_boundary_record, *file_content_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_kind);
 
     const query::LexFileKey wrong_lex_file = query::lex_file_key(source_subject.file, query::lex_config_key(true));
     const std::optional<query::QueryRecord> wrong_lex_record =
@@ -2867,6 +2969,80 @@ TEST(QueryUnit, ProjectGraphProviderBuildsRecordWithoutIncidentalDependencies)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, DynOwnershipRuntimeBoundaryGateProviderBuildsProjectScopedRecordAndDependency)
+{
+    const query::ProjectKey project = test_project_key();
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
+    const query::QueryResultFingerprint result =
+        query::dyn_ownership_runtime_boundary_gate_result_fingerprint(gate);
+    const std::optional<query::QueryKey> expected_key =
+        query::dyn_ownership_runtime_boundary_gate_query_key(project);
+    const std::optional<query::QueryKey> project_graph_key = query::project_graph_query_key(project);
+    ASSERT_TRUE(expected_key.has_value());
+    ASSERT_TRUE(project_graph_key.has_value());
+
+    const query::DynOwnershipRuntimeBoundaryGateProviderInput input{
+        project,
+        gate,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::DynOwnershipRuntimeBoundaryGateProviderOutput> output =
+        query::provide_dyn_ownership_runtime_boundary_gate_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::dyn_ownership_runtime_boundary_gate);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(project));
+    EXPECT_EQ(output->result, result);
+    EXPECT_EQ(output->record.result, output->result);
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*project_graph_key});
+    EXPECT_EQ(output->gate.fingerprint, gate.fingerprint);
+
+    query::QueryContext context;
+    const query::QueryEvaluationResult context_result =
+        context.evaluate_dyn_ownership_runtime_boundary_gate(input);
+    EXPECT_EQ(context_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(context_result.node, nullptr);
+    EXPECT_EQ(context_result.node->key, *expected_key);
+    EXPECT_EQ(context_result.node->dependencies, std::vector<query::QueryKey>{*project_graph_key});
+    EXPECT_TRUE(context.has_dependency(*expected_key, *project_graph_key));
+
+    EXPECT_FALSE(query::dyn_ownership_runtime_boundary_gate_query_key(query::ProjectKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::DynOwnershipRuntimeBoundaryGateProviderInput{}));
+    EXPECT_FALSE(query::provide_dyn_ownership_runtime_boundary_gate_query(
+                     query::DynOwnershipRuntimeBoundaryGateProviderInput{query::ProjectKey{}, gate})
+                     .has_value());
+
+    query::DynOwnershipRuntimeBoundaryGate invalid_gate = gate;
+    invalid_gate.checkpoints.clear();
+    invalid_gate.summary = query::summarize_dyn_ownership_runtime_boundary_gate_counts(invalid_gate);
+    invalid_gate.fingerprint = query::dyn_ownership_runtime_boundary_gate_fingerprint(invalid_gate);
+    EXPECT_FALSE(query::provide_dyn_ownership_runtime_boundary_gate_query(
+                     query::DynOwnershipRuntimeBoundaryGateProviderInput{project, invalid_gate})
+                     .has_value());
+    EXPECT_FALSE(query::is_valid(query::DynOwnershipRuntimeBoundaryGateProviderOutput{}));
+
+    query::DynOwnershipRuntimeBoundaryGateProviderOutput missing_dependency_output = *output;
+    missing_dependency_output.dependencies.clear();
+    EXPECT_FALSE(query::is_valid(missing_dependency_output));
+
+    query::DynOwnershipRuntimeBoundaryGateProviderOutput duplicate_dependency_output = *output;
+    duplicate_dependency_output.dependencies.push_back(*project_graph_key);
+    EXPECT_FALSE(query::is_valid(duplicate_dependency_output));
+
+    const query::ProjectKey other_project = query::project_key(query::stable_fingerprint("provider other project"));
+    const std::optional<query::QueryKey> other_project_graph_key = query::project_graph_query_key(other_project);
+    ASSERT_TRUE(other_project_graph_key.has_value());
+    query::DynOwnershipRuntimeBoundaryGateProviderOutput wrong_project_dependency_output = *output;
+    wrong_project_dependency_output.dependencies = {*other_project_graph_key};
+    EXPECT_FALSE(query::is_valid(wrong_project_dependency_output));
+
+    query::DynOwnershipRuntimeBoundaryGateProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result = test_query_result(QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE);
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
 TEST(QueryUnit, QueryContextProjectGraphOverrideFailureKeepsFailedNodeOutOfEdges)
 {
     const query::ProjectKey project = test_project_key();
@@ -3119,6 +3295,10 @@ TEST(QueryUnit, QueryProviderOverridesAggregateProviderWiring)
     const QueryContextSourceSubject subject = test_source_subject();
     base::usize content_provider_calls = 0;
     base::usize lex_provider_calls = 0;
+    base::usize dyn_boundary_provider_calls = 0;
+    const query::ProjectKey project = test_project_key();
+    const query::DynOwnershipRuntimeBoundaryGate gate =
+        query::m18_dyn_ownership_runtime_boundary_gate_baseline();
     query::QueryProviderOverrides overrides;
     overrides.file_content = [&content_provider_calls](const query::FileContentProviderInput& provider_input) {
         ++content_provider_calls;
@@ -3129,6 +3309,11 @@ TEST(QueryUnit, QueryProviderOverridesAggregateProviderWiring)
         ++lex_provider_calls;
         return std::nullopt;
     };
+    overrides.dyn_ownership_runtime_boundary_gate =
+        [&dyn_boundary_provider_calls](const query::DynOwnershipRuntimeBoundaryGateProviderInput& provider_input) {
+            ++dyn_boundary_provider_calls;
+            return query::provide_dyn_ownership_runtime_boundary_gate_query(provider_input);
+        };
     query::QueryProviderSet providers{std::move(overrides)};
 
     const std::optional<query::FileContentProviderOutput> content_output =
@@ -3150,6 +3335,13 @@ TEST(QueryUnit, QueryProviderOverridesAggregateProviderWiring)
         });
     ASSERT_TRUE(fallback_parse.has_value());
     EXPECT_TRUE(query::is_valid(*fallback_parse));
+
+    const std::optional<query::DynOwnershipRuntimeBoundaryGateProviderOutput> dyn_boundary =
+        providers.provide_dyn_ownership_runtime_boundary_gate(
+            query::DynOwnershipRuntimeBoundaryGateProviderInput{project, gate});
+    ASSERT_TRUE(dyn_boundary.has_value());
+    EXPECT_TRUE(query::is_valid(*dyn_boundary));
+    EXPECT_EQ(dyn_boundary_provider_calls, 1U);
 }
 
 TEST(QueryUnit, QueryContextAcceptsProviderOverridesAggregate)

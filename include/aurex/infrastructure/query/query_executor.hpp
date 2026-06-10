@@ -34,7 +34,7 @@ using QueryRequestInput = std::variant<ProjectGraphProviderInput, FileContentPro
     ModuleExportsProviderInput, ModulePackageExportsProviderInput, ItemSignatureProviderInput,
     GenericTemplateSignatureProviderInput, GenericInstanceSignatureQueryRequest, FunctionBodySyntaxProviderInput,
     TypeCheckBodyProviderInput, GenericInstanceBodyQueryRequest, LowerFunctionIRProviderInput,
-    LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput>;
+    LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput, DynOwnershipRuntimeBoundaryGateProviderInput>;
 
 struct QueryRequest {
     QueryRequestInput input;

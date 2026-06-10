@@ -24,6 +24,8 @@ constexpr std::string_view TOOLING_REUSE_KIND_PLACE_STATE = "place_state";
 constexpr std::string_view TOOLING_REUSE_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view TOOLING_REUSE_KIND_CLEANUP_MARKER_FACTS = "cleanup_marker_facts";
 constexpr std::string_view TOOLING_REUSE_KIND_DYN_ABI_FACTS = "dyn_abi_facts";
+constexpr std::string_view TOOLING_REUSE_KIND_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE =
+    "dyn_ownership_runtime_boundary_gate";
 constexpr std::string_view TOOLING_REUSE_REASON_BODY_LOCAL = "body-local edit";
 constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 
@@ -129,6 +131,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
             return TOOLING_REUSE_KIND_CLEANUP_MARKER_FACTS;
         case IdeSemanticFactKind::dyn_abi_facts:
             return TOOLING_REUSE_KIND_DYN_ABI_FACTS;
+        case IdeSemanticFactKind::dyn_ownership_runtime_boundary_gate:
+            return TOOLING_REUSE_KIND_DYN_OWNERSHIP_RUNTIME_BOUNDARY_GATE;
     }
     return TOOLING_REUSE_KIND_ITEM_SIGNATURE;
 }

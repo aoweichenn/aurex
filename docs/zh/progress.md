@@ -1,9 +1,28 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M17 Dyn Ownership Runtime Preparation
+阶段：M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate
 
 ## 总体状态
+
+2026-06-10：M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate 已完成。M18 不实现标准库、
+不实现 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做
+runtime ABI lowering；它把 M17 runtime boundary facts 接到 project-level query/cache/tooling/reuse/workspace index，
+并把 future IR/verifier/runtime lowering prerequisites 固定为 validation 可拒绝漂移的 facts。
+
+M18 新增 `DynOwnershipRuntimeBoundaryGate`、`DynOwnershipRuntimeBoundaryCheckpointFact`、
+`DynOwnershipRuntimeLoweringDesignGateFact` 和 `DynOwnershipRuntimeBoundarySummary`。Baseline 入口是
+`m18_dyn_ownership_runtime_boundary_gate_baseline()`；query kind 是 `dyn_ownership_runtime_boundary_gate`，
+使用 `ProjectKey` stable identity，并且 provider output 必须恰好依赖同一个 `ProjectKey` 的 `project_graph`。
+Incremental cache 会收集、排序、评估、复用和 profile 该 gate；IDE snapshot / session reuse / workspace index 会暴露
+`dyn_ownership_runtime_boundary_gate` semantic fact。
+
+M18 的硬边界是：borrowed vtable 仍保持 destructor-free；standard-library blocker、runtime-lowering blocker、
+`Box` surface blocker、owning dyn user value blocker、allocator API blocker 和 dynamic-drop blocker 都是 validation
+不变量。Lowering design gate 明确记录 future IR owned object placeholder、erased drop identity、allocator identity 和
+verifier guard，但 `lowering_runtime_implemented=0`、`dynamic_drop_runtime_implemented=0`、
+`standard_library_implemented=0`。新增收口文档见
+[Aurex M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate Release Baseline](m18-dyn-ownership-runtime-boundary-hardening-release.md)。
 
 2026-06-10：M17 Dyn Ownership Runtime Preparation 已完成。M17 不实现标准库、不实现 `Box<dyn Trait>`、
 不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做 runtime ABI lowering；

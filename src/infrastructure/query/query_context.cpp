@@ -185,6 +185,12 @@ void QueryContext::set_diagnostics_provider(DiagnosticsProvider provider)
     this->providers_.set_diagnostics_provider(std::move(provider));
 }
 
+void QueryContext::set_dyn_ownership_runtime_boundary_gate_provider(
+    DynOwnershipRuntimeBoundaryGateProvider provider)
+{
+    this->providers_.set_dyn_ownership_runtime_boundary_gate_provider(std::move(provider));
+}
+
 QueryEvaluationResult QueryContext::evaluate_file_content(const FileContentProviderInput& input)
 {
     return this->evaluate_query<FileContentProviderOutput>(file_content_query_key(input.key), [this, &input] {
@@ -317,6 +323,15 @@ QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProvid
     return this->evaluate_query<DiagnosticsProviderOutput>(diagnostics_query_key(input.producer), [this, &input] {
         return this->providers_.provide_diagnostics(input);
     });
+}
+
+QueryEvaluationResult QueryContext::evaluate_dyn_ownership_runtime_boundary_gate(
+    const DynOwnershipRuntimeBoundaryGateProviderInput& input)
+{
+    return this->evaluate_query<DynOwnershipRuntimeBoundaryGateProviderOutput>(
+        dyn_ownership_runtime_boundary_gate_query_key(input.key), [this, &input] {
+            return this->providers_.provide_dyn_ownership_runtime_boundary_gate(input);
+        });
 }
 
 bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies)

@@ -39,6 +39,16 @@ void evaluate_project_graph_query_subject(query::QueryContext& context, const Pr
     static_cast<void>(context.evaluate_project_graph(input));
 }
 
+void evaluate_dyn_ownership_runtime_boundary_gate_query_subject(
+    query::QueryContext& context, const DynOwnershipRuntimeBoundaryGateQuerySubject& subject)
+{
+    const query::DynOwnershipRuntimeBoundaryGateProviderInput input{
+        subject.key,
+        subject.gate,
+    };
+    static_cast<void>(context.evaluate_dyn_ownership_runtime_boundary_gate(input));
+}
+
 void evaluate_lex_file_query_subject(query::QueryContext& context, const LexFileQuerySubject& subject)
 {
     const query::LexFileProviderInput input{
@@ -220,6 +230,13 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     return query::project_graph_query_record(subject.key, subject.result);
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
+    const DynOwnershipRuntimeBoundaryGateQuerySubject& subject)
+{
+    return query::dyn_ownership_runtime_boundary_gate_query_record(
+        subject.key, query::dyn_ownership_runtime_boundary_gate_result_fingerprint(subject.gate));
+}
+
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const LexFileQuerySubject& subject)
 {
     return query::lex_file_query_record(subject.key, subject.result);
@@ -356,24 +373,30 @@ void collect_diagnostics_query_subjects(QuerySubjectCollection& collection)
 void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
     collection.subjects.reserve(collection.project_graphs.size() + collection.file_contents.size()
-        + collection.lex_files.size() + collection.parse_files.size() + collection.module_parts.size()
-        + collection.module_graphs.size() + collection.module_exports.size() + collection.module_package_exports.size()
-        + collection.item_lists.size() + collection.item_signatures.size() + collection.function_body_syntaxes.size()
-        + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
-        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
-        + collection.lower_function_irs.size());
-    std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
-    keys.reserve(collection.project_graphs.size() + collection.file_contents.size() + collection.lex_files.size()
+        + collection.dyn_ownership_runtime_boundary_gates.size() + collection.lex_files.size()
         + collection.parse_files.size() + collection.module_parts.size() + collection.module_graphs.size()
         + collection.module_exports.size() + collection.module_package_exports.size() + collection.item_lists.size()
         + collection.item_signatures.size() + collection.function_body_syntaxes.size()
         + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
         + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
         + collection.lower_function_irs.size());
+    std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
+    keys.reserve(collection.project_graphs.size() + collection.file_contents.size() + collection.lex_files.size()
+        + collection.dyn_ownership_runtime_boundary_gates.size() + collection.parse_files.size()
+        + collection.module_parts.size() + collection.module_graphs.size() + collection.module_exports.size()
+        + collection.module_package_exports.size() + collection.item_lists.size() + collection.item_signatures.size()
+        + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
+        + collection.generic_template_signatures.size()
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
+        + collection.lower_function_irs.size());
 
     for (base::usize index = 0; index < collection.project_graphs.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::project_graph, index,
             query_record_for_subject(collection.project_graphs[index]));
+    }
+    for (base::usize index = 0; index < collection.dyn_ownership_runtime_boundary_gates.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::dyn_ownership_runtime_boundary_gate, index,
+            query_record_for_subject(collection.dyn_ownership_runtime_boundary_gates[index]));
     }
     for (base::usize index = 0; index < collection.file_contents.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::file_content, index,
@@ -458,6 +481,10 @@ void evaluate_query_subject(
     switch (subject.kind) {
         case QuerySubjectKind::project_graph:
             evaluate_project_graph_query_subject(context, collection.project_graphs[subject.index]);
+            return;
+        case QuerySubjectKind::dyn_ownership_runtime_boundary_gate:
+            evaluate_dyn_ownership_runtime_boundary_gate_query_subject(
+                context, collection.dyn_ownership_runtime_boundary_gates[subject.index]);
             return;
         case QuerySubjectKind::file_content:
             evaluate_file_content_query_subject(context, collection.file_contents[subject.index]);

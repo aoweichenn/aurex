@@ -96,6 +96,12 @@ struct QueryRequestKeyVisitor {
     {
         return diagnostics_query_key(input.producer);
     }
+
+    [[nodiscard]] std::optional<QueryKey> operator()(
+        const DynOwnershipRuntimeBoundaryGateProviderInput& input) const noexcept
+    {
+        return dyn_ownership_runtime_boundary_gate_query_key(input.key);
+    }
 };
 
 struct QueryEvaluateVisitor {
@@ -200,6 +206,11 @@ struct QueryEvaluateVisitor {
     [[nodiscard]] QueryEvaluationResult operator()(const DiagnosticsProviderInput& input) const
     {
         return this->context.evaluate_diagnostics(input);
+    }
+
+    [[nodiscard]] QueryEvaluationResult operator()(const DynOwnershipRuntimeBoundaryGateProviderInput& input) const
+    {
+        return this->context.evaluate_dyn_ownership_runtime_boundary_gate(input);
     }
 };
 

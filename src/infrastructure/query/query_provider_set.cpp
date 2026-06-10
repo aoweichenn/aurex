@@ -57,6 +57,8 @@ QueryProviderSet::QueryProviderSet(QueryProviderOverrides overrides)
     this->set_lower_function_ir_provider(std::move(overrides.lower_function_ir));
     this->set_lower_generic_instance_ir_provider(std::move(overrides.lower_generic_instance_ir));
     this->set_diagnostics_provider(std::move(overrides.diagnostics));
+    this->set_dyn_ownership_runtime_boundary_gate_provider(
+        std::move(overrides.dyn_ownership_runtime_boundary_gate));
 }
 
 QueryProviderSet::QueryProviderSet(ItemSignatureProvider item_signature_provider)
@@ -182,6 +184,14 @@ void QueryProviderSet::set_diagnostics_provider(DiagnosticsProvider provider)
     this->diagnostics_provider_ = provider ? std::move(provider) : DiagnosticsProvider{provide_diagnostics_query};
 }
 
+void QueryProviderSet::set_dyn_ownership_runtime_boundary_gate_provider(
+    DynOwnershipRuntimeBoundaryGateProvider provider)
+{
+    this->dyn_ownership_runtime_boundary_gate_provider_ =
+        provider ? std::move(provider)
+                 : DynOwnershipRuntimeBoundaryGateProvider{provide_dyn_ownership_runtime_boundary_gate_query};
+}
+
 std::optional<FileContentProviderOutput> QueryProviderSet::provide_file_content(
     const FileContentProviderInput& input) const
 {
@@ -285,6 +295,13 @@ std::optional<DiagnosticsProviderOutput> QueryProviderSet::provide_diagnostics(
     const DiagnosticsProviderInput& input) const
 {
     return this->diagnostics_provider_(input);
+}
+
+std::optional<DynOwnershipRuntimeBoundaryGateProviderOutput>
+QueryProviderSet::provide_dyn_ownership_runtime_boundary_gate(
+    const DynOwnershipRuntimeBoundaryGateProviderInput& input) const
+{
+    return this->dyn_ownership_runtime_boundary_gate_provider_(input);
 }
 
 } // namespace aurex::query

@@ -62,6 +62,12 @@ inline constexpr std::string_view IR_VERIFY_DROP_CLEANUP_POLICY_TARGET =
 inline constexpr std::string_view IR_VERIFY_DROP_CLEANUP_POLICY_NON_DROP =
     "cleanup ABI policy is only valid on drop markers";
 
+inline constexpr std::string_view IR_VERIFY_DROP_DYNAMIC_ERASED_RUNTIME_BLOCKED =
+    "dynamic erased drop runtime is blocked at this IR stage";
+
+inline constexpr std::string_view IR_VERIFY_TRAIT_OBJECT_VTABLE_DESTRUCTOR_FREE =
+    "borrowed dyn trait vtable must remain destructor-free";
+
 inline constexpr std::string_view IR_VERIFY_CAST_RESULT_TARGET = "cast result type must match cast target type";
 
 inline constexpr std::string_view IR_VERIFY_UNARY_OPERAND_INVALID = "unary operand type is invalid";

@@ -138,6 +138,7 @@ void mix_trait_object_vtable_layout(
     mix_type(builder, module, layout.concrete_type);
     mix_type(builder, module, layout.object_type);
     mix_text(builder, module, layout.symbol);
+    builder.mix_bool(layout.destructor_slot_blocked);
     builder.mix_u64(static_cast<base::u64>(layout.method_slots.size()));
     for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
         builder.mix_u32(slot.slot);

@@ -34,6 +34,9 @@ void increment_policy_count(CleanupMarkerSummary& summary, const CleanupMarkerPo
         case CleanupMarkerPolicy::static_custom_destructor:
             ++summary.static_custom_destructor_count;
             break;
+        case CleanupMarkerPolicy::dynamic_erased_drop_blocked:
+            ++summary.dynamic_erased_drop_blocked_count;
+            break;
     }
 }
 
@@ -73,6 +76,8 @@ std::string_view cleanup_marker_policy_name(const CleanupMarkerPolicy policy) no
             return "unknown_marker_only";
         case CleanupMarkerPolicy::static_custom_destructor:
             return "static_custom_destructor";
+        case CleanupMarkerPolicy::dynamic_erased_drop_blocked:
+            return "dynamic_erased_drop_blocked";
     }
     return "invalid";
 }
@@ -87,6 +92,7 @@ bool is_valid(const CleanupMarkerPolicy policy) noexcept
         case CleanupMarkerPolicy::opaque_marker_only:
         case CleanupMarkerPolicy::unknown_marker_only:
         case CleanupMarkerPolicy::static_custom_destructor:
+        case CleanupMarkerPolicy::dynamic_erased_drop_blocked:
             return true;
     }
     return false;
@@ -122,6 +128,7 @@ StableFingerprint128 function_cleanup_marker_facts_fingerprint(
     builder.mix_u64(facts.summary.opaque_marker_only_count);
     builder.mix_u64(facts.summary.unknown_marker_only_count);
     builder.mix_u64(facts.summary.static_custom_destructor_count);
+    builder.mix_u64(facts.summary.dynamic_erased_drop_blocked_count);
     for (const CleanupMarkerFact& marker : facts.markers) {
         builder.mix_u8(static_cast<base::u8>(marker.kind));
         builder.mix_u8(stable_policy_value(marker.policy));
@@ -145,7 +152,8 @@ std::string summarize_function_cleanup_marker_facts(const FunctionCleanupMarkerF
           << " associated_projection_marker_only=" << facts.summary.associated_projection_marker_only_count
           << " opaque_marker_only=" << facts.summary.opaque_marker_only_count
           << " unknown_marker_only=" << facts.summary.unknown_marker_only_count
-          << " static_custom_destructor=" << facts.summary.static_custom_destructor_count;
+          << " static_custom_destructor=" << facts.summary.static_custom_destructor_count
+          << " dynamic_erased_drop_blocked=" << facts.summary.dynamic_erased_drop_blocked_count;
     if (!facts.markers.empty()) {
         label << " first_policy=" << cleanup_marker_policy_name(facts.markers.front().policy);
     }

@@ -32,6 +32,8 @@ std::string_view cleanup_abi_policy_name(const CleanupAbiPolicy policy) noexcept
             return "unknown_marker_only";
         case CleanupAbiPolicy::static_custom_destructor:
             return "static_custom_destructor";
+        case CleanupAbiPolicy::dynamic_erased_drop_blocked:
+            return "dynamic_erased_drop_blocked";
     }
     return "invalid";
 }
@@ -262,6 +264,7 @@ TraitObjectVTableLayout Module::clone_trait_object_vtable_layout(const TraitObje
     copy.concrete_type = other.concrete_type;
     copy.object_type = other.object_type;
     copy.symbol = other.symbol;
+    copy.destructor_slot_blocked = other.destructor_slot_blocked;
     copy.method_slots =
         this->copy_vector<TraitObjectVTableMethodSlot>({other.method_slots.data(), other.method_slots.size()});
     copy.supertrait_edges = this->copy_vector<TraitObjectVTableSupertraitEdge>(

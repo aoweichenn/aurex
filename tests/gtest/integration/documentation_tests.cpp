@@ -62,6 +62,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m16-const-generic-check-only-release.md",
         "docs/zh/m17-dyn-ownership-runtime-prep-release.md",
         "docs/zh/m18-dyn-ownership-runtime-boundary-hardening-release.md",
+        "docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -188,7 +189,7 @@ TEST_F(AurexIntegrationTest, M8DynTraitDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M8 Dyn Trait、Erased View 与动态派发 Release Closure");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M19 Dyn Ownership Runtime IR / Verifier Preparation");
+        "当前最高优先级：M20 标准库 / Owning Dyn Runtime Design Gate");
     expect_document_contains("docs/zh/next-steps.md", "M9 Dyn ABI / Tooling Design Baseline");
     expect_document_contains("docs/zh/next-steps.md", "`CanonicalTypeKind::trait_object` 占位已移除");
     expect_document_contains("docs/zh/next-steps.md", "`TraitObjectTypeKey`、`VTableLayoutKey`、`TraitObjectCoercionKey`");
@@ -291,7 +292,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "M11 Advanced Dyn Design Baseline");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M19 Dyn Ownership Runtime IR / Verifier Preparation");
+        "当前最高优先级：M20 标准库 / Owning Dyn Runtime Design Gate");
     expect_document_contains("docs/zh/next-steps.md", "M10 已结束");
     expect_document_contains("docs/zh/next-steps.md", "M11a 也已结束");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M10d 已完成 hardening/release closure");
@@ -328,7 +329,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate**");
+        "docs/zh/README.md", "文档基线：**M19 Dyn Ownership Runtime IR / Verifier Preparation**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -342,6 +343,8 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M17 Dyn Ownership Runtime Preparation Release Baseline");
     expect_document_contains("docs/zh/README.md",
         "Aurex M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate Release Baseline");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M19 Dyn Ownership Runtime IR / Verifier Preparation Release Baseline");
     expect_document_contains("docs/zh/README.md", "principal_set_metadata_v1");
     expect_document_contains("docs/zh/README.md", "dyn (A + B)");
     expect_document_contains("docs/zh/README.md", "FunctionDynAbiFacts");
@@ -353,7 +356,9 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "typed scalar const generic");
     expect_document_contains("docs/zh/README.md", "GenericInstanceKey::const_args");
     expect_document_contains(
-        "docs/zh/progress.md", "阶段：M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate");
+        "docs/zh/progress.md", "阶段：M19 Dyn Ownership Runtime IR / Verifier Preparation");
+    expect_document_contains(
+        "docs/zh/progress.md", "M19 Dyn Ownership Runtime IR / Verifier Preparation 已完成");
     expect_document_contains(
         "docs/zh/progress.md", "M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate 已完成");
     expect_document_contains(
@@ -369,8 +374,10 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "Aurex M16 Const Generic Frontend / Query / Sema Check-Only Release Baseline");
     expect_document_contains("docs/zh/progress.md", "DynOwnershipRuntimeFacts");
     expect_document_contains("docs/zh/progress.md", "DynOwnershipRuntimeBoundaryGate");
+    expect_document_contains("docs/zh/progress.md", "DynOwnershipRuntimeIrVerifierFact");
     expect_document_contains("docs/zh/progress.md", "m17_dyn_ownership_runtime_preparation_baseline()");
     expect_document_contains("docs/zh/progress.md", "m18_dyn_ownership_runtime_boundary_gate_baseline()");
+    expect_document_contains("docs/zh/progress.md", "m19_dyn_ownership_runtime_ir_verifier_baseline()");
     expect_document_contains("docs/zh/progress.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/progress.md", "borrowed_view_path_dispatch_count");
     expect_document_contains("docs/zh/progress.md", "view.parent()");
@@ -404,6 +411,8 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "## M17 Dyn Ownership Runtime Preparation");
     expect_document_contains("docs/zh/version.md",
         "## M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate");
+    expect_document_contains("docs/zh/version.md",
+        "## M19 Dyn Ownership Runtime IR / Verifier Preparation");
     expect_document_contains("docs/zh/version.md", "DynOwnedContainerBoundaryFact");
     expect_document_contains("docs/zh/version.md", "borrowed-vtable destructor-free");
     expect_document_contains("docs/zh/version.md", "syntax::GenericArgKind::{type,const_expr}");
@@ -413,7 +422,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "ready_for_future_stage");
     expect_document_contains(
         "docs/zh/next-steps.md",
-        "当前最高优先级：M19 Dyn Ownership Runtime IR / Verifier Preparation");
+        "当前最高优先级：M20 标准库 / Owning Dyn Runtime Design Gate");
     expect_document_contains("docs/zh/next-steps.md",
         "M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set");
     expect_document_contains("docs/zh/next-steps.md", "M11b 也已结束");
@@ -441,9 +450,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "docs/zh/next-steps.md", "M17 Dyn Ownership Runtime Preparation");
     expect_document_contains(
         "docs/zh/next-steps.md", "M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate");
+    expect_document_contains(
+        "docs/zh/next-steps.md", "M19 Dyn Ownership Runtime IR / Verifier Preparation");
     expect_document_contains("docs/zh/next-steps.md", "M16 const generic check-only");
     expect_document_contains("docs/zh/next-steps.md", "M17 dyn ownership runtime prep");
     expect_document_contains("docs/zh/next-steps.md", "M18 dyn ownership runtime boundary hardening");
+    expect_document_contains("docs/zh/next-steps.md", "M19 dyn ownership runtime IR / verifier preparation");
     expect_document_contains("docs/zh/next-steps.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/next-steps.md", "composition_supertrait_chains");
     expect_document_contains("docs/zh/language-feature-inventory.md",
@@ -466,6 +478,8 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M17 已新增 `DynOwnershipRuntimeFacts`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M18 已新增 `DynOwnershipRuntimeBoundaryGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M19 已新增 `DynOwnershipRuntimeIrVerifierFact`");
     expect_document_contains("docs/zh/language-manual.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
     expect_document_contains(
         "docs/zh/language-manual.md",
@@ -480,6 +494,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/language-manual.md", "M16 const generic check-only 子集当前可写");
     expect_document_contains("docs/zh/language-manual.md", "查询 M17 dyn ownership runtime preparation facts");
     expect_document_contains("docs/zh/language-manual.md", "查询 M18 dyn ownership runtime boundary gate");
+    expect_document_contains("docs/zh/language-manual.md", "查询 M19 dyn ownership runtime IR / verifier facts");
     expect_document_contains(
         "docs/zh/language-manual.md", "GenericParam  = Identifier | \"const\" Identifier \":\" Type | \"origin\" Identifier");
     expect_document_contains("docs/zh/language-manual.md", "ArrayView[i32, 4]");
@@ -497,6 +512,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/usage.md", "M16 已打开用户可写 const generic");
     expect_document_contains("docs/zh/usage.md", "M17 新增 `m17_dyn_ownership_runtime_preparation_baseline()`");
     expect_document_contains("docs/zh/usage.md", "M18 新增 `m18_dyn_ownership_runtime_boundary_gate_baseline()`");
+    expect_document_contains("docs/zh/usage.md", "M19 新增 `m19_dyn_ownership_runtime_ir_verifier_baseline()`");
     expect_document_contains("docs/zh/usage.md", "ArrayView[i32, 4]");
     expect_document_contains("docs/zh/usage.md", "转发时必须和目标 const parameter type 一致");
     expect_document_contains("docs/zh/usage.md", "BorrowedDynViewPathFact{use=method_dispatch}");
@@ -687,6 +703,18 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "lowering_runtime_implemented=false");
     expect_document_contains("docs/zh/m18-dyn-ownership-runtime-boundary-hardening-release.md",
         "M19 Dyn Ownership Runtime IR / Verifier Preparation");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "M19 已完成 dyn ownership runtime 的 IR / verifier preparation");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "FunctionDynOwnershipRuntimeIrVerifierFacts");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "TraitObjectVTableLayout::destructor_slot_blocked");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "CleanupAbiPolicy::dynamic_erased_drop_blocked");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "不实现 `Box<dyn Trait>`");
+    expect_document_contains("docs/zh/m19-dyn-ownership-runtime-ir-verifier-prep-release.md",
+        "M20 标准库/owning dyn runtime design gate");
     expect_document_contains("docs/zh/version.md",
         "## M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
     expect_document_contains("docs/zh/version.md",

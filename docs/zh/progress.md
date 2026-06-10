@@ -1,9 +1,26 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate
+阶段：M19 Dyn Ownership Runtime IR / Verifier Preparation
 
 ## 总体状态
+
+2026-06-10：M19 Dyn Ownership Runtime IR / Verifier Preparation 已完成。M19 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend
+runtime helper call，也不做 runtime ABI lowering；它把 M18 lowering design gate 中的 future prerequisites 落成
+IR/verifier 可见事实、dump/fingerprint、collector 和 verifier negative matrix。
+
+M19 新增 `DynOwnershipRuntimeIrVerifierFact`、`DynOwnershipRuntimeIrVerifierSummary` 和
+`FunctionDynOwnershipRuntimeIrVerifierFacts`。Baseline 入口是
+`m19_dyn_ownership_runtime_ir_verifier_baseline()`；函数级 collector 是
+`function_dyn_ownership_runtime_ir_verifier_facts()`。IR 层新增
+`TraitObjectVTableLayout::destructor_slot_blocked`，并把它接入 clone/copy、dump、layout ABI fingerprint 和 verifier；
+cleanup marker 新增 `CleanupAbiPolicy::dynamic_erased_drop_blocked` 作为 blocked negative sentinel。
+
+M19 的硬边界是：borrowed vtable 仍只能是 method/supertrait metadata，不能带 destructor slot；drop/drop_if 仍只能携带
+static 或 marker-only cleanup policy，不能携带 dynamic erased drop runtime；erased drop identity、allocator identity、
+owned dyn object placeholder 和 runtime lowering 都仍是 future/blocker facts。新增收口文档见
+[Aurex M19 Dyn Ownership Runtime IR / Verifier Preparation Release Baseline](m19-dyn-ownership-runtime-ir-verifier-prep-release.md)。
 
 2026-06-10：M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate 已完成。M18 不实现标准库、
 不实现 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，也不做

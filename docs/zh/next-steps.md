@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M19 Dyn Ownership Runtime IR / Verifier Preparation
+## 当前最高优先级：M20 标准库 / Owning Dyn Runtime Design Gate
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
@@ -10,7 +10,8 @@ Direct Composition Dispatch Hardening / Release Closure、M13a Advanced Dyn Rema
 M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait
 IR / Backend Runtime、M13d Borrowed Composition-To-Supertrait Hardening / Release Closure、
 M14 Borrowed Dyn View Path Inference / Dispatch Release、M16 Const Generic Frontend / Query / Sema Check-Only 和
-M17 Dyn Ownership Runtime Preparation 和 M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate 均已完成。
+M17 Dyn Ownership Runtime Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate 和
+M19 Dyn Ownership Runtime IR / Verifier Preparation 均已完成。
 当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
@@ -27,6 +28,7 @@ M17 Dyn Ownership Runtime Preparation 和 M18 Dyn Ownership Runtime Boundary Har
 - [Aurex M16 Const Generic Frontend / Query / Sema Check-Only Release Baseline](m16-const-generic-check-only-release.md)
 - [Aurex M17 Dyn Ownership Runtime Preparation Release Baseline](m17-dyn-ownership-runtime-prep-release.md)
 - [Aurex M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate Release Baseline](m18-dyn-ownership-runtime-boundary-hardening-release.md)
+- [Aurex M19 Dyn Ownership Runtime IR / Verifier Preparation Release Baseline](m19-dyn-ownership-runtime-ir-verifier-prep-release.md)
 
 M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
@@ -190,9 +192,17 @@ M18 也已结束。M18 新增 `DynOwnershipRuntimeBoundaryGate` project-level qu
 query/cache/tooling/reuse/workspace index，并固定 future IR/verifier/runtime lowering prerequisites。M18 仍没有实现
 标准库、`Box<dyn Trait>`、allocator API、owning dyn 用户值、runtime ABI lowering 或 dynamic Drop dispatch。
 
-当前下一步应进入 **M19 Dyn Ownership Runtime IR / Verifier Preparation**。M19 仍不直接做标准库 API；它应把 M18
-lowering design gate 中记录的 future IR/verifier prerequisites 落成 verifier-visible 的 IR 形状、query facts 和负例矩阵，
-同时继续禁止在本阶段实现 `Box<dyn Trait>`、allocator trait、标准库容器、owning dyn user values 或 dynamic Drop runtime。
+M19 也已结束。M19 新增 `DynOwnershipRuntimeIrVerifierFact`、
+`FunctionDynOwnershipRuntimeIrVerifierFacts`、`function_dyn_ownership_runtime_ir_verifier_facts()`、
+`TraitObjectVTableLayout::destructor_slot_blocked` 和
+`CleanupAbiPolicy::dynamic_erased_drop_blocked` blocked negative sentinel，把 M18 的 future prerequisites 落成
+verifier-visible IR facts、dump/fingerprint、collector 和 negative matrix。M19 仍没有实现标准库、`Box<dyn Trait>`、
+allocator API、owning dyn 用户值、runtime ABI lowering、backend runtime helper call 或 dynamic Drop runtime。
+
+当前下一步应进入 **M20 标准库 / Owning Dyn Runtime Design Gate**。M20 应先设计标准库和 runtime 边界，不应直接在第一步
+写 `Box<dyn Trait>` runtime：需要确定 allocator identity 如何映射到 API、owned object layout 如何和 borrowed view
+分离、dynamic Drop metadata 如何记录 erased drop identity，以及 runtime lowering 何时从 blocked facts 变成 executable
+ABI。
 
 M12 后续候选不应混在同一阶段一次性实现：
 
@@ -224,8 +234,9 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M16 const generic check-only | 已完成。`syntax::GenericParamKind::const_`、typed const param parser/AST、canonical const value key、generic instance const arg key、const param env binding、`[N]T` check-only、negative diagnostics、docs/tests | 预计 1,200-2,000 行；实际以本次 diffstat 为准，若高于预估主要因为同时更新 parser/AST/sema/query identity、文档和 documentation tests |
 | M17 dyn ownership runtime prep | 已完成。`DynOwnershipRuntimeFacts`、owned container / erased drop glue / allocator / cleanup-dropck boundary facts、summary/dump/fingerprint、negative boundary tests；仍不做标准库 API | 实际以本次 diffstat 为准 |
 | M18 dyn ownership runtime boundary hardening / lowering design gate | 已完成。将 M17 facts 接入 query/cache/tooling/reuse/workspace index，补 runtime lowering 所需 IR/verifier design gate、negative matrix 和 release docs；仍不实现标准库、`Box` 或 allocator API | 实际以本次 diffstat 为准 |
-| M19 dyn ownership runtime IR / verifier preparation | 将 M18 prerequisites 落成 verifier-visible IR 形状、query facts、负例矩阵和 release docs；仍不实现标准库、`Box`、allocator API、owning dyn user values 或 dynamic Drop runtime | 900-1,700 行 |
-| 标准库阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待独立设计后估算 |
+| M19 dyn ownership runtime IR / verifier preparation | 已完成。`DynOwnershipRuntimeIrVerifierFact`、function-level IR collector、borrowed vtable destructor-free guard、dynamic erased drop blocked sentinel、verifier negative matrix 和 release docs；仍不实现标准库、`Box`、allocator API、owning dyn user values 或 dynamic Drop runtime | 实际以本次 diffstat 为准 |
+| M20 stdlib / owning dyn runtime design gate | 标准库/owning dyn/runtime 边界设计；确定 `Box<dyn Trait>`、allocator identity、owned object layout、erased drop identity 和 runtime lowering 的分阶段准入，不直接一次性实现 runtime | 800-1,600 行 |
+| 标准库实现阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API | 待 M20 设计后估算 |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 

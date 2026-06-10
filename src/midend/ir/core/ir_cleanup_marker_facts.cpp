@@ -53,6 +53,8 @@ query::CleanupMarkerPolicy query_cleanup_marker_policy(const CleanupAbiPolicy po
             return query::CleanupMarkerPolicy::unknown_marker_only;
         case CleanupAbiPolicy::static_custom_destructor:
             return query::CleanupMarkerPolicy::static_custom_destructor;
+        case CleanupAbiPolicy::dynamic_erased_drop_blocked:
+            return query::CleanupMarkerPolicy::dynamic_erased_drop_blocked;
     }
     return query::CleanupMarkerPolicy::none;
 }

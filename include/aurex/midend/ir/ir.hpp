@@ -177,6 +177,7 @@ enum class CleanupAbiPolicy {
     opaque_marker_only,
     unknown_marker_only,
     static_custom_destructor,
+    dynamic_erased_drop_blocked,
 };
 
 [[nodiscard]] std::string_view cleanup_abi_policy_name(CleanupAbiPolicy policy) noexcept;
@@ -249,6 +250,7 @@ struct TraitObjectVTableLayout {
     sema::TypeHandle concrete_type = sema::INVALID_TYPE_HANDLE;
     sema::TypeHandle object_type = sema::INVALID_TYPE_HANDLE;
     IrTextId symbol = INVALID_IR_TEXT_ID;
+    bool destructor_slot_blocked = true;
     IrVector<TraitObjectVTableMethodSlot> method_slots;
     IrVector<TraitObjectVTableSupertraitEdge> supertrait_edges;
 };

@@ -367,6 +367,7 @@ std::string dump_module(const Module& module)
     for (const TraitObjectVTableLayout& layout : module.trait_object_vtables) {
         out << "vtable @" << module.text(layout.symbol) << " " << module.types.display_name(layout.concrete_type)
             << " as " << module.types.display_name(layout.object_type) << " key=" << layout.layout_key.global_id
+            << " destructor_slot_blocked=" << (layout.destructor_slot_blocked ? "yes" : "no")
             << " {\n";
         for (const TraitObjectVTableMethodSlot& slot : layout.method_slots) {
             out << "  slot " << slot.slot << " @"

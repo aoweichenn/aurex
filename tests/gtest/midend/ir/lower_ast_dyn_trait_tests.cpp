@@ -4,6 +4,7 @@
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/infrastructure/query/trait_object_key.hpp>
 #include <aurex/midend/ir/ir_dyn_abi_facts.hpp>
+#include <aurex/midend/ir/ir_dyn_ownership_runtime_ir_verifier_facts.hpp>
 #include <aurex/midend/ir/ir_dump.hpp>
 #include <aurex/midend/ir/ir_fingerprint.hpp>
 #include <aurex/midend/ir/lower_ast.hpp>
@@ -11,6 +12,7 @@
 
 #include <gtest/support/ir_test_helpers.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -259,6 +261,111 @@ void add_second_vtable_slot(DynTraitIrFixture& fixture)
     });
 }
 
+void append_blocked_dynamic_drop_function(DynTraitIrFixture& fixture)
+{
+    const TypeHandle void_type = builtin(fixture.module, BuiltinType::void_);
+    const TypeHandle file_mut_ptr = ptr(fixture.module, PointerMutability::mut, fixture.file);
+    Function function = make_function(fixture.module, "blocked_dynamic_drop", void_type);
+    FunctionBuilder builder{fixture.module, function};
+    Value param = fixture.module.make_value();
+    param.kind = ValueKind::param;
+    param.type = file_mut_ptr;
+    param.name = fixture.module.intern("target");
+    const ValueId target = builder.add(param);
+    Value drop = fixture.module.make_value();
+    drop.kind = ValueKind::drop;
+    drop.type = void_type;
+    drop.object = target;
+    drop.target_type = fixture.file;
+    drop.cleanup_policy = CleanupAbiPolicy::dynamic_erased_drop_blocked;
+    const ValueId drop_marker = builder.add(drop);
+    const BlockId entry = builder.block("entry");
+    assign_ir_vector(function.signature_params, {function_param(fixture.module, "target", file_mut_ptr)});
+    assign_ir_vector(function.param_values, {target});
+    assign_ir_vector(function.blocks[entry.value].values, {target, drop_marker});
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    append_function(fixture.module, function);
+}
+
+[[nodiscard]] FunctionId append_dyn_ownership_runtime_collector_edges_function(DynTraitIrFixture& fixture)
+{
+    const TypeHandle void_type = builtin(fixture.module, BuiltinType::void_);
+    const TypeHandle file_mut_ptr = ptr(fixture.module, PointerMutability::mut, fixture.file);
+    const query::VTableLayoutKey missing_layout_key = query::vtable_layout_key(
+        test_nominal_type_key("dyn_ir", "MissingFile"), fixture.layout_key.object_type,
+        fixture.layout_key.slot_schema, query::stable_fingerprint("dyn_ir.MissingFile:Draw"), 1U);
+
+    Function function = fixture.module.make_function();
+    function.name = fixture.module.intern("dyn_ownership_runtime_collector_edges");
+    function.return_type = void_type;
+    FunctionBuilder builder{fixture.module, function};
+
+    Value param = fixture.module.make_value();
+    param.kind = ValueKind::param;
+    param.type = file_mut_ptr;
+    param.name = fixture.module.intern("target");
+    const ValueId target = builder.add(param);
+
+    const ValueId flag = builder.add(bool_value(fixture.module, true));
+    std::vector<ValueId> block_values{target, flag};
+
+    Value invalid_layout_pack = fixture.module.make_value();
+    invalid_layout_pack.kind = ValueKind::trait_object_pack;
+    invalid_layout_pack.type = fixture.draw_ref;
+    invalid_layout_pack.lhs = target;
+    block_values.push_back(builder.add(invalid_layout_pack));
+
+    Value missing_layout_vtable = fixture.module.make_value();
+    missing_layout_vtable.kind = ValueKind::trait_object_vtable;
+    missing_layout_vtable.type = fixture.vtable_ptr;
+    missing_layout_vtable.object = target;
+    missing_layout_vtable.vtable_layout = missing_layout_key;
+    block_values.push_back(builder.add(missing_layout_vtable));
+
+    Value upcast = fixture.module.make_value();
+    upcast.kind = ValueKind::trait_object_upcast;
+    upcast.type = fixture.draw_ref;
+    upcast.object = target;
+    upcast.vtable_layout = fixture.layout_key;
+    upcast.target_vtable_layout = fixture.layout_key;
+    block_values.push_back(builder.add(upcast));
+
+    Value composition_project = fixture.module.make_value();
+    composition_project.kind = ValueKind::trait_object_composition_project;
+    composition_project.type = fixture.draw_ref;
+    composition_project.object = target;
+    composition_project.target_vtable_layout = fixture.layout_key;
+    block_values.push_back(builder.add(composition_project));
+
+    const std::vector<CleanupAbiPolicy> cleanup_policies{
+        CleanupAbiPolicy::none,
+        CleanupAbiPolicy::structural_static,
+        CleanupAbiPolicy::generic_marker_only,
+        CleanupAbiPolicy::associated_projection_marker_only,
+        CleanupAbiPolicy::opaque_marker_only,
+        CleanupAbiPolicy::unknown_marker_only,
+        CleanupAbiPolicy::static_custom_destructor,
+        CleanupAbiPolicy::dynamic_erased_drop_blocked,
+    };
+    for (const CleanupAbiPolicy policy : cleanup_policies) {
+        Value drop_if = fixture.module.make_value();
+        drop_if.kind = ValueKind::drop_if;
+        drop_if.type = void_type;
+        drop_if.lhs = flag;
+        drop_if.object = target;
+        drop_if.target_type = fixture.file;
+        drop_if.cleanup_policy = policy;
+        block_values.push_back(builder.add(drop_if));
+    }
+
+    const BlockId entry = builder.block("entry");
+    assign_ir_vector(function.signature_params, {function_param(fixture.module, "target", file_mut_ptr)});
+    assign_ir_vector(function.param_values, {target});
+    assign_ir_vector(function.blocks[entry.value].values, block_values);
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    return add_function(fixture.module, function);
+}
+
 } // namespace
 
 TEST(CoreUnit, LowerAstDynTraitDynamicDispatchEmitsExplicitIrNodes)
@@ -381,6 +488,93 @@ TEST(CoreUnit, IrDynAbiFactsProjectFunctionLocalBorrowedDispatch)
     const std::string dump = query::dump_function_dyn_abi_facts(*render_facts);
     EXPECT_NE(dump.find("dyn_vtable_slot slot=0"), std::string::npos) << dump;
     EXPECT_NE(dump.find("dispatch=vtable_slot"), std::string::npos) << dump;
+}
+
+TEST(CoreUnit, IrDynOwnershipRuntimeVerifierFactsProjectBorrowedDispatchBoundary)
+{
+    const std::string_view source =
+        "module ir_dyn_ownership_runtime_facts;\n"
+        "trait Draw {\n"
+        "  fn draw(self: &Self) -> i32;\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Draw for File {\n"
+        "  fn draw(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn render(drawable: &dyn Draw) -> i32 {\n"
+        "  return drawable.draw();\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file: File = File { value: 11 };\n"
+        "  let drawable: &dyn Draw = &file;\n"
+        "  return render(drawable);\n"
+        "}\n";
+
+    const DynTraitLoweringFixture fixture = lower_dyn_trait_source(source);
+    const std::vector<query::FunctionDynOwnershipRuntimeIrVerifierFacts> all_facts =
+        ir::function_dyn_ownership_runtime_ir_verifier_facts(fixture.ir);
+    ASSERT_EQ(all_facts.size(), fixture.ir.functions.size());
+    const auto render_facts = std::ranges::find_if(all_facts,
+        [](const query::FunctionDynOwnershipRuntimeIrVerifierFacts& facts) {
+            return facts.symbol.find("render") != std::string::npos;
+        });
+    ASSERT_NE(render_facts, all_facts.end());
+    EXPECT_TRUE(query::is_valid(*render_facts));
+    EXPECT_EQ(render_facts->summary.borrowed_vtable_count, 1U);
+    EXPECT_EQ(render_facts->summary.destructor_free_vtable_count, 1U);
+    EXPECT_EQ(render_facts->summary.static_cleanup_only_count, 0U);
+    EXPECT_EQ(render_facts->summary.erased_drop_identity_required_count, 1U);
+    EXPECT_EQ(render_facts->summary.allocator_identity_required_count, 1U);
+    EXPECT_EQ(render_facts->summary.lowering_runtime_implemented_count, 0U);
+    EXPECT_EQ(render_facts->fingerprint,
+        query::dyn_ownership_runtime_ir_verifier_facts_fingerprint(*render_facts));
+
+    const std::optional<query::FunctionDynOwnershipRuntimeIrVerifierFacts> by_symbol =
+        ir::function_dyn_ownership_runtime_ir_verifier_facts_by_symbol(fixture.ir, render_facts->symbol);
+    ASSERT_TRUE(by_symbol.has_value());
+    EXPECT_EQ(by_symbol->fingerprint, render_facts->fingerprint);
+    EXPECT_FALSE(ir::function_dyn_ownership_runtime_ir_verifier_facts_by_symbol(fixture.ir, "missing")
+                     .has_value());
+
+    const std::string summary = query::summarize_dyn_ownership_runtime_ir_verifier_facts(*render_facts);
+    EXPECT_NE(summary.find("runtime_lowering_blocked="), std::string::npos) << summary;
+    EXPECT_NE(summary.find("dynamic_drop_runtime_blocked="), std::string::npos) << summary;
+    EXPECT_NE(summary.find("standard_library_blocked="), std::string::npos) << summary;
+    const std::string dump = query::dump_dyn_ownership_runtime_ir_verifier_facts(*render_facts);
+    EXPECT_NE(dump.find("borrowed_vtable_destructor_free_ir_guard"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("future_erased_drop_identity_required_by_verifier"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("runtime_lowering_blocked_until_stdlib_runtime_stage"), std::string::npos) << dump;
+}
+
+TEST(CoreUnit, IrDynOwnershipRuntimeVerifierFactsCoverCollectorBoundaryEdges)
+{
+    DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();
+    const FunctionId function_id = append_dyn_ownership_runtime_collector_edges_function(fixture);
+
+    const query::FunctionDynOwnershipRuntimeIrVerifierFacts facts =
+        ir::function_dyn_ownership_runtime_ir_verifier_facts(
+            fixture.module, fixture.module.functions[function_id.value]);
+    EXPECT_FALSE(query::is_valid(facts));
+    EXPECT_TRUE(facts.symbol.empty());
+    EXPECT_EQ(facts.summary.fact_count, 13U);
+    EXPECT_EQ(facts.summary.borrowed_vtable_count, 1U);
+    EXPECT_EQ(facts.summary.destructor_free_vtable_count, 1U);
+    EXPECT_EQ(facts.summary.static_cleanup_only_count, 6U);
+    EXPECT_EQ(facts.summary.cleanup_marker_count, 6U);
+    EXPECT_EQ(facts.summary.blocked_runtime_marker_count, 1U);
+    EXPECT_EQ(facts.summary.runtime_lowering_blocked_count, facts.summary.fact_count);
+    EXPECT_EQ(facts.summary.standard_library_blocked_count, facts.summary.fact_count);
+    EXPECT_EQ(facts.fingerprint, query::dyn_ownership_runtime_ir_verifier_facts_fingerprint(facts));
+
+    const std::optional<query::FunctionDynOwnershipRuntimeIrVerifierFacts> by_empty_symbol =
+        ir::function_dyn_ownership_runtime_ir_verifier_facts_by_symbol(fixture.module, "");
+    ASSERT_TRUE(by_empty_symbol.has_value());
+    EXPECT_EQ(by_empty_symbol->summary.fact_count, facts.summary.fact_count);
+
+    const std::string dump = query::dump_dyn_ownership_runtime_ir_verifier_facts(facts);
+    EXPECT_NE(dump.find("function=<anonymous>"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("static_cleanup_marker_only_ir_guard"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("blocked_runtime_markers=1"), std::string::npos) << dump;
 }
 
 TEST(CoreUnit, IrDynAbiFactsCoverDescriptorEdgesAndInvalidValues)
@@ -734,6 +928,25 @@ TEST(CoreUnit, IrVerifierCoversDynTraitVtableAndValueInvariants)
 
         const base::Result<void> verified = ir::verify_module(fixture.module);
         ASSERT_TRUE(verified) << verified.error().message;
+    }
+    {
+        DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();
+        fixture.module.trait_object_vtables.front().destructor_slot_blocked = false;
+        expect_error_contains(ir::verify_module(fixture.module),
+            "borrowed dyn trait vtable must remain destructor-free");
+    }
+    {
+        DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();
+        append_blocked_dynamic_drop_function(fixture);
+        const std::optional<query::FunctionDynOwnershipRuntimeIrVerifierFacts> facts =
+            ir::function_dyn_ownership_runtime_ir_verifier_facts_by_symbol(
+                fixture.module, "test_blocked_dynamic_drop");
+        ASSERT_TRUE(facts.has_value());
+        EXPECT_EQ(facts->summary.blocked_runtime_marker_count, 1U);
+        EXPECT_EQ(facts->summary.static_cleanup_only_count, 0U);
+        EXPECT_FALSE(query::is_valid(*facts));
+        expect_error_contains(ir::verify_module(fixture.module),
+            "dynamic erased drop runtime is blocked at this IR stage");
     }
     {
         DynTraitIrFixture fixture = make_dyn_trait_ir_fixture();

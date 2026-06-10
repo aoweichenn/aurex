@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M19 Dyn Ownership Runtime IR / Verifier Preparation**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -60,7 +60,7 @@ equality dispatch。M17 已完成 dyn ownership runtime preparation：`DynOwners
 `DynOwnedContainerBoundaryFact`、`DynErasedDropGlueBoundaryFact`、`DynAllocatorBoundaryFact` 和
 `DynCleanupDropckBoundaryFact` 固定 future owning dyn、erased drop glue、allocator 与 cleanup/dropck boundary；
 `m17_dyn_ownership_runtime_preparation_baseline()`、summary/dump/fingerprint 和 validation 会拒绝把 M17 伪装成已经
-实现标准库、`Box<dyn Trait>`、allocator API、owning dyn user value、runtime ABI lowering 或 dynamic Drop dispatch。M18 已进一步新增 `DynOwnershipRuntimeBoundaryGate`、`DynOwnershipRuntimeBoundaryCheckpointFact`、`DynOwnershipRuntimeLoweringDesignGateFact` 和 `dyn_ownership_runtime_boundary_gate` project-level query，把 M17 facts 接入 query/cache/tooling/reuse/workspace index，并固定 future IR/verifier/runtime lowering prerequisites；M18 仍不实现任何标准库或 runtime surface。
+实现标准库、`Box<dyn Trait>`、allocator API、owning dyn user value、runtime ABI lowering 或 dynamic Drop dispatch。M18 已进一步新增 `DynOwnershipRuntimeBoundaryGate`、`DynOwnershipRuntimeBoundaryCheckpointFact`、`DynOwnershipRuntimeLoweringDesignGateFact` 和 `dyn_ownership_runtime_boundary_gate` project-level query，把 M17 facts 接入 query/cache/tooling/reuse/workspace index，并固定 future IR/verifier/runtime lowering prerequisites；M18 仍不实现任何标准库或 runtime surface。M19 已新增 `DynOwnershipRuntimeIrVerifierFact`、`FunctionDynOwnershipRuntimeIrVerifierFacts`、`function_dyn_ownership_runtime_ir_verifier_facts()`、`TraitObjectVTableLayout::destructor_slot_blocked` 和 `CleanupAbiPolicy::dynamic_erased_drop_blocked` blocked negative sentinel，把 M18 prerequisites 落成 verifier-visible IR facts 和负例矩阵；M19 仍不实现标准库、`Box<dyn Trait>`、allocator API、owning dyn user values、runtime ABI lowering、backend runtime helper call 或 dynamic Drop runtime。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -114,6 +114,7 @@ equality dispatch。M17 已完成 dyn ownership runtime preparation：`DynOwners
 - [Aurex M16 Const Generic Frontend / Query / Sema Check-Only Release Baseline](m16-const-generic-check-only-release.md)
 - [Aurex M17 Dyn Ownership Runtime Preparation Release Baseline](m17-dyn-ownership-runtime-prep-release.md)
 - [Aurex M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate Release Baseline](m18-dyn-ownership-runtime-boundary-hardening-release.md)
+- [Aurex M19 Dyn Ownership Runtime IR / Verifier Preparation Release Baseline](m19-dyn-ownership-runtime-ir-verifier-prep-release.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

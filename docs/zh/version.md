@@ -1,5 +1,35 @@
 # 版本文档
 
+## M19 Dyn Ownership Runtime IR / Verifier Preparation
+
+M19 已完成 dyn ownership runtime 的 IR / verifier preparation。M19 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop dispatch，不做 backend
+runtime helper call，也不做 runtime ABI lowering。M19 的目标是把 M18 lowering design gate 中记录的 future
+IR/verifier prerequisites 落成 verifier-visible 的 IR 形状、query facts 和负例矩阵。
+
+M19 新增或固定：
+
+- `DynOwnershipRuntimeIrVerifierFact`。
+- `DynOwnershipRuntimeIrVerifierSummary`。
+- `FunctionDynOwnershipRuntimeIrVerifierFacts`。
+- `m19_dyn_ownership_runtime_ir_verifier_baseline()`。
+- `dyn_ownership_runtime_ir_verifier_facts_fingerprint()`、summary、dump 和 validation。
+- `function_dyn_ownership_runtime_ir_verifier_facts()` 函数级 IR collector。
+- `TraitObjectVTableLayout::destructor_slot_blocked`，进入 clone/copy、dump、layout ABI fingerprint 和 verifier。
+- `CleanupAbiPolicy::dynamic_erased_drop_blocked`，作为 verifier 负例哨兵，明确不代表可执行 dynamic Drop runtime。
+- IR verifier 对 borrowed vtable destructor-free drift 和 dynamic erased drop cleanup policy 的硬拒绝。
+
+M19 validation 明确拒绝：
+
+- 把 borrowed vtable 改成带 destructor slot 的 owning/drop vtable。
+- 把 dynamic erased drop runtime 标记成已实现。
+- 把 standard library、runtime ABI lowering、owning dyn user value、allocator API 或 `Box<dyn Trait>` 标记成已实现。
+- 删除 erased drop identity prerequisite、allocator identity prerequisite 或 owned dyn object placeholder blocker。
+- 让 summary、stable fingerprint 或 function-level facts 与当前 facts 漂移。
+
+下一阶段建议进入 M20 标准库/owning dyn runtime design gate；M20 才适合开始设计 `Box<dyn Trait>`、allocator API、
+owned object layout、dynamic Drop metadata 和 runtime lowering 的实际执行边界。
+
 ## M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate
 
 M18 已完成 dyn ownership runtime boundary hardening / lowering design gate。M18 不实现标准库、不实现

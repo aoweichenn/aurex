@@ -4,6 +4,7 @@ add_library(aurex_ir
     src/midend/ir/core/ir.cpp
     src/midend/ir/core/ir_cleanup_marker_facts.cpp
     src/midend/ir/core/ir_dyn_abi_facts.cpp
+    src/midend/ir/core/ir_dyn_ownership_runtime_ir_verifier_facts.cpp
     src/midend/ir/core/ir_dump.cpp
     src/midend/ir/core/ir_fingerprint.cpp
     src/midend/ir/core/ir_value_closure.cpp

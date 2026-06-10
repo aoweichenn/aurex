@@ -22,6 +22,7 @@ enum class CleanupMarkerPolicy : base::u8 {
     opaque_marker_only,
     unknown_marker_only,
     static_custom_destructor,
+    dynamic_erased_drop_blocked,
 };
 
 struct CleanupMarkerFact {
@@ -44,6 +45,7 @@ struct CleanupMarkerSummary {
     base::u64 opaque_marker_only_count = 0;
     base::u64 unknown_marker_only_count = 0;
     base::u64 static_custom_destructor_count = 0;
+    base::u64 dynamic_erased_drop_blocked_count = 0;
 };
 
 struct FunctionCleanupMarkerFacts {

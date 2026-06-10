@@ -605,6 +605,10 @@ private:
             this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_REQUIRED));
             return;
         }
+        if (value.cleanup_policy == CleanupAbiPolicy::dynamic_erased_drop_blocked) {
+            this->fail(std::string(IR_VERIFY_DROP_DYNAMIC_ERASED_RUNTIME_BLOCKED));
+            return;
+        }
         if (!sema::is_valid(value.target_type) || value.target_type.value >= this->module_.types.size()) {
             if (value.cleanup_policy != CleanupAbiPolicy::unknown_marker_only) {
                 this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
@@ -639,6 +643,8 @@ private:
             case CleanupAbiPolicy::unknown_marker_only:
                 break;
             case CleanupAbiPolicy::none:
+                break;
+            case CleanupAbiPolicy::dynamic_erased_drop_blocked:
                 break;
         }
     }
@@ -1107,6 +1113,9 @@ private:
             }
             this->verify_type(layout.concrete_type, "vtable concrete type");
             this->verify_type(layout.object_type, "vtable object type");
+            if (!layout.destructor_slot_blocked) {
+                this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_VTABLE_DESTRUCTOR_FREE));
+            }
             if (!this->is_single_trait_object_type(layout.object_type)) {
                 this->fail(std::string(IR_VERIFY_TRAIT_OBJECT_LAYOUT_TYPE));
             }

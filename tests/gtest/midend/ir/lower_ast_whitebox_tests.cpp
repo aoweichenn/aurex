@@ -1134,6 +1134,8 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupAbiPolicyClassifiesMarkerKinds)
     EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::opaque_marker_only), "opaque_marker_only");
     EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::unknown_marker_only), "unknown_marker_only");
     EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::static_custom_destructor), "static_custom_destructor");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::dynamic_erased_drop_blocked),
+        "dynamic_erased_drop_blocked");
     EXPECT_EQ(ir::cleanup_abi_policy_name(static_cast<CleanupAbiPolicy>(LOWER_AST_INVALID_CLEANUP_POLICY_VALUE)),
         "invalid");
 }

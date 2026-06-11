@@ -191,6 +191,22 @@ CallExprPayload* ExprNodeList::call_payload(const base::usize index) noexcept
     return &this->payloads_.calls[this->headers_[index].payload];
 }
 
+const LambdaExprPayload* ExprNodeList::lambda_payload(const base::usize index) const noexcept
+{
+    if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::lambda) {
+        return nullptr;
+    }
+    return &this->payloads_.lambdas[this->headers_[index].payload];
+}
+
+LambdaExprPayload* ExprNodeList::lambda_payload(const base::usize index) noexcept
+{
+    if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::lambda) {
+        return nullptr;
+    }
+    return &this->payloads_.lambdas[this->headers_[index].payload];
+}
+
 const IfExprPayload* ExprNodeList::if_payload(const base::usize index) const noexcept
 {
     if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::if_expr) {
@@ -449,6 +465,11 @@ ExprId ExprNodeList::append_binary(
 ExprId ExprNodeList::append_call(const ExprKind kind, const base::SourceRange& range, CallExprPayload payload)
 {
     return this->append_call(kind, range, payload.callee, std::move(payload.args));
+}
+
+ExprId ExprNodeList::append_lambda(const base::SourceRange& range, LambdaExprPayload payload)
+{
+    return this->append_lambda(range, std::move(payload.params), payload.return_type, payload.body);
 }
 
 ExprId ExprNodeList::append_if(const base::SourceRange& range, const IfExprPayload payload)
@@ -724,6 +745,8 @@ base::usize ExprNodeList::estimated_arena_bytes(const AstReserveEstimate::Exprs&
         bytes, allocation_bytes(plan.binaries, sizeof(BinaryExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
     bytes = base::checked_add_usize(
         bytes, allocation_bytes(plan.calls, sizeof(CallExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.lambdas, sizeof(LambdaExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
     bytes =
         base::checked_add_usize(bytes, allocation_bytes(plan.ifs, sizeof(IfExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
     bytes = base::checked_add_usize(
@@ -756,6 +779,7 @@ void ExprNodeList::reserve_payloads(const AstReserveEstimate::Exprs& plan)
     this->payloads_.tries.reserve(plan.tries);
     this->payloads_.binaries.reserve(plan.binaries);
     this->payloads_.calls.reserve(plan.calls);
+    this->payloads_.lambdas.reserve(plan.lambdas);
     this->payloads_.ifs.reserve(plan.ifs);
     this->payloads_.blocks.reserve(plan.blocks);
     this->payloads_.matches.reserve(plan.matches);
@@ -823,6 +847,12 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         case ExprKind::str_from_bytes_unchecked: {
             const CallExprPayload* const payload = other.call_payload(index);
             static_cast<void>(this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
+            return;
+        }
+        case ExprKind::lambda: {
+            const LambdaExprPayload* const payload = other.lambda_payload(index);
+            static_cast<void>(
+                this->append_lambda(range, copy_std_vector(payload->params), payload->return_type, payload->body));
             return;
         }
         case ExprKind::if_expr: {

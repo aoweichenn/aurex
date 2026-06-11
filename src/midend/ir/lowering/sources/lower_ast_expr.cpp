@@ -164,6 +164,12 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
             view.args = readonly_span(payload.args);
             break;
         }
+        case syntax::ExprKind::lambda: {
+            const syntax::LambdaExprPayload& payload = *this->ast_.exprs.lambda_payload(expr_id.value);
+            view.lambda_params = readonly_span(payload.params);
+            view.lambda_body = payload.body;
+            break;
+        }
         case syntax::ExprKind::if_expr: {
             const syntax::IfExprPayload& payload = *this->ast_.exprs.if_payload(expr_id.value);
             view.condition = payload.condition;
@@ -404,6 +410,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
             return this->lower_binary_expr(expr_id, expr);
         case syntax::ExprKind::call:
             return this->lower_call_expr(expr_id, expr);
+        case syntax::ExprKind::lambda:
+            return this->lower_lambda_expr(expr_id);
         case syntax::ExprKind::try_expr:
             return this->lower_try_expr(expr_id, expr);
         case syntax::ExprKind::if_expr:
@@ -452,6 +460,27 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
             return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
         case syntax::ExprKind::invalid:
             return INVALID_VALUE_ID;
+    }
+    return INVALID_VALUE_ID;
+}
+
+ValueId Lowerer::lower_lambda_expr(const syntax::ExprId expr_id)
+{
+    for (base::usize index = 0; index < this->checked_.lambdas.size(); ++index) {
+        const sema::CheckedLambdaInfo& lambda = this->checked_.lambdas[index];
+        if (lambda.expr.value != expr_id.value || index >= this->lambda_functions_.size()) {
+            continue;
+        }
+        const FunctionId function_id = this->lambda_functions_[index];
+        if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()) {
+            return INVALID_VALUE_ID;
+        }
+        Value value = this->module_.make_value();
+        value.kind = ValueKind::function_ref;
+        value.name = this->module_.functions[function_id.value].symbol;
+        value.call_target = function_id;
+        value.type = this->expr_type(expr_id);
+        return this->append_value(value);
     }
     return INVALID_VALUE_ID;
 }

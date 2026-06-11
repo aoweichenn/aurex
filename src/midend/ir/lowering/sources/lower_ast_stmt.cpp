@@ -154,6 +154,18 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
     this->current_function_ = nullptr;
 }
 
+void Lowerer::lower_lambda_body(const FunctionId function_id, const sema::CheckedLambdaInfo& lambda)
+{
+    if (!is_valid(function_id) || !syntax::is_valid(lambda.expr) || lambda.expr.value >= this->ast_.exprs.size()) {
+        return;
+    }
+    const syntax::LambdaExprPayload* const payload = this->ast_.exprs.lambda_payload(lambda.expr.value);
+    if (payload == nullptr) {
+        return;
+    }
+    this->lower_function_body(function_id, FunctionBodyView{payload->params, lambda.body});
+}
+
 void Lowerer::lower_generic_function_body(
     const FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body)
 {

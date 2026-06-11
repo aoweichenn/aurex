@@ -794,6 +794,7 @@ bool SemanticAnalyzerCore::PlaceStateAnalyzer::may_need_check(
                 break;
             }
             case syntax::ExprKind::invalid:
+            case syntax::ExprKind::lambda:
             case syntax::ExprKind::integer_literal:
             case syntax::ExprKind::float_literal:
             case syntax::ExprKind::bool_literal:

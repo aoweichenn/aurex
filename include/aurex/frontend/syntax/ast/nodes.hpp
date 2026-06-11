@@ -145,6 +145,14 @@ struct GenericParamDecl {
     TypeId const_type = INVALID_TYPE_ID;
 };
 
+struct ParamDecl {
+    std::string_view name;
+    TypeId type = INVALID_TYPE_ID;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
+    bool is_deinit = false;
+};
+
 struct TypeOriginQualifier {
     std::vector<std::string_view> names;
     std::vector<IdentId> name_ids;
@@ -225,6 +233,7 @@ enum class ExprKind {
     unary,
     binary,
     call,
+    lambda,
     try_expr,
     if_expr,
     block_expr,

@@ -1,0 +1,7 @@
+module lambda_capture_unsupported;
+
+fn main() -> i32 {
+    let base: i32 = 1;
+    let add_base: fn(i32) -> i32 = fn(value: i32) -> i32 => value + base;
+    return add_base(41);
+}

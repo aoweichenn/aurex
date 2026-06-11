@@ -277,14 +277,19 @@ safe reference 已作为 M2 基础类型落地：
   和 origin parameter；未完成的是 generic const arithmetic、const where predicate、associated const、dyn const
   equality 和 unresolved const-param array runtime ABI。
 
-函数指针类型已作为 M2 基础类型落地：
+函数指针类型和无捕获 lambda 字面量已作为基础函数式能力落地：
 
 ```aurex
 type BinaryOp = fn(i32, i32) -> i32;
 type CCallback = extern c fn(*mut void, ...) -> i32;
+let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
 ```
 
-当前语义是非捕获函数指针：函数名可以作为值赋给 `fn(...) -> T` / `extern c fn(...) -> T`，局部变量、参数和 struct 字段中的函数指针可以用普通调用语法间接调用。调用约定、参数类型、variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。完整 closure/lambda 捕获仍不属于 M2。
+当前语义是非捕获函数指针：函数名和无捕获 lambda 字面量可以作为值赋给 `fn(...) -> T`，函数名也可以作为值赋给
+`extern c fn(...) -> T`；局部变量、参数和 struct 字段中的函数指针可以用普通调用语法间接调用。调用约定、参数类型、
+variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。lambda 当前要求显式参数类型和
+显式 `-> T`，支持 `=> expr` 表达式体和 `{ ... }` 块体。捕获外层局部/参数的 closure 会报
+`capturing closures are not supported yet`，不会被降级成薄函数指针。
 
 ### 顶层 item
 
@@ -980,14 +985,17 @@ let all = bytes[:];
 
 2. function pointer / function type（已补入 M2 基线）
 
-   完整 closure 捕获继续暂缓；非捕获函数类型和 C callback 已作为基础系统能力落地：
+   完整 closure 捕获继续暂缓；非捕获函数类型、无捕获 lambda 和 C callback 已作为基础系统能力落地：
 
    ```aurex
    type Cmp = fn(a: *const void, b: *const void) -> i32;
    type Callback = extern c fn(ctx: *mut void) -> void;
+   let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
    ```
 
-   函数名可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic 只允许出现在 `extern c fn` 类型中。
+   函数名和无捕获 lambda 可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic
+   只允许出现在 `extern c fn` 类型中。捕获 closure 需要环境 ABI、capture mode、dropck/place-state/lifetime facts 和
+   调用 thunk，仍是后续独立阶段。
 
 3. 已补齐：tuple / destructuring declaration
 

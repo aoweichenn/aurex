@@ -148,6 +148,13 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
             view.args = readonly_span(payload.args);
             break;
         }
+        case syntax::ExprKind::lambda: {
+            const syntax::LambdaExprPayload& payload = *this->ctx_.module.exprs.lambda_payload(expr_id.value);
+            view.lambda_params = readonly_span(payload.params);
+            view.lambda_return_type = payload.return_type;
+            view.lambda_body = payload.body;
+            break;
+        }
         case syntax::ExprKind::if_expr: {
             const syntax::IfExprPayload& payload = *this->ctx_.module.exprs.if_payload(expr_id.value);
             view.condition = payload.condition;

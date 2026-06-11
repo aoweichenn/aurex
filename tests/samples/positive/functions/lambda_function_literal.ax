@@ -1,0 +1,37 @@
+module lambda_function_literal;
+
+type UnaryOp = fn(i32) -> i32;
+
+enum MaybeI32 {
+    some(i32),
+    none,
+}
+
+fn apply(op: UnaryOp, value: i32) -> i32 {
+    return op(value);
+}
+
+fn choose(flag: bool) -> UnaryOp {
+    if flag {
+        return fn(value: i32) -> i32 => value + 1;
+    }
+    return fn(value: i32) -> i32 {
+        return value + 2;
+    };
+}
+
+fn main() -> i32 {
+    let inc: UnaryOp = fn(value: i32) -> i32 => value + 1;
+    let add_two: UnaryOp = fn(value: i32) -> i32 {
+        let local = value + 2;
+        return local;
+    };
+    let score: UnaryOp = fn(value: i32) -> i32 {
+        let maybe = MaybeI32.some(value);
+        return match maybe {
+            .some(inner) if inner > 0 => inner,
+            _ => 0,
+        };
+    };
+    return apply(inc, 40) + add_two(1) + choose(false)(0) + score(3) - 49;
+}

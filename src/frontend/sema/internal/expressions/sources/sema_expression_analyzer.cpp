@@ -56,6 +56,7 @@ enum class ExprAnalysisCategory {
         case syntax::ExprKind::name:
         case syntax::ExprKind::generic_apply:
         case syntax::ExprKind::call:
+        case syntax::ExprKind::lambda:
             return ExprAnalysisCategory::value;
         case syntax::ExprKind::try_expr:
         case syntax::ExprKind::if_expr:
@@ -287,6 +288,8 @@ TypeHandle SemanticAnalyzerCore::ExpressionAnalyzer::analyze_value_expr(
             return this->core_.analyze_generic_apply_expr(expr_id, expr);
         case syntax::ExprKind::call:
             return this->core_.analyze_call_expr(expr_id, expr, expected_type);
+        case syntax::ExprKind::lambda:
+            return this->core_.analyze_lambda_expr(expr_id, expr);
         default:
             return this->core_.record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }

@@ -1176,6 +1176,7 @@ private:
     {
         switch (expr.kind) {
             case syntax::ExprKind::name:
+            case syntax::ExprKind::lambda:
                 break;
             case syntax::ExprKind::generic_apply:
                 this->push_mode_expression(tasks, expr.callee, RequestedUse::place_only);
@@ -1677,6 +1678,7 @@ private:
                     task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::invalid:
+            case syntax::ExprKind::lambda:
             case syntax::ExprKind::integer_literal:
             case syntax::ExprKind::float_literal:
             case syntax::ExprKind::bool_literal:

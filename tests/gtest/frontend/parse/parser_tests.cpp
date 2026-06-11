@@ -509,6 +509,44 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
+{
+    constexpr std::string_view source = "module parser.lambda_literals;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;\n"
+                                        "  let add_two: fn(i32) -> i32 = fn(value: i32) -> i32 {\n"
+                                        "    return value + 2;\n"
+                                        "  };\n"
+                                        "  return inc(40) + add_two(0) - 42;\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "lambda fn(value: i32) -> i32",
+            "stmt #",
+            "return",
+            "binary",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsMalformedLambdaFunctionLiterals)
+{
+    expect_parse_diagnostic("module parser.lambda_missing_return_arrow;\n"
+                            "fn main() -> i32 {\n"
+                            "  let bad = fn(value: i32) i32 => value;\n"
+                            "  return bad(0);\n"
+                            "}\n",
+        "expected '->' after lambda parameter list");
+    expect_parse_diagnostic("module parser.lambda_missing_body;\n"
+                            "fn main() -> i32 {\n"
+                            "  let bad = fn(value: i32) -> i32;\n"
+                            "  return bad(0);\n"
+                            "}\n",
+        "expected lambda body");
+}
+
 TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
 {
     constexpr std::string_view source = "module parser.package_visibility;\n"

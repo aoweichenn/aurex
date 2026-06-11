@@ -165,6 +165,22 @@ struct TypeAliasInfo {
     base::u32 part_index = 0;
 };
 
+struct CheckedLambdaInfo {
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    InternedText c_name;
+    IdentId c_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId owner_item = syntax::INVALID_ITEM_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandleList param_types;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
+    base::SourceRange range{};
+    bool captures_unsupported = false;
+};
+
 enum class BorrowContractSelectorKind : base::u8 {
     parameter,
     self,
@@ -1568,6 +1584,7 @@ public:
     SemaTypeTable stmt_local_types;
     SemaIdentTable item_c_name_ids;
     SemaVector<CoercionRecord> coercions;
+    SemaVector<CheckedLambdaInfo> lambdas;
     CheckedFunctionMap functions;
     CheckedModuleInfoMap structs;
     CheckedEnumCaseMap enum_cases;
@@ -1632,6 +1649,7 @@ public:
     [[nodiscard]] SemaIndexTable make_index_table() const;
     [[nodiscard]] SemaIndexTable copy_index_table(std::span<const base::u32> values) const;
     [[nodiscard]] FunctionSignature make_function_signature() const;
+    [[nodiscard]] CheckedLambdaInfo make_lambda_info() const;
     [[nodiscard]] StructInfo make_struct_info() const;
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
     [[nodiscard]] TraitMethodRequirement make_trait_method_requirement() const;
@@ -1674,6 +1692,7 @@ public:
     [[nodiscard]] base::usize append_generic_side_table_layout(const GenericSideTableLocalLayoutView& layout);
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
+    [[nodiscard]] CheckedLambdaInfo clone_lambda_info(const CheckedLambdaInfo& other);
     [[nodiscard]] FunctionMoveRejectionFacts clone_function_move_rejection_facts(
         const FunctionMoveRejectionFacts& other) const;
     [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);

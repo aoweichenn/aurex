@@ -13,14 +13,6 @@ namespace aurex::syntax {
 inline constexpr std::string_view SYNTAX_ITEM_PAYLOAD_ID_CONTEXT = "syntax item payload id";
 inline constexpr std::string_view SYNTAX_ITEM_NODE_ID_CONTEXT = "syntax item node id";
 
-struct ParamDecl {
-    std::string_view name;
-    TypeId type = INVALID_TYPE_ID;
-    base::SourceRange range{};
-    IdentId name_id = INVALID_IDENT_ID;
-    bool is_deinit = false;
-};
-
 enum class BorrowContractSelectorKind : base::u8 {
     parameter,
     self,

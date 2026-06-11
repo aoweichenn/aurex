@@ -123,6 +123,9 @@ inline constexpr std::string_view SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT =
 
 inline constexpr std::string_view SEMA_FUNCTION_PARAMETER_STORAGE = "function parameter type is not valid storage";
 
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_UNSUPPORTED =
+    "capturing closures are not supported yet";
+
 inline constexpr std::string_view SEMA_FUNCTION_TYPE_PARAMETER_STORAGE =
     "function type parameter type is not valid storage";
 

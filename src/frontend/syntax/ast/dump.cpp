@@ -316,6 +316,9 @@ struct ExprDumpView {
     ExprId binary_rhs = INVALID_EXPR_ID;
     ExprId callee = INVALID_EXPR_ID;
     std::span<const ExprId> args{};
+    std::span<const ParamDecl> lambda_params{};
+    TypeId lambda_return_type = INVALID_TYPE_ID;
+    StmtId lambda_body = INVALID_STMT_ID;
     ExprId condition = INVALID_EXPR_ID;
     PatternId condition_pattern = INVALID_PATTERN_ID;
     ExprId then_expr = INVALID_EXPR_ID;
@@ -395,6 +398,13 @@ struct ExprDumpView {
             const CallExprPayload& payload = *module.exprs.call_payload(id.value);
             view.callee = payload.callee;
             view.args = readonly_span(payload.args);
+            break;
+        }
+        case ExprKind::lambda: {
+            const LambdaExprPayload& payload = *module.exprs.lambda_payload(id.value);
+            view.lambda_params = readonly_span(payload.params);
+            view.lambda_return_type = payload.return_type;
+            view.lambda_body = payload.body;
             break;
         }
         case ExprKind::if_expr: {
@@ -1001,6 +1011,8 @@ std::string_view expr_kind_name(const ExprKind kind)
             return "binary";
         case ExprKind::call:
             return "call";
+        case ExprKind::lambda:
+            return "lambda";
         case ExprKind::try_expr:
             return "try_expr";
         case ExprKind::if_expr:
@@ -1158,6 +1170,16 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     if (expr.kind == ExprKind::generic_apply && (!expr.generic_args.empty() || !expr.type_args.empty())) {
         append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     }
+    if (expr.kind == ExprKind::lambda) {
+        out << " fn(";
+        for (base::usize i = 0; i < expr.lambda_params.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << expr.lambda_params[i].name << ": " << type_label(module, expr.lambda_params[i].type);
+        }
+        out << ") -> " << type_label(module, expr.lambda_return_type);
+    }
     if (is_valid(expr.cast_type)) {
         out << " to " << type_label(module, expr.cast_type);
     }
@@ -1179,6 +1201,9 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     for (const ExprId arg : expr.args) {
         dump_expr(out, module, arg, depth + 1);
+    }
+    if (is_valid(expr.lambda_body)) {
+        dump_stmt(out, module, expr.lambda_body, depth + 1);
     }
     if (is_valid(expr.condition)) {
         dump_expr(out, module, expr.condition, depth + 1);

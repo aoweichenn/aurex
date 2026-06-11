@@ -197,6 +197,22 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(returned) + " -o " + q(returned_bin));
     require_success(q(returned_bin));
 
+    const fs::path lambda = positive_sample("functions", "lambda_function_literal.ax");
+    const std::string lambda_ast = require_success(aurexc() + " --emit=ast " + q(lambda)).output;
+    expect_contains_all(lambda_ast,
+        {
+            "lambda fn(value: i32) -> i32",
+            "return",
+            "binary",
+        });
+    const std::string lambda_checked = require_success(aurexc() + " --emit=checked " + q(lambda)).output;
+    expect_contains(lambda_checked, "fn priv apply -> i32");
+    const std::string lambda_ir = require_success(aurexc() + " --emit=ir " + q(lambda)).output;
+    expect_contains_all(lambda_ir, {"fn __aurex_lambda", "function_ref @__aurex_lambda", "call %"});
+    const fs::path lambda_bin = test_bin_root() / "lambda_function_literal";
+    require_success(aurexc() + " " + q(lambda) + " -o " + q(lambda_bin));
+    require_success(q(lambda_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -208,6 +224,23 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_arg_mismatch.ax")))
             .output,
         "argument type mismatch in call to op");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_unsupported.ax")))
+            .output,
+        "capturing closures are not supported yet");
+    expect_contains(
+        require_failure(
+            aurexc() + " --check " + q(negative_sample("functions", "lambda_nested_capture_unsupported.ax")))
+            .output,
+        "capturing closures are not supported yet");
+    expect_contains(
+        require_failure(
+            aurexc() + " --check " + q(negative_sample("functions", "lambda_match_guard_capture_unsupported.ax")))
+            .output,
+        "capturing closures are not supported yet");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
+        "not all control paths return a value");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_return_mismatch.ax")))
             .output,

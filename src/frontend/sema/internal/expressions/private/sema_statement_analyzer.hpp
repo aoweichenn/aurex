@@ -43,6 +43,7 @@ public:
     void report_return_inference_diagnostic(const syntax::StmtId stmt_id, const std::string_view message) const;
     void validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) const;
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
+    [[nodiscard]] TypeHandle analyze_lambda_expr(const syntax::ExprId expr_id, const ExprView& expr);
 
 private:
     [[nodiscard]] bool resource_assignment_requires_unsupported_diagnostic(

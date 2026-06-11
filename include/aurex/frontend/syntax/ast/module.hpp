@@ -176,6 +176,16 @@ struct AstModule {
         return this->exprs.append_call(kind, range, callee, std::move(args));
     }
 
+    [[nodiscard]] ExprId push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload);
+
+    template <typename ParamAllocator>
+    [[nodiscard]] ExprId push_lambda_expr(
+        const base::SourceRange& range, std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
+    {
+        this->intern_param_decls(params);
+        return this->exprs.append_lambda(range, std::move(params), return_type, body);
+    }
+
     [[nodiscard]] ExprId push_if_expr(const base::SourceRange& range, IfExprPayload payload);
 
     [[nodiscard]] ExprId push_if_expr(const base::SourceRange& range, ExprId condition, PatternId condition_pattern,

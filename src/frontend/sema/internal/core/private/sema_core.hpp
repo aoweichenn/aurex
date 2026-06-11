@@ -387,6 +387,9 @@ public:
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
         std::span<const syntax::ExprId> args{};
+        std::span<const syntax::ParamDecl> lambda_params{};
+        syntax::TypeId lambda_return_type = syntax::INVALID_TYPE_ID;
+        syntax::StmtId lambda_body = syntax::INVALID_STMT_ID;
         syntax::ExprId condition = syntax::INVALID_EXPR_ID;
         syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
         syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
@@ -751,6 +754,7 @@ public:
     void report_return_inference_diagnostic(syntax::StmtId stmt, std::string_view message) const;
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type) const;
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
+    [[nodiscard]] TypeHandle analyze_lambda_expr(syntax::ExprId expr_id, const ExprView& expr);
 
     // Expression analysis contract:
     // - analyze_expr(expr, expected) owns final-type cache lookup and expected-type key recording.

@@ -643,9 +643,9 @@ let (value, flag) = pair;
 - 数字字段必须在 tuple 元素范围内；越界会报 `tuple field index is out of range`。
 - 匿名 tuple 不支持命名字段，例如 `value.first` / `value.second`；这类访问会报 `tuple field access requires a numeric field`。需要命名字段时使用 named struct。
 
-### 5.7 函数类型
+### 5.7 函数类型与无捕获 lambda
 
-函数类型表示非捕获函数指针。它不是 closure 类型，也不保存环境。
+函数类型表示非捕获函数指针。它不是带环境的 closure 类型，也不保存捕获环境。
 
 ```aurex
 fn(i32, i32) -> i32
@@ -660,6 +660,38 @@ unsafe extern c fn(*const u8) -> i32
 - `unsafe fn` 函数值调用也需要 unsafe context。
 - `extern c fn` 使用 C ABI。
 - variadic `...` 只支持 `extern c`。
+- 函数名和无捕获 lambda 字面量都可以作为 `fn(...) -> T` 值。
+- 无捕获 lambda 字面量使用 Aurex ABI，不能写 `extern c`、`unsafe` 或 variadic。
+- lambda 参数和返回类型当前必须显式标注；尚不做 lambda 返回类型推断。
+
+无捕获 lambda 字面量：
+
+```aurex
+let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
+
+let add_two: fn(i32) -> i32 = fn(value: i32) -> i32 {
+    let local = value + 2;
+    return local;
+};
+```
+
+`=> expr` 是表达式体形式，语义等价于返回该表达式。`{ ... }` 是块体形式，按普通函数体规则检查
+`return`。lambda body 拥有独立参数和局部作用域；它不是外层 block 的 tail expression，也不允许直接
+`return` 外层函数。
+
+捕获闭包当前会被显式拒绝：
+
+```aurex
+fn main() -> i32 {
+    let base = 1;
+    let add_base: fn(i32) -> i32 = fn(value: i32) -> i32 => value + base; // error
+    return add_base(41);
+}
+```
+
+诊断为 `capturing closures are not supported yet`。原因是捕获闭包需要生成匿名环境结构、捕获方式
+（shared / mutable / consuming）、dropck/place-state/lifetime 事实和调用 thunk；当前阶段不实现标准库、
+allocator 或 runtime helper，因此不会把捕获闭包降级成薄函数指针。
 
 ## 6. 声明 item
 
@@ -1161,12 +1193,15 @@ let b = add(a, 2);
 let c = module_name.function_name(3);
 ```
 
-函数名可作为非捕获函数指针值：
+函数名和无捕获 lambda 可作为非捕获函数指针值：
 
 ```aurex
 type Op = fn(i32) -> i32;
 let op: Op = add_one;
 let value = op(41);
+
+let inc: Op = fn(value: i32) -> i32 => value + 1;
+let next = inc(41);
 ```
 
 ### 8.2 泛型调用

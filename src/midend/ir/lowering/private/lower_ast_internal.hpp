@@ -198,6 +198,8 @@ public:
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
         std::span<const syntax::ExprId> args{};
+        std::span<const syntax::ParamDecl> lambda_params{};
+        syntax::StmtId lambda_body = syntax::INVALID_STMT_ID;
         syntax::ExprId condition = syntax::INVALID_EXPR_ID;
         syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
         syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
@@ -231,6 +233,7 @@ public:
     void lower_record_layouts();
     void declare_global_constants();
     void lower_function_declarations();
+    void lower_lambda_declarations();
     void lower_trait_object_vtable_layouts();
     void lower_principal_set_metadata_layouts();
     void lower_global_constant_initializers();
@@ -256,6 +259,7 @@ public:
     [[nodiscard]] ValueId append_pattern_source_length(ValueId source_address, sema::TypeHandle source_type);
 
     void lower_function_body(FunctionId function_id, FunctionBodyView body);
+    void lower_lambda_body(FunctionId function_id, const sema::CheckedLambdaInfo& lambda);
     void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body);
     void lower_trait_default_method_body(FunctionId function_id, const sema::TraitDefaultMethodInstanceBodyView& body);
     void lower_block(syntax::StmtId block_id);
@@ -355,6 +359,7 @@ public:
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_lambda_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_dynproject_intrinsic_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_dyn_trait_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding);
@@ -460,6 +465,7 @@ public:
     std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
+    std::vector<FunctionId> lambda_functions_;
     std::vector<FunctionId> generic_instance_functions_;
     std::vector<FunctionId> trait_default_instance_functions_;
     std::vector<LoopContext> loop_contexts_;

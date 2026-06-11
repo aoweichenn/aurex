@@ -381,6 +381,16 @@ inline constexpr std::string_view PARSER_EXPECT_STRUCT_LITERAL_FIELD_SEPARATOR =
 
 inline constexpr std::string_view PARSER_EXPECT_EXPRESSION = "expected expression";
 
+inline constexpr std::string_view PARSER_EXPECT_LAMBDA_PARAM_LIST = "expected '(' after lambda 'fn'";
+
+inline constexpr std::string_view PARSER_EXPECT_LAMBDA_PARAM_LIST_END = "expected ')' after lambda parameter list";
+
+inline constexpr std::string_view PARSER_EXPECT_LAMBDA_RETURN_ARROW =
+    "expected '->' after lambda parameter list";
+
+inline constexpr std::string_view PARSER_EXPECT_LAMBDA_BODY =
+    "expected lambda body after return type; use '=>' expression or a block";
+
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LITERAL_START = "expected '['";
 
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_REPEAT_COUNT = "expected array repeat count";

@@ -698,6 +698,7 @@ private:
                 break;
             }
             case syntax::ExprKind::invalid:
+            case syntax::ExprKind::lambda:
             case syntax::ExprKind::integer_literal:
             case syntax::ExprKind::float_literal:
             case syntax::ExprKind::bool_literal:
@@ -1471,6 +1472,9 @@ private:
                 break;
             case syntax::ExprKind::tuple_literal:
                 this->push_tuple_children(expr, entry, exit, return_continuation);
+                break;
+            case syntax::ExprKind::lambda:
+                this->add_edge(entry, exit);
                 break;
             case syntax::ExprKind::struct_literal:
                 this->push_struct_literal_children(expr, entry, exit, return_continuation);

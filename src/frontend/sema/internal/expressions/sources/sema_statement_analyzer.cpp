@@ -27,6 +27,7 @@ constexpr base::usize SEMA_FOR_RANGE_MAX_OPERAND_COUNT = 3;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_UNKNOWN = 0;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_FALSE = 1;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_TRUE = 2;
+constexpr std::string_view SEMA_LAMBDA_SYMBOL_PREFIX = "__aurex_lambda";
 
 enum class ControlFlowQuery {
     guarantees_return,
@@ -64,6 +65,39 @@ struct ControlFlowQueryCaches {
     std::vector<base::u8>& blocks;
 };
 
+enum class LambdaCaptureScanActionKind {
+    statement,
+    scoped_block,
+    lambda_body,
+    pattern_scoped_block,
+    pattern_scoped_expr,
+    block_statements,
+    pop_scope,
+    pattern_bindings,
+    lambda_param_bindings,
+    local_binding,
+    expr,
+};
+
+struct LambdaCaptureScanAction {
+    LambdaCaptureScanActionKind kind = LambdaCaptureScanActionKind::statement;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::StmtId block = syntax::INVALID_STMT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+    std::string_view name{};
+    const syntax::LambdaExprPayload* lambda = nullptr;
+};
+
+struct LambdaCaptureLocalBinding {
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+    std::string_view name{};
+    base::usize lambda_depth = 0;
+};
+
 [[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
 {
     if (!syntax::is_valid(stmt) || stmt.value >= module.stmts.size()) {
@@ -77,6 +111,11 @@ struct ControlFlowQueryCaches {
     return syntax::is_valid(expr) && expr.value < module.exprs.size();
 }
 
+[[nodiscard]] bool statement_valid_pattern(const syntax::AstModule& module, const syntax::PatternId pattern) noexcept
+{
+    return syntax::is_valid(pattern) && pattern.value < module.patterns.size();
+}
+
 [[nodiscard]] base::SourceRange expr_range_or(
     const syntax::AstModule& module, const syntax::ExprId expr, const base::SourceRange& fallback) noexcept
 {
@@ -84,6 +123,653 @@ struct ControlFlowQueryCaches {
         return fallback;
     }
     return module.exprs.range(expr.value);
+}
+
+void push_lambda_capture_expr(
+    std::vector<LambdaCaptureScanAction>& pending, const syntax::AstModule& module, const syntax::ExprId expr)
+{
+    if (statement_valid_expr(module, expr)) {
+        pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::expr, .expr = expr});
+    }
+}
+
+void push_lambda_capture_statement(
+    std::vector<LambdaCaptureScanAction>& pending, const syntax::AstModule& module, const syntax::StmtId stmt)
+{
+    if (syntax::is_valid(stmt) && stmt.value < module.stmts.size()) {
+        pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::statement, .stmt = stmt});
+    }
+}
+
+void push_lambda_capture_pattern_bindings(
+    std::vector<LambdaCaptureScanAction>& pending, const syntax::AstModule& module, const syntax::PatternId pattern)
+{
+    if (statement_valid_pattern(module, pattern)) {
+        pending.push_back(
+            LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pattern_bindings, .pattern = pattern});
+    }
+}
+
+void push_lambda_capture_scoped_block(
+    std::vector<LambdaCaptureScanAction>& pending, const syntax::AstModule& module, const syntax::StmtId block)
+{
+    if (syntax::is_valid(block) && block.value < module.stmts.size()) {
+        pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::scoped_block, .stmt = block});
+    }
+}
+
+class LambdaCaptureScanner final {
+public:
+    LambdaCaptureScanner(SemanticAnalyzerCore& core, const std::span<const syntax::ParamDecl> params)
+        : core_(core)
+    {
+        this->local_scopes_.push_back({});
+        this->local_scopes_.back().reserve(params.size());
+        for (const syntax::ParamDecl& param : params) {
+            this->bind_local(param.name_id, param.range, param.name);
+        }
+    }
+
+    [[nodiscard]] bool scan(const syntax::StmtId body)
+    {
+        std::vector<LambdaCaptureScanAction> pending;
+        pending.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+        push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, body);
+        while (!pending.empty()) {
+            const LambdaCaptureScanAction action = pending.back();
+            pending.pop_back();
+            this->handle_action(action, pending);
+        }
+        return this->saw_capture_;
+    }
+
+private:
+    void handle_action(
+        const LambdaCaptureScanAction& action, std::vector<LambdaCaptureScanAction>& pending)
+    {
+        switch (action.kind) {
+            case LambdaCaptureScanActionKind::statement:
+                this->push_statement(action.stmt, pending);
+                break;
+            case LambdaCaptureScanActionKind::scoped_block:
+                this->push_scope();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                pending.push_back(
+                    LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::block_statements, .stmt = action.stmt});
+                break;
+            case LambdaCaptureScanActionKind::lambda_body:
+                this->push_scope();
+                this->push_lambda_boundary();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                pending.push_back(LambdaCaptureScanAction{
+                    .kind = LambdaCaptureScanActionKind::block_statements,
+                    .stmt = action.lambda != nullptr ? action.lambda->body : syntax::INVALID_STMT_ID,
+                });
+                pending.push_back(LambdaCaptureScanAction{
+                    .kind = LambdaCaptureScanActionKind::lambda_param_bindings,
+                    .lambda = action.lambda,
+                });
+                break;
+            case LambdaCaptureScanActionKind::pattern_scoped_block:
+                this->push_scope();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                pending.push_back(LambdaCaptureScanAction{
+                    .kind = LambdaCaptureScanActionKind::block_statements,
+                    .stmt = action.block,
+                });
+                push_lambda_capture_pattern_bindings(pending, this->core_.ctx_.module, action.pattern);
+                break;
+            case LambdaCaptureScanActionKind::pattern_scoped_expr:
+                this->push_scope();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, action.expr);
+                push_lambda_capture_pattern_bindings(pending, this->core_.ctx_.module, action.pattern);
+                break;
+            case LambdaCaptureScanActionKind::block_statements:
+                this->push_block_statements(action.stmt, pending);
+                break;
+            case LambdaCaptureScanActionKind::pop_scope:
+                this->pop_scope();
+                break;
+            case LambdaCaptureScanActionKind::pattern_bindings:
+                this->bind_pattern(action.pattern);
+                break;
+            case LambdaCaptureScanActionKind::lambda_param_bindings:
+                this->bind_lambda_params(action.lambda);
+                break;
+            case LambdaCaptureScanActionKind::local_binding:
+                this->bind_local(action.name_id, action.range, action.name);
+                break;
+            case LambdaCaptureScanActionKind::expr:
+                this->push_expr(action.expr, pending);
+                break;
+        }
+    }
+
+    void push_statement(const syntax::StmtId stmt_id, std::vector<LambdaCaptureScanAction>& pending)
+    {
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->core_.ctx_.module, stmt_id);
+        if (!stmt.has_value()) {
+            return;
+        }
+        switch (stmt->kind) {
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+                if (syntax::is_valid(stmt->pattern)) {
+                    if (syntax::is_valid(stmt->else_block)) {
+                        pending.push_back(LambdaCaptureScanAction{
+                            .kind = LambdaCaptureScanActionKind::pattern_bindings,
+                            .pattern = stmt->pattern,
+                        });
+                        push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->else_block);
+                    } else {
+                        pending.push_back(LambdaCaptureScanAction{
+                            .kind = LambdaCaptureScanActionKind::pattern_bindings,
+                            .pattern = stmt->pattern,
+                        });
+                    }
+                } else if (syntax::is_valid(stmt->name_id)) {
+                    pending.push_back(LambdaCaptureScanAction{
+                        .kind = LambdaCaptureScanActionKind::local_binding,
+                        .stmt = stmt_id,
+                        .name_id = stmt->name_id,
+                        .range = stmt->range,
+                        .name = stmt->name,
+                    });
+                    if (syntax::is_valid(stmt->else_block)) {
+                        push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->else_block);
+                    }
+                }
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->init);
+                break;
+            case syntax::StmtKind::assign:
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->rhs);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->lhs);
+                break;
+            case syntax::StmtKind::if_:
+                if (syntax::is_valid(stmt->else_if)) {
+                    push_lambda_capture_statement(pending, this->core_.ctx_.module, stmt->else_if);
+                }
+                if (syntax::is_valid(stmt->else_block)) {
+                    push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->else_block);
+                }
+                if (syntax::is_valid(stmt->pattern)) {
+                    pending.push_back(LambdaCaptureScanAction{
+                        .kind = LambdaCaptureScanActionKind::pattern_scoped_block,
+                        .block = stmt->then_block,
+                        .pattern = stmt->pattern,
+                    });
+                } else {
+                    push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->then_block);
+                }
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->condition);
+                break;
+            case syntax::StmtKind::while_:
+                if (syntax::is_valid(stmt->pattern)) {
+                    pending.push_back(LambdaCaptureScanAction{
+                        .kind = LambdaCaptureScanActionKind::pattern_scoped_block,
+                        .block = stmt->body,
+                        .pattern = stmt->pattern,
+                    });
+                } else {
+                    push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->body);
+                }
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->condition);
+                break;
+            case syntax::StmtKind::for_:
+                this->push_scope();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                if (syntax::is_valid(stmt->for_update)) {
+                    push_lambda_capture_statement(pending, this->core_.ctx_.module, stmt->for_update);
+                }
+                push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->body);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->condition);
+                if (syntax::is_valid(stmt->for_init)) {
+                    push_lambda_capture_statement(pending, this->core_.ctx_.module, stmt->for_init);
+                }
+                break;
+            case syntax::StmtKind::for_range:
+                this->push_scope();
+                pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt->body);
+                pending.push_back(LambdaCaptureScanAction{
+                    .kind = LambdaCaptureScanActionKind::local_binding,
+                    .name_id = stmt->name_id,
+                    .range = stmt->range,
+                    .name = stmt->name,
+                });
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_step);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_end);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_start);
+                break;
+            case syntax::StmtKind::return_:
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->return_value);
+                break;
+            case syntax::StmtKind::expr:
+            case syntax::StmtKind::defer:
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->init);
+                break;
+            case syntax::StmtKind::block:
+                push_lambda_capture_scoped_block(pending, this->core_.ctx_.module, stmt_id);
+                break;
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+                break;
+        }
+    }
+
+    void push_block_statements(const syntax::StmtId block, std::vector<LambdaCaptureScanAction>& pending) const
+    {
+        if (!syntax::is_valid(block) || block.value >= this->core_.ctx_.module.stmts.size()) {
+            return;
+        }
+        const syntax::AstArenaVector<syntax::StmtId>* const statements =
+            this->core_.ctx_.module.stmts.block_statements(block.value);
+        if (statements == nullptr) {
+            return;
+        }
+        for (base::usize index = statements->size(); index > 0; --index) {
+            push_lambda_capture_statement(pending, this->core_.ctx_.module, (*statements)[index - 1]);
+        }
+    }
+
+    void push_expr(const syntax::ExprId expr, std::vector<LambdaCaptureScanAction>& pending)
+    {
+        if (!statement_valid_expr(this->core_.ctx_.module, expr)) {
+            return;
+        }
+        const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(expr.value);
+        if (kind == syntax::ExprKind::name) {
+            this->report_capture_if_needed(expr);
+            return;
+        }
+        switch (kind) {
+            case syntax::ExprKind::unary: {
+                const syntax::UnaryExprPayload* const unary = this->core_.ctx_.module.exprs.unary_payload(expr.value);
+                if (unary != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, unary->operand);
+                }
+                break;
+            }
+            case syntax::ExprKind::try_expr: {
+                const syntax::TryExprPayload* const try_expr = this->core_.ctx_.module.exprs.try_payload(expr.value);
+                if (try_expr != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, try_expr->operand);
+                }
+                break;
+            }
+            case syntax::ExprKind::binary: {
+                const syntax::BinaryExprPayload* const binary =
+                    this->core_.ctx_.module.exprs.binary_payload(expr.value);
+                if (binary != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, binary->rhs);
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, binary->lhs);
+                }
+                break;
+            }
+            case syntax::ExprKind::call:
+            case syntax::ExprKind::str_from_bytes_unchecked: {
+                const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(expr.value);
+                if (call != nullptr) {
+                    for (const syntax::ExprId arg : call->args) {
+                        push_lambda_capture_expr(pending, this->core_.ctx_.module, arg);
+                    }
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, call->callee);
+                }
+                break;
+            }
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const apply =
+                    this->core_.ctx_.module.exprs.generic_apply_payload(expr.value);
+                if (apply != nullptr) {
+                    for (const syntax::GenericArgDecl& arg : apply->generic_args) {
+                        if (arg.kind == syntax::GenericArgKind::const_expr) {
+                            push_lambda_capture_expr(pending, this->core_.ctx_.module, arg.const_expr);
+                        }
+                    }
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, apply->callee);
+                }
+                break;
+            }
+            case syntax::ExprKind::if_expr: {
+                const syntax::IfExprPayload* const if_expr = this->core_.ctx_.module.exprs.if_payload(expr.value);
+                if (if_expr != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, if_expr->else_expr);
+                    if (syntax::is_valid(if_expr->condition_pattern)) {
+                        pending.push_back(LambdaCaptureScanAction{
+                            .kind = LambdaCaptureScanActionKind::pattern_scoped_expr,
+                            .expr = if_expr->then_expr,
+                            .pattern = if_expr->condition_pattern,
+                        });
+                    } else {
+                        push_lambda_capture_expr(pending, this->core_.ctx_.module, if_expr->then_expr);
+                    }
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, if_expr->condition);
+                }
+                break;
+            }
+            case syntax::ExprKind::block_expr:
+            case syntax::ExprKind::unsafe_block: {
+                const syntax::BlockExprPayload* const block = this->core_.ctx_.module.exprs.block_payload(expr.value);
+                if (block != nullptr) {
+                    this->push_scope();
+                    pending.push_back(LambdaCaptureScanAction{.kind = LambdaCaptureScanActionKind::pop_scope});
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, block->result);
+                    pending.push_back(LambdaCaptureScanAction{
+                        .kind = LambdaCaptureScanActionKind::block_statements,
+                        .stmt = block->block,
+                    });
+                }
+                break;
+            }
+            case syntax::ExprKind::match_expr: {
+                const syntax::MatchExprPayload* const match = this->core_.ctx_.module.exprs.match_payload(expr.value);
+                if (match != nullptr) {
+                    for (const syntax::MatchArm& arm : match->arms) {
+                        if (syntax::is_valid(arm.guard)) {
+                            pending.push_back(LambdaCaptureScanAction{
+                                .kind = LambdaCaptureScanActionKind::pattern_scoped_expr,
+                                .expr = arm.guard,
+                                .pattern = arm.pattern,
+                            });
+                        }
+                        pending.push_back(LambdaCaptureScanAction{
+                            .kind = LambdaCaptureScanActionKind::pattern_scoped_expr,
+                            .expr = arm.value,
+                            .pattern = arm.pattern,
+                        });
+                    }
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, match->value);
+                }
+                break;
+            }
+            case syntax::ExprKind::array_literal: {
+                const syntax::ArrayExprPayload* const array = this->core_.ctx_.module.exprs.array_payload(expr.value);
+                if (array != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, array->repeat_count);
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, array->repeat_value);
+                    for (const syntax::ExprId element : array->elements) {
+                        push_lambda_capture_expr(pending, this->core_.ctx_.module, element);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::tuple_literal: {
+                const syntax::AstArenaVector<syntax::ExprId>* const tuple =
+                    this->core_.ctx_.module.exprs.tuple_elements(expr.value);
+                if (tuple != nullptr) {
+                    for (const syntax::ExprId element : *tuple) {
+                        push_lambda_capture_expr(pending, this->core_.ctx_.module, element);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const field = this->core_.ctx_.module.exprs.field_payload(expr.value);
+                if (field != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, field->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::index: {
+                const syntax::IndexExprPayload* const index = this->core_.ctx_.module.exprs.index_payload(expr.value);
+                if (index != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, index->index);
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, index->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::slice: {
+                const syntax::SliceExprPayload* const slice = this->core_.ctx_.module.exprs.slice_payload(expr.value);
+                if (slice != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, slice->end);
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, slice->start);
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, slice->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::struct_literal: {
+                const syntax::StructLiteralExprPayload* const structure =
+                    this->core_.ctx_.module.exprs.struct_literal_payload(expr.value);
+                if (structure != nullptr) {
+                    for (const syntax::FieldInit& field : structure->field_inits) {
+                        push_lambda_capture_expr(pending, this->core_.ctx_.module, field.value);
+                    }
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, structure->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::cast:
+            case syntax::ExprKind::pcast:
+            case syntax::ExprKind::bcast:
+            case syntax::ExprKind::size_of:
+            case syntax::ExprKind::align_of:
+            case syntax::ExprKind::ptr_addr:
+            case syntax::ExprKind::paddr:
+            case syntax::ExprKind::slice_data:
+            case syntax::ExprKind::slice_len:
+            case syntax::ExprKind::str_data:
+            case syntax::ExprKind::str_byte_len:
+            case syntax::ExprKind::str_is_valid_utf8:
+            case syntax::ExprKind::str_from_utf8_checked: {
+                const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(expr.value);
+                if (cast != nullptr) {
+                    push_lambda_capture_expr(pending, this->core_.ctx_.module, cast->expr);
+                }
+                break;
+            }
+            case syntax::ExprKind::lambda:
+                if (const syntax::LambdaExprPayload* const lambda =
+                        this->core_.ctx_.module.exprs.lambda_payload(expr.value);
+                    lambda != nullptr) {
+                    pending.push_back(LambdaCaptureScanAction{
+                        .kind = LambdaCaptureScanActionKind::lambda_body,
+                        .lambda = lambda,
+                    });
+                }
+                break;
+            case syntax::ExprKind::name:
+            case syntax::ExprKind::invalid:
+            case syntax::ExprKind::integer_literal:
+            case syntax::ExprKind::float_literal:
+            case syntax::ExprKind::bool_literal:
+            case syntax::ExprKind::null_literal:
+            case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::raw_string_literal:
+            case syntax::ExprKind::byte_string_literal:
+            case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::char_literal:
+                break;
+        }
+    }
+
+    void bind_lambda_params(const syntax::LambdaExprPayload* const lambda)
+    {
+        if (lambda == nullptr) {
+            return;
+        }
+        for (const syntax::ParamDecl& param : lambda->params) {
+            this->bind_local(param.name_id, param.range, param.name);
+        }
+    }
+
+    void bind_pattern(const syntax::PatternId pattern)
+    {
+        std::vector<syntax::PatternId> pending;
+        pending.push_back(pattern);
+        while (!pending.empty()) {
+            const syntax::PatternId current = pending.back();
+            pending.pop_back();
+            if (!statement_valid_pattern(this->core_.ctx_.module, current)) {
+                continue;
+            }
+            const syntax::PatternNode* const node = this->core_.ctx_.module.patterns.ptr(current.value);
+            if (node == nullptr) {
+                continue;
+            }
+            switch (node->kind) {
+                case syntax::PatternKind::binding:
+                    this->bind_local(node->binding_name_id, node->range, node->binding_name);
+                    break;
+                case syntax::PatternKind::literal:
+                case syntax::PatternKind::enum_case:
+                    for (const IdentId binding : node->binding_name_ids) {
+                        this->bind_local(binding, node->range, {});
+                    }
+                    for (const syntax::PatternId payload : node->payload_patterns) {
+                        pending.push_back(payload);
+                    }
+                    break;
+                case syntax::PatternKind::tuple:
+                case syntax::PatternKind::slice:
+                    for (const syntax::PatternId element : node->elements) {
+                        pending.push_back(element);
+                    }
+                    break;
+                case syntax::PatternKind::struct_:
+                    for (const syntax::FieldPattern& field : node->field_patterns) {
+                        pending.push_back(field.pattern);
+                    }
+                    break;
+                case syntax::PatternKind::or_pattern:
+                    for (const syntax::PatternId alternative : node->alternatives) {
+                        pending.push_back(alternative);
+                    }
+                    break;
+                case syntax::PatternKind::wildcard:
+                case syntax::PatternKind::const_:
+                    break;
+            }
+        }
+    }
+
+    void report_capture_if_needed(const syntax::ExprId expr)
+    {
+        const syntax::NameExprPayload* const name = this->core_.ctx_.module.exprs.name_payload(expr.value);
+        if (name == nullptr || !name->scope_name.empty() || this->is_local_to_current_lambda(name->text_id)) {
+            return;
+        }
+        if (const LambdaCaptureLocalBinding* const local_binding = this->outer_lambda_binding(name->text_id);
+            local_binding != nullptr) {
+            this->report_capture(expr, name->text, local_binding->range);
+            return;
+        }
+        const Symbol* const symbol = this->core_.state_.names.symbols.find(name->text_id);
+        if (symbol == nullptr || (symbol->kind != SymbolKind::local && symbol->kind != SymbolKind::parameter)) {
+            return;
+        }
+        this->report_capture(expr, name->text, symbol->range);
+    }
+
+    void report_capture(
+        const syntax::ExprId expr, const std::string_view name, const base::SourceRange& declaration_range)
+    {
+        if (!this->reported_captures_.insert(expr.value).second) {
+            return;
+        }
+        this->saw_capture_ = true;
+        this->core_.report_general(
+            expr_range_or(this->core_.ctx_.module, expr, declaration_range), std::string(SEMA_LAMBDA_CAPTURE_UNSUPPORTED));
+        this->core_.report_note(declaration_range, SemanticDiagnosticKind::general,
+            "captured local `" + std::string(name) + "` is declared here");
+    }
+
+    void push_scope()
+    {
+        this->local_scopes_.push_back({});
+    }
+
+    void pop_scope() noexcept
+    {
+        if (this->local_scopes_.size() > 1U) {
+            this->local_scopes_.pop_back();
+        }
+        if (this->lambda_scope_depths_.empty()) {
+            return;
+        }
+        if (this->local_scopes_.size() < this->lambda_scope_depths_.back()) {
+            this->pop_lambda_boundary();
+        }
+    }
+
+    void bind_local(const IdentId name_id, const base::SourceRange& range, const std::string_view name)
+    {
+        if (!is_valid(name_id) || this->local_scopes_.empty()) {
+            return;
+        }
+        this->local_scopes_.back().push_back(
+            LambdaCaptureLocalBinding{name_id, range, name, this->current_lambda_depth_});
+    }
+
+    void push_lambda_boundary()
+    {
+        ++this->current_lambda_depth_;
+        this->lambda_scope_depths_.push_back(this->local_scopes_.size());
+    }
+
+    void pop_lambda_boundary() noexcept
+    {
+        if (this->current_lambda_depth_ > 0) {
+            --this->current_lambda_depth_;
+        }
+        if (!this->lambda_scope_depths_.empty()) {
+            this->lambda_scope_depths_.pop_back();
+        }
+    }
+
+    [[nodiscard]] const LambdaCaptureLocalBinding* local_binding(const IdentId name_id) const noexcept
+    {
+        if (!is_valid(name_id)) {
+            return nullptr;
+        }
+        for (auto scope = this->local_scopes_.rbegin(); scope != this->local_scopes_.rend(); ++scope) {
+            for (auto binding = scope->rbegin(); binding != scope->rend(); ++binding) {
+                if (binding->name_id == name_id) {
+                    return &*binding;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool is_local_to_current_lambda(const IdentId name_id) const noexcept
+    {
+        const LambdaCaptureLocalBinding* const binding = this->local_binding(name_id);
+        return binding != nullptr && binding->lambda_depth == this->current_lambda_depth_;
+    }
+
+    [[nodiscard]] const LambdaCaptureLocalBinding* outer_lambda_binding(const IdentId name_id) const noexcept
+    {
+        const LambdaCaptureLocalBinding* const binding = this->local_binding(name_id);
+        if (binding == nullptr || binding->lambda_depth >= this->current_lambda_depth_) {
+            return nullptr;
+        }
+        return binding;
+    }
+
+    SemanticAnalyzerCore& core_;
+    std::vector<std::vector<LambdaCaptureLocalBinding>> local_scopes_;
+    std::vector<base::usize> lambda_scope_depths_;
+    std::unordered_set<base::u32> reported_captures_;
+    base::usize current_lambda_depth_ = 0;
+    bool saw_capture_ = false;
+};
+
+[[nodiscard]] std::string lambda_symbol_name(
+    const syntax::ModuleId module, const syntax::ItemId item, const syntax::ExprId expr)
+{
+    std::string name(SEMA_LAMBDA_SYMBOL_PREFIX);
+    name.push_back('_');
+    name += "m";
+    name += std::to_string(module.value);
+    name.push_back('_');
+    name += "i";
+    name += std::to_string(item.value);
+    name.push_back('_');
+    name += "e";
+    name += std::to_string(expr.value);
+    return name;
 }
 
 [[nodiscard]] bool expr_is_indexed_or_dereferenced_place(
@@ -260,6 +946,7 @@ void push_storage_escape_guard_expr(
             case syntax::ExprKind::byte_literal:
             case syntax::ExprKind::char_literal:
             case syntax::ExprKind::name:
+            case syntax::ExprKind::lambda:
             case syntax::ExprKind::invalid:
             case syntax::ExprKind::slice_len:
             case syntax::ExprKind::str_byte_len:
@@ -1854,6 +2541,101 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     state = FunctionBodyState::analyzed;
 }
 
+TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
+    const syntax::ExprId expr_id, const ExprView& expr)
+{
+    std::vector<TypeHandle> param_types;
+    param_types.reserve(expr.lambda_params.size());
+    for (const syntax::ParamDecl& param : expr.lambda_params) {
+        const TypeHandle param_type = this->core_.resolve_type(param.type);
+        if (!this->core_.is_valid_storage_type(param_type)) {
+            this->core_.report_general(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
+        }
+        static_cast<void>(this->core_.check_m2_value_abi(param_type, ValueAbiContext::function_type_parameter,
+            param.range));
+        param_types.push_back(param_type);
+    }
+
+    const TypeHandle return_type = this->core_.resolve_type(expr.lambda_return_type);
+    if (is_valid(return_type) && !this->core_.state_.checked.types.is_void(return_type)
+        && !this->core_.is_valid_storage_type(return_type)) {
+        this->core_.report_general(expr.range, std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
+    }
+    static_cast<void>(
+        this->core_.check_m2_value_abi(return_type, ValueAbiContext::function_type_return, expr.range));
+
+    const TypeHandle function_type = this->core_.state_.checked.types.function(
+        FunctionCallConv::aurex, false, false, param_types, return_type);
+    const syntax::ModuleId module = this->core_.state_.flow.current_module;
+    const syntax::ItemId owner_item = this->core_.state_.flow.current_item;
+    const std::string symbol = lambda_symbol_name(module, owner_item, expr_id);
+    const IdentId symbol_id = this->core_.intern_generated_key(symbol);
+    const bool captures_unsupported = LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
+
+    CheckedLambdaInfo info = this->core_.state_.checked.make_lambda_info();
+    info.expr = expr_id;
+    info.name = this->core_.state_.checked.intern_text(symbol);
+    info.name_id = symbol_id;
+    info.c_name = this->core_.state_.checked.intern_text(symbol);
+    info.c_name_id = this->core_.state_.checked.intern_c_name(symbol);
+    info.module = module;
+    info.owner_item = owner_item;
+    info.type = function_type;
+    info.return_type = return_type;
+    info.param_types = this->core_.state_.checked.copy_type_handle_list(param_types);
+    info.body = expr.lambda_body;
+    info.range = expr.range;
+    info.captures_unsupported = captures_unsupported;
+    this->core_.state_.checked.lambdas.push_back(std::move(info));
+
+    if (captures_unsupported) {
+        this->core_.record_expr_c_name(expr_id, symbol);
+        return this->core_.record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    FunctionBodyContextScope context(this->core_,
+        FunctionBodyContextScope::Config{
+            .module = module,
+            .item = owner_item,
+            .return_type = return_type,
+            .return_inference = nullptr,
+            .loop_depth = SEMA_NO_LOOP_DEPTH,
+            .unsafe_context_depth = this->core_.state_.flow.unsafe_context_depth,
+            .symbols = SymbolTable{},
+        });
+    this->core_.state_.names.symbols.push_scope(expr.lambda_params.size());
+    for (base::usize index = 0; index < expr.lambda_params.size(); ++index) {
+        const syntax::ParamDecl& param = expr.lambda_params[index];
+        const TypeHandle param_type = index < param_types.size() ? param_types[index] : INVALID_TYPE_HANDLE;
+        static_cast<void>(this->core_.can_define_local_name(param.name_id, param.name, param.range));
+        const auto inserted = this->core_.state_.names.symbols.insert(
+            Symbol{
+                SymbolKind::parameter,
+                this->core_.source_name_text(param.name_id, param.name),
+                param.name_id,
+                {},
+                syntax::INVALID_MODULE_ID,
+                param_type,
+                param.range,
+                false,
+                syntax::Visibility::private_,
+                {},
+            },
+            this->core_.ctx_.diagnostics);
+        static_cast<void>(inserted);
+    }
+    this->core_.analyze_block(expr.lambda_body, return_type, nullptr);
+    this->core_.state_.names.symbols.pop_scope();
+
+    if (is_valid(return_type) && !this->core_.state_.checked.types.is_void(return_type)
+        && !this->core_.block_guarantees_return(expr.lambda_body)) {
+        this->core_.report_general(expr.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
+    }
+
+    this->core_.record_expr_c_name(expr_id, symbol);
+    return this->core_.record_expr_type(expr_id, function_type);
+}
+
 void SemanticAnalyzerCore::StatementAnalyzer::analyze_block(
     const syntax::StmtId block, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
 {
@@ -2683,6 +3465,11 @@ void SemanticAnalyzerCore::ensure_function_return_known(
     const FunctionSignature& signature, const base::SourceRange& use_range)
 {
     StatementAnalyzer(*this).ensure_function_return_known(signature, use_range);
+}
+
+TypeHandle SemanticAnalyzerCore::analyze_lambda_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
+    return StatementAnalyzer(*this).analyze_lambda_expr(expr_id, expr);
 }
 
 } // namespace aurex::sema

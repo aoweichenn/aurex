@@ -207,6 +207,7 @@ bool BlockParser::token_starts_tail_expression() const noexcept
         case TokenKind::kw_strvalid:
         case TokenKind::kw_strfromutf8:
         case TokenKind::kw_strraw:
+        case TokenKind::kw_fn:
         case TokenKind::l_paren:
         case TokenKind::minus:
         case TokenKind::star:

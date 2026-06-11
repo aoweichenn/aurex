@@ -1,5 +1,26 @@
 # 版本文档
 
+## 函数式基础：无捕获 Lambda 字面量
+
+当前版本补齐第一步函数式表达式能力：无捕获 lambda 字面量可以作为一等 `fn(...) -> T` 函数值。
+
+新增或固定：
+
+- `fn(x: T) -> U => expr` 表达式体 lambda。
+- `fn(x: T) -> U { ... }` 块体 lambda。
+- lambda 参数类型和返回类型必须显式标注。
+- 无捕获 lambda lowering 为内部匿名函数，表达式值为 `function_ref`。
+- 函数值间接调用、作为参数传递、作为返回值返回继续复用既有 `fn(...) -> T` 规则。
+- 捕获外层局部/参数的 closure 明确报 `capturing closures are not supported yet`。
+
+仍不实现：
+
+- 标准库或函数式库 adapter。
+- allocator/runtime helper。
+- closure environment。
+- 捕获方式、`Fn` / `FnMut` / `FnOnce` 能力。
+- 捕获 closure 的 dropck/place-state/lifetime escape 规则。
+
 ## M20d Runtime Lowering ABI Design Closure
 
 M20d 已完成 runtime lowering ABI design closure。M20d 不实现标准库、不实现

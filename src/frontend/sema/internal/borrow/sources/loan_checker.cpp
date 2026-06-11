@@ -359,6 +359,7 @@ void push_precheck_expression_children(const syntax::AstModule& module, const sy
             break;
         }
         case syntax::ExprKind::invalid:
+        case syntax::ExprKind::lambda:
         case syntax::ExprKind::integer_literal:
         case syntax::ExprKind::float_literal:
         case syntax::ExprKind::bool_literal:

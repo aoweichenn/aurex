@@ -210,10 +210,11 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     this->module_.types = this->checked_.types;
     this->module_.reserve(this->ast_.exprs.size(),
         this->ast_.items.size() + this->checked_.generic_function_instances.size()
-            + this->checked_.trait_default_method_instances.size(),
+            + this->checked_.trait_default_method_instances.size() + this->checked_.lambdas.size(),
         this->checked_.structs.size() + this->checked_.enum_cases.size(),
         this->ast_.items.size() + this->checked_.enum_cases.size());
     this->item_functions_.assign(this->ast_.items.size(), INVALID_FUNCTION_ID);
+    this->lambda_functions_.assign(this->checked_.lambdas.size(), INVALID_FUNCTION_ID);
     this->generic_instance_functions_.assign(this->checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
     this->trait_default_instance_functions_.assign(
         this->checked_.trait_default_method_instances.size(), INVALID_FUNCTION_ID);
@@ -234,6 +235,7 @@ Module Lowerer::lower()
     this->lower_record_layouts();
     this->declare_global_constants();
     this->lower_function_declarations();
+    this->lower_lambda_declarations();
     this->lower_trait_object_vtable_layouts();
     this->lower_principal_set_metadata_layouts();
     this->lower_global_constant_initializers();
@@ -250,6 +252,9 @@ Module Lowerer::lower()
     for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
         this->lower_generic_function_body(this->generic_instance_functions_[index],
             this->checked_.generic_function_instance_body_view(this->ast_, index));
+    }
+    for (base::u32 index = 0; index < this->checked_.lambdas.size(); ++index) {
+        this->lower_lambda_body(this->lambda_functions_[index], this->checked_.lambdas[index]);
     }
     for (base::u32 index = 0; index < this->checked_.trait_default_method_instances.size(); ++index) {
         this->lower_trait_default_method_body(this->trait_default_instance_functions_[index],
@@ -492,6 +497,42 @@ void Lowerer::lower_function_declarations()
         }
         const FunctionId function_id = add_function(this->module_, function);
         this->trait_default_instance_functions_[index] = function_id;
+        this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
+    }
+}
+
+void Lowerer::lower_lambda_declarations()
+{
+    for (base::u32 index = 0; index < this->checked_.lambdas.size(); ++index) {
+        const sema::CheckedLambdaInfo& lambda = this->checked_.lambdas[index];
+        if (lambda.captures_unsupported || !sema::is_valid(lambda.type)) {
+            continue;
+        }
+        Function function = this->module_.make_function();
+        function.name = this->module_.intern(lambda.name.view());
+        function.symbol = this->module_.intern(lambda.c_name.view());
+        function.linkage = Linkage::internal;
+        function.call_conv = AbiCallConv::aurex;
+        function.is_entry = false;
+        function.is_unsafe = false;
+        function.is_variadic = false;
+        function.return_type = lambda.return_type;
+        if (syntax::is_valid(lambda.expr) && lambda.expr.value < this->ast_.exprs.size()) {
+            const syntax::LambdaExprPayload* const payload = this->ast_.exprs.lambda_payload(lambda.expr.value);
+            if (payload != nullptr) {
+                for (base::usize param_index = 0; param_index < payload->params.size(); ++param_index) {
+                    const sema::TypeHandle param_type = param_index < lambda.param_types.size()
+                        ? lambda.param_types[param_index]
+                        : sema::INVALID_TYPE_HANDLE;
+                    function.signature_params.push_back(FunctionParam{
+                        this->module_.intern(payload->params[param_index].name),
+                        param_type,
+                    });
+                }
+            }
+        }
+        const FunctionId function_id = add_function(this->module_, function);
+        this->lambda_functions_[index] = function_id;
         this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
     }
 }

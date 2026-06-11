@@ -392,6 +392,17 @@ private:
                     }
                 }
                 break;
+            case syntax::ExprKind::lambda:
+                if (const syntax::LambdaExprPayload* const payload =
+                        this->module.exprs.lambda_payload(expr_id.value);
+                    payload != nullptr) {
+                    for (const syntax::ParamDecl& param : payload->params) {
+                        this->add_type(param.type);
+                    }
+                    this->add_type(payload->return_type);
+                    this->add_stmt(payload->body);
+                }
+                break;
             case syntax::ExprKind::if_expr:
                 if (const syntax::IfExprPayload* const payload = this->module.exprs.if_payload(expr_id.value);
                     payload != nullptr) {

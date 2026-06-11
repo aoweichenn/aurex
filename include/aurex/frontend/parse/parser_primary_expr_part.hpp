@@ -2,6 +2,9 @@
 
 #include <aurex/frontend/parse/parser_part_base.hpp>
 
+#include <optional>
+#include <vector>
+
 namespace aurex::parse {
 
 class PrimaryExprParser final : private ParserPartBase {
@@ -13,6 +16,12 @@ public:
     [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
 
 private:
+    [[nodiscard]] syntax::ExprId parse_lambda_expr(ExprContext context);
+    [[nodiscard]] std::vector<syntax::ParamDecl> parse_lambda_param_list();
+    [[nodiscard]] std::optional<syntax::ParamDecl> parse_lambda_param();
+    bool recover_lambda_param_separator();
+    [[nodiscard]] syntax::StmtId make_lambda_return_body(
+        const syntax::Token& begin, syntax::ExprId value, const base::SourceRange& body_range);
     [[nodiscard]] syntax::ExprId parse_unsafe_block_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_array_literal(ExprContext context);
     bool recover_array_literal_separator();

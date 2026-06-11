@@ -54,6 +54,12 @@ struct CallExprPayload {
     AstArenaVector<ExprId> args;
 };
 
+struct LambdaExprPayload {
+    AstArenaVector<ParamDecl> params;
+    TypeId return_type = INVALID_TYPE_ID;
+    StmtId body = INVALID_STMT_ID;
+};
+
 struct IfExprPayload {
     ExprId condition = INVALID_EXPR_ID;
     PatternId condition_pattern = INVALID_PATTERN_ID;
@@ -128,6 +134,7 @@ struct ExprNodePayloadArena {
           tries(base::BumpAllocatorAdapter<TryExprPayload>{arena}),
           binaries(base::BumpAllocatorAdapter<BinaryExprPayload>{arena}),
           calls(base::BumpAllocatorAdapter<CallExprPayload>{arena}),
+          lambdas(base::BumpAllocatorAdapter<LambdaExprPayload>{arena}),
           ifs(base::BumpAllocatorAdapter<IfExprPayload>{arena}),
           blocks(base::BumpAllocatorAdapter<BlockExprPayload>{arena}),
           matches(base::BumpAllocatorAdapter<MatchExprPayload>{arena}),
@@ -150,6 +157,7 @@ struct ExprNodePayloadArena {
         this->tries.swap(other.tries);
         this->binaries.swap(other.binaries);
         this->calls.swap(other.calls);
+        this->lambdas.swap(other.lambdas);
         this->ifs.swap(other.ifs);
         this->blocks.swap(other.blocks);
         this->matches.swap(other.matches);
@@ -169,6 +177,7 @@ struct ExprNodePayloadArena {
     AstArenaVector<TryExprPayload> tries;
     AstArenaVector<BinaryExprPayload> binaries;
     AstArenaVector<CallExprPayload> calls;
+    AstArenaVector<LambdaExprPayload> lambdas;
     AstArenaVector<IfExprPayload> ifs;
     AstArenaVector<BlockExprPayload> blocks;
     AstArenaVector<MatchExprPayload> matches;
@@ -217,6 +226,8 @@ public:
     [[nodiscard]] BinaryExprPayload* binary_payload(base::usize index) noexcept;
     [[nodiscard]] const CallExprPayload* call_payload(base::usize index) const noexcept;
     [[nodiscard]] CallExprPayload* call_payload(base::usize index) noexcept;
+    [[nodiscard]] const LambdaExprPayload* lambda_payload(base::usize index) const noexcept;
+    [[nodiscard]] LambdaExprPayload* lambda_payload(base::usize index) noexcept;
     [[nodiscard]] const IfExprPayload* if_payload(base::usize index) const noexcept;
     [[nodiscard]] IfExprPayload* if_payload(base::usize index) noexcept;
     [[nodiscard]] const BlockExprPayload* block_payload(base::usize index) const noexcept;
@@ -292,6 +303,17 @@ public:
     {
         return this->append_header(kind, range,
             this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args))));
+    }
+
+    [[nodiscard]] ExprId append_lambda(const base::SourceRange& range, LambdaExprPayload payload);
+
+    template <typename ParamAllocator>
+    [[nodiscard]] ExprId append_lambda(
+        const base::SourceRange& range, std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
+    {
+        return this->append_header(ExprKind::lambda, range,
+            this->emplace_payload(
+                this->payloads_.lambdas, this->copy_or_move_list(std::move(params)), return_type, body));
     }
 
     [[nodiscard]] ExprId append_if(const base::SourceRange& range, IfExprPayload payload);

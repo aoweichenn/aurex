@@ -570,6 +570,7 @@ CheckedModule::CheckedModule()
       stmt_local_types(make_sema_vector<TypeHandle>(*this->arena_)),
       item_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       coercions(make_sema_vector<CoercionRecord>(*this->arena_)),
+      lambdas(make_sema_vector<CheckedLambdaInfo>(*this->arena_)),
       functions(make_sema_map<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       structs(make_sema_map<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
@@ -649,6 +650,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       pattern_case_name_ids(std::move(other.pattern_case_name_ids)),
       syntax_type_handles(std::move(other.syntax_type_handles)), stmt_local_types(std::move(other.stmt_local_types)),
       item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
+      lambdas(std::move(other.lambdas)),
       functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
@@ -728,6 +730,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->stmt_local_types.swap(other.stmt_local_types);
     this->item_c_name_ids.swap(other.item_c_name_ids);
     this->coercions.swap(other.coercions);
+    this->lambdas.swap(other.lambdas);
     this->functions.swap(other.functions);
     this->structs.swap(other.structs);
     this->enum_cases.swap(other.enum_cases);
@@ -796,6 +799,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->stmt_local_types.assign(other.stmt_local_types.begin(), other.stmt_local_types.end());
     this->item_c_name_ids.assign(other.item_c_name_ids.begin(), other.item_c_name_ids.end());
     this->coercions.assign(other.coercions.begin(), other.coercions.end());
+    this->lambdas.clear();
+    this->lambdas.reserve(other.lambdas.size());
+    for (const CheckedLambdaInfo& lambda : other.lambdas) {
+        this->lambdas.push_back(this->clone_lambda_info(lambda));
+    }
     this->functions.clear();
     this->functions.reserve(other.functions.size());
     for (const auto& entry : other.functions) {
@@ -1052,6 +1060,13 @@ FunctionSignature CheckedModule::make_function_signature() const
     signature.param_types = this->make_type_handle_list();
     signature.generic_args = this->make_type_handle_list();
     return signature;
+}
+
+CheckedLambdaInfo CheckedModule::make_lambda_info() const
+{
+    CheckedLambdaInfo info;
+    info.param_types = this->make_type_handle_list();
+    return info;
 }
 
 StructInfo CheckedModule::make_struct_info() const
@@ -1339,6 +1354,25 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.prototype_item = other.prototype_item;
     copy.definition_item = other.definition_item;
     copy.part_index = other.part_index;
+    return copy;
+}
+
+CheckedLambdaInfo CheckedModule::clone_lambda_info(const CheckedLambdaInfo& other)
+{
+    CheckedLambdaInfo copy = this->make_lambda_info();
+    copy.expr = other.expr;
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.c_name = this->intern_text(other.c_name);
+    copy.c_name_id = other.c_name_id;
+    copy.module = other.module;
+    copy.owner_item = other.owner_item;
+    copy.type = other.type;
+    copy.return_type = other.return_type;
+    copy.param_types = this->copy_type_handle_list(other.param_types);
+    copy.body = other.body;
+    copy.range = other.range;
+    copy.captures_unsupported = other.captures_unsupported;
     return copy;
 }
 
@@ -2142,6 +2176,13 @@ void rebind_enum_case_info_texts(
     rebind_interned_text(info.case_name, from, to);
 }
 
+void rebind_lambda_info_texts(
+    CheckedLambdaInfo& info, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(info.name, from, to);
+    rebind_interned_text(info.c_name, from, to);
+}
+
 void rebind_trait_signature_texts(
     TraitSignature& signature, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
 {
@@ -2233,6 +2274,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (auto& entry : this->enum_cases) {
         rebind_enum_case_info_texts(entry.second, from, to);
+    }
+    for (CheckedLambdaInfo& lambda : this->lambdas) {
+        rebind_lambda_info_texts(lambda, from, to);
     }
     for (auto& entry : this->type_aliases) {
         rebind_interned_text(entry.second.name, from, to);

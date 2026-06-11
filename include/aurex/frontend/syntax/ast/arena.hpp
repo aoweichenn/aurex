@@ -102,6 +102,7 @@ struct AstReserveEstimate {
         base::usize tries = 0;
         base::usize binaries = 0;
         base::usize calls = 0;
+        base::usize lambdas = 0;
         base::usize ifs = 0;
         base::usize blocks = 0;
         base::usize matches = 0;
@@ -131,6 +132,7 @@ struct AstReserveEstimate {
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),

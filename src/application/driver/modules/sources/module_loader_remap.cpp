@@ -81,6 +81,14 @@ void remap_type_ids(std::vector<syntax::TypeId, Allocator>& args, const IdMap& m
 }
 
 template <typename Allocator>
+void remap_param_decls(std::vector<syntax::ParamDecl, Allocator>& params, const IdMap& map)
+{
+    for (syntax::ParamDecl& param : params) {
+        param.type = remap_type(param.type, map);
+    }
+}
+
+template <typename Allocator>
 void remap_generic_args(std::vector<syntax::GenericArgDecl, Allocator>& args, const IdMap& map)
 {
     for (syntax::GenericArgDecl& arg : args) {
@@ -238,6 +246,21 @@ template <typename T, typename Allocator>
             callee = remap_expr(callee, map);
             remap_expr_ids(args, map);
             return destination.push_call_expr(kind, range, callee, std::move(args));
+        }
+        case syntax::ExprKind::lambda: {
+            syntax::AstArenaVector<syntax::ParamDecl> params = destination.make_expr_list<syntax::ParamDecl>();
+            syntax::TypeId return_type = syntax::INVALID_TYPE_ID;
+            syntax::StmtId body = syntax::INVALID_STMT_ID;
+            if (syntax::LambdaExprPayload* const source_payload = source.exprs.lambda_payload(index);
+                source_payload != nullptr) {
+                params = copy_expr_arena_list(destination, source_payload->params);
+                return_type = source_payload->return_type;
+                body = source_payload->body;
+            }
+            remap_param_decls(params, map);
+            return_type = remap_type(return_type, map);
+            body = remap_stmt(body, map);
+            return destination.push_lambda_expr(range, std::move(params), return_type, body);
         }
         case syntax::ExprKind::if_expr: {
             syntax::ExprId condition = syntax::INVALID_EXPR_ID;

@@ -5,6 +5,12 @@
 
 ## 总体状态
 
+2026-06-11：函数式基础补强已完成第一步：无捕获 lambda 字面量现在是一等 `fn(...) -> T`
+函数值，支持 `fn(x: T) -> U => expr` 表达式体和 `fn(x: T) -> U { ... }` 块体；lambda
+可赋给函数类型、作为参数/返回值流动，并通过现有函数值间接调用路径进入 IR/LLVM/native execution。
+捕获外层局部或参数的 closure 会被显式诊断为 `capturing closures are not supported yet`，不会被误降级成薄
+函数指针。该补强仍不实现标准库、allocator、closure environment、`Fn`/`FnMut`/`FnOnce` 能力或 runtime helper。
+
 2026-06-11：M20d Runtime Lowering ABI Design Closure 已完成。M20d 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
 runtime helper call，也不做 executable runtime ABI lowering；它把 M20c compiler-owned drop / allocator

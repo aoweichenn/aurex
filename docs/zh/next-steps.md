@@ -1,6 +1,24 @@
 # 下一步计划
 
-## 当前最高优先级：标准库 / Owning Dyn Runtime Surface 入口评估
+## 当前最高优先级：标准库 / Owning Dyn Runtime Surface 入口评估（保留锚点）
+
+这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
+不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
+
+## 当前实现入口：捕获闭包与函数式能力设计入口
+
+无捕获 lambda 已作为 `fn(...) -> T` 薄函数值落地。下一步若继续函数式主线，应进入捕获闭包设计，而不是直接写标准库：
+
+- 设计匿名 closure environment 布局。
+- 区分 shared / mutable / consuming capture。
+- 定义 closure call ability，后续再决定是否命名为 `Fn` / `FnMut` / `FnOnce` 风格能力。
+- 把捕获的 borrow/resource 接入现有 dropck、place-state、loan/lifetime facts。
+- 设计返回/存储 closure 时的 escape 规则。
+- 设计 closure-to-function-pointer 的唯一合法转换：只有无捕获 lambda 可以转换为薄 `fn(...) -> T`。
+
+这一阶段仍不需要实现标准库、allocator 或 runtime helper；标准库函数式 adapter 应在 closure 核心语义稳定后再做。
+
+## 当前已完成 dyn/runtime 背景
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set

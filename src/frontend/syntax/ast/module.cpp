@@ -113,6 +113,12 @@ ExprId AstModule::push_call_expr(const ExprKind kind, const base::SourceRange& r
     return this->push_call_expr(kind, range, payload.callee, std::move(payload.args));
 }
 
+ExprId AstModule::push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload)
+{
+    this->intern_param_decls(payload.params);
+    return this->exprs.append_lambda(range, std::move(payload));
+}
+
 ExprId AstModule::push_if_expr(const base::SourceRange& range, const IfExprPayload payload)
 {
     return this->push_if_expr(
@@ -493,6 +499,12 @@ void AstModule::intern_expr_payload(const base::usize index)
     if (kind == ExprKind::field) {
         if (FieldExprPayload* const payload = this->exprs.field_payload(index); payload != nullptr) {
             this->intern_identifier_text(payload->field_name, payload->field_name_id);
+        }
+        return;
+    }
+    if (kind == ExprKind::lambda) {
+        if (LambdaExprPayload* const payload = this->exprs.lambda_payload(index); payload != nullptr) {
+            this->intern_param_decls(payload->params);
         }
         return;
     }

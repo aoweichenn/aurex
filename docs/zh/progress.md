@@ -1,9 +1,26 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20c Drop / Allocator Identity Prerequisite Gate
+阶段：M20d Runtime Lowering ABI Design Closure
 
 ## 总体状态
+
+2026-06-11：M20d Runtime Lowering ABI Design Closure 已完成。M20d 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
+runtime helper call，也不做 executable runtime ABI lowering；它把 M20c compiler-owned drop / allocator
+identity prerequisites 继续推进为 runtime lowering ABI descriptor、blocked-to-admitted transition guard、
+backend helper prerequisite、drop/allocator runtime bridge 和 dynamic Drop blocker facts。
+
+M20d 新增 `OwnedDynRuntimeLoweringAbiGate`、`OwnedDynRuntimeLoweringAbiFact`、
+`OwnedDynRuntimeLoweringAbiSummary`、`m20d_owned_dyn_runtime_lowering_abi_gate_baseline()` 和
+`owned_dyn_runtime_lowering_abi_gate()` IR adapter。Gate 固定 runtime ABI descriptor、blocked transition guard、
+backend helper prerequisite、drop/allocator runtime bridge 和 dynamic Drop runtime blocker 五类 facts，并要求这些
+facts 的 drop identity、allocator identity、prototype identity set 和 prototype count 必须与 embedded M20c identity
+gate 完全一致。
+
+M20d 的 `runtime_abi_descriptor_key` 和 `backend_helper_identity_key` 都只是 stable query fingerprints；
+`backend_helper_callable` 和 `executable_runtime_implemented` 必须保持 0。新增收口文档见
+[Aurex M20d Runtime Lowering ABI Design Closure Release Baseline](m20-owned-dyn-runtime-lowering-abi-design-release.md)。
 
 2026-06-11：M20c Drop / Allocator Identity Prerequisite Gate 已完成。M20c 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend

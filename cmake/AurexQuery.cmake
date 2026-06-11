@@ -21,6 +21,7 @@ add_library(aurex_query
     src/infrastructure/query/owned_dyn_drop_allocator_identity_gate.cpp
     src/infrastructure/query/owned_dyn_ir_shape_prototype_gate.cpp
     src/infrastructure/query/owned_dyn_runtime_admission_gate.cpp
+    src/infrastructure/query/owned_dyn_runtime_lowering_abi_gate.cpp
     src/infrastructure/query/principal_set_composition_facts.cpp
     src/infrastructure/query/project_graph_query.cpp
     src/infrastructure/query/source_file_query.cpp

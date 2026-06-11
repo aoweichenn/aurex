@@ -1,5 +1,38 @@
 # 版本文档
 
+## M20d Runtime Lowering ABI Design Closure
+
+M20d 已完成 runtime lowering ABI design closure。M20d 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
+runtime helper call，也不做 executable runtime ABI lowering。M20d 的目标是把 M20c 的 compiler-owned drop /
+allocator identity prerequisites 继续推进成 runtime lowering ABI 设计事实。
+
+M20d 新增或固定：
+
+- `OwnedDynRuntimeLoweringAbiGate`。
+- `OwnedDynRuntimeLoweringAbiFact`。
+- `OwnedDynRuntimeLoweringAbiSummary`。
+- `OwnedDynRuntimeLoweringAbiFactKind`、`OwnedDynRuntimeLoweringAbiStage` 和
+  `OwnedDynRuntimeLoweringAbiPolicy`。
+- `m20d_owned_dyn_runtime_lowering_abi_gate_baseline()`。
+- `owned_dyn_runtime_lowering_abi_gate_fingerprint()`、summary、dump 和 validation。
+- `ir::owned_dyn_runtime_lowering_abi_gate(const Module&)`。
+- `runtime_abi_descriptor_key` 和 `backend_helper_identity_key`。
+- M20d facts 对 embedded M20c drop / allocator identity gate 的 key consistency validation。
+
+M20d validation 明确拒绝：
+
+- 删除 M20c gate 引用或让 embedded M20c fingerprint 漂移。
+- M20d facts 的 drop identity、allocator identity、prototype identity set 或 prototype count 与 M20c gate 不一致。
+- runtime ABI descriptor key 或 backend helper identity key 为空、漂移或互相重合。
+- 把 backend helper 标成 callable。
+- 把 executable runtime 标成 implemented。
+- 把 standard library、`Box<dyn Trait>`、owning dyn user value、allocator API、runtime lowering、
+  backend helper 或 dynamic Drop runtime 标记成已实现。
+
+下一阶段可以进入标准库 / owning dyn runtime surface 的设计或实现入口评估；该阶段必须显式建立在
+M20a-M20d facts 之上，不能把 M20d 误读成已经实现 runtime ABI lowering。
+
 ## M20c Drop / Allocator Identity Prerequisite Gate
 
 M20c 已完成 drop / allocator identity prerequisite gate。M20c 不实现标准库、不实现
@@ -30,7 +63,7 @@ M20c validation 明确拒绝：
   backend helper 或 dynamic Drop runtime 标记成已实现。
 - 让 query summary、fingerprint 或 M20b IR shape gate 引用与当前 facts 漂移。
 
-下一阶段建议进入 M20d Runtime Lowering ABI Design Closure；M20d 仍不应直接实现标准库 API。
+下一阶段已进入 M20d Runtime Lowering ABI Design Closure；M20d 仍不直接实现标准库 API。
 
 ## M20b Owned Dyn IR Shape Prototype Gate
 

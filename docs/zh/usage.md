@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述当前 **M20c Drop / Allocator Identity Prerequisite Gate** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier/admission/shape/identity facts 本身展开。
+本文描述当前 **M20d Runtime Lowering ABI Design Closure** 下已经落地的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端、static trait、borrowed dyn trait、borrowed dyn supertrait upcast、borrowed dyn composition 和 compiler/query/IR verifier/admission/shape/identity/runtime-ABI-design facts 本身展开。
 
 M11c 新增用户可写 `dyn (A + B)` borrowed composition annotation/coercion；M11d 新增 `&dyn (A + B) -> &dyn A` /
 `&mut dyn (A + B) -> &mut dyn A` 显式 runtime projection；M11e 新增 composition runtime facts 的
@@ -53,6 +53,14 @@ M20c 新增 `m20c_owned_dyn_drop_allocator_identity_gate_baseline()`、
 dump/fingerprint/verifier 和 query adapter 都能看见这两个 prerequisite identity。它们不是 runtime slot，也不是
 allocator API；标准库、`Box<dyn Trait>`、owning dyn value、runtime ABI lowering、backend helper 和 dynamic Drop
 runtime 仍保持 blocked。
+
+M20d 新增 `m20d_owned_dyn_runtime_lowering_abi_gate_baseline()`、
+`OwnedDynRuntimeLoweringAbiGate`、`OwnedDynRuntimeLoweringAbiFact`、
+`OwnedDynRuntimeLoweringAbiSummary` 和 `ir::owned_dyn_runtime_lowering_abi_gate()`。M20d 把 runtime ABI descriptor、
+blocked-to-admitted transition guard、backend helper prerequisite、drop/allocator runtime bridge 和 dynamic Drop
+blocker 固定为 stable query/IR facts。`runtime_abi_descriptor_key` 和 `backend_helper_identity_key` 不是 runtime
+slot，也不会生成 helper call；标准库、`Box<dyn Trait>`、owning dyn value、allocator API、executable runtime ABI
+lowering、backend helper call 和 dynamic Drop runtime 仍保持 blocked。
 
 ## 构建
 

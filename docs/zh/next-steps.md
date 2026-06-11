@@ -5,7 +5,17 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M20g 默认参数 / 命名参数已收口，下一步继续非标准库语言特性
+## 当前实现入口：M21 宏系统主线已开启，M21a design gate 已收口
+
+M21a 已完成宏系统设计 gate，但还没有实现完整 macro/proc-macro，也没有生成用户可用代码。当前新增的是
+`m21a_macro_design_gate_baseline()` 及其 validation/fingerprint/dump 测试，用来固定后续宏系统不能踩的坑：
+不做文本替换、不绕过 sema/borrow checking、必须支持 hygiene、source map、debug trace、declared generated
+names 和 query-backed incremental expansion。
+
+下一步建议继续 M21b：把现有 `DeriveDecl` 扩展成通用 `AttributeDecl` / token tree surface，并保持
+`#[derive(Copy, Eq, Hash)]` 兼容。M21b 仍不应实现标准库、external procedural macro 或 typed expression macro。
+
+## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 
 M20e 已完成第一批编译器内建 derive 属性：`#[derive(Copy, Eq, Hash)]` 支持 `struct` / `enum`，
 `Eq` / `Hash` 进入 checked capability facts，`Copy` 继续服从资源语义和 `impl Drop` custom destructor 事实。

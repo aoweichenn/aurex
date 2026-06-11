@@ -1,5 +1,42 @@
 # 版本文档
 
+## M21a Macro System Design Gate
+
+当前版本开启宏系统主线，但只完成 design gate，不实现完整 macro/proc-macro、不生成用户代码，也不引入标准库。
+M21a 用 query facts 固定后续宏系统的边界：宏输入输出必须使用 token tree / attribute surface，不做文本替换；
+宏展开必须带 hygiene、source map、debug trace 和 declared generated names；宏展开必须接入 query/cache；
+第一条实现路线选择 attached item codegen / derive codegen 地基。
+
+新增或固定：
+
+- 新增 `MacroDesignGate`。
+- 新增 `MacroDesignCandidate`。
+- 新增 `MacroDesignImpactSummary`。
+- 新增 `MacroDesignCapability`、`MacroDesignGateStage`、`MacroDesignPolicyDecision`。
+- 新增 `m21a_macro_design_gate_baseline()`。
+- 新增 `is_valid_m21a_macro_design_gate()`。
+- 新增 `macro_design_gate_fingerprint()`。
+- 新增 `summarize_macro_design_gate()` 和 `dump_macro_design_gate()`。
+- 固定 `token_tree_and_attribute_surface` 为 M21 后续实现入口。
+- 固定 `hygienic_name_resolution` 为必需地基。
+- 固定 `expansion_source_map_and_debug_trace` 为必需地基。
+- 固定 `query_backed_incremental_expansion` 为必需地基。
+- 固定 `attached_item_codegen_surface` 为第一条真实代码生成主线。
+- 将 `typed_expression_macro_boundary` 标为 future stage。
+- 将 `external_procedural_macro_sandbox` 标为 blocked dependency，必须等待 process sandbox / manifest /
+  permission / implementation fingerprint 设计。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户可执行 external procedural macro。
+- typed expression macro。
+- macro-generated user code lowering。
+- 宏生成 `module` / `import` / `pub use`。
+- 宏绕过 sema、borrow checking、visibility、trait solver 或 unsafe gate。
+
 ## M20g Default And Named Call Arguments Closure
 
 当前版本收口默认参数和命名参数。该阶段不引入标准库，也不改变 ABI 层的函数签名；默认值和命名实参是

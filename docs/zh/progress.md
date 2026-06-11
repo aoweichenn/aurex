@@ -1,9 +1,20 @@
 # 当前进度文档
 
-版本：0.1.5
-阶段：M20g Default And Named Call Arguments Closure
+版本：0.1.6
+阶段：M21a Macro System Design Gate
 
 ## 总体状态
+
+2026-06-11：M21a Macro System Design Gate 已完成。本阶段没有实现标准库、runtime helper、external
+procedural macro、typed expression macro 或真实用户代码生成；它把宏系统的第一批边界固化为 query-level design
+gate。新增 `MacroDesignGate`、`MacroDesignCandidate`、`MacroDesignImpactSummary`、
+`m21a_macro_design_gate_baseline()`、`is_valid_m21a_macro_design_gate()`、summary、dump 和 stable fingerprint。
+
+M21a 固定的结论是：Aurex 宏系统必须走 token tree / attribute surface，不做文本替换；必须有 hygiene mark、
+origin id、declared generated names、expansion source map 和 debug trace；宏展开必须是 query-backed incremental expansion；
+第一条真实主线应是 attached item codegen / derive codegen 地基；typed expression macro 和 external
+procedural macro 继续后移。新增设计文档见
+[Aurex M21a Macro System Design Gate](m21-macro-system-design-gate.md)。
 
 2026-06-11：M20g Default And Named Call Arguments Closure 已完成。本阶段补齐默认参数和命名参数的第一版
 release-quality 用户面：普通函数、inherent method、泛型函数 / 泛型 method 可以声明默认参数；普通函数、

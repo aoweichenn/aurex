@@ -1302,6 +1302,108 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
         require_failure(aurexc() + " --check " + q(enum_hash)).output, "does not satisfy capability `Hash`");
 }
 
+TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityRegressions)
+{
+    const fs::path source = write_source_file(tmp_root() / "derive_capability_regressions.ax",
+        "module derive_capability_regressions;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Key { value: i32; }\n"
+        "#[derive(Eq, Hash)]\n"
+        "enum MaybeKey { some(Key), none }\n"
+        "#[derive(Eq, Hash)]\n"
+        "struct Box[T] where T: Eq + Hash { value: T; }\n"
+        "fn accept_eq_hash[T](value: T) -> i32 where T: Eq + Hash { return 1; }\n"
+        "fn accept_copy[T](value: T) -> i32 where T: Copy { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  let key = Key { value: 1 };\n"
+        "  let boxed = Box[Key] { value: key };\n"
+        "  let maybe = MaybeKey.some(key);\n"
+        "  return accept_eq_hash(key) + accept_eq_hash(boxed) + accept_eq_hash(maybe) + accept_copy(key) - 4;\n"
+        "}\n");
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked,
+        {
+            "struct priv Key derives=Copy,Eq,Hash",
+            "struct priv Box[derive_capability_regressions.Key] derives=Eq,Hash",
+            "case MaybeKey_some : derive_capability_regressions.MaybeKey"
+            "(derive_capability_regressions.Key) derives=Eq,Hash",
+            "accept_eq_hash[derive_capability_regressions.Key] -> i32",
+            "accept_eq_hash[derive_capability_regressions.Box[derive_capability_regressions.Key]] -> i32",
+            "accept_eq_hash[derive_capability_regressions.MaybeKey] -> i32",
+            "accept_copy[derive_capability_regressions.Key] -> i32",
+        });
+}
+
+TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityDiagnostics)
+{
+    const fs::path invalid_target = write_source_file(tmp_root() / "derive_invalid_target.ax",
+        "module derive_invalid_target;\n"
+        "#[derive(Eq)]\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(invalid_target)).output,
+        "derive attributes are only supported on struct and enum declarations");
+
+    const fs::path unsupported = write_source_file(tmp_root() / "derive_unsupported.ax",
+        "module derive_unsupported;\n"
+        "#[derive(Clone)]\n"
+        "struct Bad { value: i32; }\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(unsupported)).output, "unsupported derive capability: Clone");
+
+    const fs::path duplicate = write_source_file(tmp_root() / "derive_duplicate.ax",
+        "module derive_duplicate;\n"
+        "#[derive(Eq, Eq)]\n"
+        "struct Bad { value: i32; }\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains_all(require_failure(aurexc() + " --check " + q(duplicate)).output,
+        {
+            "duplicate derive capability: Eq",
+            "note: previous declaration of `Eq` is here",
+        });
+
+    const fs::path eq_field = write_source_file(tmp_root() / "derive_eq_field_rejected.ax",
+        "module derive_eq_field_rejected;\n"
+        "#[derive(Eq)]\n"
+        "struct Bad { value: f64; }\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(eq_field)).output,
+        "cannot derive Eq because field value does not satisfy Eq");
+
+    const fs::path enum_payload = write_source_file(tmp_root() / "derive_enum_payload_rejected.ax",
+        "module derive_enum_payload_rejected;\n"
+        "#[derive(Hash)]\n"
+        "enum Bad { some(f64), none }\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_payload)).output,
+        "cannot derive Hash because enum case some does not satisfy Hash");
+
+    const fs::path copy_drop = write_source_file(tmp_root() / "derive_copy_drop_rejected.ax",
+        "module derive_copy_drop_rejected;\n"
+        "struct File { fd: i32; }\n"
+        "impl Drop for File {\n"
+        "  fn drop(self: deinit File) -> void {}\n"
+        "}\n"
+        "#[derive(Copy)]\n"
+        "struct Wrapper { file: File; }\n"
+        "fn main() -> i32 { return 0; }\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(copy_drop)).output,
+        "cannot derive Copy because field file does not satisfy Copy");
+
+    const fs::path generic_unsatisfied = write_source_file(tmp_root() / "derive_generic_unsatisfied.ax",
+        "module derive_generic_unsatisfied;\n"
+        "#[derive(Eq)]\n"
+        "struct Box[T] { value: T; }\n"
+        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  let value = Box[f64] { value: cast[f64](1) };\n"
+        "  return accept_eq(value);\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_unsatisfied)).output,
+        "does not satisfy capability `Eq`");
+}
+
 TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
 {
     const fs::path source = write_source_file(tmp_root() / "generic_impl_nested_owner.ax",

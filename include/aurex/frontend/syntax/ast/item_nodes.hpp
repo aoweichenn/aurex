@@ -33,6 +33,12 @@ struct BorrowContractDecl {
     bool present = false;
 };
 
+struct DeriveDecl {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+};
+
 struct FieldDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
@@ -95,6 +101,7 @@ struct ItemNode {
     bool is_trait_default_method = false;
     std::string_view abi_name;
     BorrowContractDecl borrow_contract;
+    std::vector<DeriveDecl> derives;
     std::vector<TraitSupertraitDecl> trait_supertraits;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
@@ -112,6 +119,7 @@ struct ItemNodeHeader {
 struct ConstItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     TypeId type = INVALID_TYPE_ID;
     ExprId value = INVALID_EXPR_ID;
 };
@@ -119,6 +127,7 @@ struct ConstItemPayload {
 struct TypeAliasItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId target = INVALID_TYPE_ID;
@@ -129,6 +138,7 @@ struct TypeAliasItemPayload {
 struct StructItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     AstArenaVector<FieldDecl> fields;
@@ -137,6 +147,7 @@ struct StructItemPayload {
 struct EnumItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId base_type = INVALID_TYPE_ID;
@@ -146,11 +157,13 @@ struct EnumItemPayload {
 struct OpaqueStructItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
 };
 
 struct TraitItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<TraitSupertraitDecl> supertraits;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -160,6 +173,7 @@ struct TraitItemPayload {
 struct FunctionItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     AstArenaVector<ParamDecl> params;
@@ -174,10 +188,12 @@ struct FunctionItemPayload {
 };
 
 struct ExternBlockItemPayload {
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<ItemId> items;
 };
 
 struct ImplBlockItemPayload {
+    AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId impl_type = INVALID_TYPE_ID;
@@ -295,6 +311,7 @@ private:
     }
 
     [[nodiscard]] GenericConstraintDecl copy_or_move_generic_constraint(GenericConstraintDecl&& constraint);
+    [[nodiscard]] DeriveDecl copy_or_move_derive(DeriveDecl&& derive);
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_or_move_generic_constraints(
@@ -304,6 +321,17 @@ private:
         copy.reserve(constraints.size());
         for (GenericConstraintDecl& constraint : constraints) {
             copy.push_back(this->copy_or_move_generic_constraint(std::move(constraint)));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<DeriveDecl> copy_or_move_derives(std::vector<DeriveDecl, Allocator>&& derives)
+    {
+        AstArenaVector<DeriveDecl> copy = make_ast_arena_vector<DeriveDecl>(*this->arena_);
+        copy.reserve(derives.size());
+        for (DeriveDecl& derive : derives) {
+            copy.push_back(this->copy_or_move_derive(std::move(derive)));
         }
         return copy;
     }
@@ -323,6 +351,7 @@ private:
     }
 
     [[nodiscard]] GenericConstraintDecl detach_generic_constraint(const GenericConstraintDecl& constraint) const;
+    [[nodiscard]] DeriveDecl detach_derive(const DeriveDecl& derive) const;
 
     template <typename Allocator>
     [[nodiscard]] std::vector<GenericConstraintDecl> detach_generic_constraints(
@@ -332,6 +361,17 @@ private:
         copy.reserve(constraints.size());
         for (const GenericConstraintDecl& constraint : constraints) {
             copy.push_back(this->detach_generic_constraint(constraint));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] std::vector<DeriveDecl> detach_derives(const std::vector<DeriveDecl, Allocator>& derives) const
+    {
+        std::vector<DeriveDecl> copy;
+        copy.reserve(derives.size());
+        for (const DeriveDecl& derive : derives) {
+            copy.push_back(this->detach_derive(derive));
         }
         return copy;
     }

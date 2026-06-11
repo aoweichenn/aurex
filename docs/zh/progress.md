@@ -1,9 +1,20 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20d Runtime Lowering ABI Design Closure
+阶段：M20e Builtin Derive Attribute Closure
 
 ## 总体状态
+
+2026-06-11：M20e Builtin Derive Attribute Closure 已完成。当前实现的是编译器内建 derive 属性，不是完整宏系统：
+`#[derive(Copy, Eq, Hash)]` 可写在 `struct` 和 `enum` 上，parser/AST 保留属性，sema 将满足条件的派生记录到
+`CheckedModule::derived_capabilities_by_type`，checked dump 会显示 `derives=Copy,Eq,Hash` 等事实。
+
+本轮新增 `#` token、`#[derive(...)]` item attribute grammar、AST compact payload 保存、derive 名字 interning、
+checked capability facts、语义诊断和泛型实例条件性派生。`Eq` / `Hash` 派生可被 `where T: Eq + Hash`
+消费；`Copy` 派生仍服从资源语义，并且 pipeline 现在先验证 `impl Drop` 析构器事实再分析 derive，避免
+`#[derive(Copy)]` 绕过 custom destructor。未知 derive、重复 derive、非法目标、字段/payload 不满足能力、
+泛型实例不满足能力都已覆盖回归测试。完整 macro/proc-macro、用户自定义 derive、`Clone`/`Ord` 派生、Eq/Hash
+运行时函数和标准库仍不属于本阶段。
 
 2026-06-11：M20 函数式/闭包核心子集已完成。无捕获 lambda 字面量是一等 `fn(...) -> T`
 薄函数值，支持 `fn(x: T) -> U => expr` 表达式体和 `fn(x: T) -> U { ... }` 块体；lambda

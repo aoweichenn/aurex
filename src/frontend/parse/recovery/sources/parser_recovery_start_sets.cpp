@@ -10,6 +10,7 @@ bool token_starts_item(const TokenKind kind) noexcept
 {
     switch (kind) {
         case TokenKind::r_brace:
+        case TokenKind::hash:
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:

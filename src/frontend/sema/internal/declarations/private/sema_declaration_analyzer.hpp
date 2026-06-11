@@ -24,6 +24,9 @@ public:
     void validate_abi_symbols() const;
     void analyze_entry_points() const;
     void analyze_struct_properties();
+    void analyze_derive_attributes();
+    void analyze_derive_attributes_for_item(
+        const syntax::ItemNode& item, TypeHandle type, bool report_invalid_attributes, bool report_component_failures);
     void analyze_const_decls();
     bool is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies);
 

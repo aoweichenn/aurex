@@ -668,6 +668,7 @@ public:
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
+    [[nodiscard]] bool type_has_derived_capability(TypeHandle type, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_equality_capability(TypeHandle type) const;
     [[nodiscard]] bool type_satisfies_ordering_capability(TypeHandle type) const;
     [[nodiscard]] bool type_supports_equality_operator(TypeHandle type) const;
@@ -699,6 +700,9 @@ public:
     void analyze_entry_points() const;
     void resolve_type_alias_decls();
     void analyze_struct_properties();
+    void analyze_derive_attributes();
+    void analyze_derive_attributes_for_item(
+        const syntax::ItemNode& item, TypeHandle type, bool report_invalid_attributes, bool report_component_failures);
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,

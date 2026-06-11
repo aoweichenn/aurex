@@ -224,6 +224,15 @@ GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConst
     return copy;
 }
 
+DeriveDecl ItemNodeList::copy_or_move_derive(DeriveDecl&& derive)
+{
+    DeriveDecl copy;
+    copy.name = derive.name;
+    copy.name_id = derive.name_id;
+    copy.range = derive.range;
+    return copy;
+}
+
 EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case)
 {
     EnumCaseDecl copy;
@@ -259,6 +268,15 @@ GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConst
     return copy;
 }
 
+DeriveDecl ItemNodeList::detach_derive(const DeriveDecl& derive) const
+{
+    DeriveDecl copy;
+    copy.name = derive.name;
+    copy.name_id = derive.name_id;
+    copy.range = derive.range;
+    return copy;
+}
+
 EnumCaseDecl ItemNodeList::detach_enum_case(const EnumCaseDecl& enum_case) const
 {
     EnumCaseDecl copy;
@@ -279,6 +297,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 ConstItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     node.const_type,
                     node.const_value,
                 });
@@ -287,6 +306,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 TypeAliasItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     node.alias_type,
@@ -298,6 +318,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 StructItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     this->copy_list(node.fields),
@@ -307,6 +328,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 EnumItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     node.enum_base_type,
@@ -317,12 +339,14 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 OpaqueStructItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                 });
         case ItemKind::trait_decl:
             return this->push_payload(this->payloads_.traits,
                 TraitItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_list(node.trait_supertraits),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
@@ -333,6 +357,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                 FunctionItemPayload{
                     node.name,
                     node.name_id,
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     this->copy_list(node.params),
@@ -348,11 +373,13 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
         case ItemKind::extern_block:
             return this->push_payload(this->payloads_.extern_blocks,
                 ExternBlockItemPayload{
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.extern_items),
                 });
         case ItemKind::impl_block:
             return this->push_payload(this->payloads_.impl_blocks,
                 ImplBlockItemPayload{
+                    this->copy_or_move_derives(std::move(node.derives)),
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     node.impl_type,
@@ -387,6 +414,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.const_type = payload.type;
             node.const_value = payload.value;
             loaded_known_payload = true;
@@ -396,6 +424,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
@@ -408,6 +437,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             const StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.fields = copy_std_vector(payload.fields);
@@ -418,6 +448,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             const EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
@@ -428,12 +459,14 @@ ItemNode ItemNodeList::load(const base::usize index) const
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            node.derives = this->detach_derives(this->payloads_.opaque_structs[header.payload].derives);
             loaded_known_payload = true;
             break;
         case ItemKind::trait_decl: {
             const TraitItemPayload& payload = this->payloads_.traits[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.trait_supertraits = copy_std_vector(payload.supertraits);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
@@ -445,6 +478,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.params = copy_std_vector(payload.params);
@@ -460,11 +494,13 @@ ItemNode ItemNodeList::load(const base::usize index) const
             break;
         }
         case ItemKind::extern_block:
+            node.derives = this->detach_derives(this->payloads_.extern_blocks[header.payload].derives);
             node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
             loaded_known_payload = true;
             break;
         case ItemKind::impl_block: {
             const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;
@@ -492,6 +528,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.const_type = payload.type;
             node.const_value = payload.value;
             loaded_known_payload = true;
@@ -501,6 +538,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
@@ -513,6 +551,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.fields = copy_std_vector(payload.fields);
@@ -523,6 +562,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
@@ -533,12 +573,14 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            node.derives = this->detach_derives(this->payloads_.opaque_structs[header.payload].derives);
             loaded_known_payload = true;
             break;
         case ItemKind::trait_decl: {
             TraitItemPayload& payload = this->payloads_.traits[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.trait_supertraits = copy_std_vector(payload.supertraits);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
@@ -550,6 +592,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.params = copy_std_vector(payload.params);
@@ -565,11 +608,13 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             break;
         }
         case ItemKind::extern_block:
+            node.derives = this->detach_derives(this->payloads_.extern_blocks[header.payload].derives);
             node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
             loaded_known_payload = true;
             break;
         case ItemKind::impl_block: {
             ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.derives = this->detach_derives(payload.derives);
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;

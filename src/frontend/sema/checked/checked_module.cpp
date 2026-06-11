@@ -576,6 +576,7 @@ CheckedModule::CheckedModule()
       structs(make_sema_map<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       enum_cases(
           make_sema_map<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
+      derived_capabilities_by_type(make_sema_map<base::u32, DerivedCapabilityList>(*this->arena_)),
       type_aliases(
           make_sema_map<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       traits(make_sema_map<ModuleLookupKey, TraitSignature, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
@@ -652,6 +653,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
       lambdas(std::move(other.lambdas)),
       functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
+      derived_capabilities_by_type(std::move(other.derived_capabilities_by_type)),
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
@@ -734,6 +736,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->functions.swap(other.functions);
     this->structs.swap(other.structs);
     this->enum_cases.swap(other.enum_cases);
+    this->derived_capabilities_by_type.swap(other.derived_capabilities_by_type);
     this->type_aliases.swap(other.type_aliases);
     this->traits.swap(other.traits);
     this->trait_impls.swap(other.trait_impls);
@@ -818,6 +821,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->enum_cases.reserve(other.enum_cases.size());
     for (const auto& entry : other.enum_cases) {
         this->enum_cases.emplace(entry.first, this->clone_enum_case_info(entry.second));
+    }
+    this->derived_capabilities_by_type.clear();
+    this->derived_capabilities_by_type.reserve(other.derived_capabilities_by_type.size());
+    for (const auto& entry : other.derived_capabilities_by_type) {
+        this->derived_capabilities_by_type.emplace(entry.first, this->copy_derived_capability_list(entry.second));
     }
     this->type_aliases.clear();
     this->type_aliases.reserve(other.type_aliases.size());
@@ -1038,6 +1046,20 @@ SemaVector<StructFieldInfo> CheckedModule::copy_struct_field_list(const std::spa
         field_copy.stable_key = field.stable_key;
         copy.push_back(field_copy);
     }
+    return copy;
+}
+
+DerivedCapabilityList CheckedModule::make_derived_capability_list() const
+{
+    return make_sema_vector<DerivedCapabilityInfo>(*this->arena_);
+}
+
+DerivedCapabilityList CheckedModule::copy_derived_capability_list(
+    const std::span<const DerivedCapabilityInfo> values) const
+{
+    DerivedCapabilityList copy = this->make_derived_capability_list();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
     return copy;
 }
 
@@ -3706,6 +3728,16 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (info.is_generic_placeholder) {
             out << " generic_placeholder";
         }
+        if (const auto derived = checked.derived_capabilities_by_type.find(info.type.value);
+            derived != checked.derived_capabilities_by_type.end() && !derived->second.empty()) {
+            out << " derives=";
+            for (base::usize i = 0; i < derived->second.size(); ++i) {
+                if (i != 0) {
+                    out << ",";
+                }
+                out << capability_name(derived->second[i].capability);
+            }
+        }
         append_part_origin(out, show_parts, info.part_index);
         out << " fields=" << info.fields.size() << "\n";
     }
@@ -3758,6 +3790,16 @@ std::string dump_checked_module(const CheckedModule& checked)
             out << ")";
         } else if (is_valid(info.payload_type)) {
             out << "(" << checked.types.display_name(info.payload_type) << ")";
+        }
+        if (const auto derived = checked.derived_capabilities_by_type.find(info.type.value);
+            derived != checked.derived_capabilities_by_type.end() && !derived->second.empty()) {
+            out << " derives=";
+            for (base::usize i = 0; i < derived->second.size(); ++i) {
+                if (i != 0) {
+                    out << ",";
+                }
+                out << capability_name(derived->second[i].capability);
+            }
         }
         out << " @c_name=" << info.c_name;
         append_part_origin(out, show_parts, info.part_index);

@@ -1,6 +1,8 @@
 #include <aurex/frontend/sema/function_registry.hpp>
+#include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/frontend/sema/sema_messages.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -31,6 +33,9 @@ constexpr std::size_t SEMA_IMPORT_SCOPE_HASH_MIX = 0x9e3779b97f4a7c15ULL;
 constexpr base::usize SEMA_IMPORT_SCOPE_HASH_LEFT_SHIFT = 6;
 constexpr base::usize SEMA_IMPORT_SCOPE_HASH_RIGHT_SHIFT = 2;
 constexpr base::usize SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY = 8;
+constexpr std::string_view SEMA_DERIVE_COPY = "Copy";
+constexpr std::string_view SEMA_DERIVE_EQ = "Eq";
+constexpr std::string_view SEMA_DERIVE_HASH = "Hash";
 
 struct ImportScopeKey {
     base::u32 source = 0;
@@ -233,6 +238,20 @@ struct AbiSymbolInfo {
         return true;
     }
     return item.kind == syntax::ItemKind::fn_decl && !syntax::is_valid(item.impl_type);
+}
+
+[[nodiscard]] std::optional<CapabilityKind> parse_derive_capability(const std::string_view name) noexcept
+{
+    if (name == SEMA_DERIVE_COPY) {
+        return CapabilityKind::copy;
+    }
+    if (name == SEMA_DERIVE_EQ) {
+        return CapabilityKind::eq;
+    }
+    if (name == SEMA_DERIVE_HASH) {
+        return CapabilityKind::hash;
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -1366,6 +1385,137 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_struct_properties()
     this->core_.state_.flow.current_item = syntax::INVALID_ITEM_ID;
 }
 
+void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_derive_attributes()
+{
+    for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
+        const syntax::ItemNode item = this->core_.ctx_.module.items[index];
+        if (item.derives.empty()) {
+            continue;
+        }
+        const syntax::ItemId item_id{index};
+        this->core_.state_.flow.current_module = this->core_.item_module(item_id);
+        this->core_.state_.flow.current_item = item_id;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::enum_decl
+            || item.kind == syntax::ItemKind::opaque_struct_decl) {
+            const ModuleLookupKey key =
+                this->core_.module_lookup_key(this->core_.state_.flow.current_module, item.name_id);
+            if (const auto found = this->core_.state_.types.named_types.find(key);
+                found != this->core_.state_.types.named_types.end()) {
+                type = found->second;
+            }
+        }
+        const bool generic_type_item = (item.kind == syntax::ItemKind::struct_decl
+                                           || item.kind == syntax::ItemKind::enum_decl
+                                           || item.kind == syntax::ItemKind::type_alias)
+            && this->core_.has_generic_params(item);
+        this->analyze_derive_attributes_for_item(item, type, true, !generic_type_item);
+    }
+    this->core_.state_.flow.current_module = syntax::INVALID_MODULE_ID;
+    this->core_.state_.flow.current_item = syntax::INVALID_ITEM_ID;
+}
+
+void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_derive_attributes_for_item(const syntax::ItemNode& item,
+    const TypeHandle type, const bool report_invalid_attributes, const bool report_component_failures)
+{
+    if (item.derives.empty()) {
+        return;
+    }
+    const bool supported_target = item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::enum_decl;
+    if (!supported_target) {
+        if (report_invalid_attributes) {
+            for (const syntax::DeriveDecl& derive : item.derives) {
+                this->core_.report_capability(derive.range, std::string(SEMA_DERIVE_TARGET));
+            }
+        }
+        return;
+    }
+
+    std::unordered_map<CapabilityKind, base::SourceRange, CapabilityKindHash> seen;
+    seen.reserve(item.derives.size());
+    for (const syntax::DeriveDecl& derive : item.derives) {
+        const std::optional<CapabilityKind> capability = parse_derive_capability(derive.name);
+        if (!capability.has_value()) {
+            if (report_invalid_attributes) {
+                this->core_.report_capability(derive.range, sema_unsupported_derive_message(derive.name));
+            }
+            continue;
+        }
+        const auto inserted = seen.emplace(*capability, derive.range);
+        if (!inserted.second) {
+            if (report_invalid_attributes) {
+                this->core_.report_capability(derive.range, sema_duplicate_derive_message(derive.name));
+                this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                    sema_previous_declaration_note_message(derive.name));
+            }
+            continue;
+        }
+        if (!is_valid(type)) {
+            continue;
+        }
+
+        bool components_ok = true;
+        const std::string_view capability_name_text = capability_name(*capability);
+        if (item.kind == syntax::ItemKind::struct_decl) {
+            const auto struct_info = this->core_.state_.types.struct_infos_by_type.find(type.value);
+            if (struct_info != this->core_.state_.types.struct_infos_by_type.end()) {
+                for (const StructFieldInfo& field : struct_info->second->fields) {
+                    if (!this->core_.type_satisfies_capability(field.type, *capability)) {
+                        components_ok = false;
+                        if (report_component_failures) {
+                            this->core_.report_capability(
+                                field.range, sema_derive_field_capability_message(capability_name_text, field.name));
+                        }
+                    }
+                }
+            }
+        } else if (item.kind == syntax::ItemKind::enum_decl) {
+            for (const auto& entry : this->core_.state_.checked.enum_cases) {
+                const EnumCaseInfo& enum_case = entry.second;
+                if (!this->core_.state_.checked.types.same(enum_case.type, type)) {
+                    continue;
+                }
+                for (const TypeHandle payload : enum_case.payload_types) {
+                    if (!this->core_.type_satisfies_capability(payload, *capability)) {
+                        components_ok = false;
+                        if (report_component_failures) {
+                            this->core_.report_capability(enum_case.range,
+                                sema_derive_enum_payload_capability_message(
+                                    capability_name_text, enum_case.case_name));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (*capability == CapabilityKind::copy
+            && !resource_is_copy(ResourceSemanticsClassifier(this->core_.state_.checked,
+                                    [this](const TypeHandle param) {
+                                        return this->core_.generic_param_has_capability(param, CapabilityKind::copy);
+                                    })
+                                    .classify(type))) {
+            components_ok = false;
+            if (report_component_failures) {
+                this->core_.report_capability(derive.range, sema_derive_type_capability_message(capability_name_text));
+            }
+        }
+        if (!components_ok) {
+            continue;
+        }
+
+        DerivedCapabilityList& derived = this->core_.state_.checked.derived_capabilities_by_type[type.value];
+        if (derived.empty()) {
+            derived = this->core_.state_.checked.make_derived_capability_list();
+        }
+        const bool already_recorded = std::ranges::any_of(derived, [capability](const DerivedCapabilityInfo& info) {
+            return info.capability == *capability;
+        });
+        if (!already_recorded) {
+            derived.push_back(DerivedCapabilityInfo{*capability, derive.range});
+        }
+    }
+}
+
 void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_const_decls()
 {
     SemaMap<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash> dependencies_by_const =
@@ -1757,6 +1907,18 @@ void SemanticAnalyzerCore::analyze_entry_points() const
 void SemanticAnalyzerCore::analyze_struct_properties()
 {
     DeclarationAnalyzer(*this).analyze_struct_properties();
+}
+
+void SemanticAnalyzerCore::analyze_derive_attributes()
+{
+    DeclarationAnalyzer(*this).analyze_derive_attributes();
+}
+
+void SemanticAnalyzerCore::analyze_derive_attributes_for_item(const syntax::ItemNode& item, const TypeHandle type,
+    const bool report_invalid_attributes, const bool report_component_failures)
+{
+    DeclarationAnalyzer(*this).analyze_derive_attributes_for_item(
+        item, type, report_invalid_attributes, report_component_failures);
 }
 
 void SemanticAnalyzerCore::analyze_const_decls()

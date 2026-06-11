@@ -1,5 +1,32 @@
 # 版本文档
 
+## M20e Builtin Derive Attribute Closure
+
+当前版本补齐第一批编译器内建 derive 属性。`#[derive(Copy, Eq, Hash)]` 可写在 `struct` 和
+`enum` 声明上，parser/AST 会保留 item attribute，sema 会把满足条件的 derive 降低为 checked capability
+facts，checked dump 会展示对应 `derives=...`。
+
+新增或固定：
+
+- 新增 `#` punctuator 和 `#[...]` item attribute 解析入口。
+- 当前只支持 `derive` item attribute；未知 item attribute 会被 parser 诊断。
+- 当前只支持 `Copy`、`Eq` 和 `Hash` 三个 derive capability。
+- derive 目标只允许 `struct` / `enum`；写在 `fn`、`type`、`trait`、`impl` 等 item 上会被 sema 拒绝。
+- 重复 derive capability 会诊断，并给出 previous note。
+- `Eq` / `Hash` 派生记录 checked capability fact，可被 `where T: Eq + Hash` 消费。
+- `Copy` 派生仍通过 resource semantics 判定，不能绕过非 `Copy` 字段、enum payload 或 `impl Drop` custom
+  destructor。
+- 泛型 struct/enum 的 derive 是条件性事实：模板声明阶段只检查属性名字和重复项；具体实例化后，组件类型满足能力时才记录该实例 derived fact。
+- sema pipeline 会先验证 `impl Drop` 析构器事实，再分析 derive，保证 `#[derive(Copy)]` 能看到 custom destructor。
+
+仍不实现：
+
+- 完整 macro / proc-macro 系统。
+- 用户自定义 derive。
+- `Clone`、`Ord` 或标准库 trait 派生。
+- Eq/Hash 运行时函数、operator overload 或 hash API。
+- 标准库。
+
 ## M20 函数式和捕获闭包核心子集
 
 当前版本补齐 M20 函数式和闭包核心能力：无捕获 lambda 字面量可以作为一等 `fn(...) -> T`

@@ -535,6 +535,9 @@ void AstModule::intern_stmt_node(StmtNode& node)
 void AstModule::intern_item_node(ItemNode& node)
 {
     this->intern_identifier_text(node.name, node.name_id);
+    for (DeriveDecl& derive : node.derives) {
+        this->intern_identifier_text(derive.name, derive.name_id);
+    }
     this->intern_generic_params(node.generic_params);
     for (TraitSupertraitDecl& supertrait : node.trait_supertraits) {
         if (is_valid(supertrait.trait_type) && supertrait.trait_type.value < this->types.size()) {

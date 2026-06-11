@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
-日期：2026-06-10
-阶段：M20d Runtime Lowering ABI Design Closure，建立在 M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+日期：2026-06-11
+阶段：M20e Builtin Derive Attribute Closure，建立在 M20d Runtime Lowering ABI Design Closure、M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -47,6 +47,8 @@ A | B         表示二选一
 - 使用 private return type inference、函数原型、C ABI `extern c` / `export c fn`、variadic extern C、`@name` ABI symbol 和 `@borrow` contract。
 - 编写 `let` / `var`、pattern binding、let-else、if/while/for/range-for、match、block expression、try `?`、defer 和 unsafe block。
 - 使用泛型函数、泛型类型、泛型 impl、method-local impl 泛型、`where` capability、nominal static trait、default trait method、associated type 和 associated-type equality。
+- 使用内建 item derive 属性：`#[derive(Copy, Eq, Hash)]` 可写在 `struct` / `enum` 上，生成 checked capability facts；
+  它不是完整宏系统，也不生成标准库方法。
 - 使用 direct supertrait declaration：`trait Child: Parent` 和 `trait Child[T]: Parent[T]` 会进入 checked
   supertrait graph，impl 会检查 parent evidence，duplicate/cycle/private leak 会被诊断。
 - 使用 borrowed dyn trait view：`&dyn Trait`、`&mut dyn Trait` 和 `dyn Trait[Assoc = Type]`，在 checked
@@ -169,6 +171,7 @@ A | B         表示二选一
 - 没有标准库级拥有型 `String`、容器库、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
+- 没有完整 macro / proc-macro / 用户可扩展 derive 系统；当前只支持编译器内建的 `#[derive(Copy, Eq, Hash)]`。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
   歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
   generic const arithmetic 或 `<T>` 风格泛型。M16 已打开 typed scalar const generic check-only 子集，但没有
@@ -856,7 +859,49 @@ enum Result[T] {
 - enum case 是类型成员，不进入普通 value namespace。写 `OptionI32.some(1)`，不要写 `some(1)`。
 - payload 中包含数组存储目前会被拒绝。
 
-### 6.6 Function
+### 6.6 内建 derive 属性
+
+当前 item attribute 命名空间只支持内建 `derive`：
+
+```text
+ItemAttribute = "#[" "derive" "(" DeriveCapability ("," DeriveCapability)* ","? ")" "]"
+DeriveCapability = "Copy" | "Eq" | "Hash"
+```
+
+```aurex
+#[derive(Copy, Eq, Hash)]
+struct Key {
+    value: i32;
+}
+
+#[derive(Eq, Hash)]
+enum MaybeKey {
+    some(Key),
+    none,
+}
+
+#[derive(Eq, Hash)]
+struct Box[T] where T: Eq + Hash {
+    value: T;
+}
+```
+
+规则：
+
+- `#[derive(...)]` 是 item 级属性，当前只允许放在 `struct` 和 `enum` 声明上。
+- 属性可写在可见性之前或之后；解析后会附着到对应 item，AST dump 会显示为 `#[derive(...)]`。
+- 当前支持的 derive capability 只有 `Copy`、`Eq` 和 `Hash`。未知名字例如 `Clone` 会诊断。
+- 同一个 item 上重复派生同一能力会诊断，并给出前一个 derive 名字的位置 note。
+- `Eq` / `Hash` 派生会向 checked module 记录 capability fact，使类型能满足 `where T: Eq + Hash` 这类约束。
+- `Eq` / `Hash` 只表示 capability fact，不生成相等比较函数、hash 函数、operator overload 或标准库 API。
+- `Copy` 派生不会绕过资源语义。类型必须按现有 `ResourceSemanticsClassifier` 判定为 `Copy`，包含非 `Copy`
+  字段、非 `Copy` enum payload 或带 `impl Drop` 的资源类型都会被拒绝。
+- 泛型 struct/enum 的 derive 是条件性的：模板声明阶段检查属性名字和重复项；具体实例化后，只有组件类型满足对应
+  capability 时才记录该实例的 derived fact。例如 `#[derive(Eq)] struct Box[T] { value: T; }` 不会让
+  `Box[f64]` 满足 `Eq`。
+- 完整 macro、proc-macro、用户自定义 derive、derive 代码生成、`Clone`、`Ord` 派生和标准库 trait 派生都未实现。
+
+### 6.7 Function
 
 函数声明定义可调用实体。Aurex 允许 private 普通函数推导返回类型，但 public/ABI/prototype surface 必须显式写返回类型。
 
@@ -1810,8 +1855,11 @@ Trait 规则：
 - 显式 override 必须在 `Self`、trait args 和 associated type output 替换后匹配 requirement 签名。
 - associated type 是 impl output，不作为 impl selection input。
 - `Self.Item` shorthand 只在当前 trait bounds 中 associated type 名称唯一或 equality 可归一化时使用。
+- `#[derive(Eq)]` 和 `#[derive(Hash)]` 会为满足组件条件的 `struct` / `enum` 类型记录 checked capability
+  fact，可被 `where T: Eq` / `where T: Hash` 消费；它们不生成比较或 hash 运行时代码。
 - `Copy` 是 compiler-owned capability，用资源语义分类判定；标量、raw pointer、reference、slice、函数指针和只含
   `Copy` 组件的结构化类型可满足。generic parameter 只有显式 `where T: Copy` 后才按 `Copy` 使用。
+- `#[derive(Copy)]` 仍服从同一套资源语义，不能让带 custom destructor 或非 `Copy` 组件的类型变成 `Copy`。
 - `Drop` 是 reserved destructor surface，不是普通用户 trait。可以为具体 named struct/enum/opaque struct 写窄
   `impl Drop for T` destructor；`where T: Drop`、`trait Drop { ... }` 和 generic Drop bound 仍会被诊断为资源 capability 暂不支持。
 

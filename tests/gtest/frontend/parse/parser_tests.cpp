@@ -2269,6 +2269,45 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments)
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserRecoveryHandlesMalformedItemAttributes)
+{
+    constexpr base::SourceId PARSER_TEST_ITEM_ATTRIBUTE_RECOVERY_SOURCE_ID{24};
+    constexpr std::string_view source = "module parser.item_attribute_recovery;\n"
+                                        "#derive(Eq)]\n"
+                                        "struct MissingBracket { value: i32; }\n"
+                                        "#[unknown(Eq)]\n"
+                                        "struct Unsupported { value: i32; }\n"
+                                        "#[derive()]\n"
+                                        "struct Empty { value: i32; }\n"
+                                        "#[derive(Eq Hash)]\n"
+                                        "struct MissingComma { value: i32; }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(PARSER_TEST_ITEM_ATTRIBUTE_RECOVERY_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected '[' after '#'");
+    expect_contains(messages, "unsupported item attribute; only derive is supported");
+    expect_contains(messages, "expected derive capability name");
+    expect_contains(messages, "expected ',' or ')' after derive capability");
+    expect_contains(messages, "expected expression");
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments)
 {
     constexpr base::SourceId PARSER_TEST_PATH_RECOVERY_SOURCE_ID{18};
@@ -3779,6 +3818,7 @@ TEST(CoreUnit, ParserM2GenericSyntax)
     constexpr std::string_view source =
         "module parser.generics;\n"
         "type Alias[T] = T;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
         "struct Box[T] { value: T; }\n"
         "struct Pair[A, B] { first: A; second: B; }\n"
         "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
@@ -3810,7 +3850,7 @@ TEST(CoreUnit, ParserM2GenericSyntax)
         {
             "type_alias Alias[T]",
             "alias T",
-            "struct Box[T]",
+            "struct Box[T] #[derive(Copy, Eq, Hash)]",
             "field priv value : T",
             "struct Pair[A, B]",
             "enum Maybe[T]",

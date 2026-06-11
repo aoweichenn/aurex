@@ -158,6 +158,8 @@ inline constexpr base::usize PUNCTUATOR_ELLIPSIS_WIDTH = 3;
             return detail::single_char_match(syntax::TokenKind::tilde);
         case LEXEME_AT:
             return detail::single_char_match(syntax::TokenKind::at);
+        case LEXEME_HASH:
+            return detail::single_char_match(syntax::TokenKind::hash);
         case LEXEME_QUESTION:
             return detail::single_char_match(syntax::TokenKind::question);
         default:

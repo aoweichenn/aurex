@@ -22,6 +22,12 @@ struct ParsedFunctionAttributes {
     bool present = false;
 };
 
+struct ParsedItemAttributes {
+    std::vector<syntax::DeriveDecl> derives;
+    base::SourceRange range{};
+    bool present = false;
+};
+
 class ItemParser final : private ParserPartBase {
 public:
     explicit ItemParser(Parser& parser) noexcept : ParserPartBase(parser)
@@ -75,6 +81,11 @@ private:
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
     [[nodiscard]] syntax::ItemId parse_fn_decl(
         bool is_export_c, bool is_extern_c, bool is_unsafe = false, ParsedFunctionAttributes attributes = {});
+    void parse_optional_item_attributes(ParsedItemAttributes& attributes);
+    void parse_item_attribute(ParsedItemAttributes& attributes, const syntax::Token& attribute_start);
+    void parse_derive_attribute(ParsedItemAttributes& attributes, const syntax::Token& attribute_start);
+    [[nodiscard]] bool recover_derive_separator() const;
+    void apply_item_attributes(syntax::ItemId item_id, const ParsedItemAttributes& attributes) const;
     void expect_param_list_start(std::string message) const;
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();

@@ -1179,6 +1179,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_capability(
     if (info.kind == TypeKind::generic_param) {
         return this->core_.generic_param_has_capability(type, capability);
     }
+    if (capability != CapabilityKind::copy && this->core_.type_has_derived_capability(type, capability)) {
+        return true;
+    }
     if (capability == CapabilityKind::sized) {
         return this->core_.is_valid_storage_type(type);
     }
@@ -1203,6 +1206,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_equality_capability(c
 {
     if (!is_valid(type)) {
         return false;
+    }
+    if (this->core_.type_has_derived_capability(type, CapabilityKind::eq)) {
+        return true;
     }
     const TypeInfo& info = this->core_.state_.checked.types.get(type);
     return this->core_.state_.checked.types.is_bool(type) || this->core_.state_.checked.types.is_char(type)
@@ -1236,6 +1242,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_supports_hash_capability(const 
 {
     if (!is_valid(type)) {
         return false;
+    }
+    if (this->core_.type_has_derived_capability(type, CapabilityKind::hash)) {
+        return true;
     }
     return this->core_.state_.checked.types.is_bool(type) || this->core_.state_.checked.types.is_char(type)
         || this->core_.state_.checked.types.is_integer(type) || this->core_.state_.checked.types.is_pointer(type);
@@ -2802,6 +2811,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
     if (inserted.second) {
         this->core_.state_.types.struct_infos_by_type[handle.value] = &inserted.first->second;
     }
+    this->core_.analyze_derive_attributes_for_item(item, handle, false, false);
     return handle;
 }
 
@@ -2861,6 +2871,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
         this->core_.register_enum_cases_for_item(item, info.module, handle, std::string(item.name),
             std::string(item.name) + abi_suffix + "_", std::string(item.name) + abi_suffix + "_", info.visibility,
             instance_query_key);
+        this->core_.analyze_derive_attributes_for_item(item, handle, false, false);
     }
 
     base::Result<std::string> signature_fingerprint =
@@ -3873,6 +3884,20 @@ bool SemanticAnalyzerCore::generic_param_has_capability(const TypeHandle param, 
 bool SemanticAnalyzerCore::type_satisfies_capability(const TypeHandle type, const CapabilityKind capability) const
 {
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).type_satisfies_capability(type, capability);
+}
+
+bool SemanticAnalyzerCore::type_has_derived_capability(const TypeHandle type, const CapabilityKind capability) const
+{
+    if (!is_valid(type)) {
+        return false;
+    }
+    const auto found = this->state_.checked.derived_capabilities_by_type.find(type.value);
+    if (found == this->state_.checked.derived_capabilities_by_type.end()) {
+        return false;
+    }
+    return std::ranges::any_of(found->second, [capability](const DerivedCapabilityInfo& info) {
+        return info.capability == capability;
+    });
 }
 
 bool SemanticAnalyzerCore::type_satisfies_equality_capability(const TypeHandle type) const

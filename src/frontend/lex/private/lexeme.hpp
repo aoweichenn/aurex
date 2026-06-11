@@ -25,6 +25,7 @@ inline constexpr char LEXEME_EQUAL = '=';
 inline constexpr char LEXEME_LESS = '<';
 inline constexpr char LEXEME_GREATER = '>';
 inline constexpr char LEXEME_AT = '@';
+inline constexpr char LEXEME_HASH = '#';
 inline constexpr char LEXEME_QUESTION = '?';
 inline constexpr char LEXEME_L_PAREN = '(';
 inline constexpr char LEXEME_R_PAREN = ')';

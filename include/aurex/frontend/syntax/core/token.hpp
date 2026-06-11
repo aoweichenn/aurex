@@ -135,6 +135,7 @@ enum class TokenKind {
     pipe_pipe,
     question,
     at,
+    hash,
 };
 
 struct Token {

@@ -276,6 +276,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "question";
         case TokenKind::at:
             return "at";
+        case TokenKind::hash:
+            return "hash";
     }
     return "unknown";
 }
@@ -1380,6 +1382,16 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.is_trait_default_method) {
         out << " trait_default";
+    }
+    if (!item.derives.empty()) {
+        out << " #[derive(";
+        for (base::usize i = 0; i < item.derives.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << item.derives[i].name;
+        }
+        out << ")]";
     }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;

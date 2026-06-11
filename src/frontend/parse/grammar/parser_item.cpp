@@ -2,6 +2,7 @@
 #include <aurex/frontend/parse/parser_messages.hpp>
 #include <aurex/frontend/parse/recovery.hpp>
 
+#include <algorithm>
 #include <utility>
 
 namespace aurex::parse {
@@ -10,20 +11,35 @@ namespace {
 
 using syntax::TokenKind;
 
+void include_item_attribute_range(ParsedItemAttributes& attributes, const base::SourceRange& range) noexcept
+{
+    if (!attributes.present) {
+        attributes.range = range;
+        attributes.present = true;
+        return;
+    }
+    attributes.range.begin = std::min(attributes.range.begin, range.begin);
+    attributes.range.end = std::max(attributes.range.end, range.end);
+}
+
 } // namespace
 
 syntax::ItemId ItemParser::parse_item()
 {
     this->reset_panic();
+    ParsedItemAttributes item_attributes;
+    this->parse_optional_item_attributes(item_attributes);
     ParsedFunctionAttributes function_attributes;
     this->parse_optional_function_decorators(function_attributes);
     const ParsedVisibility visibility = this->parse_visibility();
+    this->parse_optional_item_attributes(item_attributes);
     this->parse_optional_function_decorators(function_attributes);
     if (this->check(TokenKind::kw_const)) {
         this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_const_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -32,6 +48,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_type_alias_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -40,6 +57,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_struct_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -48,6 +66,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_enum_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -56,6 +75,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_trait_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -64,13 +84,18 @@ syntax::ItemId ItemParser::parse_item()
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_IMPL_PRIVATE_UNSUPPORTED));
         }
-        return this->parse_impl_block();
+        const syntax::ItemId id = this->parse_impl_block();
+        if (syntax::is_valid(id)) {
+            this->apply_item_attributes(id, item_attributes);
+        }
+        return id;
     }
     if (this->check(TokenKind::kw_opaque)) {
         this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_opaque_struct_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -79,7 +104,11 @@ syntax::ItemId ItemParser::parse_item()
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_EXTERN_PRIVATE_UNSUPPORTED));
         }
-        return this->parse_extern_block();
+        const syntax::ItemId id = this->parse_extern_block();
+        if (syntax::is_valid(id)) {
+            this->apply_item_attributes(id, item_attributes);
+        }
+        return id;
     }
     if (this->check(TokenKind::kw_export)) {
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
@@ -98,6 +127,7 @@ syntax::ItemId ItemParser::parse_item()
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_range_begin(id.value, range_begin);
             this->session_.module.items.set_visibility(id.value, syntax::Visibility::public_);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -111,6 +141,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_fn_decl(false, false, true, std::move(function_attributes));
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -118,6 +149,7 @@ syntax::ItemId ItemParser::parse_item()
         const syntax::ItemId id = this->parse_fn_decl(false, false, false, std::move(function_attributes));
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
         }
         return id;
     }
@@ -125,6 +157,98 @@ syntax::ItemId ItemParser::parse_item()
     this->report_misplaced_function_decorators(function_attributes);
     this->report_here(std::string(PARSER_EXPECT_ITEM_DECLARATION));
     return syntax::INVALID_ITEM_ID;
+}
+
+void ItemParser::parse_optional_item_attributes(ParsedItemAttributes& attributes)
+{
+    while (this->check(TokenKind::hash)) {
+        const syntax::Token& attribute_start = this->advance();
+        this->parse_item_attribute(attributes, attribute_start);
+        include_item_attribute_range(attributes, this->merge(attribute_start.range, this->previous().range));
+        this->reset_panic();
+    }
+}
+
+void ItemParser::parse_item_attribute(ParsedItemAttributes& attributes, const syntax::Token& attribute_start)
+{
+    const syntax::Token& list_start =
+        this->expect_recovered(TokenKind::l_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_START),
+            RecoveryContext::item);
+    const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_NAME));
+    if (attr.text() == "derive") {
+        this->parse_derive_attribute(attributes, attr);
+    } else {
+        this->report_at(attr, std::string(PARSER_UNSUPPORTED_ITEM_ATTRIBUTE));
+        if (!this->check(TokenKind::r_bracket)) {
+            this->synchronize(RecoveryContext::item);
+        }
+    }
+    if (list_start.kind == TokenKind::l_bracket) {
+        this->expect_recovered_after(TokenKind::r_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END),
+            RecoveryContext::item, list_start);
+        return;
+    }
+    this->expect_recovered(TokenKind::r_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END), RecoveryContext::item);
+    static_cast<void>(attribute_start);
+}
+
+void ItemParser::parse_derive_attribute(ParsedItemAttributes& attributes, const syntax::Token& attribute_start)
+{
+    const syntax::Token& argument_start =
+        this->expect_recovered(TokenKind::l_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_START),
+            RecoveryContext::item);
+    if (this->check(TokenKind::r_paren)) {
+        this->report_here(std::string(PARSER_EXPECT_DERIVE_NAME));
+    }
+    while (!this->is_eof() && !this->check(TokenKind::r_paren) && !this->check(TokenKind::r_bracket)) {
+        const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_DERIVE_NAME));
+        if (name.kind == TokenKind::identifier) {
+            attributes.derives.push_back(syntax::DeriveDecl{name.text(), syntax::INVALID_IDENT_ID, name.range});
+        }
+        this->reset_panic();
+        if (!this->recover_derive_separator()) {
+            break;
+        }
+    }
+    if (argument_start.kind == TokenKind::l_paren) {
+        this->expect_recovered_after(TokenKind::r_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END),
+            RecoveryContext::item, argument_start);
+        return;
+    }
+    this->expect_recovered(TokenKind::r_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END), RecoveryContext::item);
+    static_cast<void>(attribute_start);
+}
+
+bool ItemParser::recover_derive_separator() const
+{
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->report_here(std::string(PARSER_EXPECT_DERIVE_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::item)) {
+        this->synchronize(RecoveryContext::item);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return this->check(TokenKind::identifier);
+}
+
+void ItemParser::apply_item_attributes(const syntax::ItemId item_id, const ParsedItemAttributes& attributes) const
+{
+    if (!attributes.present || !syntax::is_valid(item_id)) {
+        return;
+    }
+    syntax::ItemNode item = this->session_.module.items.take(item_id.value);
+    item.derives.insert(item.derives.end(), attributes.derives.begin(), attributes.derives.end());
+    item.range.begin = std::min(item.range.begin, attributes.range.begin);
+    this->session_.module.items.set(item_id.value, std::move(item));
 }
 
 syntax::ItemId ItemParser::parse_const_decl()

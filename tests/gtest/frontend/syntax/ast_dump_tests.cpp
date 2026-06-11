@@ -153,6 +153,8 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     syntax::ItemNode struct_item;
     struct_item.kind = syntax::ItemKind::struct_decl;
     struct_item.name = "Box";
+    struct_item.derives.push_back(syntax::DeriveDecl{"Copy", syntax::IdentId{20U}, range});
+    struct_item.derives.push_back(syntax::DeriveDecl{"Eq", syntax::IdentId{21U}, range});
     struct_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{7U}});
     struct_item.where_constraints.push_back(make_constraint("T"));
     struct_item.fields.push_back(syntax::FieldDecl{"value", syntax::TypeId{10U}, range, syntax::Visibility::public_});
@@ -239,6 +241,8 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     const syntax::ItemNodeList copied(items);
     EXPECT_EQ(copied[const_id.value].name, "ANSWER");
     EXPECT_EQ(copied[alias_id.value].where_constraints.front().capability_names.front(), "Reader");
+    ASSERT_EQ(copied[struct_id.value].derives.size(), 2U);
+    EXPECT_EQ(copied[struct_id.value].derives.front().name, "Copy");
     EXPECT_EQ(copied[struct_id.value].fields.front().name, "value");
     EXPECT_EQ(copied[enum_id.value].enum_cases.front().payload_types.front().value, 4U);
     EXPECT_EQ(copied[opaque_id.value].name, "Handle");
@@ -260,7 +264,10 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_EQ(moved_constraint_range.source.value, range.source.value);
     EXPECT_EQ(moved_constraint_range.begin, range.begin);
     EXPECT_EQ(moved_constraint_range.end, range.end);
-    EXPECT_EQ(moved.take(struct_id.value).fields.front().visibility, syntax::Visibility::public_);
+    const syntax::ItemNode moved_struct = moved.take(struct_id.value);
+    ASSERT_EQ(moved_struct.derives.size(), 2U);
+    EXPECT_EQ(moved_struct.derives.back().name, "Eq");
+    EXPECT_EQ(moved_struct.fields.front().visibility, syntax::Visibility::public_);
     EXPECT_EQ(moved.take(enum_id.value).enum_cases.front().name, "some");
     EXPECT_EQ(moved.take(opaque_id.value).name_id, syntax::IdentId{9U});
     EXPECT_EQ(moved.take(trait_id.value).trait_items.front().value, const_id.value);

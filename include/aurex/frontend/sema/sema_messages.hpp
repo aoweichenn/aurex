@@ -176,6 +176,54 @@ inline constexpr std::string_view SEMA_MAIN_RETURN = "ordinary fn main must retu
 
 inline constexpr std::string_view SEMA_FIELD_STORAGE = "field type is not valid storage";
 
+inline constexpr std::string_view SEMA_DERIVE_TARGET = "derive attributes are only supported on struct and enum declarations";
+
+inline constexpr std::string_view SEMA_DERIVE_UNSUPPORTED = "unsupported derive capability: ";
+
+inline constexpr std::string_view SEMA_DERIVE_DUPLICATE = "duplicate derive capability: ";
+
+inline constexpr std::string_view SEMA_DERIVE_COMPONENT_PREFIX = "cannot derive ";
+
+inline constexpr std::string_view SEMA_DERIVE_TYPE_INFIX = " because the type does not satisfy ";
+
+inline constexpr std::string_view SEMA_DERIVE_FIELD_INFIX = " because field ";
+
+inline constexpr std::string_view SEMA_DERIVE_PAYLOAD_INFIX = " because enum case ";
+
+inline constexpr std::string_view SEMA_DERIVE_COMPONENT_SUFFIX = " does not satisfy ";
+
+[[nodiscard]] inline std::string sema_unsupported_derive_message(const std::string_view name)
+{
+    return std::string(SEMA_DERIVE_UNSUPPORTED) + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_derive_message(const std::string_view name)
+{
+    return std::string(SEMA_DERIVE_DUPLICATE) + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_derive_field_capability_message(
+    const std::string_view capability, const std::string_view field_name)
+{
+    return std::string(SEMA_DERIVE_COMPONENT_PREFIX) + std::string(capability)
+        + std::string(SEMA_DERIVE_FIELD_INFIX) + std::string(field_name)
+        + std::string(SEMA_DERIVE_COMPONENT_SUFFIX) + std::string(capability);
+}
+
+[[nodiscard]] inline std::string sema_derive_type_capability_message(const std::string_view capability)
+{
+    return std::string(SEMA_DERIVE_COMPONENT_PREFIX) + std::string(capability)
+        + std::string(SEMA_DERIVE_TYPE_INFIX) + std::string(capability);
+}
+
+[[nodiscard]] inline std::string sema_derive_enum_payload_capability_message(
+    const std::string_view capability, const std::string_view case_name)
+{
+    return std::string(SEMA_DERIVE_COMPONENT_PREFIX) + std::string(capability)
+        + std::string(SEMA_DERIVE_PAYLOAD_INFIX) + std::string(case_name)
+        + std::string(SEMA_DERIVE_COMPONENT_SUFFIX) + std::string(capability);
+}
+
 inline constexpr std::string_view SEMA_CONST_NOT_COMPILE_TIME = "const initializer is not compile-time constant";
 
 inline constexpr std::string_view SEMA_CONST_TYPE_STORAGE = "const type is not valid storage";

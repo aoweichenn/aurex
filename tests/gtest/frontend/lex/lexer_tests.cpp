@@ -490,7 +490,7 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches)
 {
     DiagnosticSink diagnostics;
     constexpr std::string_view source = "... . :: : -> -= -- - => == = != ! <= <<= << < >= >>= >> > && &= & || |= | "
-                                        "( ) { } [ ] , ; ++ += + *= * /= / %= % ^= ^ ~ @ ?";
+                                        "( ) { } [ ] , ; ++ += + *= * /= / %= % ^= ^ ~ @ # ?";
     lex::Lexer lexer({9}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
@@ -545,6 +545,7 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches)
         TokenKind::caret,
         TokenKind::tilde,
         TokenKind::at,
+        TokenKind::hash,
         TokenKind::question,
         TokenKind::eof,
     };

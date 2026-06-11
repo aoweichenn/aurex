@@ -5,7 +5,22 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M20 捕获闭包核心子集已完成
+## 当前实现入口：M20e 内建 derive 属性已完成，下一步收口基础易用性痛点
+
+M20e 已完成第一批编译器内建 derive 属性：`#[derive(Copy, Eq, Hash)]` 支持 `struct` / `enum`，
+`Eq` / `Hash` 进入 checked capability facts，`Copy` 继续服从资源语义和 `impl Drop` custom destructor 事实。
+这不是完整 macro/proc-macro 系统，也不生成标准库方法。
+
+接下来建议继续沿用户最痛的基础易用性问题推进，不进入标准库：
+
+- P1：结构体引用字段。目标是让 `&record.field`、`&mut record.field`、字段 projection borrow、字段级 conflict
+  和 lifetime/loan diagnostics 更自然，复用 M7 的 place/projection/loan facts，避免再写 ad hoc escape 规则。
+- P2：默认参数 / 命名参数。目标是先做函数签名和 call-site 的语义设计，区分 ABI/public surface、重载/泛型推断、
+  默认值 const-eval 边界、source compatibility 和 diagnostics，再决定第一批实现范围。
+- P3：完整 macro / proc-macro / 用户自定义 derive。当前不建议立刻推进；现有内建 derive 已解决 capability
+  marker 的主要痛点，完整宏系统需要单独的卫生、增量、query/cache、错误恢复和安全边界设计。
+
+## 已完成入口：M20 捕获闭包核心子集
 
 无捕获 lambda 已作为 `fn(...) -> T` 薄函数值落地；M20 捕获闭包核心子集也已完成。当前支持
 非泛型依赖、非 borrowed-view 的 Copy-by-value 捕获、内部匿名 environment record、hidden-env thunk、直接调用、

@@ -89,6 +89,7 @@ constexpr void mark_token_start_range(std::array<TokenStartAction, LEX_BYTE_CHAR
     mark_token_start(table, LEXEME_CARET, TokenStartAction::PUNCTUATOR);
     mark_token_start(table, LEXEME_TILDE, TokenStartAction::PUNCTUATOR);
     mark_token_start(table, LEXEME_AT, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_HASH, TokenStartAction::PUNCTUATOR);
     mark_token_start(table, LEXEME_QUESTION, TokenStartAction::PUNCTUATOR);
 
     return table;

@@ -62,6 +62,14 @@ struct CapabilityKindHash {
 
 [[nodiscard]] std::string_view capability_name(CapabilityKind capability) noexcept;
 
+struct DerivedCapabilityInfo {
+    CapabilityKind capability = CapabilityKind::sized;
+    base::SourceRange range{};
+};
+
+using DerivedCapabilityList = SemaVector<DerivedCapabilityInfo>;
+using DerivedCapabilityMap = SemaMap<base::u32, DerivedCapabilityList>;
+
 class PatternCaseNameTable final {
 public:
     using Map = SemaMap<base::u32, CNameIdSet>;
@@ -1606,6 +1614,7 @@ public:
     CheckedFunctionMap functions;
     CheckedModuleInfoMap structs;
     CheckedEnumCaseMap enum_cases;
+    DerivedCapabilityMap derived_capabilities_by_type;
     CheckedTypeAliasMap type_aliases;
     CheckedTraitMap traits;
     CheckedTraitImplMap trait_impls;
@@ -1664,6 +1673,9 @@ public:
     [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values) const;
     [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list() const;
     [[nodiscard]] SemaVector<StructFieldInfo> copy_struct_field_list(std::span<const StructFieldInfo> values);
+    [[nodiscard]] DerivedCapabilityList make_derived_capability_list() const;
+    [[nodiscard]] DerivedCapabilityList copy_derived_capability_list(
+        std::span<const DerivedCapabilityInfo> values) const;
     [[nodiscard]] SemaIndexTable make_index_table() const;
     [[nodiscard]] SemaIndexTable copy_index_table(std::span<const base::u32> values) const;
     [[nodiscard]] FunctionSignature make_function_signature() const;

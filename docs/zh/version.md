@@ -1,5 +1,37 @@
 # 版本文档
 
+## M20c Drop / Allocator Identity Prerequisite Gate
+
+M20c 已完成 drop / allocator identity prerequisite gate。M20c 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
+runtime helper call，也不做 runtime ABI lowering。M20c 的目标是把 M20b 的 compiler-owned owned dyn handle
+prototype 继续推进成可验证的 drop / allocator identity facts。
+
+M20c 新增或固定：
+
+- `OwnedDynDropAllocatorIdentityGate`。
+- `OwnedDynDropAllocatorIdentityFact`。
+- `OwnedDynDropAllocatorIdentitySummary`。
+- `OwnedDynDropAllocatorIdentityFactKind`、`OwnedDynDropAllocatorIdentityStage` 和
+  `OwnedDynDropAllocatorIdentityPolicy`。
+- `m20c_owned_dyn_drop_allocator_identity_gate_baseline()`。
+- `owned_dyn_drop_allocator_identity_gate_fingerprint()`、summary、dump 和 validation。
+- `ir::owned_dyn_drop_allocator_identity_gate(const Module&)`。
+- `OwnedDynObjectLayoutPrototype::erased_drop_identity_key` 和
+  `OwnedDynObjectLayoutPrototype::allocator_identity_key`。
+- IR dump、layout ABI fingerprint、verifier 和 M20b shape adapter 对 drop / allocator identity key 的消费。
+
+M20c validation 明确拒绝：
+
+- drop identity key 为空、allocator identity key 为空，或两者相同。
+- IR module 中重复 drop identity key 或重复 allocator identity key。
+- erased drop runtime slot 或 allocator runtime slot 不再是 blocked sentinel。
+- 把 standard library、`Box<dyn Trait>`、owning dyn user value、allocator API、runtime lowering、
+  backend helper 或 dynamic Drop runtime 标记成已实现。
+- 让 query summary、fingerprint 或 M20b IR shape gate 引用与当前 facts 漂移。
+
+下一阶段建议进入 M20d Runtime Lowering ABI Design Closure；M20d 仍不应直接实现标准库 API。
+
 ## M20b Owned Dyn IR Shape Prototype Gate
 
 M20b 已完成 owned dyn IR shape prototype gate。M20b 不实现标准库、不实现 `Box<dyn Trait>`、不实现 allocator

@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M20c Drop / Allocator Identity Prerequisite Gate
+## 当前最高优先级：M20d Runtime Lowering ABI Design Closure
 
 M8 borrowed dyn runtime dispatch、M9 dyn ABI/tooling release closure、M10 supertrait upcasting release closure 和
 M11a Advanced Dyn Design Baseline、M11b Principal-Set Composition Query Prototype Gate、M11c Principal-Set
@@ -11,8 +11,8 @@ M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13
 IR / Backend Runtime、M13d Borrowed Composition-To-Supertrait Hardening / Release Closure、
 M14 Borrowed Dyn View Path Inference / Dispatch Release、M16 Const Generic Frontend / Query / Sema Check-Only 和
 M17 Dyn Ownership Runtime Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、
-M19 Dyn Ownership Runtime IR / Verifier Preparation、M20a Owned Dyn Runtime Admission Design Gate 和
-M20b Owned Dyn IR Shape Prototype Gate 均已完成。
+M19 Dyn Ownership Runtime IR / Verifier Preparation、M20a Owned Dyn Runtime Admission Design Gate、
+M20b Owned Dyn IR Shape Prototype Gate 和 M20c Drop / Allocator Identity Prerequisite Gate 均已完成。
 当前状态入口：
 
 - [Aurex M8 Dyn Trait、Erased View 与动态派发设计基线](m8-dyn-trait-design.md)
@@ -32,6 +32,7 @@ M20b Owned Dyn IR Shape Prototype Gate 均已完成。
 - [Aurex M19 Dyn Ownership Runtime IR / Verifier Preparation Release Baseline](m19-dyn-ownership-runtime-ir-verifier-prep-release.md)
 - [Aurex M20a Owned Dyn Runtime Admission Design Gate Release Baseline](m20-owned-dyn-runtime-admission-gate-release.md)
 - [Aurex M20b Owned Dyn IR Shape Prototype Gate Release Baseline](m20-owned-dyn-ir-shape-prototype-release.md)
+- [Aurex M20c Drop / Allocator Identity Prerequisite Gate Release Baseline](m20-owned-dyn-drop-allocator-identity-release.md)
 
 M10 已结束。当前能稳定使用 borrowed dyn supertrait upcast：`&dyn Child -> &dyn Parent`、
 `&mut dyn Child -> &mut dyn Parent` 和 `&mut dyn Child -> &dyn Parent`；`dyn Child` receiver 上 inherited parent
@@ -203,6 +204,11 @@ query/tooling 可验证事实。`m17_dyn_ownership_runtime_preparation_baseline(
   negative matrix 已固定 compiler-owned two-field owned dyn handle prototype。M20b 仍不做标准库、
   `Box<dyn Trait>`、allocator API、owning dyn 用户值、runtime ABI lowering、backend runtime helper call 或
   dynamic Drop runtime。
+- M20c Drop / Allocator Identity Prerequisite Gate 已完成；`OwnedDynDropAllocatorIdentityGate`、
+  `OwnedDynDropAllocatorIdentityFact`、IR adapter、`erased_drop_identity_key` / `allocator_identity_key`、
+  dump、layout ABI fingerprint、verifier 和 negative matrix 已固定 compiler-owned drop / allocator identity
+  prerequisites。M20c 仍不做标准库、`Box<dyn Trait>`、allocator API、owning dyn 用户值、runtime ABI lowering、
+  backend runtime helper call 或 dynamic Drop runtime。
 
 M18 也已结束。M18 新增 `DynOwnershipRuntimeBoundaryGate` project-level query，把 M17 facts 接入
 query/cache/tooling/reuse/workspace index，并固定 future IR/verifier/runtime lowering prerequisites。M18 仍没有实现
@@ -228,10 +234,10 @@ two-field prototype；drop/allocator runtime slot 继续是 blocked sentinel，I
 均已覆盖。M20b 没有实现标准库、`Box<dyn Trait>`、allocator API、owning dyn 用户值、runtime ABI lowering、
 backend runtime helper call 或 dynamic Drop runtime。
 
-当前下一步应进入 **M20c Drop / Allocator Identity Prerequisite Gate**。M20c 应把 erased drop identity 和
-allocator identity 做成 stable query/IR prerequisites，定义它们与 cleanup/dropck、owned dyn handle prototype 和
-M20a admission gate 的关系，并继续阻塞标准库 `Box<dyn Trait>`、allocator API、executable runtime helper 和
-dynamic Drop runtime。M20d 再收 runtime lowering ABI closure；标准库 surface 应放到 M21 或更晚。
+当前下一步应进入 **M20d Runtime Lowering ABI Design Closure**。M20d 应把 runtime lowering ABI descriptor、
+blocked-to-admitted transition checks、backend helper prerequisite facts、dump/fingerprint 和 verifier negative
+matrix 固定下来，并继续阻塞标准库 `Box<dyn Trait>`、allocator API、executable runtime helper 的可执行调用和
+dynamic Drop runtime。标准库 surface 应放到 M21 或更晚。
 
 M12 后续候选不应混在同一阶段一次性实现：
 
@@ -266,7 +272,7 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M19 dyn ownership runtime IR / verifier preparation | 已完成。`DynOwnershipRuntimeIrVerifierFact`、function-level IR collector、borrowed vtable destructor-free guard、dynamic erased drop blocked sentinel、verifier negative matrix 和 release docs；仍不实现标准库、`Box`、allocator API、owning dyn user values 或 dynamic Drop runtime | 实际以本次 diffstat 为准 |
 | M20a owned dyn runtime admission design gate | 已完成。`OwnedDynRuntimeAdmissionGate`、admission facts、summary/dump/fingerprint、validation、release docs 和 documentation tests；仍不实现标准库、`Box`、allocator API、owning dyn user values 或 dynamic Drop runtime | 实际以本次 diffstat 为准 |
 | M20b owned dyn IR shape prototype gate | 已完成。`OwnedDynObjectLayoutPrototype`、two-field handle、blocked drop/allocator slots、IR dump/fingerprint/verifier、`OwnedDynIrShapePrototypeGate`、adapter、negative matrix、release docs 和 documentation tests；不做标准库或 executable runtime helper | 实际以本次 diffstat 为准；原预估 1,100-1,900 行，偏差分析见 M20b release 文档 |
-| M20c drop / allocator identity prerequisite gate | erased drop identity、allocator identity、cleanup/dropck interaction、query/tooling facts、validation matrix 和 release docs；仍不打开标准库 API | 1,200-2,200 行 |
+| M20c drop / allocator identity prerequisite gate | 已完成。`OwnedDynDropAllocatorIdentityGate`、drop/allocator identity keys、cleanup/dropck bridge facts、IR dump/fingerprint/verifier、adapter、negative matrix、release docs 和 documentation tests；仍不打开标准库 API | 实际以本次 diffstat 为准；原预估 1,200-2,200 行，偏差分析见 M20c release 文档 |
 | M20d runtime lowering ABI design closure | runtime lowering ABI descriptor、blocked-to-admitted transition checks、backend helper prerequisite facts、dump/fingerprint 和 verifier negative matrix；仍不实现标准库 surface | 900-1,700 行 |
 | 标准库实现阶段 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper 等库层 API；应在 M20b-M20d 之后进入 | 待 M20b-M20d 收口后估算 |
 

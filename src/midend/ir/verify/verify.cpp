@@ -1233,6 +1233,10 @@ private:
         seen_objects.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
         std::unordered_set<IrTextId, sema::IdentIdHash> seen_symbols;
         seen_symbols.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
+        std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash> seen_drop_identities;
+        seen_drop_identities.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
+        std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash> seen_allocator_identities;
+        seen_allocator_identities.reserve(this->module_.owned_dyn_object_layout_prototypes.size());
         for (const OwnedDynObjectLayoutPrototype& prototype : this->module_.owned_dyn_object_layout_prototypes) {
             if (!query::is_valid(prototype.object_type_key)
                 || !is_valid(prototype.policy)
@@ -1261,6 +1265,10 @@ private:
                 this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_POINTER));
             }
             this->verify_owned_dyn_object_shape(prototype);
+            this->verify_owned_dyn_object_identities(
+                prototype,
+                seen_drop_identities,
+                seen_allocator_identities);
             this->verify_owned_dyn_object_blockers(prototype);
         }
     }
@@ -1273,6 +1281,20 @@ private:
             || prototype.erased_drop_runtime_slot != IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED
             || prototype.allocator_runtime_slot != IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED) {
             this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_SHAPE));
+        }
+    }
+
+    void verify_owned_dyn_object_identities(
+        const OwnedDynObjectLayoutPrototype& prototype,
+        std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash>& seen_drop_identities,
+        std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash>& seen_allocator_identities)
+    {
+        if (prototype.erased_drop_identity_key == query::StableFingerprint128{}
+            || prototype.allocator_identity_key == query::StableFingerprint128{}
+            || prototype.erased_drop_identity_key == prototype.allocator_identity_key
+            || !seen_drop_identities.insert(prototype.erased_drop_identity_key).second
+            || !seen_allocator_identities.insert(prototype.allocator_identity_key).second) {
+            this->fail(std::string(IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_IDENTITY));
         }
     }
 

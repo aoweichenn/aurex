@@ -18,6 +18,7 @@ add_library(aurex_query
     src/infrastructure/query/dyn_ownership_runtime_boundary_gate.cpp
     src/infrastructure/query/dyn_ownership_runtime_facts.cpp
     src/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts.cpp
+    src/infrastructure/query/owned_dyn_drop_allocator_identity_gate.cpp
     src/infrastructure/query/owned_dyn_ir_shape_prototype_gate.cpp
     src/infrastructure/query/owned_dyn_runtime_admission_gate.cpp
     src/infrastructure/query/principal_set_composition_facts.cpp

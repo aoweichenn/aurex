@@ -199,6 +199,8 @@ void mix_owned_dyn_object_layout_prototype(
     builder.mix_u32(prototype.vtable_pointer_field_index);
     builder.mix_u32(prototype.erased_drop_runtime_slot);
     builder.mix_u32(prototype.allocator_runtime_slot);
+    builder.mix_fingerprint(prototype.erased_drop_identity_key);
+    builder.mix_fingerprint(prototype.allocator_identity_key);
     builder.mix_bool(prototype.compiler_owned);
     builder.mix_bool(prototype.borrowed_abi_unchanged);
     builder.mix_bool(prototype.standard_library_blocked);

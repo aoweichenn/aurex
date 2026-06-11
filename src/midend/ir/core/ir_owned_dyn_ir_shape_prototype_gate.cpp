@@ -119,6 +119,15 @@ constexpr std::string_view IR_OWNED_DYN_IR_SHAPE_NO_BACKEND =
     return prototype.allocator_runtime_slot == IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED;
 }
 
+[[nodiscard]] bool identity_key_is_valid(
+    const query::StableFingerprint128 drop_key,
+    const query::StableFingerprint128 allocator_key) noexcept
+{
+    return drop_key != query::StableFingerprint128{}
+        && allocator_key != query::StableFingerprint128{}
+        && drop_key != allocator_key;
+}
+
 [[nodiscard]] bool prototype_keeps_blockers(
     const OwnedDynObjectLayoutPrototype& prototype) noexcept
 {
@@ -145,7 +154,10 @@ constexpr std::string_view IR_OWNED_DYN_IR_SHAPE_NO_BACKEND =
         && module.types.get(prototype.object_type).trait_object_principal_types.empty()
         && module.types.get(prototype.object_type).trait_object_key == prototype.object_type_key
         && module.has_text(prototype.symbol)
-        && !module.text(prototype.symbol).empty();
+        && !module.text(prototype.symbol).empty()
+        && identity_key_is_valid(
+            prototype.erased_drop_identity_key,
+            prototype.allocator_identity_key);
 }
 
 [[nodiscard]] bool all_prototype_identities_are_valid(const Module& module)
@@ -157,11 +169,17 @@ constexpr std::string_view IR_OWNED_DYN_IR_SHAPE_NO_BACKEND =
     object_keys.reserve(module.owned_dyn_object_layout_prototypes.size());
     std::unordered_set<IrTextId, sema::IdentIdHash> symbols;
     symbols.reserve(module.owned_dyn_object_layout_prototypes.size());
+    std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash> drop_keys;
+    drop_keys.reserve(module.owned_dyn_object_layout_prototypes.size());
+    std::unordered_set<query::StableFingerprint128, query::StableFingerprintHash> allocator_keys;
+    allocator_keys.reserve(module.owned_dyn_object_layout_prototypes.size());
     return std::ranges::all_of(module.owned_dyn_object_layout_prototypes,
         [&](const OwnedDynObjectLayoutPrototype& prototype) {
             return prototype_identity_is_valid(module, prototype)
                 && object_keys.insert(prototype.object_type_key.global_id).second
-                && symbols.insert(prototype.symbol).second;
+                && symbols.insert(prototype.symbol).second
+                && drop_keys.insert(prototype.erased_drop_identity_key).second
+                && allocator_keys.insert(prototype.allocator_identity_key).second;
         });
 }
 

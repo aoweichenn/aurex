@@ -1,9 +1,25 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20b Owned Dyn IR Shape Prototype Gate
+阶段：M20c Drop / Allocator Identity Prerequisite Gate
 
 ## 总体状态
+
+2026-06-11：M20c Drop / Allocator Identity Prerequisite Gate 已完成。M20c 不实现标准库、不实现
+`Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend
+runtime helper call，也不做 runtime ABI lowering；它把 M20b compiler-owned owned dyn handle prototype 继续推进为
+drop / allocator identity prerequisites。
+
+M20c 新增 `OwnedDynDropAllocatorIdentityGate`、`OwnedDynDropAllocatorIdentityFact`、
+`OwnedDynDropAllocatorIdentitySummary`、`m20c_owned_dyn_drop_allocator_identity_gate_baseline()` 和
+`owned_dyn_drop_allocator_identity_gate()` IR adapter。Gate 固定 erased drop identity、allocator identity、
+cleanup/dropck bridge、owned handle identity binding 和 runtime lowering blocker 五类 facts，并继续要求 borrowed
+ABI unchanged、stdlib/Box/owning-user-value/allocator/runtime/dynamic-drop/backend-helper 全部 blocked。
+
+M20c 同时给 `OwnedDynObjectLayoutPrototype` 新增 `erased_drop_identity_key` 和 `allocator_identity_key`。IR dump、
+layout ABI fingerprint、verifier 和 M20b shape adapter 都已消费这两个 key；空 key、drop/allocator key 相同、
+重复 drop key、重复 allocator key 或 blocked runtime slot 漂移都会被拒绝。新增收口文档见
+[Aurex M20c Drop / Allocator Identity Prerequisite Gate Release Baseline](m20-owned-dyn-drop-allocator-identity-release.md)。
 
 2026-06-10：M20b Owned Dyn IR Shape Prototype Gate 已完成。M20b 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend

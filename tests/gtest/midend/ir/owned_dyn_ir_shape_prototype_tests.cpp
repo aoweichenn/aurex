@@ -90,6 +90,10 @@ struct OwnedDynPrototypeFixture {
     prototype.data_pointer_type = data_pointer_type;
     prototype.vtable_pointer_type = vtable_pointer_type;
     prototype.symbol = module.intern(symbol);
+    prototype.erased_drop_identity_key =
+        query::stable_fingerprint(std::string("drop:") + std::string(symbol));
+    prototype.allocator_identity_key =
+        query::stable_fingerprint(std::string("allocator:") + std::string(symbol));
     return prototype;
 }
 
@@ -168,6 +172,8 @@ TEST(CoreUnit, OwnedDynIrShapePrototypeVerifiesDumpsAndFingerprints)
     EXPECT_TRUE(contains_text(dump, "vtable_field=1:*const u8")) << dump;
     EXPECT_TRUE(contains_text(dump, "drop_slot=blocked")) << dump;
     EXPECT_TRUE(contains_text(dump, "allocator_slot=blocked")) << dump;
+    EXPECT_TRUE(contains_text(dump, "drop_identity=")) << dump;
+    EXPECT_TRUE(contains_text(dump, "allocator_identity=")) << dump;
     EXPECT_TRUE(contains_text(dump, "compiler_owned=yes")) << dump;
     EXPECT_TRUE(contains_text(dump, "runtime_blocked=yes")) << dump;
     EXPECT_TRUE(contains_text(dump, "dynamic_drop_blocked=yes")) << dump;
@@ -236,6 +242,20 @@ TEST(CoreUnit, OwnedDynIrShapePrototypeVerifierRejectsShapeDrift)
     }
     {
         OwnedDynPrototypeFixture fixture = make_valid_owned_dyn_prototype_fixture();
+        prototype(fixture).erased_drop_identity_key = query::StableFingerprint128{};
+        expect_error_contains(
+            ir::verify_module(fixture.module),
+            "owned dyn object layout prototype drop/allocator identity is invalid");
+    }
+    {
+        OwnedDynPrototypeFixture fixture = make_valid_owned_dyn_prototype_fixture();
+        prototype(fixture).allocator_identity_key = prototype(fixture).erased_drop_identity_key;
+        expect_error_contains(
+            ir::verify_module(fixture.module),
+            "owned dyn object layout prototype drop/allocator identity is invalid");
+    }
+    {
+        OwnedDynPrototypeFixture fixture = make_valid_owned_dyn_prototype_fixture();
         prototype(fixture).runtime_lowering_blocked = false;
         expect_error_contains(
             ir::verify_module(fixture.module),
@@ -263,6 +283,8 @@ TEST(CoreUnit, OwnedDynIrShapePrototypeVerifierRejectsInvalidAndDuplicateIdentit
         OwnedDynPrototypeFixture fixture = make_valid_owned_dyn_prototype_fixture();
         ir::OwnedDynObjectLayoutPrototype duplicate = prototype(fixture);
         duplicate.symbol = fixture.module.intern("__aurex_owned_dyn_object_owned_dyn_ir_draw_duplicate");
+        duplicate.erased_drop_identity_key = query::stable_fingerprint("duplicate drop");
+        duplicate.allocator_identity_key = query::stable_fingerprint("duplicate allocator");
         fixture.module.owned_dyn_object_layout_prototypes.push_back(duplicate);
         expect_error_contains(
             ir::verify_module(fixture.module),
@@ -362,6 +384,12 @@ TEST(CoreUnit, OwnedDynIrShapePrototypeAdapterRejectsPrototypeDrift)
         prototype(fixture).allocator_runtime_slot = IR_TEST_UNEXPECTED_RUNTIME_SLOT;
     });
     expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {
+        prototype(fixture).erased_drop_identity_key = query::StableFingerprint128{};
+    });
+    expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {
+        prototype(fixture).allocator_identity_key = prototype(fixture).erased_drop_identity_key;
+    });
+    expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {
         prototype(fixture).runtime_lowering_blocked = false;
     });
     expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {
@@ -374,6 +402,8 @@ TEST(CoreUnit, OwnedDynIrShapePrototypeAdapterRejectsPrototypeDrift)
     expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {
         ir::OwnedDynObjectLayoutPrototype duplicate = prototype(fixture);
         duplicate.symbol = fixture.module.intern("__aurex_owned_dyn_object_duplicate_key");
+        duplicate.erased_drop_identity_key = query::stable_fingerprint("duplicate drop");
+        duplicate.allocator_identity_key = query::stable_fingerprint("duplicate allocator");
         fixture.module.owned_dyn_object_layout_prototypes.push_back(duplicate);
     });
     expect_invalid_gate([](OwnedDynPrototypeFixture& fixture) {

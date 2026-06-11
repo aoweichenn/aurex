@@ -7,6 +7,7 @@ add_library(aurex_ir
     src/midend/ir/core/ir_dyn_ownership_runtime_ir_verifier_facts.cpp
     src/midend/ir/core/ir_dump.cpp
     src/midend/ir/core/ir_fingerprint.cpp
+    src/midend/ir/core/ir_owned_dyn_drop_allocator_identity_gate.cpp
     src/midend/ir/core/ir_owned_dyn_ir_shape_prototype_gate.cpp
     src/midend/ir/core/ir_value_closure.cpp
     src/midend/ir/lowering/sources/lower_ast.cpp

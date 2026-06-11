@@ -317,6 +317,8 @@ struct OwnedDynObjectLayoutPrototype {
     base::u32 vtable_pointer_field_index = IR_OWNED_DYN_OBJECT_VTABLE_POINTER_FIELD;
     base::u32 erased_drop_runtime_slot = IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED;
     base::u32 allocator_runtime_slot = IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED;
+    query::StableFingerprint128 erased_drop_identity_key;
+    query::StableFingerprint128 allocator_identity_key;
     bool compiler_owned = true;
     bool borrowed_abi_unchanged = true;
     bool standard_library_blocked = true;

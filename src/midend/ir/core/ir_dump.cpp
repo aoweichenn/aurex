@@ -426,6 +426,8 @@ std::string dump_module(const Module& module)
             << (prototype.allocator_runtime_slot == IR_OWNED_DYN_OBJECT_RUNTIME_SLOT_BLOCKED
                        ? std::string_view{"blocked"}
                        : std::string_view{"unexpected"})
+            << " drop_identity=" << query::debug_string(prototype.erased_drop_identity_key)
+            << " allocator_identity=" << query::debug_string(prototype.allocator_identity_key)
             << " compiler_owned=" << (prototype.compiler_owned ? "yes" : "no")
             << " borrowed_abi_unchanged=" << (prototype.borrowed_abi_unchanged ? "yes" : "no")
             << " stdlib_blocked=" << (prototype.standard_library_blocked ? "yes" : "no")

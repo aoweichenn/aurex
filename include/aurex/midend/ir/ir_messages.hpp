@@ -240,6 +240,9 @@ inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_PO
 inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_SHAPE =
     "owned dyn object layout prototype must remain a two-field data/vtable handle";
 
+inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_IDENTITY =
+    "owned dyn object layout prototype drop/allocator identity is invalid";
+
 inline constexpr std::string_view IR_VERIFY_OWNED_DYN_OBJECT_LAYOUT_PROTOTYPE_BLOCKED =
     "owned dyn object layout prototype must keep stdlib/runtime surfaces blocked";
 

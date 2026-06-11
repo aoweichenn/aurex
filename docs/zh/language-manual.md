@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-10
-阶段：M20b Owned Dyn IR Shape Prototype Gate，建立在 M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M20c Drop / Allocator Identity Prerequisite Gate，建立在 M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -145,6 +145,14 @@ A | B         表示二选一
   `OwnedDynObjectLayoutPrototype` 只记录 `{*mut u8 data, *const u8 vtable}` two-field shape、blocked drop /
   allocator slots 和 stdlib/runtime blockers；这不是用户可写 owning dyn 语法，也不提供 `Box<dyn Trait>`、
   allocator API、runtime lowering 或 dynamic Drop runtime。
+- 查询 M20c drop / allocator identity prerequisite gate：`OwnedDynDropAllocatorIdentityGate`、
+  `OwnedDynDropAllocatorIdentityFact`、`OwnedDynDropAllocatorIdentitySummary`、
+  `m20c_owned_dyn_drop_allocator_identity_gate_baseline()`、
+  `owned_dyn_drop_allocator_identity_gate_fingerprint()` 和
+  `ir::owned_dyn_drop_allocator_identity_gate()` 已固定 compiler-owned drop / allocator identity prerequisite。
+  IR 中的 `OwnedDynObjectLayoutPrototype::erased_drop_identity_key` 和
+  `OwnedDynObjectLayoutPrototype::allocator_identity_key` 只是 stable identity facts，不是 runtime slot、allocator
+  API 或用户可写 owning dyn 语法。
 - 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
 - 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
 
@@ -160,7 +168,8 @@ A | B         表示二选一
   owning dyn runtime preparation facts，M18 已把这些 facts 接入 project-level query/cache/tooling/reuse/workspace
   boundary gate，M19 已把 boundary prerequisites 落成 IR/verifier facts 和 negative matrix，M20a 已把 runtime
   admission order 固定成 design gate，M20b 已把 compiler-owned owned dyn handle shape 落成 IR prototype 和
-  verifier/query gate；validation 仍会拒绝 standard library、`Box` surface、allocator API、
+  verifier/query gate，M20c 已把 drop / allocator identity prerequisite 落成 compiler-owned IR/query facts；
+  validation 仍会拒绝 standard library、`Box` surface、allocator API、
   owning dyn 用户值、runtime lowering、backend runtime helper call、dynamic Drop dispatch 或 borrowed vtable
   destructor slot 被标成已实现。
 - 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。

@@ -1,0 +1,19 @@
+module lambda_capture_non_copy;
+
+struct File {
+    fd: i32;
+}
+
+impl Drop for File {
+    fn drop(self: deinit File) -> void {}
+}
+
+fn make_file() -> File {
+    return File { fd: 7 };
+}
+
+fn main() -> i32 {
+    let file = make_file();
+    let read_fd = fn(value: i32) -> i32 => value + file.fd;
+    return read_fd(1);
+}

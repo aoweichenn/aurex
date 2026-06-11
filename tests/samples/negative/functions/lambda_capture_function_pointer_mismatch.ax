@@ -1,4 +1,4 @@
-module lambda_capture_unsupported;
+module lambda_capture_function_pointer_mismatch;
 
 fn main() -> i32 {
     let base: i32 = 1;

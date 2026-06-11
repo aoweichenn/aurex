@@ -260,6 +260,7 @@ public:
 
     void lower_function_body(FunctionId function_id, FunctionBodyView body);
     void lower_lambda_body(FunctionId function_id, const sema::CheckedLambdaInfo& lambda);
+    void lower_capturing_lambda_body(FunctionId function_id, const sema::CheckedLambdaInfo& lambda);
     void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body);
     void lower_trait_default_method_body(FunctionId function_id, const sema::TraitDefaultMethodInstanceBodyView& body);
     void lower_block(syntax::StmtId block_id);
@@ -360,6 +361,8 @@ public:
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_lambda_expr(syntax::ExprId expr_id);
+    [[nodiscard]] ValueId lower_closure_call_expr(
+        syntax::ExprId expr_id, const ExprView& expr, const sema::CheckedLambdaInfo& lambda);
     [[nodiscard]] ValueId lower_dynproject_intrinsic_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_dyn_trait_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding);
@@ -399,6 +402,8 @@ public:
     [[nodiscard]] ValueId append_slice_len(ValueId slice_value);
 
     [[nodiscard]] CallTarget call_target(syntax::ExprId callee);
+    [[nodiscard]] FunctionId lambda_function_for_expr(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] const sema::CheckedLambdaInfo* lambda_for_environment_type(sema::TypeHandle type) const noexcept;
     [[nodiscard]] IrTextId call_symbol(syntax::ExprId callee);
     [[nodiscard]] IrTextId value_symbol(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] sema::TypeHandle call_param_type(FunctionId function_id, base::usize index) const noexcept;

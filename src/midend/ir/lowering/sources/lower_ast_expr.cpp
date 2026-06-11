@@ -471,6 +471,25 @@ ValueId Lowerer::lower_lambda_expr(const syntax::ExprId expr_id)
         if (lambda.expr.value != expr_id.value || index >= this->lambda_functions_.size()) {
             continue;
         }
+        if (!lambda.captures.empty()) {
+            Value value = this->module_.make_value();
+            value.kind = ValueKind::aggregate;
+            value.type = this->expr_type(expr_id);
+            value.fields.reserve(lambda.captures.size());
+            for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
+                const auto local = this->locals_.find(capture.name_id);
+                if (local == this->locals_.end()) {
+                    return INVALID_VALUE_ID;
+                }
+                const ValueId captured_value =
+                    this->append_load(local->second.slot, capture.type, this->module_.intern(capture.name.view()));
+                value.fields.push_back(FieldValue{
+                    this->module_.intern(capture.field_name.view()),
+                    captured_value,
+                });
+            }
+            return this->append_value(value);
+        }
         const FunctionId function_id = this->lambda_functions_[index];
         if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()) {
             return INVALID_VALUE_ID;
@@ -648,6 +667,10 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
     value.type = this->expr_type(expr_id);
     const CallTarget target = this->call_target(expr.callee);
     const sema::TypeHandle callee_type = this->expr_type(expr.callee);
+    if (const sema::CheckedLambdaInfo* const closure = this->lambda_for_environment_type(callee_type);
+        closure != nullptr) {
+        return this->lower_closure_call_expr(expr_id, expr, *closure);
+    }
     if (!is_valid(target.function) && sema::is_valid(callee_type) && this->module_.types.is_function(callee_type)) {
         return this->lower_indirect_call_expr(expr_id, expr, callee_type);
     }
@@ -696,6 +719,32 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
         if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
         }
+        value.args.push_back(this->coerce_value(arg, param_type));
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_closure_call_expr(
+    const syntax::ExprId expr_id, const ExprView& expr, const sema::CheckedLambdaInfo& lambda)
+{
+    const FunctionId function_id = this->lambda_function_for_expr(lambda.expr);
+    if (!is_valid(function_id) || !sema::is_valid(lambda.environment_type)) {
+        return INVALID_VALUE_ID;
+    }
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::call;
+    value.type = this->expr_type(expr_id);
+    value.call_target = function_id;
+    value.name = this->module_.intern(lambda.c_name.view());
+
+    const ValueId environment_value = this->lower_expr(expr.callee, lambda.environment_type);
+    const ValueId environment_slot = this->append_temp_alloca("closure.env", lambda.environment_type);
+    this->append_store(environment_slot, environment_value);
+    value.args.push_back(environment_slot);
+    for (base::usize i = 0; i < expr.args.size(); ++i) {
+        const sema::TypeHandle param_type =
+            i < lambda.param_types.size() ? lambda.param_types[i] : sema::INVALID_TYPE_HANDLE;
+        const ValueId arg = this->lower_expr(expr.args[i], param_type);
         value.args.push_back(this->coerce_value(arg, param_type));
     }
     return this->append_value(value);
@@ -1410,6 +1459,34 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee)
         return CallTarget{found->second, symbol};
     }
     return CallTarget{INVALID_FUNCTION_ID, symbol};
+}
+
+FunctionId Lowerer::lambda_function_for_expr(const syntax::ExprId expr) const noexcept
+{
+    if (!syntax::is_valid(expr)) {
+        return INVALID_FUNCTION_ID;
+    }
+    for (base::usize index = 0; index < this->checked_.lambdas.size(); ++index) {
+        if (this->checked_.lambdas[index].expr.value != expr.value || index >= this->lambda_functions_.size()) {
+            continue;
+        }
+        return this->lambda_functions_[index];
+    }
+    return INVALID_FUNCTION_ID;
+}
+
+const sema::CheckedLambdaInfo* Lowerer::lambda_for_environment_type(const sema::TypeHandle type) const noexcept
+{
+    if (!sema::is_valid(type)) {
+        return nullptr;
+    }
+    for (const sema::CheckedLambdaInfo& lambda : this->checked_.lambdas) {
+        if (!lambda.has_unsupported_capture && lambda.environment_type.value == type.value
+            && !lambda.captures.empty()) {
+            return &lambda;
+        }
+    }
+    return nullptr;
 }
 
 IrTextId Lowerer::call_symbol(const syntax::ExprId callee)

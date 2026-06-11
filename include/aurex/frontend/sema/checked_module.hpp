@@ -174,11 +174,29 @@ struct CheckedLambdaInfo {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId owner_item = syntax::INVALID_ITEM_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
+    TypeHandle function_type = INVALID_TYPE_HANDLE;
+    TypeHandle environment_type = INVALID_TYPE_HANDLE;
+    InternedText environment_name;
+    IdentId environment_name_id = INVALID_IDENT_ID;
+    InternedText environment_c_name;
+    IdentId environment_c_name_id = INVALID_IDENT_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
     syntax::StmtId body = syntax::INVALID_STMT_ID;
     base::SourceRange range{};
-    bool captures_unsupported = false;
+    bool has_unsupported_capture = false;
+
+    struct Capture {
+        InternedText name;
+        IdentId name_id = INVALID_IDENT_ID;
+        InternedText field_name;
+        IdentId field_name_id = INVALID_IDENT_ID;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        base::SourceRange use_range{};
+        base::SourceRange declaration_range{};
+    };
+
+    SemaVector<Capture> captures;
 };
 
 enum class BorrowContractSelectorKind : base::u8 {

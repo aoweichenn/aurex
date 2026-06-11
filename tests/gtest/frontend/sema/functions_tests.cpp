@@ -213,6 +213,27 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(lambda) + " -o " + q(lambda_bin));
     require_success(q(lambda_bin));
 
+    const fs::path closure = positive_sample("functions", "lambda_closure_capture.ax");
+    const std::string closure_checked = require_success(aurexc() + " --emit=checked " + q(closure)).output;
+    expect_contains_all(closure_checked, {"__aurex_lambda", "__aurex_lambda_m", "_env"});
+    const std::string closure_ir = require_success(aurexc() + " --emit=ir " + q(closure)).output;
+    expect_contains_all(
+        closure_ir, {"record __aurex_lambda", "_env", "fn __aurex_lambda", "closure.env", "call __aurex_lambda"});
+    const fs::path closure_bin = test_bin_root() / "lambda_closure_capture";
+    require_success(aurexc() + " " + q(closure) + " -o " + q(closure_bin));
+    require_success(q(closure_bin));
+
+    const fs::path returned_closure = positive_sample("functions", "lambda_closure_return.ax");
+    const std::string returned_closure_checked =
+        require_success(aurexc() + " --emit=checked " + q(returned_closure)).output;
+    expect_contains_all(returned_closure_checked, {"fn priv make_adder -> __aurex_lambda", "_env"});
+    const std::string returned_closure_ir = require_success(aurexc() + " --emit=ir " + q(returned_closure)).output;
+    expect_contains_all(returned_closure_ir,
+        {"fn make_adder(base: i32)", "-> __aurex_lambda", "aggregate {.__capture_0_base", "call __aurex_lambda"});
+    const fs::path returned_closure_bin = test_bin_root() / "lambda_closure_return";
+    require_success(aurexc() + " " + q(returned_closure) + " -o " + q(returned_closure_bin));
+    require_success(q(returned_closure_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -225,19 +246,24 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
             .output,
         "argument type mismatch in call to op");
     expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_unsupported.ax")))
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("functions", "lambda_capture_function_pointer_mismatch.ax")))
             .output,
-        "capturing closures are not supported yet");
+        "initializer type does not match declared type");
     expect_contains(
-        require_failure(
-            aurexc() + " --check " + q(negative_sample("functions", "lambda_nested_capture_unsupported.ax")))
-            .output,
-        "capturing closures are not supported yet");
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_non_copy.ax"))).output,
+        "capturing a non-Copy value in a closure is not supported yet");
     expect_contains(
-        require_failure(
-            aurexc() + " --check " + q(negative_sample("functions", "lambda_match_guard_capture_unsupported.ax")))
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_borrowed_view.ax")))
             .output,
-        "capturing closures are not supported yet");
+        "capturing a borrowed-view value in a closure is not supported yet");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_generic_dependent.ax")))
+                        .output,
+        "capturing a generic-dependent value in a closure is not supported yet");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_assign.ax"))).output,
+        "left side of assignment must be writable");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");

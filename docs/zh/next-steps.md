@@ -5,16 +5,18 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：捕获闭包与函数式能力设计入口
+## 当前实现入口：M20 捕获闭包核心子集已完成
 
-无捕获 lambda 已作为 `fn(...) -> T` 薄函数值落地。下一步若继续函数式主线，应进入捕获闭包设计，而不是直接写标准库：
+无捕获 lambda 已作为 `fn(...) -> T` 薄函数值落地；M20 捕获闭包核心子集也已完成。当前支持
+非泛型依赖、非 borrowed-view 的 Copy-by-value 捕获、内部匿名 environment record、hidden-env thunk、直接调用、
+嵌套捕获、match guard 捕获使用和函数返回捕获闭包。下一步若继续函数式主线，应补闭包语义深水区，而不是直接写标准库：
 
-- 设计匿名 closure environment 布局。
 - 区分 shared / mutable / consuming capture。
 - 定义 closure call ability，后续再决定是否命名为 `Fn` / `FnMut` / `FnOnce` 风格能力。
 - 把捕获的 borrow/resource 接入现有 dropck、place-state、loan/lifetime facts。
-- 设计返回/存储 closure 时的 escape 规则。
-- 设计 closure-to-function-pointer 的唯一合法转换：只有无捕获 lambda 可以转换为薄 `fn(...) -> T`。
+- 设计 generic-dependent closure environment ABI 和实例化规则。
+- 设计 borrowed closure environment escape 规则。
+- 保持 closure-to-function-pointer 的唯一合法转换：只有无捕获 lambda 可以转换为薄 `fn(...) -> T`。
 
 这一阶段仍不需要实现标准库、allocator 或 runtime helper；标准库函数式 adapter 应在 closure 核心语义稳定后再做。
 

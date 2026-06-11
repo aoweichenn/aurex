@@ -1,0 +1,39 @@
+module lambda_closure_capture;
+
+fn direct_capture(value: i32) -> i32 {
+    let base: i32 = 40;
+    let add_base = fn(next: i32) -> i32 => next + base;
+    return add_base(value);
+}
+
+fn nested_capture(seed: i32) -> i32 {
+    let outer = fn(value: i32) -> i32 {
+        let local: i32 = 2;
+        let inner = fn(next: i32) -> i32 => next + local + seed;
+        return inner(value);
+    };
+    return outer(1);
+}
+
+fn guard_capture(value: bool) -> i32 {
+    let enabled: bool = true;
+    let choose = fn(flag: bool) -> i32 {
+        return match flag {
+            true if enabled => 7,
+            _ => 3,
+        };
+    };
+    return choose(value);
+}
+
+fn transitive_capture(seed: i32) -> i32 {
+    let make = fn(offset: i32) -> i32 {
+        let apply = fn(value: i32) -> i32 => value + seed + offset;
+        return apply(6);
+    };
+    return make(5);
+}
+
+fn main() -> i32 {
+    return direct_capture(2) + nested_capture(39) + guard_capture(true) + transitive_capture(30) - 132;
+}

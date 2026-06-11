@@ -125,6 +125,20 @@ SemanticAnalyzerCore::CapabilitySet& SemanticAnalyzerCore::capability_bucket(
     return inserted.first->second;
 }
 
+const CheckedLambdaInfo* SemanticAnalyzerCore::lambda_for_environment_type(const TypeHandle type) const noexcept
+{
+    if (!is_valid(type)) {
+        return nullptr;
+    }
+    for (const CheckedLambdaInfo& lambda : this->state_.checked.lambdas) {
+        if (!lambda.has_unsupported_capture && is_valid(lambda.environment_type)
+            && lambda.environment_type.value == type.value && !lambda.captures.empty()) {
+            return &lambda;
+        }
+    }
+    return nullptr;
+}
+
 base::Result<CheckedModule> SemanticAnalyzerCore::analyze()
 {
     return SemanticAnalysisPipeline(*this).run();

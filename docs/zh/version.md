@@ -1,8 +1,10 @@
 # 版本文档
 
-## 函数式基础：无捕获 Lambda 字面量
+## M20 函数式和捕获闭包核心子集
 
-当前版本补齐第一步函数式表达式能力：无捕获 lambda 字面量可以作为一等 `fn(...) -> T` 函数值。
+当前版本补齐 M20 函数式和闭包核心能力：无捕获 lambda 字面量可以作为一等 `fn(...) -> T`
+薄函数值；捕获闭包支持按值捕获非泛型依赖、非 borrowed-view 的 `Copy` 外层局部或参数，并 lowering 为编译器生成的匿名
+environment record 和 hidden-env thunk。
 
 新增或固定：
 
@@ -11,15 +13,23 @@
 - lambda 参数类型和返回类型必须显式标注。
 - 无捕获 lambda lowering 为内部匿名函数，表达式值为 `function_ref`。
 - 函数值间接调用、作为参数传递、作为返回值返回继续复用既有 `fn(...) -> T` 规则。
-- 捕获外层局部/参数的 closure 明确报 `capturing closures are not supported yet`。
+- 捕获闭包 lowering 为内部匿名环境 record，调用时把环境地址作为隐藏参数传给内部 thunk。
+- 捕获闭包支持局部存储、直接调用、嵌套捕获、match guard 捕获使用，以及由函数 return inference 推断后返回。
+- 捕获闭包不是 `fn(...) -> T`，不能赋给薄函数指针；只有无捕获 lambda 可作为薄 `fn` 值。
+- 捕获非 `Copy` 值会报 `capturing a non-Copy value in a closure is not supported yet`。
+- 捕获 borrowed-view 值会报 `capturing a borrowed-view value in a closure is not supported yet`。
+- 捕获 generic-dependent 值会报 `capturing a generic-dependent value in a closure is not supported yet`。
 
 仍不实现：
 
 - 标准库或函数式库 adapter。
 - allocator/runtime helper。
-- closure environment。
-- 捕获方式、`Fn` / `FnMut` / `FnOnce` 能力。
-- 捕获 closure 的 dropck/place-state/lifetime escape 规则。
+- heap/allocator closure box。
+- shared / mutable / consuming capture mode。
+- generic closure environment ABI。
+- `Fn` / `FnMut` / `FnOnce` 能力。
+- borrowed closure environment escape 求解。
+- 非 `Copy` 捕获的 dropck/place-state/lifetime 规则。
 
 ## M20d Runtime Lowering ABI Design Closure
 

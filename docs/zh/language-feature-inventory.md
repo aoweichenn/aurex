@@ -277,19 +277,29 @@ safe reference 已作为 M2 基础类型落地：
   和 origin parameter；未完成的是 generic const arithmetic、const where predicate、associated const、dyn const
   equality 和 unresolved const-param array runtime ABI。
 
-函数指针类型和无捕获 lambda 字面量已作为基础函数式能力落地：
+函数指针类型、lambda 字面量和 M20 捕获闭包核心子集已作为基础函数式能力落地：
 
 ```aurex
 type BinaryOp = fn(i32, i32) -> i32;
 type CCallback = extern c fn(*mut void, ...) -> i32;
 let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
+let base: i32 = 40;
+let add_base = fn(value: i32) -> i32 => value + base;
 ```
 
 当前语义是非捕获函数指针：函数名和无捕获 lambda 字面量可以作为值赋给 `fn(...) -> T`，函数名也可以作为值赋给
 `extern c fn(...) -> T`；局部变量、参数和 struct 字段中的函数指针可以用普通调用语法间接调用。调用约定、参数类型、
 variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。lambda 当前要求显式参数类型和
-显式 `-> T`，支持 `=> expr` 表达式体和 `{ ... }` 块体。捕获外层局部/参数的 closure 会报
-`capturing closures are not supported yet`，不会被降级成薄函数指针。
+显式 `-> T`，支持 `=> expr` 表达式体和 `{ ... }` 块体。
+
+M20 捕获闭包核心子集当前支持捕获外层非泛型依赖、非 borrowed-view 的 `Copy` 局部或参数，按值复制进编译器生成的匿名
+environment record；闭包可局部存储、直接调用、嵌套调用、在 match guard 中使用捕获值，也可从函数返回并由
+return inference 推断为内部环境类型。捕获闭包不是 `fn(...) -> T`，不能赋给薄函数指针；非 `Copy` 捕获会报
+`capturing a non-Copy value in a closure is not supported yet`，borrowed-view 捕获会报
+`capturing a borrowed-view value in a closure is not supported yet`，generic-dependent 捕获会报
+`capturing a generic-dependent value in a closure is not supported yet`。当前仍不实现 `Fn`/`FnMut`/`FnOnce`
+trait、标准库 adapter、heap/allocator closure box、mutable/consuming capture mode、generic closure environment ABI
+或 borrowed closure environment escape 求解。
 
 ### 顶层 item
 
@@ -985,7 +995,9 @@ let all = bytes[:];
 
 2. function pointer / function type（已补入 M2 基线）
 
-   完整 closure 捕获继续暂缓；非捕获函数类型、无捕获 lambda 和 C callback 已作为基础系统能力落地：
+   M20 已支持非泛型依赖、非 borrowed-view 的 Copy-by-value 捕获闭包核心子集；完整 shared/mutable/consuming
+   capture mode、generic closure environment ABI 和 borrowed closure environment escape 继续暂缓。非捕获函数类型、
+   无捕获 lambda 和 C callback 已作为基础系统能力落地：
 
    ```aurex
    type Cmp = fn(a: *const void, b: *const void) -> i32;
@@ -994,8 +1006,9 @@ let all = bytes[:];
    ```
 
    函数名和无捕获 lambda 可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic
-   只允许出现在 `extern c fn` 类型中。捕获 closure 需要环境 ABI、capture mode、dropck/place-state/lifetime facts 和
-   调用 thunk，仍是后续独立阶段。
+   只允许出现在 `extern c fn` 类型中。捕获闭包当前是内部匿名环境 record 值，不是薄函数指针；闭包调用经由
+   hidden-env thunk。尚未完成的是 mutable/consuming capture mode、generic-dependent 捕获、borrowed closure
+   environment escape、`Fn`/`FnMut`/`FnOnce` 风格能力、标准库 adapter 和 heap/runtime closure box。
 
 3. 已补齐：tuple / destructuring declaration
 

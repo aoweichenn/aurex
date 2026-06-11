@@ -163,7 +163,113 @@ void Lowerer::lower_lambda_body(const FunctionId function_id, const sema::Checke
     if (payload == nullptr) {
         return;
     }
+    if (!lambda.captures.empty()) {
+        this->lower_capturing_lambda_body(function_id, lambda);
+        return;
+    }
     this->lower_function_body(function_id, FunctionBodyView{payload->params, lambda.body});
+}
+
+void Lowerer::lower_capturing_lambda_body(const FunctionId function_id, const sema::CheckedLambdaInfo& lambda)
+{
+    if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()
+        || !syntax::is_valid(lambda.expr) || lambda.expr.value >= this->ast_.exprs.size()) {
+        return;
+    }
+    const syntax::LambdaExprPayload* const payload = this->ast_.exprs.lambda_payload(lambda.expr.value);
+    if (payload == nullptr) {
+        return;
+    }
+
+    this->current_function_ = &this->module_.functions[function_id.value];
+    this->locals_.clear();
+    this->local_scopes_.clear();
+    this->loop_contexts_.clear();
+    this->cleanup_scopes_.clear();
+    this->push_local_scope();
+    this->cleanup_scopes_.push_back({});
+    this->current_block_ = add_block(this->module_, *this->current_function_, "entry");
+
+    ValueId env_param = INVALID_VALUE_ID;
+    if (!this->current_function_->signature_params.empty()) {
+        const FunctionParam& param = this->current_function_->signature_params.front();
+        Value param_value = this->module_.make_value();
+        param_value.kind = ValueKind::param;
+        param_value.name = param.name;
+        param_value.type = param.type;
+        env_param = this->append_value(param_value);
+        this->current_function_->param_values.push_back(env_param);
+    }
+    if (!is_valid(env_param)) {
+        return;
+    }
+
+    for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
+        const IrTextId field_name = this->module_.intern(capture.field_name.view());
+        const ValueId field_address =
+            this->append_field_address(env_param, field_name, capture.type, sema::PointerMutability::mut);
+        const ValueId field_value =
+            this->append_load(field_address, capture.type, this->module_.intern(capture.name.view()));
+        Value slot = this->module_.make_value();
+        slot.kind = ValueKind::alloca;
+        slot.name = this->module_.intern(capture.name.view());
+        slot.type = this->module_.types.pointer(sema::PointerMutability::mut, capture.type);
+        const ValueId slot_id = this->append_value(slot);
+        LocalBinding binding{
+            .slot = slot_id,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = capture.type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        };
+        this->register_local_cleanup(binding, capture.name.view());
+        this->bind_local(capture.name_id, binding);
+        this->append_store(slot_id, field_value);
+    }
+
+    for (base::usize i = 0; i < payload->params.size(); ++i) {
+        const syntax::ParamDecl& param = payload->params[i];
+        const base::usize signature_index = i + 1U;
+        const sema::TypeHandle param_type =
+            signature_index < this->current_function_->signature_params.size()
+            ? this->current_function_->signature_params[signature_index].type
+            : (i < lambda.param_types.size() ? lambda.param_types[i] : sema::INVALID_TYPE_HANDLE);
+        Value param_value = this->module_.make_value();
+        param_value.kind = ValueKind::param;
+        param_value.name = this->module_.intern(param.name);
+        param_value.type = param_type;
+        const ValueId param_id = this->append_value(param_value);
+        this->current_function_->param_values.push_back(param_id);
+
+        Value slot = this->module_.make_value();
+        slot.kind = ValueKind::alloca;
+        slot.name = this->module_.intern(param.name);
+        slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_type);
+        const ValueId slot_id = this->append_value(slot);
+        LocalBinding binding{
+            .slot = slot_id,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = param_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        };
+        this->register_local_cleanup(binding, param.name);
+        this->bind_local(param.name_id, binding);
+        this->append_store(slot_id, param_id);
+    }
+
+    this->lower_block(lambda.body);
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(0);
+        Terminator term;
+        term.kind = TerminatorKind::return_;
+        this->set_terminator(this->current_block_, term);
+    }
+    this->pop_local_scope();
+    this->locals_.clear();
+    this->local_scopes_.clear();
+    this->cleanup_scopes_.clear();
+    this->current_function_ = nullptr;
 }
 
 void Lowerer::lower_generic_function_body(

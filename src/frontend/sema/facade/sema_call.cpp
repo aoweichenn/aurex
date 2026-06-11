@@ -1088,6 +1088,12 @@ TypeHandle SemanticAnalyzerCore::analyze_function_value_call_expr(
     const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const std::string_view name)
 {
     const TypeHandle callee_type = this->analyze_expr(expr.callee);
+    if (const CheckedLambdaInfo* const closure = this->lambda_for_environment_type(callee_type);
+        closure != nullptr && is_valid(closure->function_type)) {
+        this->validate_call_arguments(expr, name.empty() ? SEMA_FUNCTION_VALUE_CALL_NAME : name,
+            closure->param_types, 0, false);
+        return this->record_expr_type(expr_id, closure->return_type);
+    }
     if (!this->state_.checked.types.is_function(callee_type)) {
         this->report_general(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);

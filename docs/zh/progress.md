@@ -5,11 +5,14 @@
 
 ## 总体状态
 
-2026-06-11：函数式基础补强已完成第一步：无捕获 lambda 字面量现在是一等 `fn(...) -> T`
-函数值，支持 `fn(x: T) -> U => expr` 表达式体和 `fn(x: T) -> U { ... }` 块体；lambda
-可赋给函数类型、作为参数/返回值流动，并通过现有函数值间接调用路径进入 IR/LLVM/native execution。
-捕获外层局部或参数的 closure 会被显式诊断为 `capturing closures are not supported yet`，不会被误降级成薄
-函数指针。该补强仍不实现标准库、allocator、closure environment、`Fn`/`FnMut`/`FnOnce` 能力或 runtime helper。
+2026-06-11：M20 函数式/闭包核心子集已完成。无捕获 lambda 字面量是一等 `fn(...) -> T`
+薄函数值，支持 `fn(x: T) -> U => expr` 表达式体和 `fn(x: T) -> U { ... }` 块体；lambda
+可赋给函数类型、作为参数/返回值流动，并通过现有函数值间接调用路径进入 IR/LLVM/native execution。捕获闭包现在
+支持按值捕获非泛型依赖、非 borrowed-view 的 `Copy` 外层局部或参数，生成内部匿名 environment record 和
+hidden-env thunk；支持局部存储、直接调用、嵌套捕获、match guard 中使用捕获值，以及函数返回捕获闭包后再调用。
+捕获闭包仍不会被误降级成薄函数指针，非 `Copy`、borrowed-view 和 generic-dependent 捕获会被拒绝。该补强仍不实现
+标准库、allocator、heap closure box、`Fn`/`FnMut`/`FnOnce` 能力、mutable / consuming capture mode、generic
+closure environment ABI、borrowed closure environment escape 求解或 runtime helper。
 
 2026-06-11：M20d Runtime Lowering ABI Design Closure 已完成。M20d 不实现标准库、不实现
 `Box<dyn Trait>`、不实现 allocator API、不实现 owning dyn 用户值、不生成 dynamic Drop runtime，不做 backend

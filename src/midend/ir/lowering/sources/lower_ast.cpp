@@ -505,7 +505,7 @@ void Lowerer::lower_lambda_declarations()
 {
     for (base::u32 index = 0; index < this->checked_.lambdas.size(); ++index) {
         const sema::CheckedLambdaInfo& lambda = this->checked_.lambdas[index];
-        if (lambda.captures_unsupported || !sema::is_valid(lambda.type)) {
+        if (lambda.has_unsupported_capture || !sema::is_valid(lambda.type)) {
             continue;
         }
         Function function = this->module_.make_function();
@@ -517,6 +517,12 @@ void Lowerer::lower_lambda_declarations()
         function.is_unsafe = false;
         function.is_variadic = false;
         function.return_type = lambda.return_type;
+        if (!lambda.captures.empty() && sema::is_valid(lambda.environment_type)) {
+            function.signature_params.push_back(FunctionParam{
+                this->module_.intern("env"),
+                this->module_.types.pointer(sema::PointerMutability::mut, lambda.environment_type),
+            });
+        }
         if (syntax::is_valid(lambda.expr) && lambda.expr.value < this->ast_.exprs.size()) {
             const syntax::LambdaExprPayload* const payload = this->ast_.exprs.lambda_payload(lambda.expr.value);
             if (payload != nullptr) {

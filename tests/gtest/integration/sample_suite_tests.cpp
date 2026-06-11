@@ -70,6 +70,11 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
     {"generic_sizeof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"increment_syntax", "increment operator is not supported"},
+    {"lambda_capture_assign", "left side of assignment must be writable"},
+    {"lambda_capture_borrowed_view", "capturing a borrowed-view value in a closure is not supported yet"},
+    {"lambda_capture_function_pointer_mismatch", "initializer type does not match declared type"},
+    {"lambda_capture_generic_dependent", "capturing a generic-dependent value in a closure is not supported yet"},
+    {"lambda_capture_non_copy", "capturing a non-Copy value in a closure is not supported yet"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict",
         "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
@@ -513,6 +518,16 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_compound_assignment)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_block_expression)
 {
     run_positive_runtime_smoke_sample("expressions", "block_expression.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_closure_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_closure_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_closure_return)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_closure_return.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic)

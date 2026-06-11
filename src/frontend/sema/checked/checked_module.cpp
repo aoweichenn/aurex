@@ -1066,6 +1066,7 @@ CheckedLambdaInfo CheckedModule::make_lambda_info() const
 {
     CheckedLambdaInfo info;
     info.param_types = this->make_type_handle_list();
+    info.captures = make_sema_vector<CheckedLambdaInfo::Capture>(*this->arena_);
     return info;
 }
 
@@ -1368,11 +1369,29 @@ CheckedLambdaInfo CheckedModule::clone_lambda_info(const CheckedLambdaInfo& othe
     copy.module = other.module;
     copy.owner_item = other.owner_item;
     copy.type = other.type;
+    copy.function_type = other.function_type;
+    copy.environment_type = other.environment_type;
+    copy.environment_name = this->intern_text(other.environment_name);
+    copy.environment_name_id = other.environment_name_id;
+    copy.environment_c_name = this->intern_text(other.environment_c_name);
+    copy.environment_c_name_id = other.environment_c_name_id;
     copy.return_type = other.return_type;
     copy.param_types = this->copy_type_handle_list(other.param_types);
     copy.body = other.body;
     copy.range = other.range;
-    copy.captures_unsupported = other.captures_unsupported;
+    copy.has_unsupported_capture = other.has_unsupported_capture;
+    copy.captures.reserve(other.captures.size());
+    for (const CheckedLambdaInfo::Capture& capture : other.captures) {
+        copy.captures.push_back(CheckedLambdaInfo::Capture{
+            this->intern_text(capture.name),
+            capture.name_id,
+            this->intern_text(capture.field_name),
+            capture.field_name_id,
+            capture.type,
+            capture.use_range,
+            capture.declaration_range,
+        });
+    }
     return copy;
 }
 
@@ -2181,6 +2200,12 @@ void rebind_lambda_info_texts(
 {
     rebind_interned_text(info.name, from, to);
     rebind_interned_text(info.c_name, from, to);
+    rebind_interned_text(info.environment_name, from, to);
+    rebind_interned_text(info.environment_c_name, from, to);
+    for (CheckedLambdaInfo::Capture& capture : info.captures) {
+        rebind_interned_text(capture.name, from, to);
+        rebind_interned_text(capture.field_name, from, to);
+    }
 }
 
 void rebind_trait_signature_texts(

@@ -755,6 +755,7 @@ public:
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type) const;
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
     [[nodiscard]] TypeHandle analyze_lambda_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] const CheckedLambdaInfo* lambda_for_environment_type(TypeHandle type) const noexcept;
 
     // Expression analysis contract:
     // - analyze_expr(expr, expected) owns final-type cache lookup and expected-type key recording.

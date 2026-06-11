@@ -1,0 +1,10 @@
+module lambda_capture_generic_dependent;
+
+fn capture_generic[T](value: T) -> i32 where T: Copy {
+    let get = fn() -> T => value;
+    return 0;
+}
+
+fn main() -> i32 {
+    return capture_generic(1);
+}

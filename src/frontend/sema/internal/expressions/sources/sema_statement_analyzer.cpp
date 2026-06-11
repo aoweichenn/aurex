@@ -28,6 +28,8 @@ constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_UNKNOWN = 0;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_FALSE = 1;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_TRUE = 2;
 constexpr std::string_view SEMA_LAMBDA_SYMBOL_PREFIX = "__aurex_lambda";
+constexpr std::string_view SEMA_LAMBDA_ENV_SYMBOL_SUFFIX = "_env";
+constexpr std::string_view SEMA_LAMBDA_CAPTURE_FIELD_PREFIX = "__capture_";
 
 enum class ControlFlowQuery {
     guarantees_return,
@@ -96,6 +98,14 @@ struct LambdaCaptureLocalBinding {
     base::SourceRange range{};
     std::string_view name{};
     base::usize lambda_depth = 0;
+};
+
+struct LambdaCaptureCandidate {
+    IdentId name_id = INVALID_IDENT_ID;
+    std::string_view name{};
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::SourceRange use_range{};
+    base::SourceRange declaration_range{};
 };
 
 [[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
@@ -170,7 +180,7 @@ public:
         }
     }
 
-    [[nodiscard]] bool scan(const syntax::StmtId body)
+    [[nodiscard]] std::vector<LambdaCaptureCandidate> scan(const syntax::StmtId body)
     {
         std::vector<LambdaCaptureScanAction> pending;
         pending.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
@@ -180,7 +190,7 @@ public:
             pending.pop_back();
             this->handle_action(action, pending);
         }
-        return this->saw_capture_;
+        return std::move(this->captures_);
     }
 
 private:
@@ -652,27 +662,28 @@ private:
         }
         if (const LambdaCaptureLocalBinding* const local_binding = this->outer_lambda_binding(name->text_id);
             local_binding != nullptr) {
-            this->report_capture(expr, name->text, local_binding->range);
             return;
         }
         const Symbol* const symbol = this->core_.state_.names.symbols.find(name->text_id);
         if (symbol == nullptr || (symbol->kind != SymbolKind::local && symbol->kind != SymbolKind::parameter)) {
             return;
         }
-        this->report_capture(expr, name->text, symbol->range);
+        this->record_capture(expr, name->text, *symbol);
     }
 
-    void report_capture(
-        const syntax::ExprId expr, const std::string_view name, const base::SourceRange& declaration_range)
+    void record_capture(const syntax::ExprId expr, const std::string_view name, const Symbol& symbol)
     {
-        if (!this->reported_captures_.insert(expr.value).second) {
+        if (!is_valid(symbol.name_id) || this->captured_name_ids_.contains(symbol.name_id)) {
             return;
         }
-        this->saw_capture_ = true;
-        this->core_.report_general(
-            expr_range_or(this->core_.ctx_.module, expr, declaration_range), std::string(SEMA_LAMBDA_CAPTURE_UNSUPPORTED));
-        this->core_.report_note(declaration_range, SemanticDiagnosticKind::general,
-            "captured local `" + std::string(name) + "` is declared here");
+        this->captured_name_ids_.insert(symbol.name_id);
+        this->captures_.push_back(LambdaCaptureCandidate{
+            symbol.name_id,
+            name.empty() ? symbol.name.view() : name,
+            symbol.type,
+            expr_range_or(this->core_.ctx_.module, expr, symbol.range),
+            symbol.range,
+        });
     }
 
     void push_scope()
@@ -751,9 +762,9 @@ private:
     SemanticAnalyzerCore& core_;
     std::vector<std::vector<LambdaCaptureLocalBinding>> local_scopes_;
     std::vector<base::usize> lambda_scope_depths_;
-    std::unordered_set<base::u32> reported_captures_;
+    std::unordered_set<IdentId, IdentIdHash> captured_name_ids_;
+    std::vector<LambdaCaptureCandidate> captures_;
     base::usize current_lambda_depth_ = 0;
-    bool saw_capture_ = false;
 };
 
 [[nodiscard]] std::string lambda_symbol_name(
@@ -770,6 +781,183 @@ private:
     name += "e";
     name += std::to_string(expr.value);
     return name;
+}
+
+[[nodiscard]] std::string lambda_environment_symbol_name(const std::string_view lambda_symbol)
+{
+    std::string name(lambda_symbol);
+    name += SEMA_LAMBDA_ENV_SYMBOL_SUFFIX;
+    return name;
+}
+
+[[nodiscard]] std::string lambda_capture_field_name(const base::usize index, const std::string_view capture_name)
+{
+    std::string name(SEMA_LAMBDA_CAPTURE_FIELD_PREFIX);
+    name += std::to_string(index);
+    if (!capture_name.empty()) {
+        name.push_back('_');
+        name += capture_name;
+    }
+    return name;
+}
+
+[[nodiscard]] bool lambda_captures_contain_array(
+    const TypeTable& types, const std::span<const LambdaCaptureCandidate> captures) noexcept
+{
+    for (const LambdaCaptureCandidate& capture : captures) {
+        if (types.contains_array(capture.type)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool lambda_capture_type_can_contain_borrow(
+    const SemanticAnalyzerCore& core, const TypeHandle type)
+{
+    if (!is_valid(type)) {
+        return false;
+    }
+    std::vector<TypeHandle> pending{type};
+    std::unordered_set<base::u32> visited;
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || current.value >= core.state_.checked.types.size()
+            || !visited.insert(current.value).second) {
+            continue;
+        }
+        const TypeInfo& info = core.state_.checked.types.get(current);
+        switch (info.kind) {
+            case TypeKind::builtin:
+                if (info.builtin == BuiltinType::str) {
+                    return true;
+                }
+                break;
+            case TypeKind::reference:
+            case TypeKind::slice:
+            case TypeKind::trait_object:
+                return true;
+            case TypeKind::array:
+                pending.push_back(info.array_element);
+                break;
+            case TypeKind::tuple:
+                pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                break;
+            case TypeKind::struct_: {
+                const StructInfo* const structure = core.find_struct(current);
+                if (structure != nullptr) {
+                    for (const StructFieldInfo& field : structure->fields) {
+                        pending.push_back(field.type);
+                    }
+                }
+                break;
+            }
+            case TypeKind::enum_: {
+                const SemanticAnalyzerCore::EnumCaseList* const cases = core.find_enum_cases_by_type(current);
+                if (cases != nullptr) {
+                    for (const EnumCaseInfo* const enum_case : *cases) {
+                        if (enum_case != nullptr) {
+                            pending.insert(
+                                pending.end(), enum_case->payload_types.begin(), enum_case->payload_types.end());
+                        }
+                    }
+                }
+                break;
+            }
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
+            case TypeKind::pointer:
+            case TypeKind::function:
+            case TypeKind::opaque_struct:
+                break;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool lambda_capture_type_is_generic_dependent(
+    const SemanticAnalyzerCore& core, const TypeHandle type)
+{
+    if (!is_valid(type)) {
+        return false;
+    }
+    std::vector<TypeHandle> pending{type};
+    std::unordered_set<base::u32> visited;
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || current.value >= core.state_.checked.types.size()
+            || !visited.insert(current.value).second) {
+            continue;
+        }
+        const TypeInfo& info = core.state_.checked.types.get(current);
+        switch (info.kind) {
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
+                return true;
+            case TypeKind::array:
+                pending.push_back(info.array_element);
+                break;
+            case TypeKind::tuple:
+                pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                break;
+            case TypeKind::struct_: {
+                const StructInfo* const structure = core.find_struct(current);
+                if (structure != nullptr) {
+                    for (const StructFieldInfo& field : structure->fields) {
+                        pending.push_back(field.type);
+                    }
+                }
+                break;
+            }
+            case TypeKind::enum_: {
+                const auto* const cases = core.find_enum_cases_by_type(current);
+                if (cases != nullptr) {
+                    for (const EnumCaseInfo* const enum_case : *cases) {
+                        if (enum_case != nullptr) {
+                            pending.insert(
+                                pending.end(), enum_case->payload_types.begin(), enum_case->payload_types.end());
+                        }
+                    }
+                }
+                break;
+            }
+            case TypeKind::builtin:
+            case TypeKind::reference:
+            case TypeKind::slice:
+            case TypeKind::pointer:
+            case TypeKind::function:
+            case TypeKind::opaque_struct:
+            case TypeKind::trait_object:
+                break;
+        }
+    }
+    return false;
+}
+
+void report_noncopy_lambda_capture(
+    SemanticAnalyzerCore& core, const LambdaCaptureCandidate& capture)
+{
+    core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_COPY_UNSUPPORTED));
+    core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+        "captured value `" + std::string(capture.name) + "` is declared here");
+}
+
+void report_borrowed_view_lambda_capture(
+    SemanticAnalyzerCore& core, const LambdaCaptureCandidate& capture)
+{
+    core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_BORROW_UNSUPPORTED));
+    core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+        "captured value `" + std::string(capture.name) + "` is declared here");
+}
+
+void report_generic_dependent_lambda_capture(
+    SemanticAnalyzerCore& core, const LambdaCaptureCandidate& capture)
+{
+    core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_GENERIC_UNSUPPORTED));
+    core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+        "captured value `" + std::string(capture.name) + "` is declared here");
 }
 
 [[nodiscard]] bool expr_is_indexed_or_dereferenced_place(
@@ -2570,7 +2758,36 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     const syntax::ItemId owner_item = this->core_.state_.flow.current_item;
     const std::string symbol = lambda_symbol_name(module, owner_item, expr_id);
     const IdentId symbol_id = this->core_.intern_generated_key(symbol);
-    const bool captures_unsupported = LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
+    std::vector<LambdaCaptureCandidate> captures =
+        LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
+    bool has_unsupported_capture = false;
+    for (const LambdaCaptureCandidate& capture : captures) {
+        if (lambda_capture_type_is_generic_dependent(this->core_, capture.type)) {
+            report_generic_dependent_lambda_capture(this->core_, capture);
+            has_unsupported_capture = true;
+            continue;
+        }
+        if (!this->core_.type_satisfies_capability(capture.type, CapabilityKind::copy)) {
+            report_noncopy_lambda_capture(this->core_, capture);
+            has_unsupported_capture = true;
+        }
+        if (lambda_capture_type_can_contain_borrow(this->core_, capture.type)) {
+            report_borrowed_view_lambda_capture(this->core_, capture);
+            has_unsupported_capture = true;
+        }
+    }
+
+    const bool has_captures = !captures.empty();
+    const std::string environment_symbol = lambda_environment_symbol_name(symbol);
+    const IdentId environment_symbol_id = has_captures ? this->core_.intern_generated_key(environment_symbol)
+                                                       : INVALID_IDENT_ID;
+    TypeHandle environment_type = INVALID_TYPE_HANDLE;
+    if (has_captures && !has_unsupported_capture) {
+        environment_type = this->core_.state_.checked.types.named_struct(
+            environment_symbol, environment_symbol,
+            lambda_captures_contain_array(this->core_.state_.checked.types, captures));
+    }
+    const TypeHandle lambda_type = has_captures ? environment_type : function_type;
 
     CheckedLambdaInfo info = this->core_.state_.checked.make_lambda_info();
     info.expr = expr_id;
@@ -2580,15 +2797,69 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     info.c_name_id = this->core_.state_.checked.intern_c_name(symbol);
     info.module = module;
     info.owner_item = owner_item;
-    info.type = function_type;
+    info.type = lambda_type;
+    info.function_type = function_type;
+    info.environment_type = environment_type;
+    info.environment_name = this->core_.state_.checked.intern_text(environment_symbol);
+    info.environment_name_id = environment_symbol_id;
+    info.environment_c_name = this->core_.state_.checked.intern_text(environment_symbol);
+    info.environment_c_name_id =
+        has_captures ? this->core_.state_.checked.intern_c_name(environment_symbol) : INVALID_IDENT_ID;
     info.return_type = return_type;
     info.param_types = this->core_.state_.checked.copy_type_handle_list(param_types);
     info.body = expr.lambda_body;
     info.range = expr.range;
-    info.captures_unsupported = captures_unsupported;
+    info.has_unsupported_capture = has_unsupported_capture;
+    info.captures.reserve(captures.size());
+    for (base::usize index = 0; index < captures.size(); ++index) {
+        const LambdaCaptureCandidate& capture = captures[index];
+        const std::string field_name = lambda_capture_field_name(index, capture.name);
+        const IdentId field_name_id = this->core_.intern_generated_key(field_name);
+        info.captures.push_back(CheckedLambdaInfo::Capture{
+            this->core_.source_name_text(capture.name_id, capture.name),
+            capture.name_id,
+            this->core_.state_.checked.intern_text(field_name),
+            field_name_id,
+            capture.type,
+            capture.use_range,
+            capture.declaration_range,
+        });
+    }
+    if (has_captures && !has_unsupported_capture && is_valid(environment_type)) {
+        StructInfo environment = this->core_.state_.checked.make_struct_info();
+        environment.name = info.environment_name;
+        environment.name_id = environment_symbol_id;
+        environment.c_name = info.environment_c_name;
+        environment.module = module;
+        environment.type = environment_type;
+        environment.visibility = syntax::Visibility::private_;
+        environment.part_index = this->core_.item_part_index(owner_item);
+        environment.stable_id = this->core_.stable_definition_id(
+            module, StableSymbolKind::synthetic, environment_symbol_id, environment_symbol);
+        environment.incremental_key = this->core_.stable_incremental_key(environment.stable_id, environment_symbol);
+        environment.fields.reserve(info.captures.size());
+        for (base::usize index = 0; index < info.captures.size(); ++index) {
+            const CheckedLambdaInfo::Capture& capture = info.captures[index];
+            environment.fields.push_back(StructFieldInfo{
+                capture.field_name,
+                capture.field_name_id,
+                capture.field_name,
+                module,
+                capture.type,
+                capture.use_range,
+                syntax::Visibility::private_,
+                this->core_.stable_member_key(environment.stable_id, StableSymbolKind::struct_field,
+                    capture.field_name_id, capture.field_name.view(), static_cast<base::u32>(index)),
+            });
+        }
+        const ModuleLookupKey environment_key{module.value, environment_symbol_id};
+        const auto inserted = this->core_.state_.checked.structs.emplace(environment_key, std::move(environment));
+        this->core_.state_.types.struct_infos_by_type[environment_type.value] = &inserted.first->second;
+    }
     this->core_.state_.checked.lambdas.push_back(std::move(info));
+    const CheckedLambdaInfo& checked_lambda = this->core_.state_.checked.lambdas.back();
 
-    if (captures_unsupported) {
+    if (has_unsupported_capture) {
         this->core_.record_expr_c_name(expr_id, symbol);
         return this->core_.record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -2603,7 +2874,23 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
             .unsafe_context_depth = this->core_.state_.flow.unsafe_context_depth,
             .symbols = SymbolTable{},
         });
-    this->core_.state_.names.symbols.push_scope(expr.lambda_params.size());
+    this->core_.state_.names.symbols.push_scope(expr.lambda_params.size() + checked_lambda.captures.size());
+    for (const CheckedLambdaInfo::Capture& capture : checked_lambda.captures) {
+        static_cast<void>(this->core_.state_.names.symbols.insert(
+            Symbol{
+                SymbolKind::parameter,
+                capture.name,
+                capture.name_id,
+                {},
+                syntax::INVALID_MODULE_ID,
+                capture.type,
+                capture.declaration_range,
+                false,
+                syntax::Visibility::private_,
+                {},
+            },
+            this->core_.ctx_.diagnostics));
+    }
     for (base::usize index = 0; index < expr.lambda_params.size(); ++index) {
         const syntax::ParamDecl& param = expr.lambda_params[index];
         const TypeHandle param_type = index < param_types.size() ? param_types[index] : INVALID_TYPE_HANDLE;
@@ -2633,7 +2920,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     }
 
     this->core_.record_expr_c_name(expr_id, symbol);
-    return this->core_.record_expr_type(expr_id, function_type);
+    return this->core_.record_expr_type(expr_id, lambda_type);
 }
 
 void SemanticAnalyzerCore::StatementAnalyzer::analyze_block(

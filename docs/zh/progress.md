@@ -1,9 +1,20 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20e Builtin Derive Attribute Closure
+阶段：M20f Struct Field Reference Borrow Closure
 
 ## 总体状态
+
+2026-06-11：M20f Struct Field Reference Borrow Closure 已完成。这个阶段没有新增结构体字段语法，
+而是把已有 `record.field` place projection 在 safe reference、borrow checker 和 IR lowering 中的行为固定成
+release-quality 回归覆盖：`&record.field`、`&mut record.field` 能通过 `PlaceInfo` / projection-aware loan
+facts 建模，field borrow lowering 到 IR `field_addr`，不同已知字段的 loan 可以分离，同一字段写入和整个
+parent overwrite 会在借用 carrier 后续使用时触发 `SEMA_ACTIVE_BORROW_CONFLICT`，不可写 base 上的
+`&mut record.field` 会触发 `SEMA_MUTABLE_REFERENCE_PLACE`，返回 local field reference 会触发
+`SEMA_BORROWED_LOCAL_ESCAPE`。
+
+本轮没有改动标准库、没有新增 resource-field `take`/`swap`/partial-overwrite helper、没有打开完整宏系统，
+也没有实现默认参数 / 命名参数。字段引用借用收口后，下一项基础易用性主线应进入默认参数 / 命名参数的语义设计和实现。
 
 2026-06-11：M20e Builtin Derive Attribute Closure 已完成。当前实现的是编译器内建 derive 属性，不是完整宏系统：
 `#[derive(Copy, Eq, Hash)]` 可写在 `struct` 和 `enum` 上，parser/AST 保留属性，sema 将满足条件的派生记录到

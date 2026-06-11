@@ -1,5 +1,32 @@
 # 版本文档
 
+## M20f Struct Field Reference Borrow Closure
+
+当前版本收口结构体字段引用借用。该阶段不新增字段访问语法；`record.field` 已存在，M20f 固定的是它作为
+safe reference source、borrow checker place projection 和 IR address lowering 的完整行为。
+
+新增或固定：
+
+- `&record.field` 可作为 shared field borrow。
+- `&mut record.field` 可作为 mutable field borrow，但 base place 必须可写。
+- 字段 borrow 复用 M7 `PlaceInfo` 和 projection-aware loan facts，不新增 ad hoc escape 规则。
+- 不同已知 struct 字段的 active loans 可分离；借用 `pair.left` 时写入 `pair.right` 可以通过。
+- 同一字段写入会和 active field borrow 冲突，并报告 loan creation、invalidating action 和 later carrier use。
+- 整个 parent overwrite 会和任一 active child field borrow 冲突。
+- local struct field reference 不能作为函数返回值逃逸。
+- address-of field projection lowering 到 IR `field_addr`，并保留字段名投影信息。
+- 新增独立集成测试文件 `tests/gtest/integration/struct_field_reference_tests.cpp`，避免继续扩大既有
+  `regression_tests.cpp`。
+
+仍不实现：
+
+- 新字段访问语法。
+- 标准库。
+- resource field `take` / `swap` / partial-overwrite helper。
+- partial move 的完整用户语义。
+- 默认参数 / 命名参数。
+- 完整 macro / proc-macro 或用户自定义 derive。
+
 ## M20e Builtin Derive Attribute Closure
 
 当前版本补齐第一批编译器内建 derive 属性。`#[derive(Copy, Eq, Hash)]` 可写在 `struct` 和

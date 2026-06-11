@@ -133,6 +133,7 @@ if(BUILD_TESTING)
             tests/gtest/integration/randomized_integration_tests.cpp
             tests/gtest/integration/regression_tests.cpp
             tests/gtest/integration/sample_suite_tests.cpp
+            tests/gtest/integration/struct_field_reference_tests.cpp
             tests/gtest/midend/ir/analysis_manager_tests.cpp
             tests/gtest/midend/ir/ir_dump_tests.cpp
             tests/gtest/midend/ir/ir_fingerprint_tests.cpp

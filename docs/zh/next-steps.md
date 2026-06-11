@@ -5,16 +5,23 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M20e 内建 derive 属性已完成，下一步收口基础易用性痛点
+## 当前实现入口：M20f 结构体字段引用借用已收口，下一步推进默认参数 / 命名参数
 
 M20e 已完成第一批编译器内建 derive 属性：`#[derive(Copy, Eq, Hash)]` 支持 `struct` / `enum`，
 `Eq` / `Hash` 进入 checked capability facts，`Copy` 继续服从资源语义和 `impl Drop` custom destructor 事实。
 这不是完整 macro/proc-macro 系统，也不生成标准库方法。
 
+M20f 已把“结构体引用字段”按现有语言模型收口：它不引入新语法，而是固定 `&record.field`、
+`&mut record.field`、字段 projection borrow、字段级 conflict/lifetime diagnostics 和 IR `field_addr`
+lowering 的回归覆盖。实现复用 M7 的 `PlaceInfo`、projection-aware loan facts 和 field-disjoint conflict
+判断；不同已知字段可以分离，同一字段写入和整个 parent overwrite 会在 later carrier use 时诊断，local field
+reference 不能逃逸函数。该阶段不实现标准库，也不实现 resource-field overwrite helper、`take`/`swap` 之类库能力。
+
 接下来建议继续沿用户最痛的基础易用性问题推进，不进入标准库：
 
-- P1：结构体引用字段。目标是让 `&record.field`、`&mut record.field`、字段 projection borrow、字段级 conflict
-  和 lifetime/loan diagnostics 更自然，复用 M7 的 place/projection/loan facts，避免再写 ad hoc escape 规则。
+- P1：结构体引用字段已完成。当前可用面是 source-level field borrow、field-disjoint loan separation、
+  same-field/parent invalidation diagnostics 和 `field_addr` lowering；resource field partial move/overwrite
+  仍以后续资源语义阶段处理。
 - P2：默认参数 / 命名参数。目标是先做函数签名和 call-site 的语义设计，区分 ABI/public surface、重载/泛型推断、
   默认值 const-eval 边界、source compatibility 和 diagnostics，再决定第一批实现范围。
 - P3：完整 macro / proc-macro / 用户自定义 derive。当前不建议立刻推进；现有内建 derive 已解决 capability

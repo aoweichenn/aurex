@@ -1025,6 +1025,40 @@ TypeHandleList CheckedModule::copy_type_handle_list(const std::span<const TypeHa
     return copy;
 }
 
+SemaVector<syntax::ExprId> CheckedModule::make_expr_id_list() const
+{
+    return make_sema_vector<syntax::ExprId>(*this->arena_);
+}
+
+SemaVector<syntax::ExprId> CheckedModule::copy_expr_id_list(const std::span<const syntax::ExprId> values) const
+{
+    SemaVector<syntax::ExprId> copy = this->make_expr_id_list();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+FunctionParamInfoList CheckedModule::make_function_param_info_list() const
+{
+    return make_sema_vector<FunctionParamInfo>(*this->arena_);
+}
+
+FunctionParamInfoList CheckedModule::copy_function_param_info_list(
+    const std::span<const FunctionParamInfo> values)
+{
+    FunctionParamInfoList copy = this->make_function_param_info_list();
+    copy.reserve(values.size());
+    for (const FunctionParamInfo& value : values) {
+        copy.push_back(FunctionParamInfo{
+            this->intern_text(value.name),
+            value.name_id,
+            value.default_value,
+            value.range,
+        });
+    }
+    return copy;
+}
+
 SemaVector<StructFieldInfo> CheckedModule::make_struct_field_list() const
 {
     return make_sema_vector<StructFieldInfo>(*this->arena_);
@@ -1080,6 +1114,7 @@ FunctionSignature CheckedModule::make_function_signature() const
 {
     FunctionSignature signature;
     signature.param_types = this->make_type_handle_list();
+    signature.params = this->make_function_param_info_list();
     signature.generic_args = this->make_type_handle_list();
     return signature;
 }
@@ -1110,6 +1145,7 @@ TraitMethodRequirement CheckedModule::make_trait_method_requirement() const
 {
     TraitMethodRequirement requirement;
     requirement.param_types = this->make_type_handle_list();
+    requirement.params = this->make_function_param_info_list();
     return requirement;
 }
 
@@ -1174,12 +1210,16 @@ TraitEvidence CheckedModule::make_trait_evidence() const
 
 TraitMethodCallBinding CheckedModule::make_trait_method_call_binding() const
 {
-    return {};
+    TraitMethodCallBinding binding;
+    binding.ordered_args = make_sema_vector<syntax::ExprId>(*this->arena_);
+    return binding;
 }
 
 FunctionCallBinding CheckedModule::make_function_call_binding() const
 {
-    return {};
+    FunctionCallBinding binding;
+    binding.ordered_args = make_sema_vector<syntax::ExprId>(*this->arena_);
+    return binding;
 }
 
 TraitObjectMethodSlotFact CheckedModule::make_trait_object_method_slot_fact() const
@@ -1359,6 +1399,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.trait_name_id = other.trait_name_id;
     copy.return_type = other.return_type;
     copy.param_types = this->copy_type_handle_list(other.param_types);
+    copy.params = this->copy_function_param_info_list(other.params);
     copy.generic_args = this->copy_type_handle_list(other.generic_args);
     copy.range = other.range;
     copy.is_extern_c = other.is_extern_c;
@@ -1645,12 +1686,17 @@ TraitMethodCallBinding CheckedModule::clone_trait_method_call_binding(const Trai
 {
     TraitMethodCallBinding copy = other;
     copy.method_name = this->intern_text(other.method_name);
+    copy.ordered_args = make_sema_vector<syntax::ExprId>(*this->arena_);
+    copy.ordered_args.assign(other.ordered_args.begin(), other.ordered_args.end());
     return copy;
 }
 
 FunctionCallBinding CheckedModule::clone_function_call_binding(const FunctionCallBinding& other) const
 {
-    return other;
+    FunctionCallBinding copy = other;
+    copy.ordered_args = make_sema_vector<syntax::ExprId>(*this->arena_);
+    copy.ordered_args.assign(other.ordered_args.begin(), other.ordered_args.end());
+    return copy;
 }
 
 TraitObjectMethodSlotFact CheckedModule::clone_trait_object_method_slot_fact(
@@ -2194,6 +2240,9 @@ void rebind_function_signature_texts(
 {
     rebind_interned_text(signature.name, from, to);
     rebind_interned_text(signature.c_name, from, to);
+    for (FunctionParamInfo& param : signature.params) {
+        rebind_interned_text(param.name, from, to);
+    }
 }
 
 void rebind_struct_info_texts(
@@ -2239,6 +2288,9 @@ void rebind_trait_signature_texts(
     }
     for (TraitMethodRequirement& requirement : signature.requirements) {
         rebind_interned_text(requirement.name, from, to);
+        for (FunctionParamInfo& param : requirement.params) {
+            rebind_interned_text(param.name, from, to);
+        }
     }
 }
 
@@ -2568,14 +2620,47 @@ void append_part_origin(std::ostringstream& out, const bool show_parts, const ba
     return checked.types.display_name(info.trait_name, info.trait_args);
 }
 
-void append_type_list(std::ostringstream& out, const CheckedModule& checked, std::span<const TypeHandle> types)
+void append_param_info_list(std::ostringstream& out, const CheckedModule& checked,
+    const std::span<const FunctionParamInfo> params, const std::span<const TypeHandle> param_types)
 {
-    for (base::usize index = 0; index < types.size(); ++index) {
-        if (index > 0) {
+    for (base::usize index = 0; index < param_types.size(); ++index) {
+        if (index != 0) {
             out << ", ";
         }
-        out << checked.types.display_name(types[index]);
+        if (index < params.size() && !params[index].name.empty()) {
+            out << params[index].name << ":";
+        }
+        out << checked.types.display_name(param_types[index]);
+        if (index < params.size() && syntax::is_valid(params[index].default_value)) {
+            out << "=e" << params[index].default_value.value;
+        }
     }
+}
+
+void append_param_type_list(
+    std::ostringstream& out, const CheckedModule& checked, const std::span<const TypeHandle> param_types)
+{
+    for (base::usize index = 0; index < param_types.size(); ++index) {
+        if (index != 0) {
+            out << ", ";
+        }
+        out << checked.types.display_name(param_types[index]);
+    }
+}
+
+void append_ordered_arg_list(std::ostringstream& out, const std::span<const syntax::ExprId> ordered_args)
+{
+    if (ordered_args.empty()) {
+        return;
+    }
+    out << " ordered_args=[";
+    for (base::usize index = 0; index < ordered_args.size(); ++index) {
+        if (index != 0) {
+            out << ", ";
+        }
+        out << "e" << ordered_args[index].value;
+    }
+    out << "]";
 }
 
 [[nodiscard]] std::string_view trait_predicate_kind_name(const TraitPredicateKind kind) noexcept
@@ -2992,7 +3077,7 @@ std::string dump_checked_module(const CheckedModule& checked)
                 out << "unsafe ";
             }
             out << requirement.name << "(";
-            append_type_list(out, checked, requirement.param_types);
+            append_param_type_list(out, checked, requirement.param_types);
             out << ") -> " << checked.types.display_name(requirement.return_type);
             if (requirement.is_variadic) {
                 out << " variadic";
@@ -3111,6 +3196,7 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
             << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
             << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
+        append_ordered_arg_list(out, binding.ordered_args);
         if (is_valid(binding.dispatch_receiver_type)
             && binding.dispatch_receiver_type.value != binding.receiver_type.value) {
             out << " dispatch_receiver=" << checked.types.display_name(binding.dispatch_receiver_type);
@@ -3259,6 +3345,7 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
             << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
             << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
+        append_ordered_arg_list(out, binding.ordered_args);
         append_part_origin(out, show_parts, binding.part_index);
         out << "\n";
     }
@@ -3698,6 +3785,11 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
         if (fn.is_export_c) {
             out << " export_c";
+        }
+        if (!fn.param_types.empty()) {
+            out << " params=[";
+            append_param_info_list(out, checked, fn.params, fn.param_types);
+            out << "]";
         }
         if (fn.is_destructor) {
             out << " destructor";

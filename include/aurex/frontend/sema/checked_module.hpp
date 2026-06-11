@@ -248,6 +248,7 @@ struct TraitMethodRequirement {
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
+    FunctionParamInfoList params;
     syntax::StmtId default_body = syntax::INVALID_STMT_ID;
     base::SourceRange range{};
     bool is_unsafe = false;
@@ -471,6 +472,7 @@ struct TraitMethodCallBinding {
     TypeHandle dispatch_receiver_type = INVALID_TYPE_HANDLE;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
+    SemaVector<syntax::ExprId> ordered_args;
     ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
     bool receiver_auto_borrow = false;
     bool receiver_two_phase_eligible = false;
@@ -589,6 +591,7 @@ struct FunctionCallBinding {
     syntax::ExprId callee_expr = syntax::INVALID_EXPR_ID;
     FunctionLookupKey function_key;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
+    SemaVector<syntax::ExprId> ordered_args;
     base::u32 receiver_arg_count = 0;
     ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
     bool receiver_auto_borrow = false;
@@ -1671,6 +1674,10 @@ public:
 
     [[nodiscard]] TypeHandleList make_type_handle_list() const;
     [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values) const;
+    [[nodiscard]] SemaVector<syntax::ExprId> make_expr_id_list() const;
+    [[nodiscard]] SemaVector<syntax::ExprId> copy_expr_id_list(std::span<const syntax::ExprId> values) const;
+    [[nodiscard]] FunctionParamInfoList make_function_param_info_list() const;
+    [[nodiscard]] FunctionParamInfoList copy_function_param_info_list(std::span<const FunctionParamInfo> values);
     [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list() const;
     [[nodiscard]] SemaVector<StructFieldInfo> copy_struct_field_list(std::span<const StructFieldInfo> values);
     [[nodiscard]] DerivedCapabilityList make_derived_capability_list() const;

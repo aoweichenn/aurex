@@ -571,13 +571,13 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins)
     const ExprId str_byte_len_id = ast.push_cast_like_expr(
         ExprKind::str_byte_len, {}, syntax::CastExprPayload{syntax::INVALID_TYPE_ID, str_value_id});
     const ExprId str_from_bytes_id = ast.push_call_expr(ExprKind::str_from_bytes_unchecked, {},
-        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id, length_value_id}});
+        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id, length_value_id}, {}});
     const ExprId str_slice_id =
         ast.push_slice_expr({}, syntax::SliceExprPayload{str_value_id, length_value_id, length_value_id});
     const ExprId str_suffix_id =
         ast.push_slice_expr({}, syntax::SliceExprPayload{str_value_id, length_value_id, syntax::INVALID_EXPR_ID});
     const ExprId malformed_str_from_bytes_id = ast.push_call_expr(
-        ExprKind::str_from_bytes_unchecked, {}, syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id}});
+        ExprKind::str_from_bytes_unchecked, {}, syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id}, {}});
     const ExprId raw_literal_id = ast.push_literal_expr(ExprKind::raw_string_literal, {}, "r\"C:\\tmp\\a\"");
     const ExprId byte_string_literal_id = ast.push_literal_expr(ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");
     const ExprId char_literal_id = ast.push_literal_expr(ExprKind::char_literal, {}, "'\\u{03BB}'");

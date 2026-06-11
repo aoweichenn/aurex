@@ -48,6 +48,32 @@ constexpr std::string_view SEMA_DYNPROJECT_INTRINSIC_NAME = "dynproject";
     return syntax::is_valid(expr) && expr.value < module.exprs.size();
 }
 
+[[nodiscard]] bool call_arg_has_label(
+    const std::span<const syntax::CallArgLabelDecl> labels, const base::usize index) noexcept
+{
+    return index < labels.size() && !labels[index].name.empty();
+}
+
+[[nodiscard]] std::string_view call_param_name_or_index(
+    const std::span<const FunctionParamInfo> params, const base::usize index) noexcept
+{
+    if (index < params.size() && !params[index].name.empty()) {
+        return params[index].name;
+    }
+    return "<argument>";
+}
+
+[[nodiscard]] std::optional<base::usize> find_call_param_index(
+    const std::span<const FunctionParamInfo> params, const std::string_view name, const base::usize receiver_count)
+{
+    for (base::usize index = receiver_count; index < params.size(); ++index) {
+        if (params[index].name == name) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] bool is_unqualified_dynproject_selector(
     const SemanticAnalyzerCore::NamedTypeSelector& selector) noexcept
 {
@@ -728,8 +754,9 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(con
     }
     this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
-    this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
-    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
+    CallArgumentResolution call_args =
+        this->resolve_call_arguments(expr, name, signature->param_types, signature->params, 0, signature->is_variadic);
+    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, call_args.ordered_args, callee_range);
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
@@ -756,8 +783,10 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_method_call_expr(const
         if (!receiver_valid || signature.param_types.size() < receiver_count) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-        this->validate_call_arguments(expr, name, signature.param_types, receiver_count, signature.is_variadic);
-        this->record_function_call_binding(expr_id, expr.callee, signature, receiver_count, callee.range);
+        CallArgumentResolution call_args = this->resolve_call_arguments(
+            expr, name, signature.param_types, signature.params, receiver_count, signature.is_variadic);
+        this->record_function_call_binding(
+            expr_id, expr.callee, signature, receiver_count, call_args.ordered_args, callee.range);
         return this->record_expr_type(expr_id, signature.return_type);
     };
 
@@ -815,6 +844,11 @@ TypeHandle SemanticAnalyzerCore::analyze_enum_constructor_call(
     const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const EnumCaseInfo& enum_case)
 {
     const std::string case_display_name = enum_case_display_name(this->state_.checked.types, enum_case);
+    if (std::ranges::any_of(expr.arg_labels, [](const syntax::CallArgLabelDecl& label) {
+            return !label.name.empty();
+        })) {
+        this->report_type(expr.range, std::string(SEMA_NAMED_ARGUMENT_NOT_SUPPORTED));
+    }
     if (enum_case.payload_types.empty()) {
         this->report_pattern(expr.range, sema_enum_payload_constructor_case_message(case_display_name));
     }
@@ -859,6 +893,10 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             param_env_signature.name_id = callee.field_name_id;
             param_env_signature.return_type = resolution.return_type;
             param_env_signature.param_types = this->state_.checked.copy_type_handle_list(resolution.param_types);
+            if (resolution.requirement != nullptr) {
+                param_env_signature.params =
+                    this->state_.checked.copy_function_param_info_list(resolution.requirement->params);
+            }
             param_env_signature.range = callee.range;
             param_env_signature.is_unsafe = resolution.requirement != nullptr && resolution.requirement->is_unsafe;
             param_env_signature.is_variadic = resolution.requirement != nullptr && resolution.requirement->is_variadic;
@@ -884,7 +922,8 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         if (!trait_receiver_valid || resolution.param_types.size() < receiver_count) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-        this->validate_call_arguments(expr, name, resolution.param_types, receiver_count, call_signature->is_variadic);
+        CallArgumentResolution call_args = this->resolve_call_arguments(
+            expr, name, resolution.param_types, call_signature->params, receiver_count, call_signature->is_variadic);
         TraitMethodCallBinding binding = this->state_.checked.make_trait_method_call_binding();
         binding.call_expr = expr_id;
         binding.callee_expr = expr.callee;
@@ -915,6 +954,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             is_valid(resolution.dispatch_receiver_type) ? resolution.dispatch_receiver_type : receiver_type;
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;
+        binding.ordered_args.assign(call_args.ordered_args.begin(), call_args.ordered_args.end());
         const ReceiverAccessFacts access = receiver_access_facts(
             this->state_.checked.types, resolution.param_types, receiver_count, trait_receiver_type);
         binding.receiver_access = access.access;
@@ -1079,8 +1119,10 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
     if (!receiver_valid || signature->param_types.size() < receiver_count) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    this->validate_call_arguments(expr, name, signature->param_types, receiver_count, signature->is_variadic);
-    this->record_function_call_binding(expr_id, expr.callee, *signature, receiver_count, callee.range);
+    CallArgumentResolution call_args = this->resolve_call_arguments(
+        expr, name, signature->param_types, signature->params, receiver_count, signature->is_variadic);
+    this->record_function_call_binding(
+        expr_id, expr.callee, *signature, receiver_count, call_args.ordered_args, callee.range);
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
@@ -1124,8 +1166,9 @@ TypeHandle SemanticAnalyzerCore::analyze_function_call_expr(const syntax::ExprId
         }
         this->validate_unsafe_call(*signature, callee_range);
         this->record_expr_c_name(expr.callee, signature->c_name);
-        this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
-        this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
+        CallArgumentResolution call_args = this->resolve_call_arguments(
+            expr, name, signature->param_types, signature->params, 0, signature->is_variadic);
+        this->record_function_call_binding(expr_id, expr.callee, *signature, 0, call_args.ordered_args, callee_range);
         return this->record_expr_type(expr_id, signature->return_type);
     }
     signature = this->find_function_selector(expr.callee,
@@ -1136,14 +1179,15 @@ TypeHandle SemanticAnalyzerCore::analyze_function_call_expr(const syntax::ExprId
     this->ensure_function_return_known(*signature, call_expr_range_or(this->ctx_.module, expr.callee, callee_range));
     this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
-    this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
-    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
+    CallArgumentResolution call_args =
+        this->resolve_call_arguments(expr, name, signature->param_types, signature->params, 0, signature->is_variadic);
+    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, call_args.ordered_args, callee_range);
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
 void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId call_expr,
     const syntax::ExprId callee_expr, const FunctionSignature& signature, const base::u32 receiver_arg_count,
-    const base::SourceRange& range)
+    const std::span<const syntax::ExprId> ordered_args, const base::SourceRange& range)
 {
     if (!syntax::is_valid(call_expr) || !sema::is_valid(signature.semantic_key)) {
         return;
@@ -1154,6 +1198,7 @@ void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId cal
     binding.function_key = signature.semantic_key;
     binding.return_type = signature.return_type;
     binding.receiver_arg_count = receiver_arg_count;
+    binding.ordered_args.assign(ordered_args.begin(), ordered_args.end());
     const std::optional<syntax::ExprId> receiver_expr = receiver_expr_for_call_callee(this->ctx_.module, callee_expr);
     const TypeHandle receiver_type =
         receiver_expr.has_value() ? this->cached_expr_type(*receiver_expr) : INVALID_TYPE_HANDLE;
@@ -1167,37 +1212,154 @@ void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId cal
     this->state_.checked.append_function_call_binding(std::move(binding));
 }
 
-void SemanticAnalyzerCore::validate_call_arguments(const SemanticAnalyzerCore::ExprView& expr,
-    const std::string_view name, const std::span<const TypeHandle> param_types, const base::usize receiver_count,
-    const bool is_variadic)
+SemanticAnalyzerCore::CallArgumentResolution SemanticAnalyzerCore::resolve_call_arguments(
+    const SemanticAnalyzerCore::ExprView& expr,
+    const std::string_view name,
+    const std::span<const TypeHandle> param_types,
+    const std::span<const FunctionParamInfo> params,
+    const base::usize receiver_count,
+    const bool is_variadic,
+    const bool check_argument_types)
 {
-    const base::usize expected_count = param_types.size() >= receiver_count ? param_types.size() - receiver_count : 0;
-    if (is_variadic ? expr.args.size() < expected_count : expected_count != expr.args.size()) {
-        this->report_type(expr.range, sema_argument_count_message(name));
+    CallArgumentResolution resolution;
+    resolution.ordered_args = this->state_.checked.make_expr_id_list();
+
+    const bool has_named_args =
+        std::ranges::any_of(expr.arg_labels, [](const syntax::CallArgLabelDecl& label) {
+            return !label.name.empty();
+        });
+    const bool has_parameter_metadata = params.size() >= param_types.size();
+    if (has_named_args && !has_parameter_metadata) {
+        this->report_type(expr.range, std::string(SEMA_NAMED_ARGUMENT_NOT_SUPPORTED));
+        resolution.ok = false;
+        return resolution;
     }
-    const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
-    for (base::usize i = 0; i < count; ++i) {
-        const TypeHandle expected = param_types[i + receiver_count];
-        const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
-        if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report_type_mismatch(call_expr_range_or(this->ctx_.module, expr.args[i], expr.range),
+
+    std::vector<syntax::ExprId> ordered(param_types.size(), syntax::INVALID_EXPR_ID);
+    std::vector<bool> provided(param_types.size(), false);
+    std::vector<syntax::ExprId> variadic_args;
+    base::usize next_positional_param = receiver_count;
+    bool saw_named_arg = false;
+    bool reported_count = false;
+    for (base::usize arg_index = 0; arg_index < expr.args.size(); ++arg_index) {
+        const syntax::ExprId arg = expr.args[arg_index];
+        if (call_arg_has_label(expr.arg_labels, arg_index)) {
+            saw_named_arg = true;
+            const syntax::CallArgLabelDecl& label = expr.arg_labels[arg_index];
+            if (is_variadic) {
+                this->report_type(label.range, std::string(SEMA_NAMED_ARGUMENT_NOT_SUPPORTED));
+                resolution.ok = false;
+                continue;
+            }
+            const std::optional<base::usize> param_index =
+                find_call_param_index(params, label.name, receiver_count);
+            if (!param_index.has_value() || *param_index >= param_types.size()) {
+                this->report_type(label.range, sema_unknown_named_argument_message(name, label.name));
+                resolution.ok = false;
+                continue;
+            }
+            if (provided[*param_index]) {
+                this->report_type(label.range, sema_duplicate_named_argument_message(label.name));
+                resolution.ok = false;
+                continue;
+            }
+            ordered[*param_index] = arg;
+            provided[*param_index] = true;
+            continue;
+        }
+
+        if (saw_named_arg) {
+            this->report_type(call_expr_range_or(this->ctx_.module, arg, expr.range),
+                std::string(SEMA_POSITIONAL_ARGUMENT_AFTER_NAMED));
+            resolution.ok = false;
+            continue;
+        }
+        if (next_positional_param < param_types.size()) {
+            ordered[next_positional_param] = arg;
+            provided[next_positional_param] = true;
+            ++next_positional_param;
+            continue;
+        }
+        if (is_variadic) {
+            variadic_args.push_back(arg);
+            continue;
+        }
+        if (!reported_count) {
+            this->report_type(expr.range, sema_argument_count_message(name));
+            reported_count = true;
+        }
+        resolution.ok = false;
+    }
+
+    for (base::usize param_index = receiver_count; param_index < param_types.size(); ++param_index) {
+        if (provided[param_index]) {
+            continue;
+        }
+        if (param_index < params.size() && syntax::is_valid(params[param_index].default_value)) {
+            ordered[param_index] = params[param_index].default_value;
+            provided[param_index] = true;
+            continue;
+        }
+        if (has_named_args || !reported_count) {
+            this->report_type(expr.range,
+                has_named_args
+                    ? sema_missing_required_argument_message(name, call_param_name_or_index(params, param_index))
+                    : sema_argument_count_message(name));
+            reported_count = true;
+        }
+        resolution.ok = false;
+    }
+
+    for (base::usize param_index = receiver_count; param_index < param_types.size(); ++param_index) {
+        if (!provided[param_index]) {
+            continue;
+        }
+        const syntax::ExprId arg = ordered[param_index];
+        resolution.ordered_args.push_back(arg);
+        if (!check_argument_types) {
+            continue;
+        }
+        const TypeHandle expected = param_types[param_index];
+        const TypeHandle actual = this->analyze_expr(arg, expected);
+        if (!this->can_assign(expected, actual, arg)) {
+            this->report_type_mismatch(call_expr_range_or(this->ctx_.module, arg, expr.range),
                 sema_argument_type_message(name), expected, actual);
+            resolution.ok = false;
         }
         static_cast<void>(this->check_m2_value_abi(
-            expected, ValueAbiContext::argument, call_expr_range_or(this->ctx_.module, expr.args[i], expr.range)));
+            expected, ValueAbiContext::argument, call_expr_range_or(this->ctx_.module, arg, expr.range)));
     }
-    if (is_variadic) {
-        for (base::usize i = count; i < expr.args.size(); ++i) {
-            const TypeHandle actual = this->analyze_expr(expr.args[i]);
+    resolution.ordered_args.insert(resolution.ordered_args.end(), variadic_args.begin(), variadic_args.end());
+
+    if (is_variadic && check_argument_types) {
+        for (const syntax::ExprId variadic_arg : variadic_args) {
+            const TypeHandle actual = this->analyze_expr(variadic_arg);
             if (!is_valid(actual)) {
-                this->report_type(call_expr_range_or(this->ctx_.module, expr.args[i], expr.range),
+                this->report_type(call_expr_range_or(this->ctx_.module, variadic_arg, expr.range),
                     sema_variadic_argument_type_infer_message(name));
+                resolution.ok = false;
             } else if (!this->check_m2_value_abi(actual, ValueAbiContext::argument,
-                           call_expr_range_or(this->ctx_.module, expr.args[i], expr.range))) {
+                           call_expr_range_or(this->ctx_.module, variadic_arg, expr.range))) {
                 continue;
             }
         }
     }
+    return resolution;
+}
+
+void SemanticAnalyzerCore::validate_call_arguments(const SemanticAnalyzerCore::ExprView& expr,
+    const std::string_view name, const std::span<const TypeHandle> param_types, const base::usize receiver_count,
+    const bool is_variadic)
+{
+    static const std::vector<FunctionParamInfo> NO_PARAM_INFO;
+    if (std::ranges::any_of(expr.arg_labels, [](const syntax::CallArgLabelDecl& label) {
+            return !label.name.empty();
+        })) {
+        this->report_type(expr.range, std::string(SEMA_NAMED_ARGUMENT_NOT_SUPPORTED));
+        return;
+    }
+    static_cast<void>(this->resolve_call_arguments(
+        expr, name, param_types, NO_PARAM_INFO, receiver_count, is_variadic));
 }
 
 } // namespace aurex::sema

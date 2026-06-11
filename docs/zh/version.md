@@ -1,5 +1,45 @@
 # 版本文档
 
+## M20g Default And Named Call Arguments Closure
+
+当前版本收口默认参数和命名参数。该阶段不引入标准库，也不改变 ABI 层的函数签名；默认值和命名实参是
+source-level call sugar，sema 会把 call-site 参数归一化为 checked `ordered_args`，后续 lowering 和分析只消费
+归一化顺序。
+
+新增或固定：
+
+- 普通函数参数可以声明默认值：`fn f(a: i32, b: i32 = 1) -> i32`。
+- inherent method 参数可以声明默认值，receiver 仍按第一个 `self` 参数处理。
+- 泛型函数和 owner generic method 的默认参数可在实例化调用中使用。
+- 普通函数调用可使用命名参数：`f(a: 1, b: 2)`。
+- positional 参数可以出现在 named 参数之前：`f(1, c: 3)`。
+- named 参数按目标函数参数名重排，checked binding 保存 `ordered_args`。
+- 缺失的默认参数由声明上的默认表达式填充，并按该参数类型做期望类型分析。
+- trait method / static trait dispatch / dyn method dispatch 在有参数名元数据时支持命名参数。
+- IR lowering 使用 checked `ordered_args`，因此 native execution 按参数声明顺序传参。
+- borrow summary、body flow graph、body loan precheck、place-state precheck、move analysis 和 borrow escape /
+  lambda capture 扫描都使用 checked `ordered_args`，命名重排不会破坏 borrow / move 语义。
+- checked dump 会显示带默认值的参数和 call binding 的 `ordered_args=[...]`，便于 query/tooling 侧检查。
+
+当前诊断边界：
+
+- required 参数不能出现在 default 参数之后。
+- named 参数之后不能再写 positional 参数。
+- 未知 named 参数、重复 named 参数和缺失 required 参数会分别诊断。
+- named 参数不支持 enum constructor、function value / lambda 间接调用和 variadic C call。
+- 默认参数不支持 C ABI / variadic 函数。
+- trait requirement 上的默认参数暂不支持；trait impl / method call 可以使用命名参数。
+- 默认表达式当前不把前序参数放进作用域，`fn f(a: i32, b: i32 = a)` 仍不是本阶段能力。
+
+仍不实现：
+
+- 标准库。
+- ABI 级 optional/default parameter metadata。
+- overload resolution 或多重候选中的 named argument disambiguation。
+- function value / lambda 的命名参数和默认参数调用。
+- enum constructor 的命名 payload 参数。
+- 默认表达式引用前序参数、comptime default evaluation 或依赖默认值。
+
 ## M20f Struct Field Reference Borrow Closure
 
 当前版本收口结构体字段引用借用。该阶段不新增字段访问语法；`record.field` 已存在，M20f 固定的是它作为
@@ -24,7 +64,6 @@ safe reference source、borrow checker place projection 和 IR address lowering 
 - 标准库。
 - resource field `take` / `swap` / partial-overwrite helper。
 - partial move 的完整用户语义。
-- 默认参数 / 命名参数。
 - 完整 macro / proc-macro 或用户自定义 derive。
 
 ## M20e Builtin Derive Attribute Closure

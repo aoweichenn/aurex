@@ -1,9 +1,23 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M20f Struct Field Reference Borrow Closure
+阶段：M20g Default And Named Call Arguments Closure
 
 ## 总体状态
+
+2026-06-11：M20g Default And Named Call Arguments Closure 已完成。本阶段补齐默认参数和命名参数的第一版
+release-quality 用户面：普通函数、inherent method、泛型函数 / 泛型 method 可以声明默认参数；普通函数、
+inherent method、trait/static/dyn method call 可以使用命名参数，只要被调用目标保留了参数名元数据。
+
+实现方式是 source-level call sugar：parser/AST 保存参数默认值和 call-site label；sema 在解析调用时按参数顺序生成
+checked `ordered_args`，缺失的默认参数使用声明上的默认表达式填充，命名参数按目标参数表重排。IR lowering、borrow
+summary、body flow graph、body loan precheck、place-state precheck、move analysis 和 borrow escape / lambda capture
+扫描都改为消费 checked ordered args，避免命名参数改变借用、move 和 lowering 的实际语义顺序。native execution
+回归已覆盖默认值填充、命名重排和 method receiver 场景。
+
+本轮仍不实现任何标准库；也不支持 trait requirement 默认参数、C ABI / variadic 默认参数、variadic 命名参数、
+function value / lambda 命名调用、enum constructor 命名调用，以及默认表达式引用前序参数。新增收口文档见
+[Aurex M20g Default And Named Call Arguments Closure Release Baseline](m20-default-named-arguments-release.md)。
 
 2026-06-11：M20f Struct Field Reference Borrow Closure 已完成。这个阶段没有新增结构体字段语法，
 而是把已有 `record.field` place projection 在 safe reference、borrow checker 和 IR lowering 中的行为固定成
@@ -13,8 +27,8 @@ parent overwrite 会在借用 carrier 后续使用时触发 `SEMA_ACTIVE_BORROW_
 `&mut record.field` 会触发 `SEMA_MUTABLE_REFERENCE_PLACE`，返回 local field reference 会触发
 `SEMA_BORROWED_LOCAL_ESCAPE`。
 
-本轮没有改动标准库、没有新增 resource-field `take`/`swap`/partial-overwrite helper、没有打开完整宏系统，
-也没有实现默认参数 / 命名参数。字段引用借用收口后，下一项基础易用性主线应进入默认参数 / 命名参数的语义设计和实现。
+本轮没有改动标准库、没有新增 resource-field `take`/`swap`/partial-overwrite helper、没有打开完整宏系统。
+字段引用借用收口后的基础易用性主线已由 M20g 默认参数 / 命名参数承接。
 
 2026-06-11：M20e Builtin Derive Attribute Closure 已完成。当前实现的是编译器内建 derive 属性，不是完整宏系统：
 `#[derive(Copy, Eq, Hash)]` 可写在 `struct` 和 `enum` 上，parser/AST 保留属性，sema 将满足条件的派生记录到

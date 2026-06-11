@@ -176,6 +176,14 @@ struct AstModule {
         return this->exprs.append_call(kind, range, callee, std::move(args));
     }
 
+    template <typename ArgAllocator, typename LabelAllocator>
+    [[nodiscard]] ExprId push_call_expr(const ExprKind kind, const base::SourceRange& range, const ExprId callee,
+        std::vector<ExprId, ArgAllocator> args, std::vector<CallArgLabelDecl, LabelAllocator> arg_labels)
+    {
+        this->intern_call_arg_labels(arg_labels);
+        return this->exprs.append_call(kind, range, callee, std::move(args), std::move(arg_labels));
+    }
+
     [[nodiscard]] ExprId push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload);
 
     template <typename ParamAllocator>
@@ -408,6 +416,14 @@ private:
     {
         for (ParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
+        }
+    }
+
+    template <typename Allocator>
+    void intern_call_arg_labels(std::vector<CallArgLabelDecl, Allocator>& labels)
+    {
+        for (CallArgLabelDecl& label : labels) {
+            this->intern_identifier_text(label.name, label.name_id);
         }
     }
 

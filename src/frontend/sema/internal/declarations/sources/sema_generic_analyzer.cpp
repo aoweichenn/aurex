@@ -161,6 +161,7 @@ struct GenericNodeSpanBuilder {
         }
         for (const syntax::ParamDecl& param : item.params) {
             this->add_type(param.type);
+            this->add_expr(param.default_value);
         }
         this->add_type(item.return_type);
         this->add_type(item.impl_type);
@@ -398,6 +399,7 @@ private:
                     payload != nullptr) {
                     for (const syntax::ParamDecl& param : payload->params) {
                         this->add_type(param.type);
+                        this->add_expr(param.default_value);
                     }
                     this->add_type(payload->return_type);
                     this->add_stmt(payload->body);
@@ -3067,10 +3069,6 @@ bool SemanticAnalyzerCore::GenericAnalyzer::infer_generic_arguments(
     const GenericTemplateInfo& info, const SemanticAnalyzerCore::ExprView& call, std::vector<TypeHandle>& args)
 {
     const syntax::ItemNode function = this->core_.ctx_.module.items[info.item.value];
-    if (call.args.size() != function.params.size()) {
-        this->core_.report_type(call.range, sema_argument_count_message(info.name));
-        return false;
-    }
 
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_placeholder_context(info, generic_context);
@@ -3084,11 +3082,28 @@ bool SemanticAnalyzerCore::GenericAnalyzer::infer_generic_arguments(
         }
     }
 
+    std::vector<FunctionParamInfo> params;
+    params.reserve(function.params.size());
+    for (const syntax::ParamDecl& param : function.params) {
+        params.push_back(FunctionParamInfo{
+            this->core_.state_.checked.intern_text(param.name),
+            param.name_id,
+            param.default_value,
+            param.range,
+        });
+    }
+    const CallArgumentResolution call_args =
+        this->core_.resolve_call_arguments(call, info.name, pattern_param_types, params, 0, false, false);
+    if (!call_args.ok) {
+        return false;
+    }
+
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;
-    for (base::usize i = 0; i < call.args.size(); ++i) {
-        const TypeHandle actual = this->core_.analyze_expr(call.args[i], pattern_param_types[i]);
+    for (base::usize i = 0; i < call_args.ordered_args.size(); ++i) {
+        const syntax::ExprId arg = call_args.ordered_args[i];
+        const TypeHandle actual = this->core_.analyze_expr(arg, pattern_param_types[i]);
         if (!this->core_.unify_generic_type(pattern_param_types[i], actual, inferred)) {
-            this->core_.report_type(this->core_.ctx_.module.exprs.range(call.args[i].value),
+            this->core_.report_type(this->core_.ctx_.module.exprs.range(arg.value),
                 sema_generic_call_argument_unify_message(info.name));
             return false;
         }
@@ -3199,11 +3214,6 @@ bool SemanticAnalyzerCore::GenericAnalyzer::infer_generic_method_arguments(const
         this->core_.report_type(call.range, sema_argument_count_message(info.name));
         return false;
     }
-    const base::usize expected_arg_count = function.params.size() - receiver_count;
-    if (call.args.size() != expected_arg_count) {
-        this->core_.report_type(call.range, sema_argument_count_message(info.name));
-        return false;
-    }
 
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_placeholder_context(info, generic_context);
@@ -3217,17 +3227,35 @@ bool SemanticAnalyzerCore::GenericAnalyzer::infer_generic_method_arguments(const
         }
     }
 
+    std::vector<FunctionParamInfo> params;
+    params.reserve(function.params.size());
+    for (const syntax::ParamDecl& param : function.params) {
+        params.push_back(FunctionParamInfo{
+            this->core_.state_.checked.intern_text(param.name),
+            param.name_id,
+            param.default_value,
+            param.range,
+        });
+    }
+    const CallArgumentResolution call_args =
+        this->core_.resolve_call_arguments(
+            call, info.name, pattern_param_types, params, receiver_count, false, false);
+    if (!call_args.ok) {
+        return false;
+    }
+
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;
     if (!this->core_.unify_generic_type(info.impl_type_pattern, owner_type, inferred)) {
         return false;
     }
-    for (base::usize i = 0; i < call.args.size(); ++i) {
+    for (base::usize i = 0; i < call_args.ordered_args.size(); ++i) {
         const TypeHandle pattern = pattern_param_types[i + receiver_count];
-        const TypeHandle actual = this->core_.analyze_expr(call.args[i], pattern);
+        const syntax::ExprId arg = call_args.ordered_args[i];
+        const TypeHandle actual = this->core_.analyze_expr(arg, pattern);
         if (!this->core_.unify_generic_type(pattern, actual, inferred)) {
             const base::SourceRange arg_range =
-                syntax::is_valid(call.args[i]) && call.args[i].value < this->core_.ctx_.module.exprs.size()
-                ? this->core_.ctx_.module.exprs.range(call.args[i].value)
+                syntax::is_valid(arg) && arg.value < this->core_.ctx_.module.exprs.size()
+                ? this->core_.ctx_.module.exprs.range(arg.value)
                 : call.range;
             this->core_.report_type(arg_range, sema_generic_call_argument_unify_message(info.name));
             return false;
@@ -3327,6 +3355,12 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_pl
         signature.definition_item = info.item;
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->core_.resolve_type(param.type));
+            signature.params.push_back(FunctionParamInfo{
+                this->core_.state_.checked.intern_text(param.name),
+                param.name_id,
+                param.default_value,
+                param.range,
+            });
         }
         signature.incremental_key = this->core_.stable_incremental_key(signature.stable_id,
             this->core_.function_incremental_fingerprint(
@@ -3468,6 +3502,12 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         signature.definition_item = info.item;
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->core_.resolve_type(param.type));
+            signature.params.push_back(FunctionParamInfo{
+                this->core_.state_.checked.intern_text(param.name),
+                param.name_id,
+                param.default_value,
+                param.range,
+            });
         }
     }
 
@@ -3620,6 +3660,12 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
         signature.definition_item = info.item;
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->core_.resolve_type(param.type));
+            signature.params.push_back(FunctionParamInfo{
+                this->core_.state_.checked.intern_text(param.name),
+                param.name_id,
+                param.default_value,
+                param.range,
+            });
         }
     }
 
@@ -3820,6 +3866,12 @@ void SemanticAnalyzerCore::GenericAnalyzer::analyze_generic_function_definition(
         signature.visibility = info.visibility;
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->core_.resolve_type(param.type));
+            signature.params.push_back(FunctionParamInfo{
+                this->core_.state_.checked.intern_text(param.name),
+                param.name_id,
+                param.default_value,
+                param.range,
+            });
         }
         signature.incremental_key = this->core_.stable_incremental_key(signature.stable_id,
             this->core_.function_incremental_fingerprint(

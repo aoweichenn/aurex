@@ -263,15 +263,22 @@ std::optional<syntax::ParamDecl> ItemParser::parse_param()
         is_deinit = true;
     }
     const syntax::TypeId type = this->parse_type();
+    syntax::ExprId default_value = syntax::INVALID_EXPR_ID;
+    base::SourceRange range = this->merge(name.range, this->type_range_or(type, name.range));
+    if (this->match(TokenKind::equal)) {
+        default_value = this->parse_expr(ExprContext::normal);
+        range = this->merge(range, this->expr_range_or(default_value, this->previous().range));
+    }
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
     return syntax::ParamDecl{
         name.text(),
         type,
-        this->merge(name.range, this->type_range_or(type, name.range)),
+        range,
         syntax::INVALID_IDENT_ID,
         is_deinit,
+        default_value,
     };
 }
 

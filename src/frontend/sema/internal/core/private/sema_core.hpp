@@ -387,6 +387,7 @@ public:
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
         std::span<const syntax::ExprId> args{};
+        std::span<const syntax::CallArgLabelDecl> arg_labels{};
         std::span<const syntax::ParamDecl> lambda_params{};
         syntax::TypeId lambda_return_type = syntax::INVALID_TYPE_ID;
         syntax::StmtId lambda_body = syntax::INVALID_STMT_ID;
@@ -423,6 +424,11 @@ public:
         TypeHandle operand_expected = INVALID_TYPE_HANDLE;
         TypeHandle result_intrinsic = INVALID_TYPE_HANDLE;
         bool null_pointer_comparison = false;
+    };
+
+    struct CallArgumentResolution {
+        SemaVector<syntax::ExprId> ordered_args;
+        bool ok = true;
     };
 
     struct PatternBinding {
@@ -831,7 +837,11 @@ public:
     [[nodiscard]] TypeHandle analyze_explicit_generic_function_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const ExprView& apply, std::string_view name);
     void record_function_call_binding(syntax::ExprId call_expr, syntax::ExprId callee_expr,
-        const FunctionSignature& signature, base::u32 receiver_arg_count, const base::SourceRange& range);
+        const FunctionSignature& signature, base::u32 receiver_arg_count,
+        std::span<const syntax::ExprId> ordered_args, const base::SourceRange& range);
+    [[nodiscard]] CallArgumentResolution resolve_call_arguments(const ExprView& expr, std::string_view name,
+        std::span<const TypeHandle> param_types, std::span<const FunctionParamInfo> params,
+        base::usize receiver_count, bool is_variadic, bool check_argument_types = true);
     void validate_call_arguments(const ExprView& expr, std::string_view name, std::span<const TypeHandle> param_types,
         base::usize receiver_count, bool is_variadic);
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const ExprView& expr);

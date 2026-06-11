@@ -11,6 +11,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <aurex/frontend/sema/call_arguments.hpp>
+
 #include <frontend/sema/internal/borrow/private/loan_checker.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 #include <frontend/sema/internal/diagnostics/private/sema_diagnostics.hpp>
@@ -2436,9 +2438,28 @@ bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_need_local_loan_check(const
             binding != nullptr && binding->receiver_two_phase_eligible) {
             return true;
         }
-        push_precheck_expression_children(this->core_.ctx_.module, current, pending_exprs, pending_stmts);
+        this->push_checked_precheck_expression_children(current, pending_exprs, pending_stmts);
     }
     return false;
+}
+
+void SemanticAnalyzerCore::BodyLoanChecker::push_checked_precheck_expression_children(const syntax::ExprId expr,
+    std::vector<syntax::ExprId>& pending_exprs, std::vector<syntax::StmtId>& pending_stmts) const
+{
+    if (!valid_expr(this->core_.ctx_.module, expr)) {
+        return;
+    }
+    if (this->core_.ctx_.module.exprs.kind(expr.value) == syntax::ExprKind::call) {
+        const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(expr.value);
+        if (call != nullptr) {
+            push_precheck_expr(pending_exprs, this->core_.ctx_.module, call->callee);
+            const std::span<const syntax::ExprId> call_args =
+                checked_ordered_call_args_or_source(this->core_.state_.checked, expr, *call);
+            pending_exprs.insert(pending_exprs.end(), call_args.begin(), call_args.end());
+            return;
+        }
+    }
+    push_precheck_expression_children(this->core_.ctx_.module, expr, pending_exprs, pending_stmts);
 }
 
 bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const syntax::ItemNode& function) const

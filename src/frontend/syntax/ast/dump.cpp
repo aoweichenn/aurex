@@ -318,6 +318,7 @@ struct ExprDumpView {
     ExprId binary_rhs = INVALID_EXPR_ID;
     ExprId callee = INVALID_EXPR_ID;
     std::span<const ExprId> args{};
+    std::span<const CallArgLabelDecl> arg_labels{};
     std::span<const ParamDecl> lambda_params{};
     TypeId lambda_return_type = INVALID_TYPE_ID;
     StmtId lambda_body = INVALID_STMT_ID;
@@ -400,6 +401,7 @@ struct ExprDumpView {
             const CallExprPayload& payload = *module.exprs.call_payload(id.value);
             view.callee = payload.callee;
             view.args = readonly_span(payload.args);
+            view.arg_labels = readonly_span(payload.arg_labels);
             break;
         }
         case ExprKind::lambda: {
@@ -1179,6 +1181,9 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
                 out << ", ";
             }
             out << expr.lambda_params[i].name << ": " << type_label(module, expr.lambda_params[i].type);
+            if (is_valid(expr.lambda_params[i].default_value)) {
+                out << " = expr#" << expr.lambda_params[i].default_value.value;
+            }
         }
         out << ") -> " << type_label(module, expr.lambda_return_type);
     }
@@ -1201,7 +1206,12 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     if (is_valid(expr.callee)) {
         dump_expr(out, module, expr.callee, depth + 1);
     }
-    for (const ExprId arg : expr.args) {
+    for (base::usize i = 0; i < expr.args.size(); ++i) {
+        const ExprId arg = expr.args[i];
+        if (i < expr.arg_labels.size() && !expr.arg_labels[i].name.empty()) {
+            indent(out, depth + 1);
+            out << "arg_label " << expr.arg_labels[i].name << "\n";
+        }
         dump_expr(out, module, arg, depth + 1);
     }
     if (is_valid(expr.lambda_body)) {
@@ -1440,6 +1450,11 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             out << "deinit ";
         }
         out << type_label(module, param.type) << "\n";
+        if (is_valid(param.default_value)) {
+            indent(out, depth + 2);
+            out << "default\n";
+            dump_expr(out, module, param.default_value, depth + 3);
+        }
     }
     if (is_valid(item.return_type)) {
         indent(out, depth + 1);

@@ -52,6 +52,7 @@ struct BinaryExprPayload {
 struct CallExprPayload {
     ExprId callee = INVALID_EXPR_ID;
     AstArenaVector<ExprId> args;
+    AstArenaVector<CallArgLabelDecl> arg_labels;
 };
 
 struct LambdaExprPayload {
@@ -301,8 +302,19 @@ public:
     [[nodiscard]] ExprId append_call(const ExprKind kind, const base::SourceRange& range, const ExprId callee,
         std::vector<ExprId, ArgAllocator> args)
     {
+        AstArenaVector<CallArgLabelDecl> labels = this->make_list<CallArgLabelDecl>();
         return this->append_header(kind, range,
-            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args))));
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)),
+                std::move(labels)));
+    }
+
+    template <typename ArgAllocator, typename LabelAllocator>
+    [[nodiscard]] ExprId append_call(const ExprKind kind, const base::SourceRange& range, const ExprId callee,
+        std::vector<ExprId, ArgAllocator> args, std::vector<CallArgLabelDecl, LabelAllocator> arg_labels)
+    {
+        return this->append_header(kind, range,
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)),
+                this->copy_or_move_list(std::move(arg_labels))));
     }
 
     [[nodiscard]] ExprId append_lambda(const base::SourceRange& range, LambdaExprPayload payload);
@@ -404,8 +416,19 @@ public:
     void set_call(const base::usize index, const ExprKind kind, const base::SourceRange& range, const ExprId callee,
         std::vector<ExprId, ArgAllocator> args)
     {
+        AstArenaVector<CallArgLabelDecl> labels = this->make_list<CallArgLabelDecl>();
         this->set_header(index, kind, range,
-            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args))));
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)),
+                std::move(labels)));
+    }
+
+    template <typename ArgAllocator, typename LabelAllocator>
+    void set_call(const base::usize index, const ExprKind kind, const base::SourceRange& range, const ExprId callee,
+        std::vector<ExprId, ArgAllocator> args, std::vector<CallArgLabelDecl, LabelAllocator> arg_labels)
+    {
+        this->set_header(index, kind, range,
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)),
+                this->copy_or_move_list(std::move(arg_labels))));
     }
 
     void set_field(base::usize index, const base::SourceRange& range, const FieldExprPayload& payload);

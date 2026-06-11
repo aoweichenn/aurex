@@ -449,6 +449,9 @@ inline constexpr std::string_view PARSER_EXPECT_CALL_ARGUMENTS_END = "expected '
 
 inline constexpr std::string_view PARSER_EXPECT_CALL_ARGUMENT_SEPARATOR = "expected ',' or ')' after argument";
 
+inline constexpr std::string_view PARSER_EXPECT_NAMED_ARGUMENT_VALUE =
+    "expected expression after named argument ':'";
+
 inline constexpr std::string_view PARSER_EXPECT_UNSUPPORTED_UPDATE = "expected unsupported update operator";
 
 inline constexpr std::string_view PARSER_EXPECT_TYPE_POINTER_MUTABILITY = "expected 'mut' or 'const' after '*'";

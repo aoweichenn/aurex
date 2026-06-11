@@ -52,6 +52,36 @@ TEST_F(AurexIntegrationTest, NativeHelloExplicitExecutableOutputs)
     EXPECT_EQ(require_success(q(direct)).output, "hello from Aurex M2\n");
 }
 
+TEST_F(AurexIntegrationTest, NativeDefaultAndNamedArgumentsUseCheckedOrder)
+{
+    const fs::path source = write_native_source_file(tmp_root() / "native_default_named_arguments.ax",
+        "module native_default_named_arguments;\n"
+        "fn mix(a: i32, b: i32 = 10, c: i32 = 100) -> i32 {\n"
+        "  return a + b + c;\n"
+        "}\n"
+        "struct Acc { base: i32; }\n"
+        "impl Acc {\n"
+        "  fn add(self: &Acc, value: i32, scale: i32 = 1) -> i32 {\n"
+        "    return self.base + value * scale;\n"
+        "  }\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let a: Acc = Acc { base: 5 };\n"
+        "  if mix(1) != 111 { return 1; }\n"
+        "  if mix(1, 2) != 103 { return 2; }\n"
+        "  if mix(a: 1, c: 3) != 14 { return 3; }\n"
+        "  if mix(1, c: 3) != 14 { return 4; }\n"
+        "  if a.add(value: 2) != 7 { return 5; }\n"
+        "  if a.add(scale: 3, value: 2) != 11 { return 6; }\n"
+        "  if mix(c: 4, a: 2) != 16 { return 7; }\n"
+        "  return 0;\n"
+        "}\n");
+
+    const fs::path binary = test_bin_root() / "native_default_named_arguments";
+    require_success(aurexc() + " --emit=exe " + q(source) + " -o " + q(binary));
+    EXPECT_EQ(require_success(q(binary)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, NativeDynTraitDispatchUsesRuntimeVtable)
 {
     const fs::path source = write_native_source_file(tmp_root() / "native_dyn_trait_dispatch.ax",

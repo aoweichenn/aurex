@@ -464,7 +464,8 @@ ExprId ExprNodeList::append_binary(
 
 ExprId ExprNodeList::append_call(const ExprKind kind, const base::SourceRange& range, CallExprPayload payload)
 {
-    return this->append_call(kind, range, payload.callee, std::move(payload.args));
+    return this->append_call(
+        kind, range, payload.callee, std::move(payload.args), std::move(payload.arg_labels));
 }
 
 ExprId ExprNodeList::append_lambda(const base::SourceRange& range, LambdaExprPayload payload)
@@ -613,7 +614,7 @@ void ExprNodeList::set_try(const base::usize index, const base::SourceRange& ran
 void ExprNodeList::set_call(
     const base::usize index, const ExprKind kind, const base::SourceRange& range, CallExprPayload payload)
 {
-    this->set_call(index, kind, range, payload.callee, std::move(payload.args));
+    this->set_call(index, kind, range, payload.callee, std::move(payload.args), std::move(payload.arg_labels));
 }
 
 void ExprNodeList::set_field(const base::usize index, const base::SourceRange& range, const FieldExprPayload& payload)
@@ -846,7 +847,8 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         case ExprKind::call:
         case ExprKind::str_from_bytes_unchecked: {
             const CallExprPayload* const payload = other.call_payload(index);
-            static_cast<void>(this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
+            static_cast<void>(this->append_call(
+                kind, range, payload->callee, copy_std_vector(payload->args), copy_std_vector(payload->arg_labels)));
             return;
         }
         case ExprKind::lambda: {

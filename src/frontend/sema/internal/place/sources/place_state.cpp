@@ -11,6 +11,8 @@
 #include <unordered_set>
 #include <utility>
 
+#include <aurex/frontend/sema/call_arguments.hpp>
+
 #include <frontend/sema/internal/place/private/place_state.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 
@@ -705,7 +707,11 @@ bool SemanticAnalyzerCore::PlaceStateAnalyzer::may_need_check(
                 const syntax::CallExprPayload* const call = module.exprs.call_payload(expr.value);
                 if (call != nullptr) {
                     push_precheck_expr(pending_exprs, module, call->callee);
-                    pending_exprs.insert(pending_exprs.end(), call->args.begin(), call->args.end());
+                    const std::span<const syntax::ExprId> call_args = module.exprs.kind(expr.value)
+                            == syntax::ExprKind::call
+                        ? checked_ordered_call_args_or_source(this->core_.state_.checked, expr, *call)
+                        : std::span<const syntax::ExprId>{call->args.data(), call->args.size()};
+                    pending_exprs.insert(pending_exprs.end(), call_args.begin(), call_args.end());
                 }
                 break;
             }

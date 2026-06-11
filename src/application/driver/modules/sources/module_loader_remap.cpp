@@ -85,6 +85,7 @@ void remap_param_decls(std::vector<syntax::ParamDecl, Allocator>& params, const 
 {
     for (syntax::ParamDecl& param : params) {
         param.type = remap_type(param.type, map);
+        param.default_value = remap_expr(param.default_value, map);
     }
 }
 
@@ -238,14 +239,17 @@ template <typename T, typename Allocator>
         case syntax::ExprKind::str_from_bytes_unchecked: {
             syntax::ExprId callee = syntax::INVALID_EXPR_ID;
             syntax::AstArenaVector<syntax::ExprId> args = destination.make_expr_list<syntax::ExprId>();
+            syntax::AstArenaVector<syntax::CallArgLabelDecl> labels =
+                destination.make_expr_list<syntax::CallArgLabelDecl>();
             if (syntax::CallExprPayload* const source_payload = source.exprs.call_payload(index);
                 source_payload != nullptr) {
                 callee = source_payload->callee;
                 args = copy_expr_arena_list(destination, source_payload->args);
+                labels = copy_expr_arena_list(destination, source_payload->arg_labels);
             }
             callee = remap_expr(callee, map);
             remap_expr_ids(args, map);
-            return destination.push_call_expr(kind, range, callee, std::move(args));
+            return destination.push_call_expr(kind, range, callee, std::move(args), std::move(labels));
         }
         case syntax::ExprKind::lambda: {
             syntax::AstArenaVector<syntax::ParamDecl> params = destination.make_expr_list<syntax::ParamDecl>();
@@ -493,6 +497,7 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map)
     }
     for (syntax::ParamDecl& param : node.params) {
         param.type = remap_type(param.type, map);
+        param.default_value = remap_expr(param.default_value, map);
     }
     node.return_type = remap_type(node.return_type, map);
     node.body = remap_stmt(node.body, map);

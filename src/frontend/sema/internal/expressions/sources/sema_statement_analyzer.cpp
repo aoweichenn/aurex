@@ -9,6 +9,8 @@
 
 #include <frontend/sema/internal/borrow/private/contract.hpp>
 #include <frontend/sema/internal/borrow/private/flow_graph.hpp>
+#include <aurex/frontend/sema/call_arguments.hpp>
+
 #include <frontend/sema/internal/borrow/private/loan_checker.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 #include <frontend/sema/internal/expressions/private/sema_statement_analyzer.hpp>
@@ -421,7 +423,10 @@ private:
             case syntax::ExprKind::str_from_bytes_unchecked: {
                 const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(expr.value);
                 if (call != nullptr) {
-                    for (const syntax::ExprId arg : call->args) {
+                    const std::span<const syntax::ExprId> call_args = kind == syntax::ExprKind::call
+                        ? checked_ordered_call_args_or_source(this->core_.state_.checked, expr, *call)
+                        : std::span<const syntax::ExprId>{call->args.data(), call->args.size()};
+                    for (const syntax::ExprId arg : call_args) {
                         push_lambda_capture_expr(pending, this->core_.ctx_.module, arg);
                     }
                     push_lambda_capture_expr(pending, this->core_.ctx_.module, call->callee);
@@ -2191,7 +2196,7 @@ private:
                 if (const BorrowOrigin origin = this->method_receiver_origin(call->callee); origin.present) {
                     return origin;
                 }
-                for (const syntax::ExprId arg : call->args) {
+                for (const syntax::ExprId arg : this->ordered_call_args(current, *call)) {
                     pending.push_back(arg);
                 }
                 continue;
@@ -2266,7 +2271,7 @@ private:
             }
             if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
                 kind == syntax::ExprKind::call && call != nullptr) {
-                for (const syntax::ExprId arg : call->args) {
+                for (const syntax::ExprId arg : this->ordered_call_args(current, *call)) {
                     pending.push_back(arg);
                 }
                 pending.push_back(call->callee);
@@ -2324,7 +2329,7 @@ private:
                 if (const BorrowOrigin origin = this->method_receiver_origin(call->callee); origin.present) {
                     return origin;
                 }
-                for (const syntax::ExprId arg : call->args) {
+                for (const syntax::ExprId arg : this->ordered_call_args(current, *call)) {
                     pending.push_back(arg);
                 }
                 continue;
@@ -2427,6 +2432,12 @@ private:
             return true;
         }
         return false;
+    }
+
+    [[nodiscard]] std::span<const syntax::ExprId> ordered_call_args(
+        const syntax::ExprId call, const syntax::CallExprPayload& payload) const noexcept
+    {
+        return checked_ordered_call_args_or_source(this->core_.state_.checked, call, payload);
     }
 
     [[nodiscard]] BorrowOrigin block_result_borrow_origin(const syntax::BlockExprPayload& block)

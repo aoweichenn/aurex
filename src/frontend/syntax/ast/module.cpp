@@ -110,7 +110,8 @@ ExprId AstModule::push_binary_expr(
 
 ExprId AstModule::push_call_expr(const ExprKind kind, const base::SourceRange& range, CallExprPayload payload)
 {
-    return this->push_call_expr(kind, range, payload.callee, std::move(payload.args));
+    this->intern_call_arg_labels(payload.arg_labels);
+    return this->exprs.append_call(kind, range, std::move(payload));
 }
 
 ExprId AstModule::push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload)

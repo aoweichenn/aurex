@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include <aurex/frontend/sema/call_arguments.hpp>
 #include <midend/ir/lowering/private/lower_ast_internal.hpp>
 
 namespace aurex::ir::detail {
@@ -676,6 +677,11 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
     }
     value.name = target.symbol;
     value.call_target = target.function;
+    const sema::FunctionCallBinding* const direct_binding =
+        this->checked_.function_call_binding_for_expr(expr_id);
+    const std::span<const syntax::ExprId> call_args = direct_binding == nullptr
+        ? expr.args
+        : sema::ordered_call_args_or_source(direct_binding->ordered_args, expr);
     base::usize param_offset = 0;
     syntax::ExprId receiver_callee = expr.callee;
     if (syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
@@ -692,7 +698,7 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
         : nullptr;
     if (callee_field != nullptr && is_valid(target.function) && target.function.value < this->module_.functions.size()
         && this->module_.functions[target.function.value].signature_params.size()
-            == expr.args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
+            == call_args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
         const sema::TypeHandle receiver_type = this->expr_type(callee_field->object);
         const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
         ValueId receiver = INVALID_VALUE_ID;
@@ -713,9 +719,9 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
     }
     const bool variadic_call = is_valid(target.function) && target.function.value < this->module_.functions.size()
         && this->module_.functions[target.function.value].is_variadic;
-    for (base::usize i = 0; i < expr.args.size(); ++i) {
+    for (base::usize i = 0; i < call_args.size(); ++i) {
         sema::TypeHandle param_type = this->call_param_type(target.function, i + param_offset);
-        const ValueId arg = this->lower_expr(expr.args[i], param_type);
+        const ValueId arg = this->lower_expr(call_args[i], param_type);
         if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
         }
@@ -863,12 +869,13 @@ ValueId Lowerer::lower_dyn_trait_call_expr(
         return this->append_value(call);
     }
     call.args.push_back(this->coerce_value(receiver_data, function.function_params.front()));
-    for (base::usize i = 0; i < expr.args.size(); ++i) {
+    const std::span<const syntax::ExprId> call_args = sema::ordered_call_args_or_source(binding.ordered_args, expr);
+    for (base::usize i = 0; i < call_args.size(); ++i) {
         const base::usize param_index = i + IR_METHOD_RECEIVER_PARAM_COUNT;
         sema::TypeHandle param_type = param_index < function.function_params.size()
             ? function.function_params[param_index]
             : sema::INVALID_TYPE_HANDLE;
-        const ValueId arg = this->lower_expr(expr.args[i], param_type);
+        const ValueId arg = this->lower_expr(call_args[i], param_type);
         if (function.function_is_variadic && !sema::is_valid(param_type) && is_valid(arg)
             && arg.value < this->module_.values.size()) {
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);

@@ -3806,7 +3806,7 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsMultiBranchAndRawUnknown)
 
     const IdentId raw_id = module.intern_identifier("raw_str");
     const ExprId raw_call = module.push_call_expr(syntax::ExprKind::str_from_bytes_unchecked, {},
-        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {push_name(module, "data"), push_name(module, "len")}});
+        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {push_name(module, "data"), push_name(module, "len")}, {}});
     syntax::ItemNode raw_function;
     raw_function.kind = syntax::ItemKind::fn_decl;
     raw_function.name = "raw_str";
@@ -4232,30 +4232,33 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversTraitAndConservativeCallEdges)
     missing_trait_value_binding.receiver_type = INVALID_TYPE_HANDLE;
     missing_trait_value_binding.return_type = i32;
     analyzer.state_.checked.trait_method_calls.push_back(missing_trait_value_binding);
-    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
-        .call_expr = direct_missing_arg_call,
-        .callee_expr = direct_missing_arg_callee,
-        .function_key = direct_param_target,
-        .return_type = ref_i32,
-    });
-    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
-        .call_expr = direct_local_call,
-        .callee_expr = direct_local_callee,
-        .function_key = direct_local_target,
-        .return_type = ref_i32,
-    });
-    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
-        .call_expr = direct_bad_index_call,
-        .callee_expr = direct_bad_index_callee,
-        .function_key = direct_bad_index_target,
-        .return_type = ref_i32,
-    });
-    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
-        .call_expr = direct_stale_call,
-        .callee_expr = direct_stale_callee,
-        .function_key = direct_stale_target,
-        .return_type = i32,
-    });
+    sema::FunctionCallBinding direct_missing_arg_binding = analyzer.state_.checked.make_function_call_binding();
+    direct_missing_arg_binding.call_expr = direct_missing_arg_call;
+    direct_missing_arg_binding.callee_expr = direct_missing_arg_callee;
+    direct_missing_arg_binding.function_key = direct_param_target;
+    direct_missing_arg_binding.return_type = ref_i32;
+    analyzer.state_.checked.function_calls.push_back(direct_missing_arg_binding);
+
+    sema::FunctionCallBinding direct_local_binding = analyzer.state_.checked.make_function_call_binding();
+    direct_local_binding.call_expr = direct_local_call;
+    direct_local_binding.callee_expr = direct_local_callee;
+    direct_local_binding.function_key = direct_local_target;
+    direct_local_binding.return_type = ref_i32;
+    analyzer.state_.checked.function_calls.push_back(direct_local_binding);
+
+    sema::FunctionCallBinding direct_bad_index_binding = analyzer.state_.checked.make_function_call_binding();
+    direct_bad_index_binding.call_expr = direct_bad_index_call;
+    direct_bad_index_binding.callee_expr = direct_bad_index_callee;
+    direct_bad_index_binding.function_key = direct_bad_index_target;
+    direct_bad_index_binding.return_type = ref_i32;
+    analyzer.state_.checked.function_calls.push_back(direct_bad_index_binding);
+
+    sema::FunctionCallBinding direct_stale_binding = analyzer.state_.checked.make_function_call_binding();
+    direct_stale_binding.call_expr = direct_stale_call;
+    direct_stale_binding.callee_expr = direct_stale_callee;
+    direct_stale_binding.function_key = direct_stale_target;
+    direct_stale_binding.return_type = i32;
+    analyzer.state_.checked.function_calls.push_back(direct_stale_binding);
 
     const sema::FunctionLookupKey key{
         SEMA_TEST_ROOT_MODULE_INDEX,

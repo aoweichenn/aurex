@@ -1582,12 +1582,22 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
         info.return_type = this->core_.resolve_type(requirement.return_type);
     }
     info.param_types.reserve(requirement.params.size());
+    info.params.reserve(requirement.params.size());
     for (const syntax::ParamDecl& param : requirement.params) {
         const TypeHandle param_type = this->core_.resolve_type(param.type);
         if (!this->core_.is_valid_storage_type(param_type)) {
             this->core_.report_general(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
         }
+        if (syntax::is_valid(param.default_value)) {
+            this->core_.report_general(param.range, std::string(SEMA_DEFAULT_PARAMETER_TRAIT_UNSUPPORTED));
+        }
         info.param_types.push_back(param_type);
+        info.params.push_back(FunctionParamInfo{
+            this->core_.source_name_text(param.name_id, param.name),
+            param.name_id,
+            syntax::INVALID_EXPR_ID,
+            param.range,
+        });
     }
     if (is_valid(info.return_type)) {
         this->core_.validate_function_return_type(requirement, info.return_type);
@@ -1615,6 +1625,7 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
         signature.trait_name_id = trait.name_id;
         signature.return_type = info.return_type;
         signature.param_types = this->core_.state_.checked.copy_type_handle_list(info.param_types);
+        signature.params = this->core_.state_.checked.copy_function_param_info_list(info.params);
         signature.range = info.range;
         signature.is_unsafe = info.is_unsafe;
         signature.is_variadic = info.is_variadic;

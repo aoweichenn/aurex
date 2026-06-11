@@ -11,6 +11,15 @@
 
 namespace aurex::sema {
 
+struct FunctionParamInfo {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ExprId default_value = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+using FunctionParamInfoList = SemaVector<FunctionParamInfo>;
+
 struct FunctionSignature {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -25,6 +34,7 @@ struct FunctionSignature {
     IdentId trait_name_id = INVALID_IDENT_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
+    FunctionParamInfoList params;
     TypeHandleList generic_args;
     base::SourceRange range{};
     bool is_extern_c = false;

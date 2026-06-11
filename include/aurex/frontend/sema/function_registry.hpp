@@ -29,6 +29,7 @@ struct FunctionRegistrationRequest {
     IdentId trait_name_id = INVALID_IDENT_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::span<const TypeHandle> param_types;
+    std::span<const FunctionParamInfo> params;
     syntax::ItemId item_id = syntax::INVALID_ITEM_ID;
     base::u32 part_index = 0;
     StableDefId stable_id;

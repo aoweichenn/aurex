@@ -27,9 +27,9 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
     const ExprId str_byte_len_id = module.push_cast_like_expr(
         syntax::ExprKind::str_byte_len, {}, syntax::CastExprPayload{syntax::INVALID_TYPE_ID, str_value});
     const ExprId str_from_bytes_id = module.push_call_expr(syntax::ExprKind::str_from_bytes_unchecked, {},
-        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {data_value, length_value}});
+        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {data_value, length_value}, {}});
     const ExprId malformed_id = module.push_call_expr(
-        syntax::ExprKind::str_from_bytes_unchecked, {}, syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {data_value}});
+        syntax::ExprKind::str_from_bytes_unchecked, {}, syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {data_value}, {}});
     const ExprId raw_literal_id = module.push_literal_expr(syntax::ExprKind::raw_string_literal, {}, "r\"C:\\tmp\\a\"");
     const ExprId byte_string_literal_id =
         module.push_literal_expr(syntax::ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");

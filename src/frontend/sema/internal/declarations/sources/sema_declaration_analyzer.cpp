@@ -823,12 +823,40 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             }
             std::vector<TypeHandle> param_types;
             param_types.reserve(item.params.size());
+            std::vector<FunctionParamInfo> params;
+            params.reserve(item.params.size());
+            bool saw_default_param = false;
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = this->core_.resolve_type(param.type);
                 if (!this->core_.is_valid_storage_type(param_type)) {
                     this->core_.report_general(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
                 }
                 static_cast<void>(this->core_.check_m2_value_abi(param_type, ValueAbiContext::parameter, param.range));
+                const bool has_default = syntax::is_valid(param.default_value);
+                if (!has_default && saw_default_param) {
+                    this->core_.report_general(param.range, std::string(SEMA_DEFAULT_PARAMETER_AFTER_REQUIRED));
+                }
+                if (has_default) {
+                    saw_default_param = true;
+                    if (item.is_extern_c || item.is_export_c) {
+                        this->core_.report_general(param.range, std::string(SEMA_DEFAULT_PARAMETER_C_ABI));
+                    }
+                    if (item.is_variadic) {
+                        this->core_.report_general(param.range, std::string(SEMA_DEFAULT_PARAMETER_VARIADIC));
+                    }
+                    const TypeHandle default_type = this->core_.analyze_expr(param.default_value, param_type);
+                    if (!this->core_.can_assign(param_type, default_type, param.default_value)) {
+                        this->core_.report_type_mismatch(
+                            this->core_.ctx_.module.exprs.range(param.default_value.value),
+                            sema_argument_type_message(item.name), param_type, default_type);
+                    }
+                }
+                params.push_back(FunctionParamInfo{
+                    this->core_.source_name_text(param.name_id, param.name),
+                    param.name_id,
+                    param.default_value,
+                    param.range,
+                });
                 param_types.push_back(param_type);
             }
             if (is_method) {
@@ -890,6 +918,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             request.trait_name_id = trait_name_id;
             request.return_type = return_type;
             request.param_types = std::span<const TypeHandle>{param_types.data(), param_types.size()};
+            request.params = std::span<const FunctionParamInfo>{params.data(), params.size()};
             request.item_id = syntax::ItemId{item_index};
             request.part_index = this->core_.item_part_index(syntax::ItemId{item_index});
             request.stable_id = stable_id;

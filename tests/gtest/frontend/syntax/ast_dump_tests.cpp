@@ -2238,6 +2238,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
         syntax::CallExprPayload{
             scoped_name_id,
             {float_literal_id},
+            {},
         });
     const syntax::ExprId generic_apply_id = module.push_generic_apply_expr({},
         syntax::GenericApplyExprPayload{

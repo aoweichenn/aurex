@@ -270,6 +270,7 @@ std::optional<syntax::ParamDecl> PrimaryExprParser::parse_lambda_param()
         this->merge(name.range, this->type_range_or(type, name.range)),
         syntax::INVALID_IDENT_ID,
         false,
+        syntax::INVALID_EXPR_ID,
     };
 }
 

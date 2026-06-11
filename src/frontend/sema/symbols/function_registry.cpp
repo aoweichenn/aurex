@@ -55,6 +55,7 @@ void FunctionRegistry::register_function(const FunctionRegistrationRequest& requ
     signature.trait_name_id = request.trait_name_id;
     signature.return_type = request.return_type;
     signature.param_types = this->checked_.copy_type_handle_list(request.param_types);
+    signature.params = this->checked_.copy_function_param_info_list(request.params);
     signature.range = item.range;
     signature.is_extern_c = item.is_extern_c;
     signature.is_export_c = item.is_export_c;

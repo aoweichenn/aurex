@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -135,15 +136,15 @@ private:
     [[nodiscard]] OriginSet pointer_origin(syntax::ExprId expr);
     [[nodiscard]] const FunctionCallBinding* direct_call_binding(syntax::ExprId call_expr) const noexcept;
     [[nodiscard]] const TraitMethodCallBinding* trait_call_binding(syntax::ExprId call_expr) const noexcept;
-    [[nodiscard]] syntax::ExprId call_argument_for_param(const syntax::CallExprPayload& call, syntax::ExprId callee,
+    [[nodiscard]] syntax::ExprId call_argument_for_param(std::span<const syntax::ExprId> args, syntax::ExprId callee,
         base::u32 receiver_arg_count, base::u32 param_index) const;
-    [[nodiscard]] OriginSet call_origin_for_param(const syntax::CallExprPayload& call, syntax::ExprId callee,
+    [[nodiscard]] OriginSet call_origin_for_param(std::span<const syntax::ExprId> args, syntax::ExprId callee,
         base::u32 receiver_arg_count, base::u32 param_index, bool receiver_auto_borrow);
     [[nodiscard]] OriginSet map_callee_summary_origins(const FunctionBorrowSummary& callee,
-        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
+        std::span<const syntax::ExprId> args, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
         bool receiver_auto_borrow);
     [[nodiscard]] OriginSet map_callee_contract_origins(const FunctionBorrowContract& callee,
-        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
+        std::span<const syntax::ExprId> args, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
         bool receiver_auto_borrow);
     [[nodiscard]] OriginSet borrow_origin(syntax::ExprId expr);
     [[nodiscard]] bool push_expression_children_for_origin(

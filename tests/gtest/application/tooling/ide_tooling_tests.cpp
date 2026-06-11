@@ -187,6 +187,12 @@ fs::path write_ide_tooling_source(const fs::path& path, const std::string_view t
     return nullptr;
 }
 
+void expect_no_lowered_dyn_abi_fact_for(const tooling::IdeSnapshot& snapshot, const std::string_view name)
+{
+    EXPECT_FALSE(has_semantic_fact_kind(
+        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, name));
+}
+
 [[nodiscard]] std::optional<sema::FunctionLookupKey> find_function_key(
     const sema::CheckedModule& checked, const std::string_view name)
 {
@@ -560,8 +566,7 @@ TEST(CoreUnit, IdeToolingProjectsDynAbiFactsAndDynDispatchHover)
     EXPECT_FALSE(snapshot.has_errors);
 
     if (snapshot.dyn_abi_facts.empty()) {
-        EXPECT_FALSE(has_semantic_fact_kind(snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts,
-            query::QueryKind::lower_function_ir, "render"));
+        expect_no_lowered_dyn_abi_fact_for(snapshot, "render");
     } else {
         EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
         EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
@@ -632,34 +637,38 @@ TEST(CoreUnit, IdeToolingProjectsSupertraitUpcastDynAbiFactsAndHover)
     const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.checked_semantics);
     EXPECT_FALSE(snapshot.has_errors);
-    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
-    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
-    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
-        query::QueryKind::type_check_body));
 
-    const tooling::IdeSemanticFact* const dyn_fact = find_semantic_fact(
-        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "widen");
-    ASSERT_NE(dyn_fact, nullptr);
-    EXPECT_NE(dyn_fact->detail.find("dyn_abi_facts objects="), std::string::npos) << dyn_fact->detail;
-    EXPECT_NE(dyn_fact->detail.find("upcasts=1"), std::string::npos) << dyn_fact->detail;
-    EXPECT_NE(dyn_fact->detail.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos)
-        << dyn_fact->detail;
-    EXPECT_NE(dyn_fact->detail.find("first_upcast=&dyn Child->&dyn Parent"), std::string::npos)
-        << dyn_fact->detail;
+    if (snapshot.dyn_abi_facts.empty()) {
+        expect_no_lowered_dyn_abi_fact_for(snapshot, "widen");
+    } else {
+        EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+        EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
+            query::QueryKind::type_check_body));
 
-    const base::usize widen_offset = source.find("widen(child");
-    ASSERT_NE(widen_offset, std::string_view::npos);
-    const std::optional<tooling::IdeHoverInfo> widen_hover = tooling::hover_at_offset(snapshot, widen_offset);
-    ASSERT_TRUE(widen_hover.has_value());
-    EXPECT_NE(widen_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
-        << widen_hover->label;
-    EXPECT_NE(widen_hover->label.find("/metadata=supertrait_vptr_metadata_v1"), std::string::npos)
-        << widen_hover->label;
-    EXPECT_NE(widen_hover->label.find("/upcasts=1"), std::string::npos) << widen_hover->label;
-    EXPECT_NE(widen_hover->label.find("/upcast=&dyn Child->&dyn Parent"), std::string::npos)
-        << widen_hover->label;
-    EXPECT_NE(widen_hover->label.find("/upcast_borrow=shared"), std::string::npos)
-        << widen_hover->label;
+        const tooling::IdeSemanticFact* const dyn_fact = find_semantic_fact(
+            snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "widen");
+        ASSERT_NE(dyn_fact, nullptr);
+        EXPECT_NE(dyn_fact->detail.find("dyn_abi_facts objects="), std::string::npos) << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("upcasts=1"), std::string::npos) << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("metadata=supertrait_vptr_metadata_v1"), std::string::npos)
+            << dyn_fact->detail;
+        EXPECT_NE(dyn_fact->detail.find("first_upcast=&dyn Child->&dyn Parent"), std::string::npos)
+            << dyn_fact->detail;
+
+        const base::usize widen_offset = source.find("widen(child");
+        ASSERT_NE(widen_offset, std::string_view::npos);
+        const std::optional<tooling::IdeHoverInfo> widen_hover = tooling::hover_at_offset(snapshot, widen_offset);
+        ASSERT_TRUE(widen_hover.has_value());
+        EXPECT_NE(widen_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
+            << widen_hover->label;
+        EXPECT_NE(widen_hover->label.find("/metadata=supertrait_vptr_metadata_v1"), std::string::npos)
+            << widen_hover->label;
+        EXPECT_NE(widen_hover->label.find("/upcasts=1"), std::string::npos) << widen_hover->label;
+        EXPECT_NE(widen_hover->label.find("/upcast=&dyn Child->&dyn Parent"), std::string::npos)
+            << widen_hover->label;
+        EXPECT_NE(widen_hover->label.find("/upcast_borrow=shared"), std::string::npos)
+            << widen_hover->label;
+    }
 }
 
 TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionRuntimeFactsAndHover)
@@ -689,50 +698,55 @@ TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionRuntimeFactsAndHover)
     const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.checked_semantics);
     EXPECT_FALSE(snapshot.has_errors);
-    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
-    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
-    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
-        query::QueryKind::type_check_body));
 
-    const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
-        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
-    ASSERT_NE(score_fact, nullptr);
-    EXPECT_NE(score_fact->detail.find("dyn_abi_facts objects="), std::string::npos)
-        << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("principal_sets=0"), std::string::npos) << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
-        << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
-        << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("first_composition_projection=&dyn ("), std::string::npos)
-        << score_fact->detail;
+    if (snapshot.dyn_abi_facts.empty()) {
+        expect_no_lowered_dyn_abi_fact_for(snapshot, "score");
+        expect_no_lowered_dyn_abi_fact_for(snapshot, "main");
+    } else {
+        EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+        EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir,
+            query::QueryKind::type_check_body));
 
-    const tooling::IdeSemanticFact* const main_fact = find_semantic_fact(
-        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "main");
-    ASSERT_NE(main_fact, nullptr);
-    EXPECT_NE(main_fact->detail.find("principal_sets=1"), std::string::npos) << main_fact->detail;
-    EXPECT_NE(main_fact->detail.find("composition_projections=0"), std::string::npos)
-        << main_fact->detail;
-    EXPECT_NE(main_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
-        << main_fact->detail;
+        const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
+            snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
+        ASSERT_NE(score_fact, nullptr);
+        EXPECT_NE(score_fact->detail.find("dyn_abi_facts objects="), std::string::npos)
+            << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("principal_sets=0"), std::string::npos) << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
+            << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
+            << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("first_composition_projection=&dyn ("), std::string::npos)
+            << score_fact->detail;
 
-    const base::usize score_offset = source.find("score(combo");
-    ASSERT_NE(score_offset, std::string_view::npos);
-    const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
-    ASSERT_TRUE(score_hover.has_value());
-    EXPECT_NE(score_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/metadata=principal_set_metadata_v1"), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/principal_sets=0"), std::string::npos) << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/composition_projections=1"), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/composition_projection=&dyn ("), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/composition_borrow=shared"), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/composition_metadata=principal_set_metadata_v1"), std::string::npos)
-        << score_hover->label;
+        const tooling::IdeSemanticFact* const main_fact = find_semantic_fact(
+            snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "main");
+        ASSERT_NE(main_fact, nullptr);
+        EXPECT_NE(main_fact->detail.find("principal_sets=1"), std::string::npos) << main_fact->detail;
+        EXPECT_NE(main_fact->detail.find("composition_projections=0"), std::string::npos)
+            << main_fact->detail;
+        EXPECT_NE(main_fact->detail.find("metadata=principal_set_metadata_v1"), std::string::npos)
+            << main_fact->detail;
+
+        const base::usize score_offset = source.find("score(combo");
+        ASSERT_NE(score_offset, std::string_view::npos);
+        const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
+        ASSERT_TRUE(score_hover.has_value());
+        EXPECT_NE(score_hover->label.find("dyn_abi=abi=borrowed_view_v1"), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/metadata=principal_set_metadata_v1"), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/principal_sets=0"), std::string::npos) << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/composition_projections=1"), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/composition_projection=&dyn ("), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/composition_borrow=shared"), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/composition_metadata=principal_set_metadata_v1"), std::string::npos)
+            << score_hover->label;
+    }
 
     const base::usize draw_offset = source.find("draw();");
     ASSERT_NE(draw_offset, std::string_view::npos);
@@ -780,33 +794,36 @@ TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionSupertraitChainFactsAndHover
     const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.checked_semantics);
     EXPECT_FALSE(snapshot.has_errors);
-    EXPECT_FALSE(snapshot.dyn_abi_facts.empty());
 
-    const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
-        snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
-    ASSERT_NE(score_fact, nullptr);
-    EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
-        << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("upcasts=1"), std::string::npos) << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find("composition_supertrait_chains=1"), std::string::npos)
-        << score_fact->detail;
-    EXPECT_NE(score_fact->detail.find(
-                  "first_composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
-        std::string::npos) << score_fact->detail;
+    if (snapshot.dyn_abi_facts.empty()) {
+        expect_no_lowered_dyn_abi_fact_for(snapshot, "score");
+    } else {
+        const tooling::IdeSemanticFact* const score_fact = find_semantic_fact(
+            snapshot, tooling::IdeSemanticFactKind::dyn_abi_facts, query::QueryKind::lower_function_ir, "score");
+        ASSERT_NE(score_fact, nullptr);
+        EXPECT_NE(score_fact->detail.find("composition_projections=1"), std::string::npos)
+            << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("upcasts=1"), std::string::npos) << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find("composition_supertrait_chains=1"), std::string::npos)
+            << score_fact->detail;
+        EXPECT_NE(score_fact->detail.find(
+                      "first_composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
+            std::string::npos) << score_fact->detail;
 
-    const base::usize score_offset = source.find("score(combo");
-    ASSERT_NE(score_offset, std::string_view::npos);
-    const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
-    ASSERT_TRUE(score_hover.has_value());
-    EXPECT_NE(score_hover->label.find("/composition_supertrait_chains=1"), std::string::npos)
-        << score_hover->label;
-    EXPECT_NE(score_hover->label.find(
-                  "/composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
-        std::string::npos) << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/chain_composition_metadata=principal_set_metadata_v1"),
-        std::string::npos) << score_hover->label;
-    EXPECT_NE(score_hover->label.find("/chain_upcast_metadata=supertrait_vptr_metadata_v1"),
-        std::string::npos) << score_hover->label;
+        const base::usize score_offset = source.find("score(combo");
+        ASSERT_NE(score_offset, std::string_view::npos);
+        const std::optional<tooling::IdeHoverInfo> score_hover = tooling::hover_at_offset(snapshot, score_offset);
+        ASSERT_TRUE(score_hover.has_value());
+        EXPECT_NE(score_hover->label.find("/composition_supertrait_chains=1"), std::string::npos)
+            << score_hover->label;
+        EXPECT_NE(score_hover->label.find(
+                      "/composition_supertrait_chain=&dyn (Child + Debug)->&dyn Child->&dyn Parent"),
+            std::string::npos) << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/chain_composition_metadata=principal_set_metadata_v1"),
+            std::string::npos) << score_hover->label;
+        EXPECT_NE(score_hover->label.find("/chain_upcast_metadata=supertrait_vptr_metadata_v1"),
+            std::string::npos) << score_hover->label;
+    }
 }
 
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)

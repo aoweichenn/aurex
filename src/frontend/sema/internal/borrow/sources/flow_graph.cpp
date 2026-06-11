@@ -4,11 +4,14 @@
 #include <algorithm>
 #include <charconv>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <aurex/frontend/sema/call_arguments.hpp>
 
 #include <frontend/sema/internal/borrow/private/flow_graph.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
@@ -584,7 +587,11 @@ private:
                 const syntax::CallExprPayload* const payload = this->module_.exprs.call_payload(expr_id.value);
                 if (payload != nullptr) {
                     this->push_return_scan_expr(pending_exprs, payload->callee);
-                    for (const syntax::ExprId arg : payload->args) {
+                    const std::span<const syntax::ExprId> call_args =
+                        this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::call
+                        ? this->call_ordered_args(expr_id, *payload)
+                        : std::span<const syntax::ExprId>{payload->args.data(), payload->args.size()};
+                    for (const syntax::ExprId arg : call_args) {
                         this->push_return_scan_expr(pending_exprs, arg);
                     }
                 }
@@ -1551,6 +1558,7 @@ private:
         const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::CallExprPayload& payload = *this->module_.exprs.call_payload(expr.value);
+        const std::span<const syntax::ExprId> call_args = this->call_ordered_args(expr, payload);
         this->add_point_action(
             BodyFlowActionKind::call, exit, syntax::INVALID_STMT_ID, expr, expr_range(this->module_, expr));
         const std::optional<syntax::ExprId> receiver = this->receiver_expr_for_call_callee(payload.callee);
@@ -1565,8 +1573,8 @@ private:
             this->record_call_return_borrow_actions(expr, payload, exit);
             this->push_expression(payload.callee, entry, receiver_done, BodyFlowExprContext::value, return_continuation);
             std::vector<BodyFlowExpressionStep> arg_steps;
-            arg_steps.reserve(payload.args.size());
-            for (const syntax::ExprId arg : payload.args) {
+            arg_steps.reserve(call_args.size());
+            for (const syntax::ExprId arg : call_args) {
                 arg_steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
             }
             this->push_expression_sequence(arg_steps, receiver_done, exit, return_continuation);
@@ -1574,12 +1582,26 @@ private:
         }
         this->record_call_return_borrow_actions(expr, payload, exit);
         std::vector<BodyFlowExpressionStep> steps;
-        steps.reserve(payload.args.size() + 1);
+        steps.reserve(call_args.size() + 1);
         steps.push_back(BodyFlowExpressionStep{payload.callee, BodyFlowExprContext::value});
-        for (const syntax::ExprId arg : payload.args) {
+        for (const syntax::ExprId arg : call_args) {
             steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
         }
         this->push_expression_sequence(steps, entry, exit, return_continuation);
+    }
+
+    [[nodiscard]] std::span<const syntax::ExprId> call_ordered_args(
+        const syntax::ExprId call, const syntax::CallExprPayload& payload) const noexcept
+    {
+        if (const FunctionCallBinding* const binding = this->checked_.function_call_binding_for_expr(call);
+            binding != nullptr) {
+            return ordered_call_args_or_source(binding->ordered_args, payload);
+        }
+        if (const TraitMethodCallBinding* const binding = this->checked_.trait_method_call_binding_for_expr(call);
+            binding != nullptr) {
+            return ordered_call_args_or_source(binding->ordered_args, payload);
+        }
+        return {payload.args.data(), payload.args.size()};
     }
 
     [[nodiscard]] bool call_has_two_phase_receiver(const syntax::ExprId call) const noexcept
@@ -1621,24 +1643,28 @@ private:
                 contract != this->checked_.borrow_contracts.end()
                 && contract->second.source != FunctionBorrowContractSource::inferred) {
                 this->record_contract_return_borrow_actions(
-                    contract->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                    contract->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    binding->receiver_arg_count, expr, point);
                 return;
             }
             if (const auto summary = this->checked_.borrow_summaries.find(binding->function_key);
                 summary != this->checked_.borrow_summaries.end()) {
                 this->record_summary_return_borrow_actions(
-                    summary->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                    summary->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    binding->receiver_arg_count, expr, point);
                 return;
             }
             if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
                 contract != this->checked_.borrow_contracts.end()) {
                 this->record_contract_return_borrow_actions(
-                    contract->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                    contract->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    binding->receiver_arg_count, expr, point);
                 return;
             }
             if (this->type_can_contain_borrow(binding->return_type)) {
                 this->record_unknown_return_borrow_actions(
-                    payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                    this->call_ordered_args(expr, payload), binding->callee_expr, binding->receiver_arg_count,
+                    expr, point);
             }
             return;
         }
@@ -1649,30 +1675,33 @@ private:
                 contract != this->checked_.borrow_contracts.end()
                 && contract->second.source != FunctionBorrowContractSource::inferred) {
                 this->record_contract_return_borrow_actions(
-                    contract->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                    contract->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    receiver_arg_count, expr, point);
                 return;
             }
             if (const auto summary = this->checked_.borrow_summaries.find(binding->function_key);
                 summary != this->checked_.borrow_summaries.end()) {
                 this->record_summary_return_borrow_actions(
-                    summary->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                    summary->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    receiver_arg_count, expr, point);
                 return;
             }
             if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
                 contract != this->checked_.borrow_contracts.end()) {
                 this->record_contract_return_borrow_actions(
-                    contract->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                    contract->second, this->call_ordered_args(expr, payload), binding->callee_expr,
+                    receiver_arg_count, expr, point);
                 return;
             }
             if (this->type_can_contain_borrow(binding->return_type)) {
                 this->record_unknown_return_borrow_actions(
-                    payload, binding->callee_expr, receiver_arg_count, expr, point);
+                    this->call_ordered_args(expr, payload), binding->callee_expr, receiver_arg_count, expr, point);
             }
         }
     }
 
     void record_summary_return_borrow_actions(const FunctionBorrowSummary& summary,
-        const syntax::CallExprPayload& payload, const syntax::ExprId callee, const base::u32 receiver_arg_count,
+        const std::span<const syntax::ExprId> args, const syntax::ExprId callee, const base::u32 receiver_arg_count,
         const syntax::ExprId call_expr, const base::u32 point)
     {
         bool recorded_unknown = false;
@@ -1680,7 +1709,7 @@ private:
             if (recorded_unknown) {
                 return;
             }
-            this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+            this->record_unknown_return_borrow_actions(args, callee, receiver_arg_count, call_expr, point);
             recorded_unknown = true;
         };
         if (summary.has_unknown_return_origin) {
@@ -1694,7 +1723,7 @@ private:
             const BorrowSummaryOrigin& origin = summary.origins[dependency.origin_index];
             if (origin.kind == BorrowSummaryOriginKind::parameter) {
                 this->record_param_return_borrow_action(
-                    payload, callee, receiver_arg_count, origin.param_index, call_expr, point);
+                    args, callee, receiver_arg_count, origin.param_index, call_expr, point);
             } else if (origin.kind != BorrowSummaryOriginKind::static_) {
                 record_unknown();
             }
@@ -1702,11 +1731,11 @@ private:
     }
 
     void record_contract_return_borrow_actions(const FunctionBorrowContract& contract,
-        const syntax::CallExprPayload& payload, const syntax::ExprId callee, const base::u32 receiver_arg_count,
+        const std::span<const syntax::ExprId> args, const syntax::ExprId callee, const base::u32 receiver_arg_count,
         const syntax::ExprId call_expr, const base::u32 point)
     {
         if (contract.unknown_return_allowed) {
-            this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+            this->record_unknown_return_borrow_actions(args, callee, receiver_arg_count, call_expr, point);
             return;
         }
         for (const BorrowContractSelector& selector : contract.return_selectors) {
@@ -1714,38 +1743,38 @@ private:
                 case BorrowContractSelectorKind::parameter:
                 case BorrowContractSelectorKind::self:
                     this->record_param_return_borrow_action(
-                        payload, callee, receiver_arg_count, selector.param_index, call_expr, point);
+                        args, callee, receiver_arg_count, selector.param_index, call_expr, point);
                     break;
                 case BorrowContractSelectorKind::static_:
                     break;
                 case BorrowContractSelectorKind::unknown:
-                    this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+                    this->record_unknown_return_borrow_actions(args, callee, receiver_arg_count, call_expr, point);
                     return;
             }
         }
     }
 
-    void record_param_return_borrow_action(const syntax::CallExprPayload& payload, const syntax::ExprId callee,
+    void record_param_return_borrow_action(const std::span<const syntax::ExprId> args, const syntax::ExprId callee,
         const base::u32 receiver_arg_count, const base::u32 param_index, const syntax::ExprId call_expr,
         const base::u32 point)
     {
         if (param_index == SEMA_BORROW_SUMMARY_INVALID_INDEX) {
             return;
         }
-        const syntax::ExprId source = this->call_argument_for_param(payload, callee, receiver_arg_count, param_index);
+        const syntax::ExprId source = this->call_argument_for_param(args, callee, receiver_arg_count, param_index);
         this->add_return_borrow_action(this->borrow_action_for_result(call_expr), point, call_expr, source);
     }
 
-    void record_unknown_return_borrow_actions(const syntax::CallExprPayload& payload, const syntax::ExprId callee,
+    void record_unknown_return_borrow_actions(const std::span<const syntax::ExprId> args, const syntax::ExprId callee,
         const base::u32 receiver_arg_count, const syntax::ExprId call_expr, const base::u32 point)
     {
         this->add_unknown_return_borrow_action(this->borrow_action_for_result(call_expr), point, call_expr);
         std::unordered_set<base::u32> recorded_sources;
         const base::u32 parameter_count =
-            receiver_arg_count + base::checked_u32(payload.args.size(), SEMA_BODY_FLOW_PLACE_ID_CONTEXT);
+            receiver_arg_count + base::checked_u32(args.size(), SEMA_BODY_FLOW_PLACE_ID_CONTEXT);
         for (base::u32 param_index = 0; param_index < parameter_count; ++param_index) {
             const syntax::ExprId source =
-                this->call_argument_for_param(payload, callee, receiver_arg_count, param_index);
+                this->call_argument_for_param(args, callee, receiver_arg_count, param_index);
             if (!this->expr_can_be_conservative_return_source(source)
                 || !recorded_sources.insert(source.value).second) {
                 continue;
@@ -1780,7 +1809,7 @@ private:
             kind, point, place_id, syntax::INVALID_STMT_ID, result_expr, expr_range(this->module_, result_expr));
     }
 
-    [[nodiscard]] syntax::ExprId call_argument_for_param(const syntax::CallExprPayload& payload,
+    [[nodiscard]] syntax::ExprId call_argument_for_param(const std::span<const syntax::ExprId> args,
         const syntax::ExprId callee, const base::u32 receiver_arg_count, const base::u32 param_index) const
     {
         if (receiver_arg_count != 0 && param_index < receiver_arg_count) {
@@ -1788,7 +1817,7 @@ private:
             return receiver.has_value() ? *receiver : syntax::INVALID_EXPR_ID;
         }
         const base::u32 arg_index = param_index - receiver_arg_count;
-        return arg_index < payload.args.size() ? payload.args[arg_index] : syntax::INVALID_EXPR_ID;
+        return arg_index < args.size() ? args[arg_index] : syntax::INVALID_EXPR_ID;
     }
 
     void add_return_borrow_action(const BodyFlowActionKind kind, const base::u32 point,

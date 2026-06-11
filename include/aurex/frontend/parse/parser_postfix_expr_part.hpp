@@ -54,7 +54,8 @@ private:
     [[nodiscard]] const syntax::Token& expect_index_suffix_end(const syntax::Token& opening);
     [[nodiscard]] const syntax::Token& expect_slice_suffix_end(const syntax::Token& opening);
     [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId base, ExprContext context);
-    void parse_call_args(syntax::AstArenaVector<syntax::ExprId>& args, ExprContext context);
+    void parse_call_args(syntax::CallExprPayload& payload, ExprContext context);
+    void parse_call_arg(syntax::CallExprPayload& payload, ExprContext context);
     [[nodiscard]] bool recover_call_arg_separator();
     [[nodiscard]] syntax::ExprId parse_try_suffix(syntax::ExprId base);
     [[nodiscard]] syntax::ExprId parse_rejected_update_suffix(

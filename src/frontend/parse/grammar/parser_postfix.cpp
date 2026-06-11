@@ -439,24 +439,40 @@ const syntax::Token& PostfixExprParser::expect_slice_suffix_end(const syntax::To
 syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId base, const ExprContext context)
 {
     const syntax::Token& begin = this->previous();
-    syntax::AstArenaVector<syntax::ExprId> args = this->session_.module.make_expr_list<syntax::ExprId>();
-    this->parse_call_args(args, context);
+    syntax::CallExprPayload payload;
+    payload.callee = base;
+    payload.args = this->session_.module.make_expr_list<syntax::ExprId>();
+    payload.arg_labels = this->session_.module.make_expr_list<syntax::CallArgLabelDecl>();
+    this->parse_call_args(payload, context);
     const syntax::Token& end = this->expect_recovered_after(
         TokenKind::r_paren, std::string(PARSER_EXPECT_CALL_ARGUMENTS_END), RecoveryContext::call_argument, begin);
     const base::SourceRange call_range = this->merge(begin.range, end.range);
     return this->session_.module.push_call_expr(
-        syntax::ExprKind::call, this->merge(this->expr_range_or(base, call_range), call_range), base, std::move(args));
+        syntax::ExprKind::call, this->merge(this->expr_range_or(base, call_range), call_range), std::move(payload));
 }
 
-void PostfixExprParser::parse_call_args(syntax::AstArenaVector<syntax::ExprId>& args, const ExprContext)
+void PostfixExprParser::parse_call_args(syntax::CallExprPayload& payload, const ExprContext context)
 {
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
-        args.push_back(this->parse_expr(ExprContext::normal));
+        this->parse_call_arg(payload, context);
         this->reset_panic();
         if (!this->recover_call_arg_separator()) {
             break;
         }
     }
+}
+
+void PostfixExprParser::parse_call_arg(syntax::CallExprPayload& payload, const ExprContext)
+{
+    syntax::CallArgLabelDecl label;
+    if (this->check(TokenKind::identifier) && this->peek_at(1).kind == TokenKind::colon) {
+        const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_EXPRESSION_NAME));
+        static_cast<void>(this->expect(TokenKind::colon, std::string(PARSER_EXPECT_NAMED_ARGUMENT_VALUE)));
+        label.name = name.text();
+        label.range = name.range;
+    }
+    payload.args.push_back(this->parse_expr(ExprContext::normal));
+    payload.arg_labels.push_back(label);
 }
 
 bool PostfixExprParser::recover_call_arg_separator()

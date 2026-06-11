@@ -3953,6 +3953,38 @@ TEST(CoreUnit, ParserParsesM16ConstGenericParametersArgumentsAndArrayLengths)
     EXPECT_EQ(apply->generic_args[1].kind, syntax::GenericArgKind::const_expr);
 }
 
+TEST(CoreUnit, ParserParsesDefaultParametersAndNamedCallArguments)
+{
+    constexpr std::string_view source = "module parser.default_named_args;\n"
+                                        "fn mix(a: i32, b: i32 = 10, c: i32 = 20) -> i32 {\n"
+                                        "  return mix(1, c: 3, b: 2);\n"
+                                        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const mix = find_item(module, "mix");
+    ASSERT_NE(mix, nullptr);
+    ASSERT_EQ(mix->params.size(), 3U);
+    EXPECT_FALSE(syntax::is_valid(mix->params[0].default_value));
+    ASSERT_TRUE(syntax::is_valid(mix->params[1].default_value));
+    ASSERT_TRUE(syntax::is_valid(mix->params[2].default_value));
+    EXPECT_EQ(module.exprs.kind(mix->params[1].default_value.value), syntax::ExprKind::integer_literal);
+    EXPECT_EQ(module.exprs.kind(mix->params[2].default_value.value), syntax::ExprKind::integer_literal);
+
+    ASSERT_TRUE(syntax::is_valid(mix->body));
+    const syntax::StmtNode& body = module.stmts[mix->body.value];
+    ASSERT_FALSE(body.statements.empty());
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements.back().value];
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(return_stmt.return_value.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_EQ(call->args.size(), 3U);
+    ASSERT_EQ(call->arg_labels.size(), call->args.size());
+    EXPECT_TRUE(call->arg_labels[0].name.empty());
+    EXPECT_EQ(call->arg_labels[1].name, "c");
+    EXPECT_EQ(call->arg_labels[2].name, "b");
+}
+
 TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex)
 {
     constexpr std::string_view source = "module parser.index_field;\n"

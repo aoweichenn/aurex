@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M20f 结构体字段引用借用已收口，下一步推进默认参数 / 命名参数
+## 当前实现入口：M20g 默认参数 / 命名参数已收口，下一步继续非标准库语言特性
 
 M20e 已完成第一批编译器内建 derive 属性：`#[derive(Copy, Eq, Hash)]` 支持 `struct` / `enum`，
 `Eq` / `Hash` 进入 checked capability facts，`Copy` 继续服从资源语义和 `impl Drop` custom destructor 事实。
@@ -17,15 +17,24 @@ lowering 的回归覆盖。实现复用 M7 的 `PlaceInfo`、projection-aware lo
 判断；不同已知字段可以分离，同一字段写入和整个 parent overwrite 会在 later carrier use 时诊断，local field
 reference 不能逃逸函数。该阶段不实现标准库，也不实现 resource-field overwrite helper、`take`/`swap` 之类库能力。
 
-接下来建议继续沿用户最痛的基础易用性问题推进，不进入标准库：
+M20g 已把“默认参数 / 命名参数”按 source-level call sugar 收口：函数和 method 参数可带默认值，普通函数 /
+inherent method / 泛型函数 / 泛型 method 可省略 defaulted 参数，普通函数、inherent method、trait/static/dyn method
+call 可用命名参数重排实参。sema 会生成 checked `ordered_args`；IR lowering、borrow summary、body flow graph、
+body loan precheck、place-state precheck、move analysis 和 borrow escape / lambda capture 扫描都消费归一化顺序。
+该阶段不实现标准库，不打开 ABI 级 default metadata，也不支持 trait requirement defaults、C ABI / variadic
+defaults、function value / lambda named calls 或 enum constructor named payloads。
+
+接下来建议继续沿非标准库语言可用性推进，优先做会影响用户写法和静态语义的 compiler-only 能力：
 
 - P1：结构体引用字段已完成。当前可用面是 source-level field borrow、field-disjoint loan separation、
   same-field/parent invalidation diagnostics 和 `field_addr` lowering；resource field partial move/overwrite
   仍以后续资源语义阶段处理。
-- P2：默认参数 / 命名参数。目标是先做函数签名和 call-site 的语义设计，区分 ABI/public surface、重载/泛型推断、
-  默认值 const-eval 边界、source compatibility 和 diagnostics，再决定第一批实现范围。
+- P2：默认参数 / 命名参数已完成第一版。后续只建议补“默认表达式可见前序参数”“function value/lambda 参数名元数据”
+  这类独立小阶段，不应和标准库或 ABI metadata 混在一起。
 - P3：完整 macro / proc-macro / 用户自定义 derive。当前不建议立刻推进；现有内建 derive 已解决 capability
   marker 的主要痛点，完整宏系统需要单独的卫生、增量、query/cache、错误恢复和安全边界设计。
+- P4：闭包语义深水区。M20 已有 Copy-by-value 捕获闭包核心子集；下一步若继续函数式路线，应先做
+  shared / mutable / consuming capture 和 borrow/resource/dropck 接入，而不是写标准库 adapter。
 
 ## 已完成入口：M20 捕获闭包核心子集
 
@@ -283,7 +292,14 @@ two-field prototype；drop/allocator runtime slot 继续是 blocked sentinel，I
 均已覆盖。M20b 没有实现标准库、`Box<dyn Trait>`、allocator API、owning dyn 用户值、runtime ABI lowering、
 backend runtime helper call 或 dynamic Drop runtime。
 
-当前下一步应进入 **标准库 / owning dyn runtime surface 入口评估**。M20a-M20d 已把 admission order、
+M20g 也已结束。M20g 新增默认参数和命名参数的 parser/AST/sema/lowering/borrow-place 分析闭环。
+checked call binding 现在保存 `ordered_args`，默认值和命名参数在 sema 阶段归一化；IR lowering、borrow summary、
+body flow graph、body loan precheck、place-state precheck、move analysis 和 borrow escape / lambda capture 扫描都
+读取 normalized call arguments。M20g 不实现标准库、ABI 级 optional metadata、trait requirement defaults、C ABI /
+variadic defaults、function value / lambda named calls 或 enum constructor named payloads。
+
+Dyn/runtime 方向的下一步可以进入 **标准库 / owning dyn runtime surface 入口评估**，但这不是当前非标准库语言特性
+阶段的直接实现任务。M20a-M20d 已把 admission order、
 compiler-owned two-field handle shape、drop / allocator identity prerequisites、runtime ABI descriptor、
 blocked-to-admitted transition checks、backend helper prerequisite facts、dump/fingerprint 和 verifier negative
 matrix 固定下来。下一阶段如果开始标准库或 owning dyn surface，必须显式引用 M20a-M20d facts，并继续把
@@ -325,6 +341,8 @@ M12 后续候选不应混在同一阶段一次性实现：
 | M20b owned dyn IR shape prototype gate | 已完成。`OwnedDynObjectLayoutPrototype`、two-field handle、blocked drop/allocator slots、IR dump/fingerprint/verifier、`OwnedDynIrShapePrototypeGate`、adapter、negative matrix、release docs 和 documentation tests；不做标准库或 executable runtime helper | 实际以本次 diffstat 为准；原预估 1,100-1,900 行，偏差分析见 M20b release 文档 |
 | M20c drop / allocator identity prerequisite gate | 已完成。`OwnedDynDropAllocatorIdentityGate`、drop/allocator identity keys、cleanup/dropck bridge facts、IR dump/fingerprint/verifier、adapter、negative matrix、release docs 和 documentation tests；仍不打开标准库 API | 实际以本次 diffstat 为准；原预估 1,200-2,200 行，偏差分析见 M20c release 文档 |
 | M20d runtime lowering ABI design closure | 已完成。`OwnedDynRuntimeLoweringAbiGate`、runtime ABI descriptor、blocked-to-admitted transition checks、backend helper prerequisite facts、dump/fingerprint、M20c key consistency validation 和 verifier negative matrix；仍不实现标准库 surface | 实际以本次 diffstat 为准；原预估 900-1,700 行，偏差分析见 M20d release 文档 |
+| M20g default / named call arguments | 已完成。参数默认值、call-site label、checked `ordered_args`、sema diagnostics、IR lowering、borrow/place/move/lambda capture ordered traversal、parser/sema/native tests 和 release docs；仍不实现标准库或 ABI metadata | 实际以本次 diffstat 为准；本轮横跨 parser/AST/sema/lowering/analysis/test/doc，代码量高于单纯 parser feature 属正常 |
+| 后续非标准库函数式/闭包语义 | shared/mutable/consuming capture、closure call ability、borrow/resource/dropck facts、generic closure environment ABI、borrowed closure environment escape；不做标准库 adapter | 1,800-3,200 行，取决于是否同时接入 borrow/dropck facts 和 native execution |
 | 标准库 / owning dyn runtime surface 入口评估 | `Box`、拥有型容器、resource wrapper、allocator API、标准库 Drop helper、owning dyn 用户值和 runtime lowering 分阶段切分；必须显式建立在 M20a-M20d facts 上 | 1,200-2,400 行设计/入口实现；实际范围取决于是否只做 design gate 还是打开首个库层 API |
 
 ## 已收口基线：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check

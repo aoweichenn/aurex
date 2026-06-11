@@ -4,6 +4,7 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <frontend/sema/internal/core/private/sema_core.hpp>
 
@@ -21,6 +22,8 @@ private:
     [[nodiscard]] bool statement_may_need_local_loan_check(syntax::StmtId stmt) const;
     [[nodiscard]] bool statement_may_bind_reference_loan_shallow(syntax::StmtId stmt) const;
     [[nodiscard]] bool expr_may_need_local_loan_check(syntax::ExprId expr) const;
+    void push_checked_precheck_expression_children(syntax::ExprId expr, std::vector<syntax::ExprId>& pending_exprs,
+        std::vector<syntax::StmtId>& pending_stmts) const;
     [[nodiscard]] bool type_contains_reference(TypeHandle type) const;
 
     SemanticAnalyzerCore& core_;

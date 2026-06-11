@@ -151,6 +151,13 @@ struct ParamDecl {
     base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
     bool is_deinit = false;
+    ExprId default_value = INVALID_EXPR_ID;
+};
+
+struct CallArgLabelDecl {
+    std::string_view name;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct TypeOriginQualifier {

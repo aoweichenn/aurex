@@ -146,6 +146,7 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
             const syntax::CallExprPayload& payload = *this->ctx_.module.exprs.call_payload(expr_id.value);
             view.callee = payload.callee;
             view.args = readonly_span(payload.args);
+            view.arg_labels = readonly_span(payload.arg_labels);
             break;
         }
         case syntax::ExprKind::lambda: {

@@ -2,8 +2,11 @@
 #include <aurex/infrastructure/query/stable_hash.hpp>
 
 #include <algorithm>
+#include <span>
 #include <sstream>
 #include <utility>
+
+#include <aurex/frontend/sema/call_arguments.hpp>
 
 #include <frontend/sema/internal/borrow/private/summary.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
@@ -1019,16 +1022,19 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         if (contract != this->core_.state_.checked.borrow_contracts.end()
             && contract->second.source != FunctionBorrowContractSource::inferred) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
+                contract->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
             return this->map_callee_summary_origins(
-                summary->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
+                summary->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         if (contract != this->core_.state_.checked.borrow_contracts.end()) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
+                contract->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
@@ -1038,16 +1044,19 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         if (contract != this->core_.state_.checked.borrow_contracts.end()
             && contract->second.source != FunctionBorrowContractSource::inferred) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
+                contract->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                receiver_arg_count, binding->receiver_auto_borrow);
         }
         const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
             return this->map_callee_summary_origins(
-                summary->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
+                summary->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                receiver_arg_count, binding->receiver_auto_borrow);
         }
         if (contract != this->core_.state_.checked.borrow_contracts.end()) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
+                contract->second, ordered_call_args_or_source(binding->ordered_args, call), binding->callee_expr,
+                receiver_arg_count, binding->receiver_auto_borrow);
         }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
@@ -1108,7 +1117,9 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         }
         if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
             kind == syntax::ExprKind::call && call != nullptr) {
-            for (const syntax::ExprId arg : call->args) {
+            const std::span<const syntax::ExprId> call_args =
+                checked_ordered_call_args_or_source(this->core_.state_.checked, current, *call);
+            for (const syntax::ExprId arg : call_args) {
                 pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, arg});
             }
             pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, call->callee});
@@ -1152,8 +1163,9 @@ const TraitMethodCallBinding* SemanticAnalyzerCore::BorrowSummaryBuilder::trait_
     return this->core_.state_.checked.trait_method_call_binding_for_expr(call_expr);
 }
 
-syntax::ExprId SemanticAnalyzerCore::BorrowSummaryBuilder::call_argument_for_param(const syntax::CallExprPayload& call,
-    const syntax::ExprId callee, const base::u32 receiver_arg_count, const base::u32 param_index) const
+syntax::ExprId SemanticAnalyzerCore::BorrowSummaryBuilder::call_argument_for_param(
+    const std::span<const syntax::ExprId> args, const syntax::ExprId callee, const base::u32 receiver_arg_count,
+    const base::u32 param_index) const
 {
     if (receiver_arg_count != 0 && param_index < receiver_arg_count) {
         syntax::ExprId current = callee;
@@ -1176,15 +1188,15 @@ syntax::ExprId SemanticAnalyzerCore::BorrowSummaryBuilder::call_argument_for_par
         return syntax::INVALID_EXPR_ID;
     }
     const base::u32 arg_index = param_index - receiver_arg_count;
-    return arg_index < call.args.size() ? call.args[arg_index] : syntax::INVALID_EXPR_ID;
+    return arg_index < args.size() ? args[arg_index] : syntax::INVALID_EXPR_ID;
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
-SemanticAnalyzerCore::BorrowSummaryBuilder::call_origin_for_param(const syntax::CallExprPayload& call,
+SemanticAnalyzerCore::BorrowSummaryBuilder::call_origin_for_param(const std::span<const syntax::ExprId> args,
     const syntax::ExprId callee, const base::u32 receiver_arg_count, const base::u32 param_index,
     const bool receiver_auto_borrow)
 {
-    const syntax::ExprId arg = this->call_argument_for_param(call, callee, receiver_arg_count, param_index);
+    const syntax::ExprId arg = this->call_argument_for_param(args, callee, receiver_arg_count, param_index);
     if (!valid_expr(this->core_.ctx_.module, arg)) {
         return this->unknown_origin();
     }
@@ -1196,7 +1208,7 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::call_origin_for_param(const syntax::
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
 SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const FunctionBorrowSummary& callee,
-    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
+    const std::span<const syntax::ExprId> args, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
     const bool receiver_auto_borrow)
 {
     OriginSet result;
@@ -1217,14 +1229,14 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const Fun
         }
         result = this->merge(result,
             this->call_origin_for_param(
-                call, callee_expr, receiver_arg_count, origin.param_index, receiver_auto_borrow));
+                args, callee_expr, receiver_arg_count, origin.param_index, receiver_auto_borrow));
     }
     return result;
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
 SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_contract_origins(const FunctionBorrowContract& callee,
-    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
+    const std::span<const syntax::ExprId> args, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
     const bool receiver_auto_borrow)
 {
     OriginSet result;
@@ -1239,7 +1251,7 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_contract_origins(const Fu
                 }
                 result = this->merge(result,
                     this->call_origin_for_param(
-                        call, callee_expr, receiver_arg_count, selector.param_index, receiver_auto_borrow));
+                        args, callee_expr, receiver_arg_count, selector.param_index, receiver_auto_borrow));
                 break;
             }
             case BorrowContractSelectorKind::static_:

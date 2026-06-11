@@ -70,6 +70,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
         tests/gtest/frontend/parse/parser_tests.cpp
         tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
+        tests/gtest/frontend/sema/default_named_argument_tests.cpp
         tests/gtest/frontend/sema/identifier_tests.cpp
         tests/gtest/frontend/sema/lifetime_tests.cpp
         tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
@@ -162,6 +163,7 @@ if(BUILD_TESTING)
             tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
             tests/gtest/frontend/sema/block_expression_tests.cpp
             tests/gtest/frontend/sema/error_handling_tests.cpp
+            tests/gtest/frontend/sema/default_named_argument_tests.cpp
             tests/gtest/frontend/sema/functions_tests.cpp
             tests/gtest/frontend/sema/identifier_tests.cpp
             tests/gtest/frontend/sema/if_expression_tests.cpp

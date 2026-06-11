@@ -51,6 +51,24 @@ inline constexpr std::string_view SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED =
 inline constexpr std::string_view SEMA_VARIADIC_EXTERN_C_ONLY =
     "variadic functions are only supported for extern c declarations";
 
+inline constexpr std::string_view SEMA_DEFAULT_PARAMETER_AFTER_REQUIRED =
+    "required parameters cannot follow a default parameter";
+
+inline constexpr std::string_view SEMA_DEFAULT_PARAMETER_C_ABI =
+    "default parameters are not supported on C ABI functions";
+
+inline constexpr std::string_view SEMA_DEFAULT_PARAMETER_VARIADIC =
+    "default parameters are not supported on variadic functions";
+
+inline constexpr std::string_view SEMA_DEFAULT_PARAMETER_TRAIT_UNSUPPORTED =
+    "default parameters on trait requirements are not supported yet";
+
+inline constexpr std::string_view SEMA_NAMED_ARGUMENT_NOT_SUPPORTED =
+    "named arguments are not supported for this call";
+
+inline constexpr std::string_view SEMA_POSITIONAL_ARGUMENT_AFTER_NAMED =
+    "positional arguments cannot follow named arguments";
+
 [[nodiscard]] inline constexpr std::string_view sema_visibility_surface_name(
     const syntax::Visibility visibility) noexcept
 {
@@ -847,6 +865,23 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 [[nodiscard]] inline std::string sema_argument_count_message(const std::string_view function_name)
 {
     return "argument count mismatch in call to " + std::string(function_name);
+}
+
+[[nodiscard]] inline std::string sema_unknown_named_argument_message(
+    const std::string_view function_name, const std::string_view argument_name)
+{
+    return "unknown named argument `" + std::string(argument_name) + "` in call to " + std::string(function_name);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_named_argument_message(const std::string_view argument_name)
+{
+    return "duplicate named argument `" + std::string(argument_name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_missing_required_argument_message(
+    const std::string_view function_name, const std::string_view argument_name)
+{
+    return "missing required argument `" + std::string(argument_name) + "` in call to " + std::string(function_name);
 }
 
 [[nodiscard]] inline std::string sema_argument_type_message(const std::string_view function_name)

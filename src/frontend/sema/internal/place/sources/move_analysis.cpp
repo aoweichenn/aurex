@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include <aurex/frontend/sema/call_arguments.hpp>
+
 #include <frontend/sema/internal/place/private/move_analysis.hpp>
 #include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 
@@ -1189,12 +1191,15 @@ private:
                 this->push_mode_expression(tasks, expr.binary_lhs, RequestedUse::owned);
                 break;
             case syntax::ExprKind::call:
-            case syntax::ExprKind::str_from_bytes_unchecked:
-                for (base::usize i = expr.args.size(); i > 0; --i) {
-                    this->push_mode_expression(tasks, expr.args[i - 1], RequestedUse::owned);
+            case syntax::ExprKind::str_from_bytes_unchecked: {
+                const std::span<const syntax::ExprId> call_args =
+                    this->ordered_call_args(expr_id, expr.kind, expr.args);
+                for (base::usize i = call_args.size(); i > 0; --i) {
+                    this->push_mode_expression(tasks, call_args[i - 1], RequestedUse::owned);
                 }
                 this->push_mode_expression(tasks, expr.callee, RequestedUse::place_only);
                 break;
+            }
             case syntax::ExprKind::try_expr:
                 this->push_mode_expression(tasks, expr.try_operand, RequestedUse::owned);
                 break;
@@ -1741,7 +1746,9 @@ private:
     {
         std::vector<std::pair<syntax::ExprId, RequestedUse>> operands;
         operands.emplace_back(expr.callee, RequestedUse::place_only);
-        for (const syntax::ExprId arg : expr.args) {
+        const std::span<const syntax::ExprId> call_args =
+            this->ordered_call_args(task.expr, expr.kind, expr.args);
+        for (const syntax::ExprId arg : call_args) {
             operands.emplace_back(arg, RequestedUse::owned);
         }
         this->push_expression_sequence(operands, task.start, task.continuation, task.environment,
@@ -2003,7 +2010,7 @@ private:
                     receiver != SEMA_MOVE_INVALID_LOCAL) {
                     return receiver;
                 }
-                for (const syntax::ExprId arg : call->args) {
+                for (const syntax::ExprId arg : this->ordered_call_args(current, *call)) {
                     pending.push_back(arg);
                 }
                 continue;
@@ -2101,6 +2108,35 @@ private:
             break;
         }
         return SEMA_MOVE_INVALID_LOCAL;
+    }
+
+    [[nodiscard]] std::span<const syntax::ExprId> ordered_call_args(
+        const syntax::ExprId call, const syntax::CallExprPayload& payload) const noexcept
+    {
+        return checked_ordered_call_args_or_source(this->core_.state_.checked, call, payload);
+    }
+
+    [[nodiscard]] std::span<const syntax::ExprId> ordered_call_args(const syntax::ExprId call,
+        const syntax::ExprKind kind, const std::span<const syntax::ExprId> source_args) const noexcept
+    {
+        if (kind != syntax::ExprKind::call) {
+            return source_args;
+        }
+        if (const FunctionCallBinding* const binding =
+                this->core_.state_.checked.function_call_binding_for_expr(call);
+            binding != nullptr) {
+            return !binding->ordered_args.empty() || source_args.empty()
+                ? std::span<const syntax::ExprId>{binding->ordered_args.data(), binding->ordered_args.size()}
+                : source_args;
+        }
+        if (const TraitMethodCallBinding* const binding =
+                this->core_.state_.checked.trait_method_call_binding_for_expr(call);
+            binding != nullptr) {
+            return !binding->ordered_args.empty() || source_args.empty()
+                ? std::span<const syntax::ExprId>{binding->ordered_args.data(), binding->ordered_args.size()}
+                : source_args;
+        }
+        return source_args;
     }
 
     [[nodiscard]] std::optional<base::usize> whole_local(

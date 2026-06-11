@@ -760,9 +760,11 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionCallBindingHandlesInvalidAndFallbackRecei
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const std::span<const ExprId> no_ordered_args;
     FunctionSignature invalid_signature = analyzer.state_.checked.make_function_signature();
     analyzer.record_function_call_binding(
-        syntax::INVALID_EXPR_ID, syntax::INVALID_EXPR_ID, invalid_signature, 0, body_loan_test_range(0));
+        syntax::INVALID_EXPR_ID, syntax::INVALID_EXPR_ID, invalid_signature, 0, no_ordered_args,
+        body_loan_test_range(0));
     EXPECT_TRUE(analyzer.state_.checked.function_calls.empty());
 
     const IdentId function_id = module.intern_identifier("target");
@@ -778,7 +780,8 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionCallBindingHandlesInvalidAndFallbackRecei
     signature.return_type = analyzer.state_.checked.types.builtin(BuiltinType::i32);
     signature.param_types = {INVALID_TYPE_HANDLE};
 
-    analyzer.record_function_call_binding(call_expr, syntax::INVALID_EXPR_ID, signature, 1, body_loan_test_range(1));
+    analyzer.record_function_call_binding(
+        call_expr, syntax::INVALID_EXPR_ID, signature, 1, no_ordered_args, body_loan_test_range(1));
     ASSERT_EQ(analyzer.state_.checked.function_calls.size(), 1U);
     const sema::FunctionCallBinding& binding = analyzer.state_.checked.function_calls.front();
     EXPECT_EQ(binding.call_expr.value, call_expr.value);

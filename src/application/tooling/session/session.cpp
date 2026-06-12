@@ -394,6 +394,8 @@ void tooling_attach_syntax_reuse_execution(
             return "extern_block";
         case syntax::ItemKind::impl_block:
             return "impl_block";
+        case syntax::ItemKind::macro_decl:
+            return "macro";
     }
     return "item";
 }

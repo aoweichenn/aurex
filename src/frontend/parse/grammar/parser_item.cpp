@@ -11,6 +11,10 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr std::string_view PARSER_MACRO_CONTEXTUAL_KEYWORD_TEXT = "macro";
+constexpr std::string_view PARSER_MACRO_DERIVE_CONTEXTUAL_KEYWORD_TEXT = "derive";
+constexpr std::string_view PARSER_MACRO_MATCH_CLAUSE_KEYWORD_TEXT = "match";
+
 [[nodiscard]] syntax::AttributeTokenTreeGroupKind attribute_group_kind(const TokenKind kind) noexcept
 {
     switch (kind) {
@@ -52,6 +56,16 @@ using syntax::TokenKind;
             return false;
     }
     return false;
+}
+
+[[nodiscard]] bool token_is_contextual_keyword(const syntax::Token& token, const std::string_view text) noexcept
+{
+    return token.kind == TokenKind::identifier && token.text() == text;
+}
+
+[[nodiscard]] bool token_is_macro_item_start(const syntax::Token& token) noexcept
+{
+    return token_is_contextual_keyword(token, PARSER_MACRO_CONTEXTUAL_KEYWORD_TEXT);
 }
 
 void include_item_attribute_range(ParsedItemAttributes& attributes, const base::SourceRange& range) noexcept
@@ -190,6 +204,15 @@ syntax::ItemId ItemParser::parse_item()
     }
     if (this->check(TokenKind::kw_fn)) {
         const syntax::ItemId id = this->parse_fn_decl(false, false, false, std::move(function_attributes));
+        if (syntax::is_valid(id)) {
+            this->session_.module.items.set_visibility(id.value, visibility.visibility);
+            this->apply_item_attributes(id, item_attributes);
+        }
+        return id;
+    }
+    if (token_is_macro_item_start(this->peek())) {
+        this->report_misplaced_function_decorators(function_attributes);
+        const syntax::ItemId id = this->parse_macro_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
             this->apply_item_attributes(id, item_attributes);
@@ -444,6 +467,85 @@ syntax::ItemId ItemParser::parse_type_alias_decl()
     item.alias_type = target;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));
+}
+
+syntax::ItemId ItemParser::parse_macro_decl()
+{
+    const syntax::Token& begin = this->advance();
+    syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
+    if (token_is_contextual_keyword(this->peek(), PARSER_MACRO_DERIVE_CONTEXTUAL_KEYWORD_TEXT)) {
+        macro_kind = syntax::MacroDeclKind::derive;
+        this->advance();
+    } else if (this->check(TokenKind::kw_const)) {
+        macro_kind = syntax::MacroDeclKind::compile_time;
+        this->advance();
+    }
+
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_MACRO_NAME));
+    const syntax::Token& body_start =
+        this->expect_recovered(TokenKind::l_brace, std::string(PARSER_EXPECT_MACRO_BODY), RecoveryContext::block_start);
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::macro_decl;
+    item.name = name.text();
+    item.macro_kind = macro_kind;
+    item.macro_body_tokens = this->session_.module.items.make_list<syntax::AttributeTokenDecl>();
+    item.macro_body_range = body_start.range;
+
+    if (body_start.kind == TokenKind::l_brace) {
+        this->parse_macro_body_token_tree(item, body_start);
+    }
+
+    item.range = this->merge(begin.range, this->previous().range);
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
+}
+
+void ItemParser::parse_macro_body_token_tree(syntax::ItemNode& item, const syntax::Token& opening)
+{
+    const syntax::AttributeTokenTreeGroupKind root_group = attribute_group_kind(opening.kind);
+    base::u32 depth = 0;
+    std::vector<syntax::AttributeTokenTreeGroupKind> groups;
+    groups.push_back(root_group);
+    item.macro_body_tokens.push_back(
+        syntax::AttributeTokenDecl{opening.kind, opening.text(), opening.range, depth, root_group});
+    ++depth;
+
+    while (!this->is_eof() && !groups.empty()) {
+        const syntax::Token& token = this->advance();
+        const syntax::AttributeTokenTreeGroupKind current_group = groups.back();
+        const bool closing_current_group = token_closes_attribute_group(token.kind, current_group);
+        const base::u32 token_depth = closing_current_group && depth > 0 ? depth - 1U : depth;
+        item.macro_body_tokens.push_back(
+            syntax::AttributeTokenDecl{token.kind, token.text(), token.range, token_depth, attribute_group_kind(token.kind)});
+        item.macro_body_range = this->merge(opening.range, token.range);
+
+        if (token.kind == TokenKind::kw_match && token_depth == 1U) {
+            ++item.macro_match_clause_count;
+        } else if (token_is_contextual_keyword(token, PARSER_MACRO_MATCH_CLAUSE_KEYWORD_TEXT) && token_depth == 1U) {
+            ++item.macro_match_clause_count;
+        }
+
+        if (token_opens_attribute_group(token.kind)) {
+            groups.push_back(attribute_group_kind(token.kind));
+            ++depth;
+            continue;
+        }
+        if (closing_current_group) {
+            groups.pop_back();
+            depth = token_depth;
+            continue;
+        }
+        if (token_closes_attribute_group(token.kind)) {
+            this->report_at(token, std::string(PARSER_EXPECT_MACRO_BODY_END));
+            break;
+        }
+    }
+
+    item.macro_body_balanced = groups.empty();
+    if (!item.macro_body_balanced) {
+        this->report_at(opening, std::string(PARSER_EXPECT_MACRO_BODY_END));
+    }
 }
 
 syntax::ItemId ItemParser::parse_trait_associated_type_decl(const ParsedVisibility visibility)

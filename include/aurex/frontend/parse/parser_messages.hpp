@@ -72,6 +72,12 @@ inline constexpr std::string_view PARSER_EXPECT_DERIVE_SEPARATOR = "expected ','
 
 inline constexpr std::string_view PARSER_EXPECT_DERIVE_ARGUMENT_END = "expected ')' after derive list";
 
+inline constexpr std::string_view PARSER_EXPECT_MACRO_NAME = "expected macro name";
+
+inline constexpr std::string_view PARSER_EXPECT_MACRO_BODY = "expected '{' after macro name";
+
+inline constexpr std::string_view PARSER_EXPECT_MACRO_BODY_END = "expected '}' after macro body";
+
 inline constexpr std::string_view PARSER_VISIBILITY_PACKAGE_SCOPE_TEXT = "package";
 
 inline constexpr std::string_view PARSER_EXPECT_VISIBILITY_SCOPE = "expected visibility scope 'package'";

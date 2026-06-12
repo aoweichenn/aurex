@@ -93,7 +93,7 @@ TEST(CoreUnit, SyntaxModuleHelpersCoverPathMismatchAndManglePunctuation)
 TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
 {
     syntax::ItemNodeList items;
-    items.reserve(10U);
+    items.reserve(11U);
     const base::SourceRange range{base::SourceId{1U}, 10U, 20U};
 
     auto make_constraint = [&items, range](const std::string_view param_name) {
@@ -260,13 +260,46 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     impl_item.range = range;
     const syntax::ItemId impl_id = items.append(impl_item);
 
+    syntax::ItemNode macro_item;
+    macro_item.kind = syntax::ItemKind::macro_decl;
+    macro_item.name = "Make";
+    macro_item.name_id = syntax::IdentId{15U};
+    macro_item.macro_kind = syntax::MacroDeclKind::declarative;
+    macro_item.macro_body_tokens = items.make_list<syntax::AttributeTokenDecl>();
+    macro_item.macro_body_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::l_brace,
+        "{",
+        range,
+        0U,
+        syntax::AttributeTokenTreeGroupKind::brace,
+    });
+    macro_item.macro_body_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::kw_match,
+        "match",
+        range,
+        1U,
+        syntax::AttributeTokenTreeGroupKind::none,
+    });
+    macro_item.macro_body_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::r_brace,
+        "}",
+        range,
+        0U,
+        syntax::AttributeTokenTreeGroupKind::brace,
+    });
+    macro_item.macro_body_range = range;
+    macro_item.macro_match_clause_count = 1U;
+    macro_item.macro_body_balanced = true;
+    macro_item.range = range;
+    const syntax::ItemId macro_id = items.append(macro_item);
+
     syntax::ItemNode unknown_item;
     unknown_item.kind = static_cast<syntax::ItemKind>(99);
     unknown_item.name = "unknown";
     unknown_item.range = range;
     const syntax::ItemId unknown_id = items.append(unknown_item);
 
-    ASSERT_EQ(items.size(), 10U);
+    ASSERT_EQ(items.size(), 11U);
     const syntax::ItemNodeList copied(items);
     EXPECT_EQ(copied[const_id.value].name, "ANSWER");
     EXPECT_EQ(copied[alias_id.value].where_constraints.front().capability_names.front(), "Reader");
@@ -282,6 +315,14 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_TRUE(copied[function_id.value].borrow_contract.present);
     EXPECT_EQ(copied[extern_id.value].extern_items.front().value, function_id.value);
     EXPECT_EQ(copied[impl_id.value].impl_items.front().value, function_id.value);
+    EXPECT_EQ(copied[macro_id.value].name, "Make");
+    EXPECT_EQ(copied[macro_id.value].name_id, syntax::IdentId{15U});
+    EXPECT_EQ(copied[macro_id.value].macro_kind, syntax::MacroDeclKind::declarative);
+    EXPECT_EQ(copied[macro_id.value].macro_body_tokens.size(), 3U);
+    EXPECT_EQ(copied[macro_id.value].macro_body_tokens[1].text, "match");
+    EXPECT_EQ(copied[macro_id.value].macro_body_range.begin, range.begin);
+    EXPECT_EQ(copied[macro_id.value].macro_match_clause_count, 1U);
+    EXPECT_TRUE(copied[macro_id.value].macro_body_balanced);
     EXPECT_EQ(copied[unknown_id.value].name, "unknown");
 
     const syntax::ItemNode* const materialized_opaque = copied.ptr(opaque_id.value);
@@ -308,6 +349,13 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_TRUE(moved.take(function_id.value).is_trait_default_method);
     EXPECT_EQ(moved.take(extern_id.value).extern_items.front().value, function_id.value);
     EXPECT_EQ(moved.take(impl_id.value).impl_type.value, 17U);
+    const syntax::ItemNode moved_macro = moved.take(macro_id.value);
+    EXPECT_EQ(moved_macro.name, "Make");
+    EXPECT_EQ(moved_macro.macro_kind, syntax::MacroDeclKind::declarative);
+    EXPECT_EQ(moved_macro.macro_body_tokens.size(), 3U);
+    EXPECT_EQ(moved_macro.macro_body_tokens[1].kind, syntax::TokenKind::kw_match);
+    EXPECT_EQ(moved_macro.macro_match_clause_count, 1U);
+    EXPECT_TRUE(moved_macro.macro_body_balanced);
     EXPECT_EQ(moved.take(unknown_id.value).name, "unknown");
 }
 

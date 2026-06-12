@@ -13,6 +13,19 @@ constexpr std::string_view FRONTEND_MACRO_M26C_EXPANSION_NAME =
     "M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure";
 constexpr std::string_view FRONTEND_MACRO_M26C_EXPANSION_FINGERPRINT_MARKER =
     "frontend.macro.m26c.builtin_derive_cursor_rollback_ast_mutation_verifier_closure.v1";
+constexpr std::string_view FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_ADMISSION_MARKER =
+    "frontend.macro.m27a.aurex_macro_surface_admission_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M27A_AUREX_MACRO_BODY_FINGERPRINT_MARKER =
+    "frontend.macro.m27a.aurex_macro_body_token_tree.v1";
+constexpr std::string_view FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_POLICY =
+    "aurex_macro_surface_admission_gate_v1";
+constexpr std::string_view FRONTEND_MACRO_M27A_QUERY_NAME_PREFIX = "m27a-aurex-macro-surface:";
+constexpr std::string_view FRONTEND_MACRO_M27A_DECLARATIVE_BLOCKER =
+    "Aurex declarative macro expansion is parser-blocked in M27a";
+constexpr std::string_view FRONTEND_MACRO_M27B_USER_DERIVE_BLOCKER =
+    "Aurex user derive macro expansion is admission-only in M27b";
+constexpr std::string_view FRONTEND_MACRO_M27C_COMPILE_TIME_BLOCKER =
+    "Aurex compile-time macro execution is admission-only in M27c";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -515,6 +528,49 @@ constexpr base::u64 FRONTEND_MACRO_M21I_MAX_GENERATED_TOKEN_INDEX =
     name += std::to_string(input.attribute_index);
     name.push_back(':');
     name += input.attribute_name;
+    return name;
+}
+
+[[nodiscard]] std::string_view macro_decl_kind_name(const syntax::MacroDeclKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::MacroDeclKind::declarative:
+            return "declarative";
+        case syntax::MacroDeclKind::derive:
+            return "derive";
+        case syntax::MacroDeclKind::compile_time:
+            return "compile_time";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string_view macro_surface_blocker_reason(const syntax::MacroDeclKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::MacroDeclKind::declarative:
+            return FRONTEND_MACRO_M27A_DECLARATIVE_BLOCKER;
+        case syntax::MacroDeclKind::derive:
+            return FRONTEND_MACRO_M27B_USER_DERIVE_BLOCKER;
+        case syntax::MacroDeclKind::compile_time:
+            return FRONTEND_MACRO_M27C_COMPILE_TIME_BLOCKER;
+    }
+    return FRONTEND_MACRO_M27A_DECLARATIVE_BLOCKER;
+}
+
+[[nodiscard]] std::string macro_surface_query_name(
+    const syntax::ModuleId module,
+    const base::u32 part_index,
+    const syntax::ItemId item,
+    const std::string_view macro_name)
+{
+    std::string name(FRONTEND_MACRO_M27A_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(part_index);
+    name.push_back(':');
+    name += std::to_string(item.value);
+    name.push_back(':');
+    name += macro_name;
     return name;
 }
 
@@ -4553,6 +4609,73 @@ make_builtin_derive_cursor_rollback_ast_mutation_verifier_closure(
     return builder.finish();
 }
 
+[[nodiscard]] query::StableFingerprint128 fingerprint_macro_body_tokens(
+    const syntax::ItemNode& item) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27A_AUREX_MACRO_BODY_FINGERPRINT_MARKER);
+    builder.mix_u8(static_cast<base::u8>(item.macro_kind));
+    builder.mix_string(item.name);
+    builder.mix_u64(static_cast<base::u64>(item.macro_body_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(item.macro_body_range.begin));
+    builder.mix_u64(static_cast<base::u64>(item.macro_body_range.end));
+    builder.mix_u64(static_cast<base::u64>(item.macro_body_tokens.size()));
+    for (const syntax::AttributeTokenDecl& token : item.macro_body_tokens) {
+        builder.mix_u8(static_cast<base::u8>(token.kind));
+        builder.mix_string(token.text);
+        builder.mix_u64(static_cast<base::u64>(token.range.source.value));
+        builder.mix_u64(static_cast<base::u64>(token.range.begin));
+        builder.mix_u64(static_cast<base::u64>(token.range.end));
+        builder.mix_u32(token.depth);
+        builder.mix_u8(static_cast<base::u8>(token.group));
+    }
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_surface_admission_identity(
+    const syntax::ItemId item,
+    const syntax::ModuleId module,
+    const base::u32 part_index,
+    const query::ModulePartKey attached_part,
+    const syntax::ItemNode& macro_item,
+    const query::StableFingerprint128 body_fingerprint,
+    const std::string_view query_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_ADMISSION_MARKER);
+    builder.mix_u32(item.value);
+    builder.mix_u32(module.value);
+    builder.mix_u32(part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(attached_part));
+    builder.mix_u8(static_cast<base::u8>(macro_item.macro_kind));
+    builder.mix_string(macro_item.name);
+    builder.mix_fingerprint(body_fingerprint);
+    builder.mix_u64(static_cast<base::u64>(macro_item.macro_body_tokens.size()));
+    builder.mix_u64(macro_item.macro_match_clause_count);
+    builder.mix_bool(macro_item.macro_body_balanced);
+    builder.mix_string(query_name);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_surface_admission_identity(
+    const AurexMacroSurfaceAdmissionGate& gate) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_ADMISSION_MARKER);
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_u64(gate.body_token_count);
+    builder.mix_u64(gate.match_clause_count);
+    builder.mix_bool(gate.body_balanced);
+    builder.mix_string(gate.query_name);
+    return builder.finish();
+}
+
 [[nodiscard]] EarlyItemExpansionDisposition disposition_for_attribute(
     const syntax::AttributeDecl& attribute) noexcept
 {
@@ -5893,6 +6016,46 @@ void mix_builtin_derive_cursor_rollback_ast_mutation_verifier_closure(
     builder.mix_bool(closure.query_reusable);
 }
 
+void mix_aurex_macro_surface_admission_gate(
+    query::StableHashBuilder& builder,
+    const AurexMacroSurfaceAdmissionGate& gate) noexcept
+{
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_fingerprint(gate.admission_identity);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.admission_policy);
+    builder.mix_string(gate.query_name);
+    builder.mix_string(gate.blocker_reason);
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.end));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.end));
+    builder.mix_u64(gate.body_token_count);
+    builder.mix_u64(gate.match_clause_count);
+    builder.mix_bool(gate.body_balanced);
+    builder.mix_bool(gate.declarative_surface);
+    builder.mix_bool(gate.user_derive_surface);
+    builder.mix_bool(gate.compile_time_execution_surface);
+    builder.mix_bool(gate.expansion_enabled);
+    builder.mix_bool(gate.compile_time_execution_enabled);
+    builder.mix_bool(gate.ast_mutated);
+    builder.mix_bool(gate.parser_consumption_enabled);
+    builder.mix_bool(gate.sema_visible_generated_items);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.produced_user_generated_code);
+    builder.mix_bool(gate.gate_visible);
+    builder.mix_bool(gate.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -6074,6 +6237,18 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.builtin_derive_cursor_rollback_ast_mutation_verifier_rollback_executed_count);
     builder.mix_u64(summary.builtin_derive_cursor_rollback_ast_mutation_verifier_ast_mutation_count);
     builder.mix_u64(summary.builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable_count);
+    builder.mix_u64(summary.aurex_macro_surface_source_item_count);
+    builder.mix_u64(summary.aurex_macro_surface_admission_gate_count);
+    builder.mix_u64(summary.aurex_macro_declarative_surface_count);
+    builder.mix_u64(summary.aurex_macro_user_derive_surface_count);
+    builder.mix_u64(summary.aurex_macro_compile_time_surface_count);
+    builder.mix_u64(summary.aurex_macro_surface_visible_count);
+    builder.mix_u64(summary.aurex_macro_surface_query_reusable_count);
+    builder.mix_u64(summary.aurex_macro_surface_body_balanced_count);
+    builder.mix_u64(summary.aurex_macro_surface_match_clause_count);
+    builder.mix_u64(summary.aurex_macro_surface_expansion_enabled_count);
+    builder.mix_u64(summary.aurex_macro_surface_compile_time_execution_enabled_count);
+    builder.mix_u64(summary.aurex_macro_surface_parser_consumable_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -6382,6 +6557,19 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             == rhs.builtin_derive_cursor_rollback_ast_mutation_verifier_ast_mutation_count
         && lhs.builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable_count
             == rhs.builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable_count
+        && lhs.aurex_macro_surface_source_item_count == rhs.aurex_macro_surface_source_item_count
+        && lhs.aurex_macro_surface_admission_gate_count == rhs.aurex_macro_surface_admission_gate_count
+        && lhs.aurex_macro_declarative_surface_count == rhs.aurex_macro_declarative_surface_count
+        && lhs.aurex_macro_user_derive_surface_count == rhs.aurex_macro_user_derive_surface_count
+        && lhs.aurex_macro_compile_time_surface_count == rhs.aurex_macro_compile_time_surface_count
+        && lhs.aurex_macro_surface_visible_count == rhs.aurex_macro_surface_visible_count
+        && lhs.aurex_macro_surface_query_reusable_count == rhs.aurex_macro_surface_query_reusable_count
+        && lhs.aurex_macro_surface_body_balanced_count == rhs.aurex_macro_surface_body_balanced_count
+        && lhs.aurex_macro_surface_match_clause_count == rhs.aurex_macro_surface_match_clause_count
+        && lhs.aurex_macro_surface_expansion_enabled_count == rhs.aurex_macro_surface_expansion_enabled_count
+        && lhs.aurex_macro_surface_compile_time_execution_enabled_count
+            == rhs.aurex_macro_surface_compile_time_execution_enabled_count
+        && lhs.aurex_macro_surface_parser_consumable_count == rhs.aurex_macro_surface_parser_consumable_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -8879,6 +9067,41 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     };
 }
 
+[[nodiscard]] AurexMacroSurfaceAdmissionGate make_aurex_macro_surface_admission_gate(
+    const syntax::AstModule& ast,
+    const syntax::ItemId item,
+    const query::ModulePartKey attached_part)
+{
+    const syntax::ItemNode& macro_item = ast.items[item.value];
+    const syntax::ModuleId module = ast.item_modules[item.value];
+    const base::u32 part_index = ast.item_part_indices[item.value];
+    const query::StableFingerprint128 body_fingerprint = fingerprint_macro_body_tokens(macro_item);
+    const std::string query_name = macro_surface_query_name(module, part_index, item, macro_item.name);
+
+    AurexMacroSurfaceAdmissionGate gate;
+    gate.item = item;
+    gate.module = module;
+    gate.part_index = part_index;
+    gate.attached_part = attached_part;
+    gate.body_fingerprint = body_fingerprint;
+    gate.admission_identity = macro_surface_admission_identity(
+        item, module, part_index, attached_part, macro_item, body_fingerprint, query_name);
+    gate.macro_kind = macro_item.macro_kind;
+    gate.macro_name = std::string(macro_item.name);
+    gate.admission_policy = std::string(FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_POLICY);
+    gate.query_name = query_name;
+    gate.blocker_reason = std::string(macro_surface_blocker_reason(macro_item.macro_kind));
+    gate.macro_range = macro_item.range;
+    gate.body_range = macro_item.macro_body_range;
+    gate.body_token_count = static_cast<base::u64>(macro_item.macro_body_tokens.size());
+    gate.match_clause_count = macro_item.macro_match_clause_count;
+    gate.body_balanced = macro_item.macro_body_balanced;
+    gate.declarative_surface = macro_item.macro_kind == syntax::MacroDeclKind::declarative;
+    gate.user_derive_surface = macro_item.macro_kind == syntax::MacroDeclKind::derive;
+    gate.compile_time_execution_surface = macro_item.macro_kind == syntax::MacroDeclKind::compile_time;
+    return gate;
+}
+
 } // namespace
 
 std::string_view early_item_expansion_disposition_name(
@@ -10202,6 +10425,45 @@ bool is_valid(const BuiltinDeriveCursorRollbackAstMutationVerifierClosure& closu
         && closure.query_reusable;
 }
 
+bool is_valid(const AurexMacroSurfaceAdmissionGate& gate) noexcept
+{
+    const base::u64 surface_count = (gate.declarative_surface ? 1U : 0U)
+        + (gate.user_derive_surface ? 1U : 0U)
+        + (gate.compile_time_execution_surface ? 1U : 0U);
+    const bool kind_matches_surface =
+        (gate.macro_kind == syntax::MacroDeclKind::declarative && gate.declarative_surface)
+        || (gate.macro_kind == syntax::MacroDeclKind::derive && gate.user_derive_surface)
+        || (gate.macro_kind == syntax::MacroDeclKind::compile_time && gate.compile_time_execution_surface);
+
+    return syntax::is_valid(gate.item)
+        && syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && is_nonzero_fingerprint(gate.body_fingerprint)
+        && is_nonzero_fingerprint(gate.admission_identity)
+        && !gate.macro_name.empty()
+        && gate.admission_policy == FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_POLICY
+        && gate.query_name == macro_surface_query_name(gate.module, gate.part_index, gate.item, gate.macro_name)
+        && gate.admission_identity == macro_surface_admission_identity(gate)
+        && gate.blocker_reason == macro_surface_blocker_reason(gate.macro_kind)
+        && source_range_is_well_formed(gate.macro_range)
+        && source_range_is_well_formed(gate.body_range)
+        && gate.body_token_count > 0U
+        && gate.body_balanced
+        && surface_count == 1U
+        && kind_matches_surface
+        && !gate.expansion_enabled
+        && !gate.compile_time_execution_enabled
+        && !gate.ast_mutated
+        && !gate.parser_consumption_enabled
+        && !gate.sema_visible_generated_items
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.gate_visible
+        && gate.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -10379,6 +10641,11 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const BuiltinDeriveCursorRollbackAstMutationVerifierClosure& closure) {
                    return is_valid(closure);
                })
+        && std::all_of(result.aurex_macro_surface_admission_gates.begin(),
+               result.aurex_macro_surface_admission_gates.end(),
+               [](const AurexMacroSurfaceAdmissionGate& gate) {
+                   return is_valid(gate);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -10404,6 +10671,8 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && builtin_derive_parser_dry_run_admission_gates_match_groups(result)
         && builtin_derive_error_recovery_shadow_diagnostic_gates_match_groups(result)
         && builtin_derive_cursor_rollback_ast_mutation_verifier_closures_match_groups(result)
+        && result.aurex_macro_surface_source_item_count
+            == static_cast<base::u64>(result.aurex_macro_surface_admission_gates.size())
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -11808,6 +12077,58 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.aurex_macro_surface_source_item_count = result.aurex_macro_surface_source_item_count;
+    summary.aurex_macro_surface_admission_gate_count =
+        static_cast<base::u64>(result.aurex_macro_surface_admission_gates.size());
+    for (const AurexMacroSurfaceAdmissionGate& gate : result.aurex_macro_surface_admission_gates) {
+        if (gate.declarative_surface) {
+            ++summary.aurex_macro_declarative_surface_count;
+        }
+        if (gate.user_derive_surface) {
+            ++summary.aurex_macro_user_derive_surface_count;
+        }
+        if (gate.compile_time_execution_surface) {
+            ++summary.aurex_macro_compile_time_surface_count;
+        }
+        if (gate.gate_visible) {
+            ++summary.aurex_macro_surface_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.aurex_macro_surface_query_reusable_count;
+        }
+        if (gate.body_balanced) {
+            ++summary.aurex_macro_surface_body_balanced_count;
+        }
+        summary.aurex_macro_surface_match_clause_count += gate.match_clause_count;
+        if (gate.expansion_enabled) {
+            ++summary.aurex_macro_surface_expansion_enabled_count;
+        }
+        if (gate.compile_time_execution_enabled) {
+            ++summary.aurex_macro_surface_compile_time_execution_enabled_count;
+        }
+        if (gate.parser_consumption_enabled) {
+            ++summary.aurex_macro_surface_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.ast_mutated) {
+            ++summary.ast_mutation_count;
+        }
+        if (gate.sema_visible_generated_items) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -11993,6 +12314,11 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     for (const BuiltinDeriveCursorRollbackAstMutationVerifierClosure& closure :
         result.builtin_derive_cursor_rollback_ast_mutation_verifier_closures) {
         mix_builtin_derive_cursor_rollback_ast_mutation_verifier_closure(builder, closure);
+    }
+    builder.mix_u64(result.aurex_macro_surface_source_item_count);
+    builder.mix_u64(static_cast<base::u64>(result.aurex_macro_surface_admission_gates.size()));
+    for (const AurexMacroSurfaceAdmissionGate& gate : result.aurex_macro_surface_admission_gates) {
+        mix_aurex_macro_surface_admission_gate(builder, gate);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -12324,6 +12650,24 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.builtin_derive_cursor_rollback_ast_mutation_verifier_ast_mutation_count
            << " builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable="
            << summary.builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable_count
+           << " aurex_macro_surface_source_items="
+           << summary.aurex_macro_surface_source_item_count
+           << " aurex_macro_surface_admissions="
+           << summary.aurex_macro_surface_admission_gate_count
+           << " aurex_macro_declarative_surfaces="
+           << summary.aurex_macro_declarative_surface_count
+           << " aurex_macro_user_derive_surfaces="
+           << summary.aurex_macro_user_derive_surface_count
+           << " aurex_macro_compile_time_surfaces="
+           << summary.aurex_macro_compile_time_surface_count
+           << " aurex_macro_surface_match_clauses="
+           << summary.aurex_macro_surface_match_clause_count
+           << " aurex_macro_surface_expansion_enabled="
+           << summary.aurex_macro_surface_expansion_enabled_count
+           << " aurex_macro_surface_compile_time_execution_enabled="
+           << summary.aurex_macro_surface_compile_time_execution_enabled_count
+           << " aurex_macro_surface_parser_consumable="
+           << summary.aurex_macro_surface_parser_consumable_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " ast_mutations=" << summary.ast_mutation_count
@@ -13930,6 +14274,45 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(closure.verifier_closure_identity)
                << '\n';
     }
+    for (base::usize index = 0; index < result.aurex_macro_surface_admission_gates.size(); ++index) {
+        const AurexMacroSurfaceAdmissionGate& gate = result.aurex_macro_surface_admission_gates[index];
+        stream << "  aurex_macro_surface_admission_gate #" << index
+               << " item=" << gate.item.value
+               << " module=" << gate.module.value
+               << " part=" << gate.part_index
+               << " name=" << gate.macro_name
+               << " kind=" << macro_decl_kind_name(gate.macro_kind)
+               << " policy=" << gate.admission_policy
+               << " query=" << gate.query_name
+               << " body_tokens=" << gate.body_token_count
+               << " match_clauses=" << gate.match_clause_count
+               << " body_balanced=" << (gate.body_balanced ? "yes" : "no")
+               << " declarative_surface=" << (gate.declarative_surface ? "yes" : "no")
+               << " user_derive_surface=" << (gate.user_derive_surface ? "yes" : "no")
+               << " compile_time_execution_surface="
+               << (gate.compile_time_execution_surface ? "yes" : "no")
+               << " expansion_enabled=" << (gate.expansion_enabled ? "yes" : "no")
+               << " compile_time_execution_enabled="
+               << (gate.compile_time_execution_enabled ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (gate.parser_consumption_enabled ? "yes" : "no")
+               << " ast_mutated=" << (gate.ast_mutated ? "yes" : "no")
+               << " sema_visible_generated_items="
+               << (gate.sema_visible_generated_items ? "yes" : "no")
+               << " standard_library_required="
+               << (gate.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (gate.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (gate.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " gate_visible=" << (gate.gate_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " blocker=" << gate.blocker_reason
+               << " body_fingerprint=" << query::debug_string(gate.body_fingerprint)
+               << " admission_identity=" << query::debug_string(gate.admission_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -13993,10 +14376,20 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.builtin_derive_parser_dry_run_admission_gates.reserve(ast.items.size());
     result.builtin_derive_error_recovery_shadow_diagnostic_gates.reserve(ast.items.size());
     result.builtin_derive_cursor_rollback_ast_mutation_verifier_closures.reserve(ast.items.size());
+    result.aurex_macro_surface_admission_gates.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
         const syntax::ItemNode& item = ast.items[item_index];
+        if (item.kind == syntax::ItemKind::macro_decl) {
+            ++result.aurex_macro_surface_source_item_count;
+            auto attached_part_result = module_part_key_for_item(ast, module_part_keys, item_id);
+            if (!attached_part_result) {
+                return base::Result<EarlyItemExpansionResult>::fail(attached_part_result.error());
+            }
+            result.aurex_macro_surface_admission_gates.push_back(
+                make_aurex_macro_surface_admission_gate(ast, item_id, attached_part_result.value()));
+        }
         if (item.attributes.empty()) {
             continue;
         }

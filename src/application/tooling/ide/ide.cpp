@@ -485,6 +485,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
             return ItemDefinitionMetadata{query::DefNamespace::value, query::DefKind::function, "function"};
         case syntax::ItemKind::extern_block:
         case syntax::ItemKind::impl_block:
+        case syntax::ItemKind::macro_decl:
             return std::nullopt;
     }
     return std::nullopt;
@@ -505,6 +506,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
             return query::StableSymbolKind::function;
         case syntax::ItemKind::extern_block:
         case syntax::ItemKind::impl_block:
+        case syntax::ItemKind::macro_decl:
             return query::StableSymbolKind::invalid;
     }
     return query::StableSymbolKind::invalid;

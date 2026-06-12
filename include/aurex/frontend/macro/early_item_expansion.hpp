@@ -1208,6 +1208,39 @@ struct BuiltinDeriveCursorRollbackAstMutationVerifierClosure {
     bool query_reusable = true;
 };
 
+struct AurexMacroSurfaceAdmissionGate {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 body_fingerprint;
+    query::StableFingerprint128 admission_identity;
+    syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
+    std::string macro_name;
+    std::string admission_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange macro_range{};
+    base::SourceRange body_range{};
+    base::u64 body_token_count = 0;
+    base::u64 match_clause_count = 0;
+    bool body_balanced = false;
+    bool declarative_surface = false;
+    bool user_derive_surface = false;
+    bool compile_time_execution_surface = false;
+    bool expansion_enabled = false;
+    bool compile_time_execution_enabled = false;
+    bool ast_mutated = false;
+    bool parser_consumption_enabled = false;
+    bool sema_visible_generated_items = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool gate_visible = true;
+    bool query_reusable = true;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -1388,6 +1421,18 @@ struct EarlyItemExpansionSummary {
     base::u64 builtin_derive_cursor_rollback_ast_mutation_verifier_rollback_executed_count = 0;
     base::u64 builtin_derive_cursor_rollback_ast_mutation_verifier_ast_mutation_count = 0;
     base::u64 builtin_derive_cursor_rollback_ast_mutation_verifier_parser_consumable_count = 0;
+    base::u64 aurex_macro_surface_source_item_count = 0;
+    base::u64 aurex_macro_surface_admission_gate_count = 0;
+    base::u64 aurex_macro_declarative_surface_count = 0;
+    base::u64 aurex_macro_user_derive_surface_count = 0;
+    base::u64 aurex_macro_compile_time_surface_count = 0;
+    base::u64 aurex_macro_surface_visible_count = 0;
+    base::u64 aurex_macro_surface_query_reusable_count = 0;
+    base::u64 aurex_macro_surface_body_balanced_count = 0;
+    base::u64 aurex_macro_surface_match_clause_count = 0;
+    base::u64 aurex_macro_surface_expansion_enabled_count = 0;
+    base::u64 aurex_macro_surface_compile_time_execution_enabled_count = 0;
+    base::u64 aurex_macro_surface_parser_consumable_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -1450,6 +1495,8 @@ struct EarlyItemExpansionResult {
         builtin_derive_error_recovery_shadow_diagnostic_gates;
     std::vector<BuiltinDeriveCursorRollbackAstMutationVerifierClosure>
         builtin_derive_cursor_rollback_ast_mutation_verifier_closures;
+    base::u64 aurex_macro_surface_source_item_count = 0;
+    std::vector<AurexMacroSurfaceAdmissionGate> aurex_macro_surface_admission_gates;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -1496,6 +1543,7 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const BuiltinDeriveParserDryRunAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveErrorRecoveryShadowDiagnosticGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveCursorRollbackAstMutationVerifierClosure& closure) noexcept;
+[[nodiscard]] bool is_valid(const AurexMacroSurfaceAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

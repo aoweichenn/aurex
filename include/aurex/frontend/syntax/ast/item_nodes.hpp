@@ -64,6 +64,12 @@ struct AttributeDecl {
     bool has_token_tree = false;
 };
 
+enum class MacroDeclKind : base::u8 {
+    declarative,
+    derive,
+    compile_time,
+};
+
 struct FieldDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
@@ -97,6 +103,7 @@ enum class ItemKind {
     fn_decl,
     extern_block,
     impl_block,
+    macro_decl,
 };
 
 struct ItemNode {
@@ -128,6 +135,11 @@ struct ItemNode {
     BorrowContractDecl borrow_contract;
     std::vector<AttributeDecl> attributes;
     std::vector<DeriveDecl> derives;
+    MacroDeclKind macro_kind = MacroDeclKind::declarative;
+    AstArenaVector<AttributeTokenDecl> macro_body_tokens;
+    base::SourceRange macro_body_range{};
+    base::u64 macro_match_clause_count = 0;
+    bool macro_body_balanced = false;
     std::vector<TraitSupertraitDecl> trait_supertraits;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
@@ -236,6 +248,18 @@ struct ImplBlockItemPayload {
     AstArenaVector<ItemId> items;
 };
 
+struct MacroItemPayload {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
+    AstArenaVector<DeriveDecl> derives;
+    AstArenaVector<AttributeTokenDecl> body_tokens;
+    base::SourceRange body_range{};
+    base::u64 match_clause_count = 0;
+    base::u8 macro_kind = static_cast<base::u8>(MacroDeclKind::declarative);
+    bool body_balanced = false;
+};
+
 struct ItemNodePayloadArena {
     ItemNodePayloadArena() = default;
 
@@ -249,6 +273,7 @@ struct ItemNodePayloadArena {
           functions(base::BumpAllocatorAdapter<FunctionItemPayload>{arena}),
           extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload>{arena}),
           impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload>{arena}),
+          macros(base::BumpAllocatorAdapter<MacroItemPayload>{arena}),
           unknowns(base::BumpAllocatorAdapter<ItemNode>{arena})
     {
     }
@@ -264,6 +289,7 @@ struct ItemNodePayloadArena {
         this->functions.swap(other.functions);
         this->extern_blocks.swap(other.extern_blocks);
         this->impl_blocks.swap(other.impl_blocks);
+        this->macros.swap(other.macros);
         this->unknowns.swap(other.unknowns);
     }
 
@@ -276,6 +302,7 @@ struct ItemNodePayloadArena {
     AstArenaVector<FunctionItemPayload> functions;
     AstArenaVector<ExternBlockItemPayload> extern_blocks;
     AstArenaVector<ImplBlockItemPayload> impl_blocks;
+    AstArenaVector<MacroItemPayload> macros;
     AstArenaVector<ItemNode> unknowns;
 };
 

@@ -171,7 +171,8 @@ A | B         表示二选一
 - 没有标准库级拥有型 `String`、容器库、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
-- 没有完整 macro / proc-macro / 用户可扩展 derive 系统；当前只支持编译器内建的 `#[derive(Copy, Eq, Hash)]`。
+- 没有完整 macro / proc-macro / 用户可扩展 derive 系统；当前只支持编译器内建的 `#[derive(Copy, Eq, Hash)]` 和
+  M27 admission-only 宏声明表面 `macro Name { ... }` / `macro derive Name { ... }` / `macro const Name { ... }`。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
   歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
   generic const arithmetic 或 `<T>` 风格泛型。M16 已打开 typed scalar const generic check-only 子集，但没有
@@ -901,7 +902,63 @@ struct Box[T] where T: Eq + Hash {
   `Box[f64]` 满足 `Eq`。
 - 完整 macro、proc-macro、用户自定义 derive、derive 代码生成、`Clone`、`Ord` 派生和标准库 trait 派生都未实现。
 
-### 6.7 Function
+### 6.7 Aurex macro 声明表面
+
+M27 开始支持 Aurex 自己风格的宏声明 item，但当前是 admission-only：parser、AST、dump、query 和 early expansion
+boundary 能识别和索引它们，宏体不会展开，也不会执行用户编译期代码。
+
+```text
+MacroDecl   = Visibility? "macro" MacroFlavor? Identifier MacroBody
+MacroFlavor = "derive" | "const"
+MacroBody   = "{" TokenTree* "}"
+```
+
+```aurex
+macro VecBuilder {
+    match expr_list(xs) -> { xs }
+}
+
+macro derive Inspect {
+    match item(target) -> { target }
+}
+
+macro const TokenBuild {
+    match tokens(input) -> { input }
+}
+```
+
+三种表面：
+
+- `macro Name { ... }`：声明式宏表面，AST 记录为 `MacroDeclKind::declarative`。
+- `macro derive Name { ... }`：用户 derive 宏表面，AST 记录为 `MacroDeclKind::derive`。
+- `macro const Name { ... }`：编译期执行宏表面，AST 记录为 `MacroDeclKind::compile_time`。
+
+当前能做：
+
+- Parser 识别 `ItemKind::macro_decl`，并保存宏体 flat token tree。
+- AST 保存 `macro_body_tokens`、`macro_body_range`、`macro_match_clause_count` 和 `macro_body_balanced`。
+- AST dump 输出 `macro_kind=...`、`body_tokens=...`、`match_clauses=...`、`balanced=yes/no` 和 `macro_body`。
+- `macro.expand_items` 会为每个 macro item 生成 `AurexMacroSurfaceAdmissionGate`。
+- Query 层提供 `m27_macro_expansion_plan_baseline()`，固定 declarative / user derive / compile-time execution admission
+  三类 facts。
+
+当前不能做：
+
+- 不支持 Rust `macro_rules!`。
+- 不支持 `$matcher` / `$($x:expr),*`。
+- 不执行宏展开。
+- 不执行 `macro const` 用户编译期代码。
+- 不把宏输出交给 parser。
+- 不 parse / merge generated module part。
+- 不修改 AST。
+- 不生成 sema-visible item。
+- 不生成用户代码。
+- 不引入标准库、runtime helper 或 external process。
+
+`match ... -> ...` 目前只是宏体内可索引的 token hint，parser 会统计顶层 `match` clause 数量，后续 typed matcher
+阶段才会赋予结构化 matcher 语义。
+
+### 6.8 Function
 
 函数声明定义可调用实体。Aurex 允许 private 普通函数推导返回类型，但 public/ABI/prototype surface 必须显式写返回类型。
 
@@ -933,7 +990,7 @@ fn inferred(value: i32) {
 - 参数必须写类型。
 - 函数原型用 `;` 结束，定义用 block。
 
-### 6.7 Extern C 和 Export C
+### 6.9 Extern C 和 Export C
 
 `extern c` 声明外部 C ABI 符号；`export c fn` 定义从 Aurex 导出的 C ABI 符号。ABI symbol 可用
 `@name` 指定。
@@ -998,7 +1055,7 @@ selector 规则：
 - selector 列表不能为空；重复 selector 或声明与函数体 summary 不一致时会诊断。
 - postfix decorator 会被解析但诊断；推荐始终把 `@name` / `@borrow` 写在函数声明之前。
 
-### 6.8 Impl 和方法
+### 6.10 Impl 和方法
 
 `impl` 把方法和 associated type 实现绑定到 named type，或把 trait conformance 显式绑定到类型。
 
@@ -2511,6 +2568,7 @@ let File { fd } = file; // 若 payload/field 是非 Copy resource，consuming pa
 let ok: File = result?; // non-Copy ? payload transfer 仍拒绝
 box.value = value;    // 若 box 是 &mut Box[T] 且字段为资源值，当前仍拒绝
 replace(a, b)         // 当前没有 replace / take / swap 内建
+macro_rules! vec {}   // 不支持 Rust macro_rules；使用 M27 admission-only `macro Name { ... }`
 ```
 
 ## 16. 当前工程表达能力：正则库案例

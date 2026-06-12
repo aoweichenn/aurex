@@ -5,6 +5,22 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
+## 当前实现入口：M21-M27 宏系统主线已开启，M27 Aurex macro surface admission 已收口
+
+M27 已把 Aurex 自己风格的用户宏声明入口落到 parser / AST / query / early expansion admission gate：
+`macro Name { ... }`、`macro derive Name { ... }` 和 `macro const Name { ... }` 都可被解析和索引，AST 记录
+`ItemKind::macro_decl`、`MacroDeclKind::{declarative, derive, compile_time}`、macro body token tree、match clause
+count 和 delimiter balance；`expand_early_item_macros_noop()` 会生成 `AurexMacroSurfaceAdmissionGate`，summary /
+dump / fingerprint 中会出现 `aurex_macro_surface_source_items`、`aurex_macro_surface_admissions`、
+`aurex_macro_declarative_surfaces`、`aurex_macro_user_derive_surfaces` 和
+`aurex_macro_compile_time_surfaces`。Query 层新增 `m27_macro_expansion_plan_baseline()`、
+`is_valid_m27_macro_expansion_plan()`、`aurex_declarative_macro_surface`、
+`aurex_user_derive_macro_surface` 和 `aurex_compile_time_macro_execution_admission`。
+
+M27 仍是 admission-only：不采用 Rust `macro_rules!` / `$matcher` 写法，不展开宏、不执行用户编译期代码、不 parse /
+merge generated module part、不修改 AST、不生成 sema-visible item、不生成用户代码、不引入标准库/runtime/external process。
+下一步建议进入 M27b typed matcher / hygiene definition-site admission，而不是照搬 Rust 的 declarative macro DSL。
+
 ## 当前实现入口：M21-M26 宏系统主线已开启，M26c builtin derive cursor rollback AST mutation verifier closure 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
@@ -214,18 +230,19 @@ blocker；M26c 新增
 `m26c-builtin-derive-cursor-rollback-ast-verifier:<module>:<part>`、M26a/M26b/M25a/M25b/M25c identity 链接、
 cursor snapshot / rollback proof / recovery shadow counts、`ast_baseline_snapshot_count=1`、
 `ast_mutation_count=0`、`cursor_commit_count=0`、`session_commit_count=0`、`parser_consumable_case_count=0` 和
-`builtin derive cursor rollback execution and AST mutation verifier remain check-only in M26c` blocker，并把
+diagnostic sink isolation、`builtin derive cursor rollback execution and AST mutation verifier remain check-only in M26c`
+blocker，并把
 当前 result name 推进到 `M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure`。M26c 仍不执行 real
 parser dry-run、不准入 dry-run execution、不执行 error recovery、不发出 shadow diagnostic、不执行 rollback、
 不提交 session、不推进 parser cursor、不执行用户自定义 macro、不打开 external procedural macro、不生成 source
 text、不 parse / merge generated module part、不打开 parser consumption、不修改 AST、不实现标准库或 runtime helper。
 
-下一步建议进入 M27 builtin derive parser dry-run execution design/readiness gate：继续保持 no-parser-consumption /
-no-stdlib / no-runtime / no-user-defined-macro / no-external-procedural-macro，先设计并实现真实 dry-run execution
-之前的 parser cursor transaction API contract、diagnostic sink isolation、rollback replay verifier、generated token
-buffer parser-readiness proof 和 AST mutation sentinel。M27 仍不应直接进入用户自定义 macro、external procedural
-macro、标准库或 runtime helper；只有在这些 facts 能证明 cursor、diagnostic、AST 和 query cache 全部可回滚之后，
-才能考虑打开受控 dry-run execution。
+下一步建议进入 M27b typed matcher / hygiene definition-site admission：继续保持 no-parser-consumption /
+no-stdlib / no-runtime / no-external-procedural-macro / no-user-generated-code，不照搬 Rust `macro_rules!`，先把
+`match expr_list(xs) -> { ... }`、`match item(target) -> { ... }` 和 `match tokens(input) -> { ... }` 从 debug hint
+升级为结构化 matcher facts，并把 definition-site hygiene、fresh name scope、diagnostic anchor、body fingerprint 和
+query cache identity 固定清楚。只有 matcher、hygiene、diagnostic 和 rollback facts 能稳定复用后，才进入 user derive
+lowering 或 compile-time execution sandbox。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

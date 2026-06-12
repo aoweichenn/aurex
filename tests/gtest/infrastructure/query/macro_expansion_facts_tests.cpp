@@ -12,6 +12,7 @@ constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_KIND = 231U;
 constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_STAGE = 232U;
 constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY = 233U;
 constexpr base::usize QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT = 7U;
+constexpr base::usize QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT = 10U;
 
 [[nodiscard]] const query::MacroExpansionFact* find_fact(
     const query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
@@ -54,6 +55,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
                   query::MacroExpansionFactKind::external_procedural_macro_blocked),
         "external_procedural_macro_blocked");
     EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_declarative_macro_surface),
+        "aurex_declarative_macro_surface");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_user_derive_macro_surface),
+        "aurex_user_derive_macro_surface");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_compile_time_macro_execution_admission),
+        "aurex_compile_time_macro_execution_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
                   static_cast<query::MacroExpansionFactKind>(QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)),
         "invalid");
 
@@ -87,6 +97,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::macro_expansion_policy_name(
                   query::MacroExpansionPolicy::external_proc_macro_sandbox_future_v1),
         "external_proc_macro_sandbox_future_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_declarative_macro_surface_v1),
+        "aurex_declarative_macro_surface_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_user_derive_macro_surface_v1),
+        "aurex_user_derive_macro_surface_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1),
+        "aurex_compile_time_macro_execution_admission_v1");
     EXPECT_EQ(query::macro_expansion_policy_name(
                   static_cast<query::MacroExpansionPolicy>(QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY)),
         "invalid");
@@ -236,6 +255,113 @@ TEST(QueryUnit, MacroExpansionPlanM21cValidationRejectsBoundaryDrift)
     duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
     duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
     EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(duplicate_kind));
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27PinsAurexMacroSurfaceAdmission)
+{
+    const query::MacroExpansionPlan plan = query::m27_macro_expansion_plan_baseline();
+
+    ASSERT_EQ(plan.name, "M27 Aurex Macro Surface Admission Plan");
+    ASSERT_EQ(plan.facts.size(), QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_FALSE(query::is_valid(plan));
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(plan));
+    EXPECT_TRUE(query::is_valid_m27_macro_expansion_plan(plan));
+    EXPECT_EQ(plan.fingerprint, query::macro_expansion_plan_fingerprint(plan));
+
+    const query::MacroExpansionSummary summary = query::summarize_macro_expansion_plan_counts(plan);
+    EXPECT_EQ(summary.fact_count, QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_EQ(summary.attribute_input_count, 1U);
+    EXPECT_EQ(summary.builtin_derive_passthrough_count, 1U);
+    EXPECT_EQ(summary.generated_part_count, 1U);
+    EXPECT_EQ(summary.aurex_declarative_macro_surface_count, 1U);
+    EXPECT_EQ(summary.aurex_user_derive_macro_surface_count, 1U);
+    EXPECT_EQ(summary.aurex_compile_time_macro_execution_admission_count, 1U);
+    EXPECT_EQ(summary.user_generated_code_count, 0U);
+    EXPECT_EQ(summary.standard_library_required_count, 0U);
+    EXPECT_EQ(summary.runtime_required_count, 0U);
+    EXPECT_EQ(summary.external_process_required_count, 1U);
+
+    const std::array<query::MacroExpansionFactKind, 3U> aurex_surface_kinds{
+        query::MacroExpansionFactKind::aurex_declarative_macro_surface,
+        query::MacroExpansionFactKind::aurex_user_derive_macro_surface,
+        query::MacroExpansionFactKind::aurex_compile_time_macro_execution_admission,
+    };
+    for (const query::MacroExpansionFactKind kind : aurex_surface_kinds) {
+        const query::MacroExpansionFact* const fact = find_fact(plan, kind);
+        ASSERT_NE(fact, nullptr);
+        EXPECT_FALSE(fact->consumes_attribute_decl);
+        EXPECT_TRUE(fact->consumes_attribute_token_tree);
+        EXPECT_TRUE(fact->requires_query_key);
+        EXPECT_FALSE(fact->requires_generated_module_part);
+        EXPECT_TRUE(fact->requires_source_map);
+        EXPECT_TRUE(fact->requires_hygiene);
+        EXPECT_FALSE(fact->produces_user_generated_code);
+        EXPECT_FALSE(fact->standard_library_required);
+        EXPECT_FALSE(fact->runtime_required);
+        EXPECT_FALSE(fact->external_process_required);
+        EXPECT_TRUE(fact->blocks_unimplemented_item_attribute);
+    }
+
+    const std::string summary_text = query::summarize_macro_expansion_plan(plan);
+    EXPECT_NE(summary_text.find("macro_expansion_plan name=M27 Aurex Macro Surface Admission Plan"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("facts=10"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("aurex_declarative_macro_surfaces=1"), std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_user_derive_macro_surfaces=1"), std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_compile_time_macro_execution_admissions=1"),
+        std::string::npos)
+        << summary_text;
+
+    const std::string dump = query::dump_macro_expansion_plan(plan);
+    EXPECT_NE(dump.find("kind=aurex_declarative_macro_surface"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("kind=aurex_user_derive_macro_surface"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("kind=aurex_compile_time_macro_execution_admission"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("output_fact=AurexMacroSurfaceAdmissionGate declarative surface"),
+        std::string::npos)
+        << dump;
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27ValidationRejectsSurfaceBoundaryDrift)
+{
+    const query::MacroExpansionPlan plan = query::m27_macro_expansion_plan_baseline();
+    ASSERT_TRUE(query::is_valid_m27_macro_expansion_plan(plan));
+
+    query::MacroExpansionPlan missing_surface = plan;
+    missing_surface.facts.pop_back();
+    missing_surface.summary = query::summarize_macro_expansion_plan_counts(missing_surface);
+    missing_surface.fingerprint = query::macro_expansion_plan_fingerprint(missing_surface);
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(missing_surface));
+
+    query::MacroExpansionPlan external_surface = plan;
+    query::MacroExpansionFact* const compile_time =
+        find_fact(external_surface, query::MacroExpansionFactKind::aurex_compile_time_macro_execution_admission);
+    ASSERT_NE(compile_time, nullptr);
+    compile_time->external_process_required = true;
+    external_surface.summary = query::summarize_macro_expansion_plan_counts(external_surface);
+    external_surface.fingerprint = query::macro_expansion_plan_fingerprint(external_surface);
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(external_surface));
+
+    query::MacroExpansionPlan generated_user_code = plan;
+    query::MacroExpansionFact* const declarative =
+        find_fact(generated_user_code, query::MacroExpansionFactKind::aurex_declarative_macro_surface);
+    ASSERT_NE(declarative, nullptr);
+    declarative->produces_user_generated_code = true;
+    generated_user_code.summary = query::summarize_macro_expansion_plan_counts(generated_user_code);
+    generated_user_code.fingerprint = query::macro_expansion_plan_fingerprint(generated_user_code);
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(generated_user_code));
+
+    query::MacroExpansionPlan duplicate_kind = plan;
+    query::MacroExpansionFact* const user_derive =
+        find_fact(duplicate_kind, query::MacroExpansionFactKind::aurex_user_derive_macro_surface);
+    ASSERT_NE(user_derive, nullptr);
+    user_derive->kind = query::MacroExpansionFactKind::aurex_declarative_macro_surface;
+    duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
+    duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(duplicate_kind));
 }
 
 } // namespace aurex::test

@@ -1,9 +1,45 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure
+阶段：M27 Aurex Macro Surface Admission
 
 ## 总体状态
+
+2026-06-12：M27 Aurex Macro Surface Admission 已完成。本阶段打开 Aurex 自己风格的宏声明表面，但仍不采用
+Rust `macro_rules!` / `$matcher` 写法，也不实现标准库、runtime helper、external procedural macro、typed
+expression macro、真实用户自定义 derive lowering、真实用户宏展开、用户编译期代码执行、文本替换宏、真实 hygiene
+resolution、真实 expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module
+part parse / merge、declared generated names lookup、generated item visibility / export、parser-consumable generated
+token buffer、parser consumption execution、real parser dry-run execution、AST mutation 或 macro-generated user code
+lowering。
+
+新增 `ItemKind::macro_decl`、`MacroDeclKind::{declarative, derive, compile_time}`、`MacroItemPayload`、
+`ItemNode::macro_body_tokens`、`ItemNode::macro_body_range`、`ItemNode::macro_match_clause_count` 和
+`ItemNode::macro_body_balanced`。Parser 现在把 `macro` 当作 item 位置上下文标记，支持
+`macro Name { ... }`、`macro derive Name { ... }` 和 `macro const Name { ... }`，并把宏体保存为 flat
+`AttributeTokenDecl` token tree；顶层 `match` 只作为 admission/debug hint 计数，不是已执行 matcher DSL。AST dump 会输出
+`macro_kind=declarative` / `macro_kind=derive` / `macro_kind=compile_time`、`body_tokens`、`match_clauses`、
+`balanced=yes/no` 和 `macro_body`。
+
+新增 `AurexMacroSurfaceAdmissionGate` 和 `aurex_macro_surface_admission_gates`。`expand_early_item_macros_noop()`
+会扫描每个 `ItemKind::macro_decl`，生成 deterministic `body_fingerprint`、`admission_identity`、
+`m27a-aurex-macro-surface:<module>:<part>:<item>:<name>` query name、surface kind、body token count、match clause
+count、body balance 和 blocker reason。summary / dump / fingerprint 新增
+`aurex_macro_surface_source_items`、`aurex_macro_surface_admissions`、`aurex_macro_declarative_surfaces`、
+`aurex_macro_user_derive_surfaces`、`aurex_macro_compile_time_surfaces`、
+`aurex_macro_surface_match_clauses`、`aurex_macro_surface_expansion_enabled`、
+`aurex_macro_surface_compile_time_execution_enabled` 和 `aurex_macro_surface_parser_consumable`。validation 会拒绝
+source item / gate 数不匹配、gate identity 漂移、query name 漂移、body 不平衡、错误 surface kind、打开 macro
+expansion、compile-time execution、parser consumption、AST mutation、sema-visible generated items、standard
+library、runtime、external process 或 user generated code。
+
+Query 层新增 `aurex_declarative_macro_surface`、`aurex_user_derive_macro_surface`、
+`aurex_compile_time_macro_execution_admission` 三类 `MacroExpansionFactKind`，对应
+`aurex_declarative_macro_surface_v1`、`aurex_user_derive_macro_surface_v1` 和
+`aurex_compile_time_macro_execution_admission_v1` policy，并新增 `m27_macro_expansion_plan_baseline()` 与
+`is_valid_m27_macro_expansion_plan()`。M27 plan 在 M21c 七个 facts 上叠加三类 Aurex macro surface facts，共 10 个 facts；
+默认 early expansion 仍兼容 M21c baseline，不替换 M21-M26 builtin derive 链条。新增说明见
+[Aurex M27 Aurex Macro Surface Admission](m27-aurex-macro-surface-admission.md)。
 
 2026-06-12：M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure 已完成。本阶段仍不实现标准库、
 runtime helper、external procedural macro、typed expression macro、用户自定义 derive、用户自定义 macro、文本替换宏、

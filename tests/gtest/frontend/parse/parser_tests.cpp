@@ -2366,6 +2366,68 @@ TEST(CoreUnit, ParserRecordsDeriveTrailingCommaInAttributeTokenTree)
     EXPECT_EQ(item->derives.front().name, "Copy");
 }
 
+TEST(CoreUnit, ParserRecordsAurexMacroSurfaceDeclarations)
+{
+    constexpr std::string_view source =
+        "module parser.macro_surface;\n"
+        "pub macro VecBuilder {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro const TokenBuild {\n"
+        "  match tokens(input) -> { input }\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const vec_builder = find_item(module, "VecBuilder");
+    const syntax::ItemNode* const inspect = find_item(module, "Inspect");
+    const syntax::ItemNode* const token_build = find_item(module, "TokenBuild");
+    ASSERT_NE(vec_builder, nullptr);
+    ASSERT_NE(inspect, nullptr);
+    ASSERT_NE(token_build, nullptr);
+
+    EXPECT_EQ(vec_builder->kind, syntax::ItemKind::macro_decl);
+    EXPECT_EQ(vec_builder->visibility, syntax::Visibility::public_);
+    EXPECT_EQ(vec_builder->macro_kind, syntax::MacroDeclKind::declarative);
+    EXPECT_TRUE(vec_builder->macro_body_balanced);
+    EXPECT_EQ(vec_builder->macro_match_clause_count, 1U);
+    EXPECT_GT(vec_builder->macro_body_tokens.size(), 0U);
+    EXPECT_EQ(vec_builder->macro_body_tokens.front().kind, syntax::TokenKind::l_brace);
+    EXPECT_EQ(vec_builder->macro_body_tokens.back().kind, syntax::TokenKind::r_brace);
+
+    EXPECT_EQ(inspect->kind, syntax::ItemKind::macro_decl);
+    EXPECT_EQ(inspect->macro_kind, syntax::MacroDeclKind::derive);
+    EXPECT_TRUE(inspect->macro_body_balanced);
+    EXPECT_EQ(inspect->macro_match_clause_count, 1U);
+    EXPECT_GT(inspect->macro_body_tokens.size(), 0U);
+
+    EXPECT_EQ(token_build->kind, syntax::ItemKind::macro_decl);
+    EXPECT_EQ(token_build->macro_kind, syntax::MacroDeclKind::compile_time);
+    EXPECT_TRUE(token_build->macro_body_balanced);
+    EXPECT_EQ(token_build->macro_match_clause_count, 1U);
+    EXPECT_GT(token_build->macro_body_tokens.size(), 0U);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "macro VecBuilder macro_kind=declarative");
+    expect_contains(ast, "macro Inspect macro_kind=derive");
+    expect_contains(ast, "macro TokenBuild macro_kind=compile_time");
+    expect_contains(ast, "match_clauses=1");
+    expect_contains(ast, "balanced=yes");
+    expect_contains(ast, "macro_body { match expr_list");
+}
+
+TEST(CoreUnit, ParserRejectsRustStyleMacroRulesSurface)
+{
+    constexpr std::string_view source =
+        "module parser.macro_rules_rejected;\n"
+        "macro_rules! vec {\n"
+        "}\n";
+
+    expect_parse_diagnostic(source, "expected item declaration");
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments)
 {
     constexpr base::SourceId PARSER_TEST_PATH_RECOVERY_SOURCE_ID{18};

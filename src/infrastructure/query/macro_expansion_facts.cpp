@@ -12,6 +12,8 @@ constexpr std::string_view QUERY_MACRO_EXPANSION_PLAN_FINGERPRINT_MARKER =
     "query.macro_expansion_plan.v1";
 constexpr std::string_view QUERY_MACRO_EXPANSION_M21C_PLAN_NAME =
     "M21c Early Item Macro Expansion Plan";
+constexpr std::string_view QUERY_MACRO_EXPANSION_M27_PLAN_NAME =
+    "M27 Aurex Macro Surface Admission Plan";
 constexpr std::string_view QUERY_MACRO_EXPANSION_ATTRIBUTE_INPUT_FACT =
     "m21b_attribute_decl_token_tree_input";
 constexpr std::string_view QUERY_MACRO_EXPANSION_DERIVE_PASSTHROUGH_FACT =
@@ -26,10 +28,17 @@ constexpr std::string_view QUERY_MACRO_EXPANSION_UNIMPLEMENTED_BLOCKER_FACT =
     "unimplemented_item_attribute_macro_blocker";
 constexpr std::string_view QUERY_MACRO_EXPANSION_EXTERNAL_BLOCKER_FACT =
     "external_procedural_macro_sandbox_future_blocker";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_DECLARATIVE_SURFACE_FACT =
+    "aurex_declarative_macro_surface_admission";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_USER_DERIVE_SURFACE_FACT =
+    "aurex_user_derive_macro_surface_admission";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_COMPILE_TIME_ADMISSION_FACT =
+    "aurex_compile_time_macro_execution_admission";
 constexpr std::string_view QUERY_MACRO_EXPANSION_UNIMPLEMENTED_PREFIX =
     "item attribute macros are parsed but macro expansion is not implemented yet: ";
 constexpr base::u8 QUERY_MACRO_EXPANSION_INVALID_ENUM_VALUE = 255U;
 constexpr base::usize QUERY_MACRO_EXPANSION_M21C_FACT_COUNT = 7U;
+constexpr base::usize QUERY_MACRO_EXPANSION_M27_FACT_COUNT = 10U;
 
 [[nodiscard]] base::u8 stable_kind_value(const MacroExpansionFactKind kind) noexcept
 {
@@ -159,28 +168,64 @@ constexpr base::usize QUERY_MACRO_EXPANSION_M21C_FACT_COUNT = 7U;
                 && fact.requires_hygiene
                 && fact.external_process_required
                 && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_declarative_macro_surface:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_declarative_macro_surface_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_user_derive_macro_surface:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_user_derive_macro_surface_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
     }
     return false;
 }
 
-[[nodiscard]] bool plan_has_each_fact_kind_once(const MacroExpansionPlan& plan) noexcept
+[[nodiscard]] bool plan_has_each_fact_kind_once(const MacroExpansionPlan& plan, const base::usize fact_count) noexcept
 {
-    if (plan.facts.size() != QUERY_MACRO_EXPANSION_M21C_FACT_COUNT) {
+    if (plan.facts.size() != fact_count) {
         return false;
     }
 
-    std::array<bool, QUERY_MACRO_EXPANSION_M21C_FACT_COUNT> seen{};
+    std::array<bool, QUERY_MACRO_EXPANSION_M27_FACT_COUNT> seen{};
     for (const MacroExpansionFact& fact : plan.facts) {
         if (!is_valid(fact.kind)) {
             return false;
         }
         const base::usize index = static_cast<base::usize>(fact.kind) - 1U;
-        if (index >= seen.size() || seen[index]) {
+        if (index >= fact_count || seen[index]) {
             return false;
         }
         seen[index] = true;
     }
-    return std::all_of(seen.begin(), seen.end(), [](const bool present) {
+    return std::all_of(seen.begin(), seen.begin() + static_cast<std::ptrdiff_t>(fact_count), [](const bool present) {
         return present;
     });
 }
@@ -195,6 +240,10 @@ constexpr base::usize QUERY_MACRO_EXPANSION_M21C_FACT_COUNT = 7U;
         && lhs.source_map_stub_count == rhs.source_map_stub_count
         && lhs.sema_blocker_count == rhs.sema_blocker_count
         && lhs.future_external_count == rhs.future_external_count
+        && lhs.aurex_declarative_macro_surface_count == rhs.aurex_declarative_macro_surface_count
+        && lhs.aurex_user_derive_macro_surface_count == rhs.aurex_user_derive_macro_surface_count
+        && lhs.aurex_compile_time_macro_execution_admission_count
+            == rhs.aurex_compile_time_macro_execution_admission_count
         && lhs.attribute_decl_input_count == rhs.attribute_decl_input_count
         && lhs.token_tree_input_count == rhs.token_tree_input_count
         && lhs.generated_source_role_count == rhs.generated_source_role_count
@@ -217,6 +266,9 @@ void mix_summary(StableHashBuilder& builder, const MacroExpansionSummary& summar
     builder.mix_u64(summary.source_map_stub_count);
     builder.mix_u64(summary.sema_blocker_count);
     builder.mix_u64(summary.future_external_count);
+    builder.mix_u64(summary.aurex_declarative_macro_surface_count);
+    builder.mix_u64(summary.aurex_user_derive_macro_surface_count);
+    builder.mix_u64(summary.aurex_compile_time_macro_execution_admission_count);
     builder.mix_u64(summary.attribute_decl_input_count);
     builder.mix_u64(summary.token_tree_input_count);
     builder.mix_u64(summary.generated_source_role_count);
@@ -423,6 +475,60 @@ void append_fact_flags(std::ostringstream& stream, const MacroExpansionFact& fac
     return fact;
 }
 
+[[nodiscard]] MacroExpansionFact make_aurex_declarative_surface_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_DECLARATIVE_SURFACE_FACT,
+        MacroExpansionFactKind::aurex_declarative_macro_surface,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_declarative_macro_surface_v1,
+        "ItemNode{kind=macro_decl, macro_kind=declarative}",
+        "AurexMacroSurfaceAdmissionGate declarative surface",
+        "declarative macro expansion remains blocked in M27a");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
+[[nodiscard]] MacroExpansionFact make_aurex_user_derive_surface_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_USER_DERIVE_SURFACE_FACT,
+        MacroExpansionFactKind::aurex_user_derive_macro_surface,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_user_derive_macro_surface_v1,
+        "ItemNode{kind=macro_decl, macro_kind=derive}",
+        "AurexMacroSurfaceAdmissionGate user derive surface",
+        "user derive macro expansion remains admission-only in M27b");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
+[[nodiscard]] MacroExpansionFact make_aurex_compile_time_admission_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_COMPILE_TIME_ADMISSION_FACT,
+        MacroExpansionFactKind::aurex_compile_time_macro_execution_admission,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1,
+        "ItemNode{kind=macro_decl, macro_kind=compile_time}",
+        "AurexMacroSurfaceAdmissionGate compile-time execution admission",
+        "compile-time macro execution remains check-only in M27c");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
 } // namespace
 
 std::string_view macro_expansion_fact_kind_name(const MacroExpansionFactKind kind) noexcept
@@ -442,6 +548,12 @@ std::string_view macro_expansion_fact_kind_name(const MacroExpansionFactKind kin
             return "unimplemented_item_attribute_blocker";
         case MacroExpansionFactKind::external_procedural_macro_blocked:
             return "external_procedural_macro_blocked";
+        case MacroExpansionFactKind::aurex_declarative_macro_surface:
+            return "aurex_declarative_macro_surface";
+        case MacroExpansionFactKind::aurex_user_derive_macro_surface:
+            return "aurex_user_derive_macro_surface";
+        case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
+            return "aurex_compile_time_macro_execution_admission";
     }
     return "invalid";
 }
@@ -480,6 +592,12 @@ std::string_view macro_expansion_policy_name(const MacroExpansionPolicy policy) 
             return "unimplemented_item_attribute_blocker_v1";
         case MacroExpansionPolicy::external_proc_macro_sandbox_future_v1:
             return "external_proc_macro_sandbox_future_v1";
+        case MacroExpansionPolicy::aurex_declarative_macro_surface_v1:
+            return "aurex_declarative_macro_surface_v1";
+        case MacroExpansionPolicy::aurex_user_derive_macro_surface_v1:
+            return "aurex_user_derive_macro_surface_v1";
+        case MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1:
+            return "aurex_compile_time_macro_execution_admission_v1";
     }
     return "invalid";
 }
@@ -494,6 +612,9 @@ bool is_valid(const MacroExpansionFactKind kind) noexcept
         case MacroExpansionFactKind::expansion_source_map_stub:
         case MacroExpansionFactKind::unimplemented_item_attribute_blocker:
         case MacroExpansionFactKind::external_procedural_macro_blocked:
+        case MacroExpansionFactKind::aurex_declarative_macro_surface:
+        case MacroExpansionFactKind::aurex_user_derive_macro_surface:
+        case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
             return true;
     }
     return false;
@@ -522,6 +643,9 @@ bool is_valid(const MacroExpansionPolicy policy) noexcept
         case MacroExpansionPolicy::source_map_trace_stub_v1:
         case MacroExpansionPolicy::unimplemented_item_attribute_blocker_v1:
         case MacroExpansionPolicy::external_proc_macro_sandbox_future_v1:
+        case MacroExpansionPolicy::aurex_declarative_macro_surface_v1:
+        case MacroExpansionPolicy::aurex_user_derive_macro_surface_v1:
+        case MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1:
             return true;
     }
     return false;
@@ -551,7 +675,21 @@ bool is_valid(const MacroExpansionPlan& plan) noexcept
 bool is_valid_m21c_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept
 {
     return std::string_view(plan.name) == QUERY_MACRO_EXPANSION_M21C_PLAN_NAME
-        && plan_has_each_fact_kind_once(plan)
+        && plan_has_each_fact_kind_once(plan, QUERY_MACRO_EXPANSION_M21C_FACT_COUNT)
+        && std::all_of(plan.facts.begin(), plan.facts.end(), [](const MacroExpansionFact& fact) {
+               return static_cast<base::usize>(fact.kind) <= QUERY_MACRO_EXPANSION_M21C_FACT_COUNT;
+           })
+        && std::all_of(plan.facts.begin(), plan.facts.end(), [](const MacroExpansionFact& fact) {
+               return is_valid(fact);
+           })
+        && is_valid(plan.summary, plan)
+        && plan.fingerprint == macro_expansion_plan_fingerprint(plan);
+}
+
+bool is_valid_m27_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept
+{
+    return std::string_view(plan.name) == QUERY_MACRO_EXPANSION_M27_PLAN_NAME
+        && plan_has_each_fact_kind_once(plan, QUERY_MACRO_EXPANSION_M27_FACT_COUNT)
         && std::all_of(plan.facts.begin(), plan.facts.end(), [](const MacroExpansionFact& fact) {
                return is_valid(fact);
            })
@@ -590,6 +728,15 @@ MacroExpansionSummary summarize_macro_expansion_plan_counts(const MacroExpansion
                 break;
             case MacroExpansionFactKind::external_procedural_macro_blocked:
                 ++summary.future_external_count;
+                break;
+            case MacroExpansionFactKind::aurex_declarative_macro_surface:
+                ++summary.aurex_declarative_macro_surface_count;
+                break;
+            case MacroExpansionFactKind::aurex_user_derive_macro_surface:
+                ++summary.aurex_user_derive_macro_surface_count;
+                break;
+            case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
+                ++summary.aurex_compile_time_macro_execution_admission_count;
                 break;
         }
         if (fact.consumes_attribute_decl) {
@@ -650,6 +797,12 @@ std::string summarize_macro_expansion_plan(const MacroExpansionPlan& plan)
            << " source_map_stubs=" << summary.source_map_stub_count
            << " sema_blockers=" << summary.sema_blocker_count
            << " future_external=" << summary.future_external_count
+           << " aurex_declarative_macro_surfaces="
+           << summary.aurex_declarative_macro_surface_count
+           << " aurex_user_derive_macro_surfaces="
+           << summary.aurex_user_derive_macro_surface_count
+           << " aurex_compile_time_macro_execution_admissions="
+           << summary.aurex_compile_time_macro_execution_admission_count
            << " user_generated_code=" << summary.user_generated_code_count
            << " standard_library_required=" << summary.standard_library_required_count
            << " runtime_required=" << summary.runtime_required_count
@@ -692,6 +845,25 @@ MacroExpansionPlan m21c_macro_expansion_plan_baseline()
     record_macro_expansion_fact(plan, make_source_map_fact());
     record_macro_expansion_fact(plan, make_unimplemented_blocker_fact());
     record_macro_expansion_fact(plan, make_external_blocker_fact());
+    plan.summary = summarize_macro_expansion_plan_counts(plan);
+    plan.fingerprint = macro_expansion_plan_fingerprint(plan);
+    return plan;
+}
+
+MacroExpansionPlan m27_macro_expansion_plan_baseline()
+{
+    MacroExpansionPlan plan;
+    plan.name = std::string(QUERY_MACRO_EXPANSION_M27_PLAN_NAME);
+    record_macro_expansion_fact(plan, make_attribute_input_fact());
+    record_macro_expansion_fact(plan, make_builtin_derive_fact());
+    record_macro_expansion_fact(plan, make_query_key_fact());
+    record_macro_expansion_fact(plan, make_generated_part_fact());
+    record_macro_expansion_fact(plan, make_source_map_fact());
+    record_macro_expansion_fact(plan, make_unimplemented_blocker_fact());
+    record_macro_expansion_fact(plan, make_external_blocker_fact());
+    record_macro_expansion_fact(plan, make_aurex_declarative_surface_fact());
+    record_macro_expansion_fact(plan, make_aurex_user_derive_surface_fact());
+    record_macro_expansion_fact(plan, make_aurex_compile_time_admission_fact());
     plan.summary = summarize_macro_expansion_plan_counts(plan);
     plan.fingerprint = macro_expansion_plan_fingerprint(plan);
     return plan;

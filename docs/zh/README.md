@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M27 Aurex Macro Surface Admission**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -210,6 +210,18 @@ parser cursor advance、session commit、parser consumption、generated source t
 parse/merge、AST mutation、sema-visible generated part、emit-expanded、debug/source-map projection、标准库、
 runtime helper、external procedural macro、用户自定义 macro 和 macro-generated user code 全部关闭。
 
+M27 已新增 Aurex 自己风格的宏声明表面 admission：parser / AST 当前可识别 `macro Name { ... }`、
+`macro derive Name { ... }` 和 `macro const Name { ... }`，记录 `ItemKind::macro_decl`、
+`MacroDeclKind::{declarative, derive, compile_time}`、宏体 token tree、`match` clause 计数和 delimiter balance；
+`expand_early_item_macros_noop()` 会为每个 macro item 生成 `AurexMacroSurfaceAdmissionGate`，并在 summary /
+dump / fingerprint 中记录 `aurex_macro_surface_source_items`、`aurex_macro_surface_admissions`、
+`aurex_macro_declarative_surfaces`、`aurex_macro_user_derive_surfaces` 和
+`aurex_macro_compile_time_surfaces`。Query 层新增
+`m27_macro_expansion_plan_baseline()`、`is_valid_m27_macro_expansion_plan()`、`aurex_declarative_macro_surface`、
+`aurex_user_derive_macro_surface` 和 `aurex_compile_time_macro_execution_admission`。M27 明确不采用
+`macro_rules!` 或 `$matcher` 写法，仍不展开宏、不执行用户编译期代码、不 parse / merge generated module part、不修改
+AST、不生成 sema-visible item、不生成用户代码、不需要标准库/runtime/external process。
+
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
 - [介绍文档](introduction.md)
@@ -300,6 +312,7 @@ runtime helper、external procedural macro、用户自定义 macro 和 macro-gen
 - [Aurex M26a Builtin Derive Parser Dry-Run Admission Gate](m26a-builtin-derive-parser-dry-run-admission-gate.md)
 - [Aurex M26b Builtin Derive Error Recovery Shadow Diagnostic Gate](m26b-builtin-derive-error-recovery-shadow-diagnostic-gate.md)
 - [Aurex M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure](m26c-builtin-derive-cursor-rollback-ast-mutation-verifier-closure.md)
+- [Aurex M27 Aurex Macro Surface Admission](m27-aurex-macro-surface-admission.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

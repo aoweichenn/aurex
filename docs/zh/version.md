@@ -1,5 +1,82 @@
 # 版本文档
 
+## M27 Aurex Macro Surface Admission
+
+当前版本在 M26c builtin derive cursor rollback AST mutation verifier closure 之后，完成 Aurex 自己风格的宏声明表面
+admission。它不是 `macro_rules!` 移植，也不是完整 proc-macro。本阶段只让 parser、AST、debug dump、query facts 和
+early expansion boundary 能识别并索引用户声明的宏入口。
+
+新增或固定：
+
+- 新增 `syntax::MacroDeclKind`，包含 `declarative`、`derive` 和 `compile_time`。
+- 新增 `syntax::ItemKind::macro_decl`。
+- 新增 `syntax::MacroItemPayload`。
+- `ItemNode` 新增 `macro_kind`、`macro_body_tokens`、`macro_body_range`、`macro_match_clause_count` 和
+  `macro_body_balanced`。
+- Parser 支持 `macro Name { ... }`。
+- Parser 支持 `macro derive Name { ... }`。
+- Parser 支持 `macro const Name { ... }`。
+- Parser 将 `macro` 作为 item 位置上下文标记，不加入 lexer keyword 表。
+- Parser 会保存 macro body flat token tree，并记录顶层 `match` clause count 与 delimiter balance。
+- AST dump 会输出 `macro_kind=declarative`、`macro_kind=derive`、`macro_kind=compile_time`、`body_tokens`、
+  `match_clauses`、`balanced=yes/no` 和 `macro_body`。
+- Tooling session 能把 macro item 投影为 `"macro"` kind。
+- IDE metadata 当前不会把 `macro_decl` 误投影成 value/type definition。
+- 新增 `frontend::macro::AurexMacroSurfaceAdmissionGate`。
+- `EarlyItemExpansionResult` 新增 `aurex_macro_surface_source_item_count`。
+- `EarlyItemExpansionResult` 新增 `aurex_macro_surface_admission_gates`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_surface_source_item_count`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_surface_admission_gate_count`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_declarative_surface_count`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_user_derive_surface_count`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_compile_time_surface_count`。
+- `EarlyItemExpansionSummary` 新增 `aurex_macro_surface_match_clause_count`。
+- `EarlyItemExpansionSummary` 新增 expansion / compile-time execution / parser consumable 三类开启计数。
+- `expand_early_item_macros_noop()` 会为每个 `ItemKind::macro_decl` 生成
+  `AurexMacroSurfaceAdmissionGate`。
+- Gate query name 固定为 `m27a-aurex-macro-surface:<module>:<part>:<item>:<name>`。
+- Gate policy 固定为 `aurex_macro_surface_admission_gate_v1`。
+- Gate blocker 固定为：
+  - `Aurex declarative macro expansion is parser-blocked in M27a`
+  - `Aurex user derive macro expansion is admission-only in M27b`
+  - `Aurex compile-time macro execution is admission-only in M27c`
+- Gate identity 绑定 item/module/part/attached part、macro kind、macro name、body fingerprint、body token count、
+  match clause count、body balance 和 query name。
+- validation 拒绝 source item / gate 数不匹配、body 不平衡、identity 漂移、query name 漂移、错误 surface kind、
+  expansion / compile-time execution / parser consumption 被打开、AST mutation、sema-visible generated items、
+  standard library/runtime/external process requirement 被打开或 user generated code 被打开。
+- Query 层新增 `MacroExpansionFactKind::aurex_declarative_macro_surface`。
+- Query 层新增 `MacroExpansionFactKind::aurex_user_derive_macro_surface`。
+- Query 层新增 `MacroExpansionFactKind::aurex_compile_time_macro_execution_admission`。
+- Query 层新增 `MacroExpansionPolicy::aurex_declarative_macro_surface_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_user_derive_macro_surface_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1`。
+- Query 层新增 `m27_macro_expansion_plan_baseline()`。
+- Query 层新增 `is_valid_m27_macro_expansion_plan()`。
+- M27 plan 固定为 M21c 七个 facts 加三类 Aurex macro surface facts，共 10 个 facts。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- Rust `macro_rules!`。
+- `$matcher` / `$($x:expr),*`。
+- 文本替换宏。
+- 真实宏展开。
+- 用户自定义 derive lowering。
+- 编译期宏代码执行。
+- external procedural macro 执行。
+- typed expression macro。
+- generated source text。
+- generated module part parse / merge。
+- AST mutation。
+- sema-visible generated item。
+- macro-generated user code lowering。
+- 真实 hygiene resolution。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure
 
 当前版本在 M25c builtin derive diagnostic shadow no-AST-mutation closure 之后，完成 M26a/M26b/M26c 三段

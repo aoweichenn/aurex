@@ -629,6 +629,18 @@ template <typename Mutator>
     return result;
 }
 
+[[nodiscard]] const frontend::macro::AurexMacroSurfaceAdmissionGate* aurex_macro_surface_gate_by_name(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view macro_name) noexcept
+{
+    const auto found = std::find_if(result.aurex_macro_surface_admission_gates.begin(),
+        result.aurex_macro_surface_admission_gates.end(),
+        [macro_name](const frontend::macro::AurexMacroSurfaceAdmissionGate& gate) {
+            return gate.macro_name == macro_name;
+        });
+    return found == result.aurex_macro_surface_admission_gates.end() ? nullptr : &*found;
+}
+
 } // namespace
 
 TEST(CoreUnit, EarlyItemExpansionDispositionNamesExposeInvalidFallback)
@@ -6930,6 +6942,224 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM26DryRunAdmissio
         mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
             result.builtin_derive_cursor_rollback_ast_mutation_verifier_closures.front()
                 .parser_cursor_advanced = true;
+        }));
+}
+
+TEST(CoreUnit, EarlyItemExpansionCollectsAurexMacroSurfaceAdmissionGates)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro const TokenBuild {\n"
+        "  match tokens(input) -> { input }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    EXPECT_EQ(result.summary.macro_input_count, 0U);
+    EXPECT_EQ(result.summary.attribute_input_count, 0U);
+    EXPECT_EQ(result.summary.generated_part_placeholder_count, 0U);
+    ASSERT_EQ(result.aurex_macro_surface_admission_gates.size(), 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_source_item_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_admission_gate_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_declarative_surface_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_user_derive_surface_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_compile_time_surface_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_visible_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_query_reusable_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_body_balanced_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_match_clause_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_expansion_enabled_count, 0U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_compile_time_execution_enabled_count, 0U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.sema_visible_generated_part_count, 0U);
+    EXPECT_EQ(result.summary.user_generated_code_count, 0U);
+    EXPECT_EQ(result.summary.standard_library_required_count, 0U);
+    EXPECT_EQ(result.summary.runtime_required_count, 0U);
+    EXPECT_EQ(result.summary.external_process_required_count, 0U);
+
+    const frontend::macro::AurexMacroSurfaceAdmissionGate* const build_vec =
+        aurex_macro_surface_gate_by_name(result, "BuildVec");
+    const frontend::macro::AurexMacroSurfaceAdmissionGate* const inspect =
+        aurex_macro_surface_gate_by_name(result, "Inspect");
+    const frontend::macro::AurexMacroSurfaceAdmissionGate* const token_build =
+        aurex_macro_surface_gate_by_name(result, "TokenBuild");
+    ASSERT_NE(build_vec, nullptr);
+    ASSERT_NE(inspect, nullptr);
+    ASSERT_NE(token_build, nullptr);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*build_vec));
+    EXPECT_EQ(build_vec->macro_kind, syntax::MacroDeclKind::declarative);
+    EXPECT_TRUE(build_vec->declarative_surface);
+    EXPECT_FALSE(build_vec->user_derive_surface);
+    EXPECT_FALSE(build_vec->compile_time_execution_surface);
+    EXPECT_EQ(build_vec->query_name, "m27a-aurex-macro-surface:0:0:0:BuildVec");
+    EXPECT_EQ(build_vec->blocker_reason, "Aurex declarative macro expansion is parser-blocked in M27a");
+    EXPECT_EQ(build_vec->match_clause_count, 1U);
+    EXPECT_TRUE(build_vec->body_balanced);
+    EXPECT_FALSE(build_vec->expansion_enabled);
+    EXPECT_FALSE(build_vec->compile_time_execution_enabled);
+    EXPECT_FALSE(build_vec->parser_consumption_enabled);
+    EXPECT_FALSE(build_vec->ast_mutated);
+    EXPECT_FALSE(build_vec->sema_visible_generated_items);
+    EXPECT_FALSE(build_vec->produced_user_generated_code);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*inspect));
+    EXPECT_EQ(inspect->macro_kind, syntax::MacroDeclKind::derive);
+    EXPECT_FALSE(inspect->declarative_surface);
+    EXPECT_TRUE(inspect->user_derive_surface);
+    EXPECT_FALSE(inspect->compile_time_execution_surface);
+    EXPECT_EQ(inspect->query_name, "m27a-aurex-macro-surface:0:0:1:Inspect");
+    EXPECT_EQ(inspect->blocker_reason, "Aurex user derive macro expansion is admission-only in M27b");
+
+    EXPECT_TRUE(frontend::macro::is_valid(*token_build));
+    EXPECT_EQ(token_build->macro_kind, syntax::MacroDeclKind::compile_time);
+    EXPECT_FALSE(token_build->declarative_surface);
+    EXPECT_FALSE(token_build->user_derive_surface);
+    EXPECT_TRUE(token_build->compile_time_execution_surface);
+    EXPECT_EQ(token_build->query_name, "m27a-aurex-macro-surface:0:0:2:TokenBuild");
+    EXPECT_EQ(token_build->blocker_reason, "Aurex compile-time macro execution is admission-only in M27c");
+
+    const std::string summary = frontend::macro::summarize_early_item_expansion(result);
+    expect_contains(summary, "aurex_macro_surface_source_items=3");
+    expect_contains(summary, "aurex_macro_surface_admissions=3");
+    expect_contains(summary, "aurex_macro_declarative_surfaces=1");
+    expect_contains(summary, "aurex_macro_user_derive_surfaces=1");
+    expect_contains(summary, "aurex_macro_compile_time_surfaces=1");
+    expect_contains(summary, "aurex_macro_surface_expansion_enabled=0");
+    expect_contains(summary, "aurex_macro_surface_compile_time_execution_enabled=0");
+    expect_contains(summary, "aurex_macro_surface_parser_consumable=0");
+
+    const std::string dump = frontend::macro::dump_early_item_expansion(result);
+    expect_contains(dump, "aurex_macro_surface_admission_gate #0");
+    expect_contains(dump, "kind=declarative");
+    expect_contains(dump, "kind=derive");
+    expect_contains(dump, "kind=compile_time");
+    expect_contains(dump, "body_balanced=yes");
+    expect_contains(dump, "expansion_enabled=no");
+    expect_contains(dump, "compile_time_execution_enabled=no");
+    expect_contains(dump, "parser_consumption_enabled=no");
+    expect_contains(dump, "user_generated_code=no");
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsAurexMacroSurfaceDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro const TokenBuild {\n"
+        "  match tokens(input) -> { input }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.aurex_macro_surface_admission_gates.size(), 3U);
+
+    const frontend::macro::EarlyItemExpansionResult missing_gate =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.clear();
+        });
+    EXPECT_EQ(missing_gate.summary.aurex_macro_surface_source_item_count, 3U);
+    EXPECT_EQ(missing_gate.summary.aurex_macro_surface_admission_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_gate));
+
+    const frontend::macro::EarlyItemExpansionResult expansion_enabled =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().expansion_enabled = true;
+        });
+    EXPECT_EQ(expansion_enabled.summary.aurex_macro_surface_expansion_enabled_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(expansion_enabled));
+
+    const frontend::macro::EarlyItemExpansionResult compile_time_execution_enabled =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.back().compile_time_execution_enabled = true;
+        });
+    EXPECT_EQ(compile_time_execution_enabled.summary
+                  .aurex_macro_surface_compile_time_execution_enabled_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(compile_time_execution_enabled));
+
+    const frontend::macro::EarlyItemExpansionResult parser_consumable =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().parser_consumption_enabled = true;
+        });
+    EXPECT_EQ(parser_consumable.summary.aurex_macro_surface_parser_consumable_count, 1U);
+    EXPECT_EQ(parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_consumable));
+
+    const frontend::macro::EarlyItemExpansionResult body_unbalanced =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().body_balanced = false;
+        });
+    EXPECT_EQ(body_unbalanced.summary.aurex_macro_surface_body_balanced_count, 2U);
+    EXPECT_FALSE(frontend::macro::is_valid(body_unbalanced));
+
+    const frontend::macro::EarlyItemExpansionResult user_code =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().produced_user_generated_code = true;
+        });
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+
+    const frontend::macro::EarlyItemExpansionResult wrong_surface =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().user_derive_surface = true;
+        });
+    EXPECT_EQ(wrong_surface.summary.aurex_macro_user_derive_surface_count, 2U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_surface));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAurexMacroSurfaceAdmission)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.aurex_macro_surface_admission_gates.size(), 1U);
+
+    const auto expect_fingerprint_drift =
+        [&baseline](const frontend::macro::EarlyItemExpansionResult& result) {
+            EXPECT_NE(result.fingerprint, baseline.fingerprint);
+            EXPECT_FALSE(frontend::macro::is_valid(result));
+        };
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().admission_identity =
+                query::stable_fingerprint("different aurex macro surface admission identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().body_fingerprint =
+                query::stable_fingerprint("different aurex macro body fingerprint");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().match_clause_count = 2U;
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_surface_admission_gates.front().query_name =
+                "m27a-aurex-macro-surface:wrong";
         }));
 }
 

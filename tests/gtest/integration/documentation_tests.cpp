@@ -100,6 +100,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m26a-builtin-derive-parser-dry-run-admission-gate.md",
         "docs/zh/m26b-builtin-derive-error-recovery-shadow-diagnostic-gate.md",
         "docs/zh/m26c-builtin-derive-cursor-rollback-ast-mutation-verifier-closure.md",
+        "docs/zh/m27-aurex-macro-surface-admission.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -366,7 +367,9 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains("docs/zh/README.md",
-        "文档基线：**M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure**");
+        "文档基线：**M27 Aurex Macro Surface Admission**");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M27 Aurex Macro Surface Admission");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -456,7 +459,11 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md",
         "Aurex M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure");
+        "阶段：M27 Aurex Macro Surface Admission");
+    expect_document_contains("docs/zh/progress.md", "AurexMacroSurfaceAdmissionGate");
+    expect_document_contains("docs/zh/progress.md", "m27_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/progress.md", "aurex_macro_surface_source_items");
+    expect_document_contains("docs/zh/progress.md", "macro const Name { ... }");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveExpansionAdmissionGate");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveSemanticExpansionPlan");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveParserConsumptionReleaseGate");
@@ -651,6 +658,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M27 Aurex Macro Surface Admission");
+    expect_document_contains("docs/zh/version.md", "AurexMacroSurfaceAdmissionGate");
+    expect_document_contains("docs/zh/version.md", "aurex_macro_surface_admission_gates");
+    expect_document_contains("docs/zh/version.md", "m27_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/version.md", "macro_rules!");
     expect_document_contains("docs/zh/version.md",
         "## M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure");
     expect_document_contains("docs/zh/version.md", "BuiltinDeriveParserDryRunAdmissionGate");
@@ -1293,6 +1306,30 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains(
         "docs/zh/m26c-builtin-derive-cursor-rollback-ast-mutation-verifier-closure.md",
         "builtin derive cursor rollback execution and AST mutation verifier remain check-only in M26c");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "Aurex M27 Aurex Macro Surface Admission");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "macro Name { ... }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "macro derive Name { ... }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "macro const Name { ... }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "AurexMacroSurfaceAdmissionGate");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "m27_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不支持 Rust `macro_rules!`");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不支持 `$matcher` / `$($x:expr),*`");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不真实展开宏");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不执行用户编译期代码");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不修改 AST");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "不要求或引入标准库");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(
@@ -1411,6 +1448,11 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M20c drop / allocator identity prerequisite gate");
     expect_document_contains("docs/zh/next-steps.md", "M20d Runtime Lowering ABI Design Closure 已完成");
     expect_document_contains("docs/zh/next-steps.md",
+        "当前实现入口：M21-M27 宏系统主线已开启，M27 Aurex macro surface admission 已收口");
+    expect_document_contains("docs/zh/next-steps.md",
+        "下一步建议进入 M27b typed matcher / hygiene definition-site admission");
+    expect_document_contains("docs/zh/next-steps.md", "macro const Name { ... }");
+    expect_document_contains("docs/zh/next-steps.md",
         "当前实现入口：M21-M26 宏系统主线已开启，M26c builtin derive cursor rollback AST mutation verifier closure 已收口");
     expect_document_contains("docs/zh/next-steps.md",
         "M23a-M23c 已完成 builtin derive parser consumption admission / checkpoint / pre-consumption verification 准备");
@@ -1421,7 +1463,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md",
         "M26a-M26c 已完成 builtin derive parser dry-run admission / recovery shadow / rollback verifier closure");
     expect_document_contains("docs/zh/next-steps.md",
-        "下一步建议进入 M27 builtin derive parser dry-run execution design/readiness gate");
+        "下一步建议进入 M27b typed matcher / hygiene definition-site admission");
     expect_document_contains("docs/zh/next-steps.md", "no-parser-consumption");
     expect_document_contains("docs/zh/next-steps.md", "dry-run");
     expect_document_contains("docs/zh/next-steps.md", "parser state rollback proof");
@@ -1455,6 +1497,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M20a 已新增 `OwnedDynRuntimeAdmissionGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20b 已新增 `OwnedDynObjectLayoutPrototype`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "阶段：M27 Aurex Macro Surface Admission");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M27 新增 Aurex macro surface admission");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "`AurexMacroSurfaceAdmissionGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`m27_macro_expansion_plan_baseline()`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20c 已新增 `OwnedDynDropAllocatorIdentityGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",

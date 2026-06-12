@@ -938,6 +938,21 @@ std::string_view item_kind_name(const ItemKind kind)
             return "extern_block";
         case ItemKind::impl_block:
             return "impl";
+        case ItemKind::macro_decl:
+            return "macro";
+    }
+    return "unknown";
+}
+
+std::string_view macro_decl_kind_name(const MacroDeclKind kind)
+{
+    switch (kind) {
+        case MacroDeclKind::declarative:
+            return "declarative";
+        case MacroDeclKind::derive:
+            return "derive";
+        case MacroDeclKind::compile_time:
+            return "compile_time";
     }
     return "unknown";
 }
@@ -1438,7 +1453,21 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
         }
         out << "])";
     }
+    if (item.kind == ItemKind::macro_decl) {
+        out << " macro_kind=" << macro_decl_kind_name(item.macro_kind)
+            << " body_tokens=" << item.macro_body_tokens.size()
+            << " match_clauses=" << item.macro_match_clause_count
+            << " balanced=" << (item.macro_body_balanced ? "yes" : "no");
+    }
     out << "\n";
+    if (item.kind == ItemKind::macro_decl) {
+        indent(out, depth + 1);
+        out << "macro_body";
+        for (const AttributeTokenDecl& token : item.macro_body_tokens) {
+            out << " " << token.text;
+        }
+        out << "\n";
+    }
     for (const FieldDecl& field : item.fields) {
         indent(out, depth + 1);
         out << "field ";

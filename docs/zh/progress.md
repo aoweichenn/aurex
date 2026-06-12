@@ -1,9 +1,45 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M24c Builtin Derive Dry-Run Negative Matrix Closure
+阶段：M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure
 
 ## 总体状态
+
+2026-06-12：M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure 已完成。本阶段仍不实现标准库、
+runtime helper、external procedural macro、typed expression macro、用户自定义 derive、用户自定义 macro、文本替换宏、
+真实 hygiene resolution、真实 expansion source map、debug trace CLI、`--emit-expanded`、generated source text、
+generated module part parse / merge、declared generated names lookup、generated item visibility / export、
+parser-consumable generated token buffer、parser consumption execution、real parser dry-run execution、diagnostic
+shadow execution、rollback execution、parser cursor advance、session commit、AST mutation 或 macro-generated user code
+lowering；它把 M24c negative matrix closure 之后的 check-only dry-run session boundary、token cursor snapshot
+rollback proof 和 diagnostic shadow no-AST-mutation closure 固定成可验证 facts。
+
+新增 `BuiltinDeriveParserDryRunSessionBoundary`、
+`BuiltinDeriveTokenCursorSnapshotRollbackProof` 和
+`BuiltinDeriveDiagnosticShadowNoAstMutationClosure`，并给 `EarlyItemExpansionResult` 增加
+`builtin_derive_parser_dry_run_sessions`、`builtin_derive_token_cursor_snapshot_proofs` 和
+`builtin_derive_diagnostic_shadow_no_ast_mutation_closures`。M25a session boundary 绑定 M24a
+`dry_run_adapter_identity`、M24c `negative_matrix_identity`、M21e `generated_buffer_identity` 和
+`parse_config_fingerprint`，固定 `builtin_derive_parser_dry_run_session_boundary_v1`、
+`m25a-builtin-derive-dry-run-session:<module>:<part>`、token buffer candidate / token record / diagnostic anchor
+counts、`parser_state_snapshot_count=1`、`committed_parse_count=0` 和 check-only uncommitted blocker。M25b cursor
+snapshot rollback proof 绑定 M25a `dry_run_session_identity`、M23b `checkpoint_protocol_identity` 和 M24b
+`replay_protocol_identity`，固定 `builtin_derive_token_cursor_snapshot_rollback_proof_v1`、
+`m25b-builtin-derive-token-cursor-rollback-proof:<module>:<part>`、checkpoint / cursor snapshot / parser state
+snapshot / rollback proof counts 和 `cursor_commit_count=0`。M25c diagnostic shadow no-AST-mutation closure 绑定
+M25a `dry_run_session_identity`、M25b `cursor_snapshot_identity`、M24b `replay_protocol_identity` 和 M24c
+`negative_matrix_identity`，固定 `builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1`、
+`m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:<module>:<part>`、diagnostic shadow count、
+`executed_shadow_count=0`、`ast_mutation_count=0`、`parser_consumable_case_count=0`，并把
+`EarlyItemExpansionResult::name` 推进为
+`M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`。summary / dump / fingerprint / validation 会拒绝
+M25 identity 或 query 漂移、M25 count 漂移、上游 M21/M23/M24/M25 identity 串线、dry-run execution / replay
+execution / diagnostic shadow execution / rollback execution / session commit / parser cursor advance / parser
+admission / parser consumption 被打开、generated part parsed / merged / sema-visible 被打开、AST mutation、
+standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。新增说明见
+[Aurex M25a Builtin Derive Parser Dry-Run Session Boundary](m25a-builtin-derive-parser-dry-run-session-boundary.md)、
+[Aurex M25b Builtin Derive Token Cursor Snapshot Rollback Proof](m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md) 和
+[Aurex M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure](m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md)。
 
 2026-06-12：M24c Builtin Derive Dry-Run Negative Matrix Closure 已完成。本阶段仍不实现标准库、
 runtime helper、external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene

@@ -94,6 +94,9 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m24a-builtin-derive-controlled-parser-dry-run-adapter.md",
         "docs/zh/m24b-builtin-derive-dry-run-rollback-diagnostic-replay.md",
         "docs/zh/m24c-builtin-derive-dry-run-negative-matrix-closure.md",
+        "docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -360,7 +363,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains("docs/zh/README.md",
-        "文档基线：**M24c Builtin Derive Dry-Run Negative Matrix Closure**");
+        "文档基线：**M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -437,8 +440,14 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M24b Builtin Derive Dry-Run Rollback Diagnostic Replay");
     expect_document_contains("docs/zh/README.md",
         "Aurex M24c Builtin Derive Dry-Run Negative Matrix Closure");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M25a Builtin Derive Parser Dry-Run Session Boundary");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M25b Builtin Derive Token Cursor Snapshot Rollback Proof");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M24c Builtin Derive Dry-Run Negative Matrix Closure");
+        "阶段：M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveExpansionAdmissionGate");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveSemanticExpansionPlan");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveParserConsumptionReleaseGate");
@@ -455,6 +464,10 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md",
         "BuiltinDeriveDryRunRollbackDiagnosticReplay");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveDryRunNegativeMatrixClosure");
+    expect_document_contains("docs/zh/progress.md", "BuiltinDeriveParserDryRunSessionBoundary");
+    expect_document_contains("docs/zh/progress.md", "BuiltinDeriveTokenCursorSnapshotRollbackProof");
+    expect_document_contains("docs/zh/progress.md",
+        "BuiltinDeriveDiagnosticShadowNoAstMutationClosure");
     expect_document_contains("docs/zh/progress.md", "builtin_derive_expansion_admissions");
     expect_document_contains("docs/zh/progress.md", "builtin_derive_semantic_plans");
     expect_document_contains("docs/zh/progress.md", "builtin_derive_parser_release_gates");
@@ -606,6 +619,24 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
+    expect_document_contains("docs/zh/version.md", "BuiltinDeriveParserDryRunSessionBoundary");
+    expect_document_contains("docs/zh/version.md", "BuiltinDeriveTokenCursorSnapshotRollbackProof");
+    expect_document_contains("docs/zh/version.md",
+        "BuiltinDeriveDiagnosticShadowNoAstMutationClosure");
+    expect_document_contains("docs/zh/version.md",
+        "builtin_derive_parser_dry_run_session_boundary_v1");
+    expect_document_contains("docs/zh/version.md",
+        "builtin_derive_token_cursor_snapshot_rollback_proof_v1");
+    expect_document_contains("docs/zh/version.md",
+        "builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1");
+    expect_document_contains("docs/zh/version.md",
+        "m25a-builtin-derive-dry-run-session:<module>:<part>");
+    expect_document_contains("docs/zh/version.md",
+        "m25b-builtin-derive-token-cursor-rollback-proof:<module>:<part>");
+    expect_document_contains("docs/zh/version.md",
+        "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:<module>:<part>");
     expect_document_contains("docs/zh/version.md",
         "## M24c Builtin Derive Dry-Run Negative Matrix Closure");
     expect_document_contains("docs/zh/version.md", "BuiltinDeriveControlledParserDryRunAdapter");
@@ -1128,6 +1159,44 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M24c Builtin Derive Dry-Run Negative Matrix Closure");
     expect_document_contains("docs/zh/m24c-builtin-derive-dry-run-negative-matrix-closure.md",
         "builtin derive dry-run negative matrix keeps parser consumption blocked in M24c");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "Aurex M25a Builtin Derive Parser Dry-Run Session Boundary");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "BuiltinDeriveParserDryRunSessionBoundary");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "builtin_derive_parser_dry_run_sessions");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "builtin_derive_parser_dry_run_session_boundary_v1");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "m25a-builtin-derive-dry-run-session:<module>:<part>");
+    expect_document_contains("docs/zh/m25a-builtin-derive-parser-dry-run-session-boundary.md",
+        "builtin derive parser dry-run session remains check-only and uncommitted in M25a");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "Aurex M25b Builtin Derive Token Cursor Snapshot Rollback Proof");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "BuiltinDeriveTokenCursorSnapshotRollbackProof");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "builtin_derive_token_cursor_snapshot_proofs");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "builtin_derive_token_cursor_snapshot_rollback_proof_v1");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "m25b-builtin-derive-token-cursor-rollback-proof:<module>:<part>");
+    expect_document_contains("docs/zh/m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md",
+        "builtin derive token cursor snapshot rollback proof keeps parser cursor unadvanced in M25b");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "Aurex M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "BuiltinDeriveDiagnosticShadowNoAstMutationClosure");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "builtin_derive_diagnostic_shadow_no_ast_mutation_closures");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:<module>:<part>");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
+    expect_document_contains("docs/zh/m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md",
+        "builtin derive diagnostic shadow replay remains non-executing and no-AST-mutation in M25c");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(
@@ -1246,16 +1315,19 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M20c drop / allocator identity prerequisite gate");
     expect_document_contains("docs/zh/next-steps.md", "M20d Runtime Lowering ABI Design Closure 已完成");
     expect_document_contains("docs/zh/next-steps.md",
-        "当前实现入口：M21-M24 宏系统主线已开启，M24c builtin derive dry-run negative matrix closure 已收口");
+        "当前实现入口：M21-M25 宏系统主线已开启，M25c builtin derive diagnostic shadow no-AST-mutation closure 已收口");
     expect_document_contains("docs/zh/next-steps.md",
         "M23a-M23c 已完成 builtin derive parser consumption admission / checkpoint / pre-consumption verification 准备");
     expect_document_contains("docs/zh/next-steps.md",
         "M24a-M24c 已完成 controlled builtin derive parser dry-run facts 准备");
     expect_document_contains("docs/zh/next-steps.md",
-        "下一步建议进入 M25 controlled builtin derive parser dry-run sandbox / check-only");
+        "M25a-M25c 已完成 controlled builtin derive parser dry-run sandbox / check-only closure");
+    expect_document_contains("docs/zh/next-steps.md",
+        "下一步建议进入 M26 builtin derive parser dry-run admission research / implementation gate");
     expect_document_contains("docs/zh/next-steps.md", "no-parser-consumption");
     expect_document_contains("docs/zh/next-steps.md", "dry-run");
     expect_document_contains("docs/zh/next-steps.md", "parser state rollback proof");
+    expect_document_contains("docs/zh/next-steps.md", "AST mutation verifier");
     expect_document_contains("docs/zh/next-steps.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/next-steps.md", "composition_supertrait_chains");
     expect_document_contains("docs/zh/language-feature-inventory.md",
@@ -1289,7 +1361,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20d 已新增 `OwnedDynRuntimeLoweringAbiGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
-        "阶段：M24c Builtin Derive Dry-Run Negative Matrix Closure");
+        "阶段：M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M21m 新增");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "`GeneratedTokenParserReadinessPreflightEntry`");
@@ -1329,6 +1401,14 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M24c 新增 `BuiltinDeriveDryRunNegativeMatrixClosure`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "`M24c Builtin Derive Dry-Run Negative Matrix Closure`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M25a 新增 `BuiltinDeriveParserDryRunSessionBoundary`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M25b 新增 `BuiltinDeriveTokenCursorSnapshotRollbackProof`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M25c 新增 `BuiltinDeriveDiagnosticShadowNoAstMutationClosure`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`");
     expect_document_contains("docs/zh/language-manual.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
     expect_document_contains(
         "docs/zh/language-manual.md",

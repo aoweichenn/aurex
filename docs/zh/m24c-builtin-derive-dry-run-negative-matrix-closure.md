@@ -50,10 +50,10 @@ generated code。
 
 ## 当前 result baseline
 
-M24c 当前 baseline：
+M24c 是 M24a-M24c 三段闭环中的第三段。当前仓库最终 baseline 已推进到：
 
-- result name：`M24c Builtin Derive Dry-Run Negative Matrix Closure`。
-- fingerprint marker：`frontend.macro.m24c.builtin_derive_dry_run_negative_matrix_closure.v1`。
+- result name：`M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`。
+- fingerprint marker：`frontend.macro.m25c.builtin_derive_diagnostic_shadow_no_ast_mutation_closure.v1`。
 
 M21/M22/M23/M24 facts 都保留在 `EarlyItemExpansionResult` 中；M24c 只是关闭 dry-run 进入 parser consumption
 之前的负面矩阵闭环，不会删除已有 facts。

@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M24c Builtin Derive Dry-Run Negative Matrix Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -166,6 +166,24 @@ executed replay counts 和 replay execution blocker；M24c 已新增 `BuiltinDer
 `M24c Builtin Derive Dry-Run Negative Matrix Closure`。M24a-M24c 仍保持 dry-run execution、parser consumption、
 generated source text、generated module part parse/merge、AST mutation、sema-visible generated part、
 emit-expanded、debug/source-map projection、标准库、runtime helper、external procedural macro、用户自定义 macro 和
+macro-generated user code 全部关闭。M25a 已新增 `BuiltinDeriveParserDryRunSessionBoundary` 和
+`builtin_derive_parser_dry_run_sessions`，固定
+`builtin_derive_parser_dry_run_session_boundary_v1`、
+`m25a-builtin-derive-dry-run-session:<module>:<part>`、M24a/M24c/M21e identity 链接、compiler-owned token stream
+candidate、parser state snapshot、`committed_parse_count=0` 和 check-only uncommitted session blocker；M25b 已新增
+`BuiltinDeriveTokenCursorSnapshotRollbackProof` 和 `builtin_derive_token_cursor_snapshot_proofs`，固定
+`builtin_derive_token_cursor_snapshot_rollback_proof_v1`、
+`m25b-builtin-derive-token-cursor-rollback-proof:<module>:<part>`、M25a/M23b/M24b identity 链接、cursor snapshot /
+parser state snapshot / rollback proof counts 和 `cursor_commit_count=0`；M25c 已新增
+`BuiltinDeriveDiagnosticShadowNoAstMutationClosure` 和
+`builtin_derive_diagnostic_shadow_no_ast_mutation_closures`，固定
+`builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1`、
+`m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:<module>:<part>`、M25a/M25b/M24b/M24c 可见性闭环、
+diagnostic shadow count、`executed_shadow_count=0`、`ast_mutation_count=0`、`parser_consumable_case_count=0`，并把
+result name 推进为 `M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`。M25a-M25c 仍保持 real parser
+dry-run、dry-run execution、diagnostic shadow execution、rollback execution、parser cursor advance、parser
+consumption、generated source text、generated module part parse/merge、AST mutation、sema-visible generated part、
+emit-expanded、debug/source-map projection、标准库、runtime helper、external procedural macro、用户自定义 macro 和
 macro-generated user code 全部关闭。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
@@ -252,6 +270,9 @@ macro-generated user code 全部关闭。
 - [Aurex M24a Builtin Derive Controlled Parser Dry-Run Adapter](m24a-builtin-derive-controlled-parser-dry-run-adapter.md)
 - [Aurex M24b Builtin Derive Dry-Run Rollback Diagnostic Replay](m24b-builtin-derive-dry-run-rollback-diagnostic-replay.md)
 - [Aurex M24c Builtin Derive Dry-Run Negative Matrix Closure](m24c-builtin-derive-dry-run-negative-matrix-closure.md)
+- [Aurex M25a Builtin Derive Parser Dry-Run Session Boundary](m25a-builtin-derive-parser-dry-run-session-boundary.md)
+- [Aurex M25b Builtin Derive Token Cursor Snapshot Rollback Proof](m25b-builtin-derive-token-cursor-snapshot-rollback-proof.md)
+- [Aurex M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure](m25c-builtin-derive-diagnostic-shadow-no-ast-mutation-closure.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

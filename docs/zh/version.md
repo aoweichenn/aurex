@@ -1,5 +1,83 @@
 # 版本文档
 
+## M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure
+
+当前版本在 M24c builtin derive dry-run negative matrix closure 之后，完成 M25a/M25b/M25c 三段 check-only
+parser dry-run sandbox closure。`EarlyItemExpansionResult` 的 result name 固定为
+`M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`。本阶段仍不执行 dry-run、不执行 shadow replay、
+不执行 rollback、不提交 session、不推进 parser cursor、不执行用户宏、不生成 source text、不让 parser 消费 generated
+token buffer、不 parse / merge generated module part、不修改 AST、不生成 sema-visible macro output、不生成用户代码，
+也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveParserDryRunSessionBoundary`。
+- 新增 `frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof`。
+- 新增 `frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure`。
+- 新增 `is_valid(const BuiltinDeriveParserDryRunSessionBoundary&)`。
+- 新增 `is_valid(const BuiltinDeriveTokenCursorSnapshotRollbackProof&)`。
+- 新增 `is_valid(const BuiltinDeriveDiagnosticShadowNoAstMutationClosure&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_parser_dry_run_sessions`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_token_cursor_snapshot_proofs`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_diagnostic_shadow_no_ast_mutation_closures`。
+- `EarlyItemExpansionSummary` 新增 builtin derive parser dry-run session、token cursor snapshot rollback proof、
+  diagnostic shadow no-AST-mutation closure 和 `ast_mutation_count` 计数。
+- M25a session boundary 固定 `builtin_derive_parser_dry_run_session_boundary_v1`。
+- M25a session boundary query name 固定
+  `m25a-builtin-derive-dry-run-session:<module>:<part>`。
+- M25a session boundary 绑定 M24a `dry_run_adapter_identity`、M24c `negative_matrix_identity`、M21e
+  `generated_buffer_identity` 和 `parse_config_fingerprint`。
+- M25a session boundary 记录 token buffer candidate count、token record count、diagnostic anchor count、
+  `parser_state_snapshot_count=1` 和 `committed_parse_count=0`。
+- M25b cursor snapshot rollback proof 固定 `builtin_derive_token_cursor_snapshot_rollback_proof_v1`。
+- M25b cursor snapshot rollback proof query name 固定
+  `m25b-builtin-derive-token-cursor-rollback-proof:<module>:<part>`。
+- M25b cursor snapshot rollback proof 绑定 M25a `dry_run_session_identity`、M23b
+  `checkpoint_protocol_identity` 和 M24b `replay_protocol_identity`。
+- M25b cursor snapshot rollback proof 固定 checkpoint、cursor snapshot、parser state snapshot、rollback proof 和
+  `cursor_commit_count=0`。
+- M25c diagnostic shadow no-AST-mutation closure 固定
+  `builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1`。
+- M25c diagnostic shadow no-AST-mutation closure query name 固定
+  `m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:<module>:<part>`。
+- M25c diagnostic shadow no-AST-mutation closure 绑定 M25a `dry_run_session_identity`、M25b
+  `cursor_snapshot_identity`、M24b `replay_protocol_identity` 和 M24c `negative_matrix_identity`。
+- M25c diagnostic shadow no-AST-mutation closure 固定 diagnostic shadow count、`executed_shadow_count=0`、
+  `ast_mutation_count=0` 和 `parser_consumable_case_count=0`。
+- validation 拒绝 M25 identity / query / count 漂移、上游 identity 串线、dry-run execution / replay execution /
+  diagnostic shadow execution / rollback execution / session commit / parser cursor advance / parser admission /
+  parser consumption 被打开、generated part parse / merge / sema-visible 被打开、AST mutation、standard
+  library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_parser_dry_run_session`、
+  `builtin_derive_token_cursor_snapshot_proof` 和
+  `builtin_derive_diagnostic_shadow_no_ast_mutation_closure`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- 用户自定义 macro。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser dry-run execution。
+- diagnostic shadow execution。
+- rollback execution。
+- parser cursor advance。
+- session commit。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M24c Builtin Derive Dry-Run Negative Matrix Closure
 
 当前版本在 M23c builtin derive parser pre-consumption verification closure 之后，完成 M24a/M24b/M24c 三段

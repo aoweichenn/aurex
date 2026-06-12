@@ -50,8 +50,8 @@ diagnostic anchor 仍必须存在，用于后续 dry-run 失败 replay 的稳定
 
 M24a 是 M24a-M24c 三段闭环中的第一段。当前仓库最终 baseline 已推进到：
 
-- result name：`M24c Builtin Derive Dry-Run Negative Matrix Closure`。
-- fingerprint marker：`frontend.macro.m24c.builtin_derive_dry_run_negative_matrix_closure.v1`。
+- result name：`M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure`。
+- fingerprint marker：`frontend.macro.m25c.builtin_derive_diagnostic_shadow_no_ast_mutation_closure.v1`。
 
 ## 关闭边界
 

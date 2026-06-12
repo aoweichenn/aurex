@@ -481,6 +481,52 @@ builtin_derive_dry_run_negative_matrix_for_part(
     return found == result.builtin_derive_dry_run_negative_matrices.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::BuiltinDeriveParserDryRunSessionBoundary*
+builtin_derive_parser_dry_run_session_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_parser_dry_run_sessions.begin(),
+        result.builtin_derive_parser_dry_run_sessions.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveParserDryRunSessionBoundary& session) {
+            return session.module.value == generated_part.module.value
+                && session.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_parser_dry_run_sessions.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof*
+builtin_derive_token_cursor_snapshot_proof_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_token_cursor_snapshot_proofs.begin(),
+        result.builtin_derive_token_cursor_snapshot_proofs.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof& proof) {
+            return proof.module.value == generated_part.module.value
+                && proof.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_token_cursor_snapshot_proofs.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure*
+builtin_derive_diagnostic_shadow_no_ast_mutation_closure_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found =
+        std::find_if(result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.begin(),
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.end(),
+            [&generated_part](
+                const frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure& closure) {
+                return closure.module.value == generated_part.module.value
+                    && closure.source_part_index == generated_part.source_part_index;
+            });
+    return found == result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.end()
+        ? nullptr
+        : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -599,7 +645,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M24c Builtin Derive Dry-Run Negative Matrix Closure");
+    EXPECT_EQ(result.name, "M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -743,10 +789,30 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_query_reusable_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_complete_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_executed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_committed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_cursor_advanced_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_committed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_closure_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_executed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_parser_consumable_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
     EXPECT_EQ(result.summary.merged_generated_part_count, 0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
     EXPECT_EQ(result.summary.standard_library_required_count, 0U);
     EXPECT_EQ(result.summary.runtime_required_count, 0U);
@@ -1031,6 +1097,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_EQ(result.builtin_derive_controlled_dry_run_adapters.size(), 1U);
     ASSERT_EQ(result.builtin_derive_dry_run_rollback_replays.size(), 1U);
     ASSERT_EQ(result.builtin_derive_dry_run_negative_matrices.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_parser_dry_run_sessions.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_token_cursor_snapshot_proofs.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.size(), 1U);
     ASSERT_EQ(result.parser_readiness_preflight_entries.size(), 2U);
     ASSERT_EQ(result.parser_consumption_contract_gates.size(), 1U);
     ASSERT_EQ(result.macro_boundary_closure_reports.size(), 1U);
@@ -1913,6 +1982,172 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_TRUE(dry_run_matrix->matrix_visible);
     EXPECT_TRUE(dry_run_matrix->query_reusable);
 
+    const frontend::macro::BuiltinDeriveParserDryRunSessionBoundary* const dry_run_session =
+        builtin_derive_parser_dry_run_session_for_part(result, generated);
+    ASSERT_NE(dry_run_session, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*dry_run_session));
+    EXPECT_EQ(dry_run_session->module.value, generated.module.value);
+    EXPECT_EQ(dry_run_session->source_part_index, generated.source_part_index);
+    EXPECT_EQ(dry_run_session->attached_part, generated.source_part);
+    EXPECT_EQ(dry_run_session->generated_part, generated.generated_part);
+    EXPECT_EQ(dry_run_session->dry_run_adapter_identity,
+        dry_run_adapter->dry_run_adapter_identity);
+    EXPECT_EQ(dry_run_session->negative_matrix_identity,
+        dry_run_matrix->negative_matrix_identity);
+    EXPECT_EQ(dry_run_session->generated_buffer_identity,
+        result.generated_part_stubs.front().generated_buffer_identity);
+    EXPECT_EQ(dry_run_session->parse_config_fingerprint,
+        result.generated_part_stubs.front().parse_config_fingerprint);
+    EXPECT_GT(dry_run_session->dry_run_session_identity.byte_count, 0U);
+    EXPECT_NE(dry_run_session->dry_run_session_identity,
+        dry_run_adapter->dry_run_adapter_identity);
+    EXPECT_EQ(dry_run_session->session_policy,
+        "builtin_derive_parser_dry_run_session_boundary_v1");
+    EXPECT_EQ(dry_run_session->session_query_name,
+        "m25a-builtin-derive-dry-run-session:0:0");
+    expect_contains(dry_run_session->blocked_reason, "check-only and uncommitted in M25a");
+    EXPECT_EQ(dry_run_session->token_buffer_candidate_count, 1U);
+    EXPECT_EQ(dry_run_session->token_record_count, dry_run_adapter->token_record_count);
+    EXPECT_EQ(dry_run_session->diagnostic_anchor_count,
+        dry_run_adapter->diagnostic_anchor_count);
+    EXPECT_EQ(dry_run_session->parser_state_snapshot_count, 1U);
+    EXPECT_EQ(dry_run_session->committed_parse_count, 0U);
+    EXPECT_TRUE(dry_run_session->dry_run_adapter_available);
+    EXPECT_TRUE(dry_run_session->negative_matrix_available);
+    EXPECT_TRUE(dry_run_session->compiler_owned_token_stream_available);
+    EXPECT_TRUE(dry_run_session->sandbox_available);
+    EXPECT_TRUE(dry_run_session->check_only);
+    EXPECT_TRUE(dry_run_session->dry_run_session_complete);
+    EXPECT_FALSE(dry_run_session->dry_run_executed);
+    EXPECT_FALSE(dry_run_session->session_committed);
+    EXPECT_FALSE(dry_run_session->parser_consumption_enabled);
+    EXPECT_FALSE(dry_run_session->parser_admitted);
+    EXPECT_FALSE(dry_run_session->parser_cursor_advanced);
+    EXPECT_FALSE(dry_run_session->generated_part_parsed);
+    EXPECT_FALSE(dry_run_session->generated_part_merged);
+    EXPECT_FALSE(dry_run_session->ast_mutated);
+    EXPECT_FALSE(dry_run_session->sema_visible);
+    EXPECT_FALSE(dry_run_session->emit_expanded_available);
+    EXPECT_FALSE(dry_run_session->debug_trace_available);
+    EXPECT_FALSE(dry_run_session->source_map_available);
+    EXPECT_FALSE(dry_run_session->standard_library_required);
+    EXPECT_FALSE(dry_run_session->runtime_required);
+    EXPECT_FALSE(dry_run_session->external_process_required);
+    EXPECT_FALSE(dry_run_session->produced_user_generated_code);
+    EXPECT_TRUE(dry_run_session->session_visible);
+    EXPECT_TRUE(dry_run_session->query_reusable);
+
+    const frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof* const cursor_proof =
+        builtin_derive_token_cursor_snapshot_proof_for_part(result, generated);
+    ASSERT_NE(cursor_proof, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*cursor_proof));
+    EXPECT_EQ(cursor_proof->module.value, generated.module.value);
+    EXPECT_EQ(cursor_proof->source_part_index, generated.source_part_index);
+    EXPECT_EQ(cursor_proof->attached_part, generated.source_part);
+    EXPECT_EQ(cursor_proof->generated_part, generated.generated_part);
+    EXPECT_EQ(cursor_proof->dry_run_session_identity,
+        dry_run_session->dry_run_session_identity);
+    EXPECT_EQ(cursor_proof->checkpoint_protocol_identity,
+        checkpoint_protocol->checkpoint_protocol_identity);
+    EXPECT_EQ(cursor_proof->rollback_replay_identity,
+        dry_run_replay->replay_protocol_identity);
+    EXPECT_GT(cursor_proof->cursor_snapshot_identity.byte_count, 0U);
+    EXPECT_NE(cursor_proof->cursor_snapshot_identity,
+        dry_run_session->dry_run_session_identity);
+    EXPECT_EQ(cursor_proof->snapshot_policy,
+        "builtin_derive_token_cursor_snapshot_rollback_proof_v1");
+    EXPECT_EQ(cursor_proof->snapshot_query_name,
+        "m25b-builtin-derive-token-cursor-rollback-proof:0:0");
+    expect_contains(cursor_proof->blocked_reason, "parser cursor unadvanced in M25b");
+    EXPECT_EQ(cursor_proof->token_record_count, dry_run_session->token_record_count);
+    EXPECT_EQ(cursor_proof->checkpoint_count, checkpoint_protocol->checkpoint_count);
+    EXPECT_EQ(cursor_proof->cursor_snapshot_count, checkpoint_protocol->checkpoint_count);
+    EXPECT_EQ(cursor_proof->parser_state_snapshot_count, checkpoint_protocol->checkpoint_count);
+    EXPECT_EQ(cursor_proof->rollback_proof_count, checkpoint_protocol->rollback_plan_count);
+    EXPECT_EQ(cursor_proof->cursor_commit_count, 0U);
+    EXPECT_TRUE(cursor_proof->dry_run_session_available);
+    EXPECT_TRUE(cursor_proof->checkpoint_protocol_available);
+    EXPECT_TRUE(cursor_proof->rollback_replay_available);
+    EXPECT_TRUE(cursor_proof->token_cursor_snapshot_available);
+    EXPECT_TRUE(cursor_proof->parser_state_snapshot_available);
+    EXPECT_TRUE(cursor_proof->rollback_proof_complete);
+    EXPECT_FALSE(cursor_proof->replay_execution_enabled);
+    EXPECT_FALSE(cursor_proof->rollback_execution_enabled);
+    EXPECT_FALSE(cursor_proof->dry_run_executed);
+    EXPECT_FALSE(cursor_proof->parser_cursor_advanced);
+    EXPECT_FALSE(cursor_proof->session_committed);
+    EXPECT_FALSE(cursor_proof->parser_consumption_enabled);
+    EXPECT_FALSE(cursor_proof->parser_admitted);
+    EXPECT_FALSE(cursor_proof->generated_part_parsed);
+    EXPECT_FALSE(cursor_proof->generated_part_merged);
+    EXPECT_FALSE(cursor_proof->ast_mutated);
+    EXPECT_FALSE(cursor_proof->sema_visible);
+    EXPECT_FALSE(cursor_proof->standard_library_required);
+    EXPECT_FALSE(cursor_proof->runtime_required);
+    EXPECT_FALSE(cursor_proof->external_process_required);
+    EXPECT_FALSE(cursor_proof->produced_user_generated_code);
+    EXPECT_TRUE(cursor_proof->proof_visible);
+    EXPECT_TRUE(cursor_proof->query_reusable);
+
+    const frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure* const shadow_closure =
+        builtin_derive_diagnostic_shadow_no_ast_mutation_closure_for_part(result, generated);
+    ASSERT_NE(shadow_closure, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*shadow_closure));
+    EXPECT_EQ(shadow_closure->module.value, generated.module.value);
+    EXPECT_EQ(shadow_closure->source_part_index, generated.source_part_index);
+    EXPECT_EQ(shadow_closure->attached_part, generated.source_part);
+    EXPECT_EQ(shadow_closure->generated_part, generated.generated_part);
+    EXPECT_EQ(shadow_closure->dry_run_session_identity,
+        dry_run_session->dry_run_session_identity);
+    EXPECT_EQ(shadow_closure->cursor_snapshot_identity,
+        cursor_proof->cursor_snapshot_identity);
+    EXPECT_EQ(shadow_closure->rollback_replay_identity,
+        dry_run_replay->replay_protocol_identity);
+    EXPECT_EQ(shadow_closure->negative_matrix_identity,
+        dry_run_matrix->negative_matrix_identity);
+    EXPECT_GT(shadow_closure->closure_identity.byte_count, 0U);
+    EXPECT_NE(shadow_closure->closure_identity, cursor_proof->cursor_snapshot_identity);
+    EXPECT_EQ(shadow_closure->closure_policy,
+        "builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1");
+    EXPECT_EQ(shadow_closure->closure_query_name,
+        "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:0:0");
+    expect_contains(shadow_closure->blocked_reason, "no-AST-mutation in M25c");
+    EXPECT_EQ(shadow_closure->dry_run_session_count, 1U);
+    EXPECT_EQ(shadow_closure->cursor_snapshot_proof_count, 1U);
+    EXPECT_EQ(shadow_closure->rollback_replay_count, 1U);
+    EXPECT_EQ(shadow_closure->negative_matrix_count, 1U);
+    EXPECT_EQ(shadow_closure->diagnostic_shadow_count,
+        dry_run_replay->planned_replay_count);
+    EXPECT_EQ(shadow_closure->executed_shadow_count, 0U);
+    EXPECT_EQ(shadow_closure->ast_mutation_count, 0U);
+    EXPECT_EQ(shadow_closure->parser_consumable_case_count, 0U);
+    EXPECT_TRUE(shadow_closure->dry_run_session_available);
+    EXPECT_TRUE(shadow_closure->cursor_snapshot_proof_available);
+    EXPECT_TRUE(shadow_closure->rollback_replay_available);
+    EXPECT_TRUE(shadow_closure->negative_matrix_available);
+    EXPECT_TRUE(shadow_closure->diagnostic_shadow_available);
+    EXPECT_TRUE(shadow_closure->no_ast_mutation_verified);
+    EXPECT_TRUE(shadow_closure->closure_complete);
+    EXPECT_FALSE(shadow_closure->dry_run_executed);
+    EXPECT_FALSE(shadow_closure->replay_execution_enabled);
+    EXPECT_FALSE(shadow_closure->session_committed);
+    EXPECT_FALSE(shadow_closure->parser_cursor_advanced);
+    EXPECT_FALSE(shadow_closure->parser_consumption_enabled);
+    EXPECT_FALSE(shadow_closure->parser_admitted);
+    EXPECT_FALSE(shadow_closure->generated_part_parsed);
+    EXPECT_FALSE(shadow_closure->generated_part_merged);
+    EXPECT_FALSE(shadow_closure->ast_mutated);
+    EXPECT_FALSE(shadow_closure->sema_visible);
+    EXPECT_FALSE(shadow_closure->emit_expanded_available);
+    EXPECT_FALSE(shadow_closure->debug_trace_available);
+    EXPECT_FALSE(shadow_closure->source_map_available);
+    EXPECT_FALSE(shadow_closure->standard_library_required);
+    EXPECT_FALSE(shadow_closure->runtime_required);
+    EXPECT_FALSE(shadow_closure->external_process_required);
+    EXPECT_FALSE(shadow_closure->produced_user_generated_code);
+    EXPECT_TRUE(shadow_closure->closure_visible);
+    EXPECT_TRUE(shadow_closure->query_reusable);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -1948,7 +2183,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
     expect_contains(summary,
-        "early_item_expansion name=M24c Builtin Derive Dry-Run Negative Matrix Closure");
+        "early_item_expansion name=M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -2082,8 +2317,28 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "builtin_derive_dry_run_negative_matrix_query_reusable=1");
     expect_contains(summary, "builtin_derive_dry_run_negative_matrix_complete=1");
     expect_contains(summary, "builtin_derive_dry_run_negative_matrix_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_parser_dry_run_sessions=1");
+    expect_contains(summary, "builtin_derive_parser_dry_run_session_visible=1");
+    expect_contains(summary, "builtin_derive_parser_dry_run_session_query_reusable=1");
+    expect_contains(summary, "builtin_derive_parser_dry_run_session_complete=1");
+    expect_contains(summary, "builtin_derive_parser_dry_run_session_executed=0");
+    expect_contains(summary, "builtin_derive_parser_dry_run_session_committed=0");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proofs=1");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proof_visible=1");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proof_query_reusable=1");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proof_complete=1");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proof_cursor_advanced=0");
+    expect_contains(summary, "builtin_derive_token_cursor_snapshot_proof_committed=0");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_closures=1");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_visible=1");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_query_reusable=1");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_complete=1");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_executed=0");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_ast_mutation=0");
+    expect_contains(summary, "builtin_derive_diagnostic_shadow_no_ast_mutation_parser_consumable=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
+    expect_contains(summary, "ast_mutations=0");
     expect_contains(summary, "user_generated_code=0");
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -2358,6 +2613,39 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump,
         "builtin derive dry-run negative matrix keeps parser consumption blocked in M24c");
     expect_contains(dump, "negative_matrix_identity=");
+    expect_contains(dump, "builtin_derive_parser_dry_run_session #0");
+    expect_contains(dump, "policy=builtin_derive_parser_dry_run_session_boundary_v1");
+    expect_contains(dump, "query=m25a-builtin-derive-dry-run-session:0:0");
+    expect_contains(dump, "token_buffer_candidates=1");
+    expect_contains(dump, "parser_state_snapshots=1");
+    expect_contains(dump, "committed_parses=0");
+    expect_contains(dump, "sandbox_available=yes");
+    expect_contains(dump, "check_only=yes");
+    expect_contains(dump, "session_committed=no");
+    expect_contains(dump,
+        "builtin derive parser dry-run session remains check-only and uncommitted in M25a");
+    expect_contains(dump, "dry_run_session_identity=");
+    expect_contains(dump, "builtin_derive_token_cursor_snapshot_proof #0");
+    expect_contains(dump, "policy=builtin_derive_token_cursor_snapshot_rollback_proof_v1");
+    expect_contains(dump, "query=m25b-builtin-derive-token-cursor-rollback-proof:0:0");
+    expect_contains(dump, "cursor_snapshots=3");
+    expect_contains(dump, "parser_state_snapshots=3");
+    expect_contains(dump, "rollback_proofs=3");
+    expect_contains(dump, "cursor_commits=0");
+    expect_contains(dump, "parser_cursor_advanced=no");
+    expect_contains(dump,
+        "builtin derive token cursor snapshot rollback proof keeps parser cursor unadvanced in M25b");
+    expect_contains(dump, "cursor_snapshot_identity=");
+    expect_contains(dump, "builtin_derive_diagnostic_shadow_no_ast_mutation_closure #0");
+    expect_contains(dump, "policy=builtin_derive_diagnostic_shadow_no_ast_mutation_closure_v1");
+    expect_contains(dump, "query=m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:0:0");
+    expect_contains(dump, "diagnostic_shadows=2");
+    expect_contains(dump, "executed_shadows=0");
+    expect_contains(dump, "ast_mutations=0");
+    expect_contains(dump, "no_ast_mutation_verified=yes");
+    expect_contains(dump,
+        "builtin derive diagnostic shadow replay remains non-executing and no-AST-mutation in M25c");
+    expect_contains(dump, "closure_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -2644,6 +2932,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     ASSERT_EQ(result.builtin_derive_controlled_dry_run_adapters.size(), 2U);
     ASSERT_EQ(result.builtin_derive_dry_run_rollback_replays.size(), 2U);
     ASSERT_EQ(result.builtin_derive_dry_run_negative_matrices.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_parser_dry_run_sessions.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_token_cursor_snapshot_proofs.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.size(), 2U);
 
     EXPECT_EQ(result.generated_parts[0].source_part_index, 0U);
     EXPECT_EQ(result.generated_parts[0].source_part, part_keys[0][0]);
@@ -2938,6 +3229,109 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     EXPECT_NE(primary_negative_matrix->negative_matrix_identity,
         secondary_negative_matrix->negative_matrix_identity);
 
+    const frontend::macro::BuiltinDeriveParserDryRunSessionBoundary* const primary_session =
+        builtin_derive_parser_dry_run_session_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_session, nullptr);
+    EXPECT_EQ(primary_session->session_query_name, "m25a-builtin-derive-dry-run-session:0:0");
+    EXPECT_EQ(primary_session->dry_run_adapter_identity, primary_adapter->dry_run_adapter_identity);
+    EXPECT_EQ(primary_session->negative_matrix_identity, primary_negative_matrix->negative_matrix_identity);
+    EXPECT_EQ(primary_session->token_buffer_candidate_count, 1U);
+    EXPECT_EQ(primary_session->token_record_count, primary_adapter->token_record_count);
+    EXPECT_EQ(primary_session->diagnostic_anchor_count, primary_adapter->diagnostic_anchor_count);
+    EXPECT_EQ(primary_session->committed_parse_count, 0U);
+    EXPECT_TRUE(primary_session->sandbox_available);
+    EXPECT_TRUE(primary_session->check_only);
+    EXPECT_FALSE(primary_session->dry_run_executed);
+    EXPECT_FALSE(primary_session->session_committed);
+    EXPECT_FALSE(primary_session->parser_cursor_advanced);
+
+    const frontend::macro::BuiltinDeriveParserDryRunSessionBoundary* const secondary_session =
+        builtin_derive_parser_dry_run_session_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_session, nullptr);
+    EXPECT_EQ(secondary_session->session_query_name, "m25a-builtin-derive-dry-run-session:0:1");
+    EXPECT_EQ(secondary_session->dry_run_adapter_identity, secondary_adapter->dry_run_adapter_identity);
+    EXPECT_EQ(secondary_session->negative_matrix_identity,
+        secondary_negative_matrix->negative_matrix_identity);
+    EXPECT_EQ(secondary_session->token_buffer_candidate_count, 0U);
+    EXPECT_EQ(secondary_session->token_record_count, 0U);
+    EXPECT_EQ(secondary_session->diagnostic_anchor_count, secondary_adapter->diagnostic_anchor_count);
+    EXPECT_EQ(secondary_session->committed_parse_count, 0U);
+    EXPECT_TRUE(secondary_session->sandbox_available);
+    EXPECT_TRUE(secondary_session->check_only);
+    EXPECT_FALSE(secondary_session->dry_run_executed);
+    EXPECT_FALSE(secondary_session->session_committed);
+    EXPECT_FALSE(secondary_session->parser_cursor_advanced);
+    EXPECT_NE(primary_session->dry_run_session_identity, secondary_session->dry_run_session_identity);
+
+    const frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof* const primary_cursor_proof =
+        builtin_derive_token_cursor_snapshot_proof_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_cursor_proof, nullptr);
+    EXPECT_EQ(primary_cursor_proof->snapshot_query_name,
+        "m25b-builtin-derive-token-cursor-rollback-proof:0:0");
+    EXPECT_EQ(primary_cursor_proof->dry_run_session_identity, primary_session->dry_run_session_identity);
+    EXPECT_EQ(primary_cursor_proof->rollback_replay_identity, primary_replay->replay_protocol_identity);
+    EXPECT_EQ(primary_cursor_proof->cursor_snapshot_count, 3U);
+    EXPECT_EQ(primary_cursor_proof->rollback_proof_count, 3U);
+    EXPECT_EQ(primary_cursor_proof->cursor_commit_count, 0U);
+    EXPECT_FALSE(primary_cursor_proof->parser_cursor_advanced);
+
+    const frontend::macro::BuiltinDeriveTokenCursorSnapshotRollbackProof* const secondary_cursor_proof =
+        builtin_derive_token_cursor_snapshot_proof_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_cursor_proof, nullptr);
+    EXPECT_EQ(secondary_cursor_proof->snapshot_query_name,
+        "m25b-builtin-derive-token-cursor-rollback-proof:0:1");
+    EXPECT_EQ(secondary_cursor_proof->dry_run_session_identity,
+        secondary_session->dry_run_session_identity);
+    EXPECT_EQ(secondary_cursor_proof->rollback_replay_identity,
+        secondary_replay->replay_protocol_identity);
+    EXPECT_EQ(secondary_cursor_proof->token_record_count, 0U);
+    EXPECT_EQ(secondary_cursor_proof->cursor_snapshot_count, 3U);
+    EXPECT_EQ(secondary_cursor_proof->rollback_proof_count, 3U);
+    EXPECT_EQ(secondary_cursor_proof->cursor_commit_count, 0U);
+    EXPECT_FALSE(secondary_cursor_proof->parser_cursor_advanced);
+    EXPECT_NE(primary_cursor_proof->cursor_snapshot_identity,
+        secondary_cursor_proof->cursor_snapshot_identity);
+
+    const frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure* const
+        primary_shadow_closure =
+            builtin_derive_diagnostic_shadow_no_ast_mutation_closure_for_part(
+                result, result.generated_parts[0]);
+    ASSERT_NE(primary_shadow_closure, nullptr);
+    EXPECT_EQ(primary_shadow_closure->closure_query_name,
+        "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:0:0");
+    EXPECT_EQ(primary_shadow_closure->dry_run_session_identity, primary_session->dry_run_session_identity);
+    EXPECT_EQ(primary_shadow_closure->cursor_snapshot_identity,
+        primary_cursor_proof->cursor_snapshot_identity);
+    EXPECT_EQ(primary_shadow_closure->rollback_replay_identity, primary_replay->replay_protocol_identity);
+    EXPECT_EQ(primary_shadow_closure->diagnostic_shadow_count, primary_replay->planned_replay_count);
+    EXPECT_EQ(primary_shadow_closure->executed_shadow_count, 0U);
+    EXPECT_EQ(primary_shadow_closure->ast_mutation_count, 0U);
+    EXPECT_TRUE(primary_shadow_closure->no_ast_mutation_verified);
+    EXPECT_FALSE(primary_shadow_closure->dry_run_executed);
+    EXPECT_FALSE(primary_shadow_closure->parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveDiagnosticShadowNoAstMutationClosure* const
+        secondary_shadow_closure =
+            builtin_derive_diagnostic_shadow_no_ast_mutation_closure_for_part(
+                result, result.generated_parts[1]);
+    ASSERT_NE(secondary_shadow_closure, nullptr);
+    EXPECT_EQ(secondary_shadow_closure->closure_query_name,
+        "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:0:1");
+    EXPECT_EQ(secondary_shadow_closure->dry_run_session_identity,
+        secondary_session->dry_run_session_identity);
+    EXPECT_EQ(secondary_shadow_closure->cursor_snapshot_identity,
+        secondary_cursor_proof->cursor_snapshot_identity);
+    EXPECT_EQ(secondary_shadow_closure->rollback_replay_identity,
+        secondary_replay->replay_protocol_identity);
+    EXPECT_EQ(secondary_shadow_closure->diagnostic_shadow_count,
+        secondary_replay->planned_replay_count);
+    EXPECT_EQ(secondary_shadow_closure->executed_shadow_count, 0U);
+    EXPECT_EQ(secondary_shadow_closure->ast_mutation_count, 0U);
+    EXPECT_TRUE(secondary_shadow_closure->no_ast_mutation_verified);
+    EXPECT_FALSE(secondary_shadow_closure->dry_run_executed);
+    EXPECT_FALSE(secondary_shadow_closure->parser_consumption_enabled);
+    EXPECT_NE(primary_shadow_closure->closure_identity, secondary_shadow_closure->closure_identity);
+
     EXPECT_EQ(result.summary.builtin_derive_expansion_admission_gate_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_derive_admission_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_non_derive_blocked_count, 1U);
@@ -2972,6 +3366,27 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_query_reusable_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_complete_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_dry_run_negative_matrix_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_visible_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_executed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_dry_run_session_committed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_visible_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_cursor_advanced_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_token_cursor_snapshot_proof_committed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_closure_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_visible_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_executed_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_diagnostic_shadow_no_ast_mutation_parser_consumable_count,
+        0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
     expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:0");
@@ -5762,6 +6177,291 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM24DryRunFacts)
     expect_fingerprint_drift(
         mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
             result.builtin_derive_dry_run_negative_matrices.front().parser_consumable_case_count = 1U;
+        }));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsBuiltinDeriveM25DryRunSandboxDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.builtin_derive_parser_dry_run_sessions.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_token_cursor_snapshot_proofs.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.size(), 1U);
+
+    const auto expect_invalid = [](const frontend::macro::EarlyItemExpansionResult& result) {
+        EXPECT_FALSE(frontend::macro::is_valid(result));
+    };
+
+    const frontend::macro::EarlyItemExpansionResult missing_sessions =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.clear();
+        });
+    EXPECT_EQ(missing_sessions.summary.builtin_derive_parser_dry_run_session_count, 0U);
+    expect_invalid(missing_sessions);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_session_identity =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().dry_run_session_identity =
+                query::stable_fingerprint("wrong m25a dry-run session identity");
+        });
+    expect_invalid(wrong_session_identity);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_session_query =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().session_query_name =
+                "m25a-builtin-derive-dry-run-session:wrong";
+        });
+    expect_invalid(wrong_session_query);
+
+    const frontend::macro::EarlyItemExpansionResult incomplete_session =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().dry_run_session_complete = false;
+        });
+    EXPECT_EQ(incomplete_session.summary.builtin_derive_parser_dry_run_session_complete_count, 0U);
+    expect_invalid(incomplete_session);
+
+    const frontend::macro::EarlyItemExpansionResult session_executed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().dry_run_executed = true;
+        });
+    EXPECT_EQ(session_executed.summary.builtin_derive_parser_dry_run_session_executed_count, 1U);
+    expect_invalid(session_executed);
+
+    const frontend::macro::EarlyItemExpansionResult session_committed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().session_committed = true;
+        });
+    EXPECT_EQ(session_committed.summary.builtin_derive_parser_dry_run_session_committed_count, 1U);
+    EXPECT_EQ(session_committed.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(session_committed);
+
+    const frontend::macro::EarlyItemExpansionResult session_cursor_advanced =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().parser_cursor_advanced = true;
+        });
+    EXPECT_EQ(session_cursor_advanced.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(session_cursor_advanced);
+
+    const frontend::macro::EarlyItemExpansionResult session_ast_mutated =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().ast_mutated = true;
+        });
+    EXPECT_EQ(session_ast_mutated.summary.ast_mutation_count, 1U);
+    expect_invalid(session_ast_mutated);
+
+    const frontend::macro::EarlyItemExpansionResult session_standard_library =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().standard_library_required = true;
+        });
+    EXPECT_EQ(session_standard_library.summary.standard_library_required_count, 1U);
+    expect_invalid(session_standard_library);
+
+    const frontend::macro::EarlyItemExpansionResult missing_proofs =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.clear();
+        });
+    EXPECT_EQ(missing_proofs.summary.builtin_derive_token_cursor_snapshot_proof_count, 0U);
+    expect_invalid(missing_proofs);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_proof_identity =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().cursor_snapshot_identity =
+                query::stable_fingerprint("wrong m25b token cursor snapshot proof identity");
+        });
+    expect_invalid(wrong_proof_identity);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_proof_query =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().snapshot_query_name =
+                "m25b-builtin-derive-token-cursor-rollback-proof:wrong";
+        });
+    expect_invalid(wrong_proof_query);
+
+    const frontend::macro::EarlyItemExpansionResult incomplete_proof =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().rollback_proof_complete = false;
+        });
+    EXPECT_EQ(incomplete_proof.summary.builtin_derive_token_cursor_snapshot_proof_complete_count, 0U);
+    expect_invalid(incomplete_proof);
+
+    const frontend::macro::EarlyItemExpansionResult proof_cursor_advanced =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().parser_cursor_advanced = true;
+        });
+    EXPECT_EQ(proof_cursor_advanced.summary.builtin_derive_token_cursor_snapshot_proof_cursor_advanced_count,
+        1U);
+    EXPECT_EQ(proof_cursor_advanced.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(proof_cursor_advanced);
+
+    const frontend::macro::EarlyItemExpansionResult proof_committed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().cursor_commit_count = 1U;
+        });
+    EXPECT_EQ(proof_committed.summary.builtin_derive_token_cursor_snapshot_proof_committed_count, 1U);
+    EXPECT_EQ(proof_committed.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(proof_committed);
+
+    const frontend::macro::EarlyItemExpansionResult proof_replay_execution =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().replay_execution_enabled = true;
+        });
+    expect_invalid(proof_replay_execution);
+
+    const frontend::macro::EarlyItemExpansionResult proof_runtime =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().runtime_required = true;
+        });
+    EXPECT_EQ(proof_runtime.summary.runtime_required_count, 1U);
+    expect_invalid(proof_runtime);
+
+    const frontend::macro::EarlyItemExpansionResult missing_shadow_closures =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.clear();
+        });
+    EXPECT_EQ(missing_shadow_closures.summary
+                  .builtin_derive_diagnostic_shadow_no_ast_mutation_closure_count,
+        0U);
+    expect_invalid(missing_shadow_closures);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_shadow_identity =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .closure_identity =
+                query::stable_fingerprint("wrong m25c diagnostic shadow closure identity");
+        });
+    expect_invalid(wrong_shadow_identity);
+
+    const frontend::macro::EarlyItemExpansionResult wrong_shadow_query =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .closure_query_name =
+                "m25c-builtin-derive-diagnostic-shadow-no-ast-mutation:wrong";
+        });
+    expect_invalid(wrong_shadow_query);
+
+    const frontend::macro::EarlyItemExpansionResult incomplete_shadow_closure =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .closure_complete = false;
+        });
+    EXPECT_EQ(incomplete_shadow_closure.summary
+                  .builtin_derive_diagnostic_shadow_no_ast_mutation_complete_count,
+        0U);
+    expect_invalid(incomplete_shadow_closure);
+
+    const frontend::macro::EarlyItemExpansionResult shadow_executed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .executed_shadow_count = 1U;
+        });
+    EXPECT_EQ(shadow_executed.summary
+                  .builtin_derive_diagnostic_shadow_no_ast_mutation_executed_count,
+        1U);
+    expect_invalid(shadow_executed);
+
+    const frontend::macro::EarlyItemExpansionResult shadow_ast_mutated =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .ast_mutated = true;
+        });
+    EXPECT_EQ(shadow_ast_mutated.summary
+                  .builtin_derive_diagnostic_shadow_no_ast_mutation_ast_mutation_count,
+        1U);
+    EXPECT_EQ(shadow_ast_mutated.summary.ast_mutation_count, 1U);
+    expect_invalid(shadow_ast_mutated);
+
+    const frontend::macro::EarlyItemExpansionResult shadow_parser_consumable =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .parser_consumable_case_count = 1U;
+        });
+    EXPECT_EQ(shadow_parser_consumable.summary
+                  .builtin_derive_diagnostic_shadow_no_ast_mutation_parser_consumable_count,
+        1U);
+    EXPECT_EQ(shadow_parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(shadow_parser_consumable);
+
+    const frontend::macro::EarlyItemExpansionResult shadow_external =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .external_process_required = true;
+        });
+    EXPECT_EQ(shadow_external.summary.external_process_required_count, 1U);
+    expect_invalid(shadow_external);
+
+    const frontend::macro::EarlyItemExpansionResult shadow_user_code =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .produced_user_generated_code = true;
+        });
+    EXPECT_EQ(shadow_user_code.summary.user_generated_code_count, 1U);
+    expect_invalid(shadow_user_code);
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM25DryRunSandboxFacts)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.builtin_derive_parser_dry_run_sessions.empty());
+    ASSERT_FALSE(baseline.builtin_derive_token_cursor_snapshot_proofs.empty());
+    ASSERT_FALSE(baseline.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.empty());
+
+    const auto expect_fingerprint_drift =
+        [&baseline](const frontend::macro::EarlyItemExpansionResult& result) {
+            EXPECT_NE(result.fingerprint, baseline.fingerprint);
+            EXPECT_FALSE(frontend::macro::is_valid(result));
+        };
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().dry_run_session_identity =
+                query::stable_fingerprint("different m25a dry-run session identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().session_query_name =
+                "m25a-builtin-derive-dry-run-session:different";
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_parser_dry_run_sessions.front().parser_cursor_advanced = true;
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().cursor_snapshot_identity =
+                query::stable_fingerprint("different m25b cursor snapshot identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_token_cursor_snapshot_proofs.front().cursor_commit_count = 1U;
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .closure_identity =
+                query::stable_fingerprint("different m25c diagnostic shadow closure identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.builtin_derive_diagnostic_shadow_no_ast_mutation_closures.front()
+                .ast_mutation_count = 1U;
         }));
 }
 

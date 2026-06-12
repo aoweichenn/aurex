@@ -1,9 +1,25 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21f Hygiene Source Map Debug Trace Stub Contract
+阶段：M21g Generated Item Declared Names Stub Contract
 
 ## 总体状态
+
+2026-06-12：M21g Generated Item Declared Names Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated module part token materialization、
+generated module part parse / merge、declared generated names lookup、generated item visibility / export 或
+macro-generated user code lowering；它把 M21a 设计 gate 要求的 declared generated names 和 attached item codegen
+声明边界落成 `macro.expand_items` 边界上的结构化 stub contract。
+
+新增 `GeneratedItemDeclarationStub` 和 `DeclaredGeneratedNameStub`，并给 `EarlyItemExpansionResult` 增加
+`generated_item_declarations` 和 `declared_generated_names`。每个 parsed item attribute 现在都有 deterministic
+generated item declaration、declared generated name、`declaration_identity`、`generated_item_key`、
+`declared_name_identity`、`hygiene_mark` 和 internal generated item name。policy 固定为
+`attached_item_codegen_declared_names_v1`。summary / dump / fingerprint / validation 会拒绝 generated item
+materialized tokens、parsed、merged、sema-visible、lookup-visible、export-visible、produced user code，或任何
+stub 与 input / generated part placeholder / hygiene `declared_name_set` 不能一一重算的漂移。新增说明见
+[Aurex M21g Generated Item Declared Names Stub Contract](m21g-generated-item-declared-names-stub-contract.md)。
 
 2026-06-12：M21f Hygiene Source Map Debug Trace Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

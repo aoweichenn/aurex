@@ -1,5 +1,56 @@
 # 版本文档
 
+## M21g Generated Item Declared Names Stub Contract
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21f 的 hygiene/source-map/debug-trace
+stub contract 扩展为 generated item / declared generated names stub contract。该阶段仍不执行宏、不生成用户代码，
+也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::GeneratedItemDeclarationStub`。
+- 新增 `frontend::macro::DeclaredGeneratedNameStub`。
+- 新增 `is_valid(const GeneratedItemDeclarationStub&)`。
+- 新增 `is_valid(const DeclaredGeneratedNameStub&)`。
+- `EarlyItemExpansionResult` 新增 `generated_item_declarations`。
+- `EarlyItemExpansionResult` 新增 `declared_generated_names`。
+- `EarlyItemExpansionSummary` 新增 generated item declaration、planned generated item declaration、
+  materialized generated item、declared generated name、lookup-visible declared name 和 export-visible declared
+  name 计数。
+- 每个 macro input 都有一个 deterministic generated item declaration stub。
+- 每个 macro input 都有一个 deterministic declared generated name stub。
+- generated item declaration 固定 `declaration_identity`。
+- generated item declaration 固定 `generated_item_key`。
+- generated item declaration 固定 `declaration_role = attached_item_codegen_declared_names_v1`。
+- declared generated name 固定 `declared_name_identity`。
+- declared generated name 固定 `hygiene_mark`，并绑定 M21f `generated_fresh_mark`。
+- generated item declaration 和 declared generated name 都绑定 M21f `declared_name_set`。
+- generated item declaration 和 declared generated name 都绑定 M21d/M21e generated module part placeholder。
+- validation 要求 generated item declaration / declared generated name 与 input 一一对应。
+- validation 拒绝 generated item materialized tokens、parsed、merged、sema-visible 或 produced user code。
+- validation 拒绝 declared generated name lookup-visible、export-visible、sema-visible 或 produced user code。
+- dump 会输出 `generated_item_declaration_stub`、`declared_generated_name_stub`、generated item name、
+  declaration identity、generated item key、declared name identity、hygiene mark 和 blocker。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- generated module part token materialization。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21f Hygiene Source Map Debug Trace Stub Contract
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21e 的 generated module part parse / merge

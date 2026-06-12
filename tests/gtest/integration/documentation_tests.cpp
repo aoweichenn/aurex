@@ -71,6 +71,9 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m21b-attribute-token-tree-surface.md",
         "docs/zh/m21c-early-item-macro-expansion-plan.md",
         "docs/zh/m21d-noop-early-item-expansion-boundary.md",
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "docs/zh/m21g-generated-item-declared-names-stub-contract.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -337,7 +340,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21f Hygiene Source Map Debug Trace Stub Contract**");
+        "docs/zh/README.md", "文档基线：**M21g Generated Item Declared Names Stub Contract**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -373,9 +376,18 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M21e Generated Module Part Parse/Merge Stub Contract");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21f Hygiene Source Map Debug Trace Stub Contract");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21g Generated Item Declared Names Stub Contract");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21f Hygiene Source Map Debug Trace Stub Contract");
+        "阶段：M21g Generated Item Declared Names Stub Contract");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
+    expect_document_contains("docs/zh/progress.md", "GeneratedItemDeclarationStub");
+    expect_document_contains("docs/zh/progress.md", "DeclaredGeneratedNameStub");
+    expect_document_contains("docs/zh/progress.md", "declaration_identity");
+    expect_document_contains("docs/zh/progress.md", "generated_item_key");
+    expect_document_contains("docs/zh/progress.md", "declared_name_identity");
+    expect_document_contains("docs/zh/progress.md", "hygiene_mark");
+    expect_document_contains("docs/zh/progress.md", "attached_item_codegen_declared_names_v1");
     expect_document_contains("docs/zh/progress.md", "ExpansionHygieneStub");
     expect_document_contains("docs/zh/progress.md", "ExpansionTraceStub");
     expect_document_contains("docs/zh/progress.md", "call_site_mark");
@@ -403,6 +415,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21g Generated Item Declared Names Stub Contract");
+    expect_document_contains("docs/zh/version.md", "GeneratedItemDeclarationStub");
+    expect_document_contains("docs/zh/version.md", "DeclaredGeneratedNameStub");
+    expect_document_contains("docs/zh/version.md", "attached_item_codegen_declared_names_v1");
+    expect_document_contains("docs/zh/version.md", "declared_name_identity");
     expect_document_contains("docs/zh/version.md",
         "## M21f Hygiene Source Map Debug Trace Stub Contract");
     expect_document_contains("docs/zh/version.md", "ExpansionHygieneStub");
@@ -493,6 +511,24 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "macro.expand_items");
     expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
         "M21f 仍不生成用户代码");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "Aurex M21g Generated Item Declared Names Stub Contract");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "阶段：M21g Generated Item Declared Names Stub Contract");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "GeneratedItemDeclarationStub");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "DeclaredGeneratedNameStub");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "attached_item_codegen_declared_names_v1");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "macro_declared_name_fact");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "macro_generated_part_parse_fact");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "macro.expand_items");
+    expect_document_contains("docs/zh/m21g-generated-item-declared-names-stub-contract.md",
+        "M21g 仍不生成用户代码");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

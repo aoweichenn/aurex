@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21f hygiene/source-map/debug-trace stub contract 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21g generated item / declared names stub contract 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -35,10 +35,17 @@ M21f 已把 hygiene / source-map / debug trace 的结构化 stub contract 固定
 `expansion_source_map_debug_trace_v1`。M21f 仍不修改 AST、不 parse / merge generated module part、不执行 external
 procedural macro、不实现 typed expression macro、不引入标准库，也不生成用户代码。
 
-下一步建议继续 M21g：在不打开 external procedural macro 的前提下准备 compiler-owned derive / attached item
-codegen 的 generated item / declared names contract。优先级上不建议直接打开 external procedural macro；第一条真实
-代码生成主线仍应是 compiler-owned derive / attached item codegen，并且必须继续消费 M21e/M21f 已固定的 parse/merge、
-hygiene、source-map 和 debug-trace stub facts。
+M21g 已把 generated item / declared generated names 的结构化 stub contract 固定到同一 `macro.expand_items`
+boundary：每个 macro input 都有 `GeneratedItemDeclarationStub` 和 `DeclaredGeneratedNameStub`，并记录 deterministic
+`declaration_identity`、`generated_item_key`、`declared_name_identity`、`hygiene_mark`、internal generated item
+name、`attached_item_codegen_declared_names_v1`、M21f `declared_name_set` 以及对应 M21d/M21e generated module
+part。M21g 仍不 materialize tokens、不 parse / merge generated module part、不让 declared generated names 参与
+lookup/export/sema、不执行 external procedural macro、不实现 typed expression macro、不引入标准库，也不生成用户代码。
+
+下一步建议继续 M21h：在不打开 external procedural macro 的前提下准备 compiler-owned derive / attached item
+codegen 的 token materialization admission contract。优先级上仍不建议直接打开 external procedural macro；第一条真实
+代码生成主线应继续是 compiler-owned derive / attached item codegen，并且必须消费 M21e/M21f/M21g 已固定的
+parse/merge、hygiene、source-map、debug-trace、generated item 和 declared-name stub facts。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

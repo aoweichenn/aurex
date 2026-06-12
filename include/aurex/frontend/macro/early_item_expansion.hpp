@@ -124,6 +124,48 @@ struct ExpansionTraceStub {
     bool cli_emit_expanded_available = false;
 };
 
+struct GeneratedItemDeclarationStub {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 expansion_origin;
+    query::StableFingerprint128 declaration_identity;
+    query::StableFingerprint128 declared_name_set;
+    query::StableFingerprint128 generated_item_key;
+    std::string declaration_role;
+    std::string generated_item_name;
+    std::string blocker_reason;
+    bool planned = true;
+    bool materialized_tokens = false;
+    bool parsed = false;
+    bool merged = false;
+    bool sema_visible = false;
+    bool produced_user_generated_code = false;
+};
+
+struct DeclaredGeneratedNameStub {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 expansion_origin;
+    query::StableFingerprint128 declared_name_set;
+    query::StableFingerprint128 declared_name_identity;
+    query::StableFingerprint128 hygiene_mark;
+    std::string declared_name;
+    std::string namespace_kind;
+    std::string blocker_reason;
+    bool lookup_visible = false;
+    bool export_visible = false;
+    bool sema_visible = false;
+    bool produced_user_generated_code = false;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -144,6 +186,12 @@ struct EarlyItemExpansionSummary {
     base::u64 real_source_map_count = 0;
     base::u64 debug_trace_available_count = 0;
     base::u64 cli_emit_expanded_available_count = 0;
+    base::u64 generated_item_declaration_stub_count = 0;
+    base::u64 planned_generated_item_declaration_count = 0;
+    base::u64 materialized_generated_item_count = 0;
+    base::u64 declared_generated_name_stub_count = 0;
+    base::u64 lookup_visible_declared_name_count = 0;
+    base::u64 export_visible_declared_name_count = 0;
     base::u64 parsed_generated_part_count = 0;
     base::u64 merged_generated_part_count = 0;
     base::u64 user_generated_code_count = 0;
@@ -161,6 +209,8 @@ struct EarlyItemExpansionResult {
     std::vector<ExpansionSourceMapPlaceholder> source_maps;
     std::vector<ExpansionHygieneStub> hygiene_stubs;
     std::vector<ExpansionTraceStub> trace_stubs;
+    std::vector<GeneratedItemDeclarationStub> generated_item_declarations;
+    std::vector<DeclaredGeneratedNameStub> declared_generated_names;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -177,6 +227,8 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const ExpansionSourceMapPlaceholder& placeholder) noexcept;
 [[nodiscard]] bool is_valid(const ExpansionHygieneStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const ExpansionTraceStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const GeneratedItemDeclarationStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const DeclaredGeneratedNameStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

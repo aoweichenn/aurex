@@ -146,6 +146,34 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.trace_stubs.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::GeneratedItemDeclarationStub* generated_item_declaration_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.generated_item_declarations.begin(),
+        result.generated_item_declarations.end(),
+        [&input](const frontend::macro::GeneratedItemDeclarationStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.generated_item_declarations.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::DeclaredGeneratedNameStub* declared_generated_name_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.declared_generated_names.begin(),
+        result.declared_generated_names.end(),
+        [&input](const frontend::macro::DeclaredGeneratedNameStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.declared_generated_names.end() ? nullptr : &*found;
+}
+
 void refresh_expansion_result(frontend::macro::EarlyItemExpansionResult& result)
 {
     result.summary = frontend::macro::summarize_early_item_expansion_counts(result);
@@ -218,7 +246,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21f Hygiene Source Map Debug Trace Stub Contract");
+    EXPECT_EQ(result.name, "M21g Generated Item Declared Names Stub Contract");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -240,6 +268,12 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.real_source_map_count, 0U);
     EXPECT_EQ(result.summary.debug_trace_available_count, 0U);
     EXPECT_EQ(result.summary.cli_emit_expanded_available_count, 0U);
+    EXPECT_EQ(result.summary.generated_item_declaration_stub_count, 2U);
+    EXPECT_EQ(result.summary.planned_generated_item_declaration_count, 2U);
+    EXPECT_EQ(result.summary.materialized_generated_item_count, 0U);
+    EXPECT_EQ(result.summary.declared_generated_name_stub_count, 2U);
+    EXPECT_EQ(result.summary.lookup_visible_declared_name_count, 0U);
+    EXPECT_EQ(result.summary.export_visible_declared_name_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
     EXPECT_EQ(result.summary.merged_generated_part_count, 0U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
@@ -358,8 +392,59 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(builder_trace->debug_trace_available);
     EXPECT_FALSE(builder_trace->cli_emit_expanded_available);
 
+    ASSERT_EQ(result.generated_item_declarations.size(), 2U);
+    const frontend::macro::GeneratedItemDeclarationStub* const builder_declaration =
+        generated_item_declaration_for_input(result, *builder);
+    ASSERT_NE(builder_declaration, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_declaration));
+    EXPECT_EQ(builder_declaration->part_index, builder->part_index);
+    EXPECT_EQ(builder_declaration->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_declaration->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_declaration->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_declaration->expansion_origin, builder->query_key_fingerprint);
+    EXPECT_EQ(builder_declaration->declared_name_set, builder_hygiene->declared_name_set);
+    EXPECT_GT(builder_declaration->declaration_identity.byte_count, 0U);
+    EXPECT_GT(builder_declaration->generated_item_key.byte_count, 0U);
+    EXPECT_NE(builder_declaration->declaration_identity, builder_declaration->generated_item_key);
+    EXPECT_EQ(builder_declaration->declaration_role, "attached_item_codegen_declared_names_v1");
+    expect_contains(builder_declaration->generated_item_name, "__aurex_macro_declared:0:0:0:0:builder");
+    expect_contains(builder_declaration->blocker_reason, "blocked in M21g");
+    EXPECT_TRUE(builder_declaration->planned);
+    EXPECT_FALSE(builder_declaration->materialized_tokens);
+    EXPECT_FALSE(builder_declaration->parsed);
+    EXPECT_FALSE(builder_declaration->merged);
+    EXPECT_FALSE(builder_declaration->sema_visible);
+    EXPECT_FALSE(builder_declaration->produced_user_generated_code);
+
+    const frontend::macro::GeneratedItemDeclarationStub* const derive_declaration =
+        generated_item_declaration_for_input(result, *derive);
+    ASSERT_NE(derive_declaration, nullptr);
+    EXPECT_NE(derive_declaration->generated_item_name, builder_declaration->generated_item_name);
+    expect_contains(derive_declaration->generated_item_name, "__aurex_macro_declared:0:0:0:1:derive");
+
+    ASSERT_EQ(result.declared_generated_names.size(), 2U);
+    const frontend::macro::DeclaredGeneratedNameStub* const builder_declared_name =
+        declared_generated_name_for_input(result, *builder);
+    ASSERT_NE(builder_declared_name, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_declared_name));
+    EXPECT_EQ(builder_declared_name->part_index, builder->part_index);
+    EXPECT_EQ(builder_declared_name->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_declared_name->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_declared_name->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_declared_name->expansion_origin, builder->query_key_fingerprint);
+    EXPECT_EQ(builder_declared_name->declared_name_set, builder_hygiene->declared_name_set);
+    EXPECT_EQ(builder_declared_name->hygiene_mark, builder_hygiene->generated_fresh_mark);
+    EXPECT_EQ(builder_declared_name->declared_name, builder_declaration->generated_item_name);
+    EXPECT_EQ(builder_declared_name->namespace_kind, "item");
+    EXPECT_GT(builder_declared_name->declared_name_identity.byte_count, 0U);
+    expect_contains(builder_declared_name->blocker_reason, "lookup is blocked in M21g");
+    EXPECT_FALSE(builder_declared_name->lookup_visible);
+    EXPECT_FALSE(builder_declared_name->export_visible);
+    EXPECT_FALSE(builder_declared_name->sema_visible);
+    EXPECT_FALSE(builder_declared_name->produced_user_generated_code);
+
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21f Hygiene Source Map Debug Trace Stub Contract");
+    expect_contains(summary, "early_item_expansion name=M21g Generated Item Declared Names Stub Contract");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -373,6 +458,12 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "real_source_maps=0");
     expect_contains(summary, "debug_traces=0");
     expect_contains(summary, "cli_emit_expanded=0");
+    expect_contains(summary, "generated_item_declarations=2");
+    expect_contains(summary, "planned_generated_item_declarations=2");
+    expect_contains(summary, "materialized_generated_items=0");
+    expect_contains(summary, "declared_generated_names=2");
+    expect_contains(summary, "lookup_visible_declared_names=0");
+    expect_contains(summary, "export_visible_declared_names=0");
     expect_contains(summary, "user_generated_code=0");
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -407,6 +498,21 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "trace_identity=");
     expect_contains(dump, "generated_source_map=");
     expect_contains(dump, "diagnostic_anchor=");
+    expect_contains(dump, "generated_item_declaration_stub #0");
+    expect_contains(dump, "role=attached_item_codegen_declared_names_v1");
+    expect_contains(dump, "name=__aurex_macro_declared:0:0:0:0:builder");
+    expect_contains(dump, "planned=yes");
+    expect_contains(dump, "materialized_tokens=no");
+    expect_contains(dump, "generated item declaration materialization is blocked in M21g");
+    expect_contains(dump, "declaration_identity=");
+    expect_contains(dump, "generated_item_key=");
+    expect_contains(dump, "declared_generated_name_stub #0");
+    expect_contains(dump, "namespace=item");
+    expect_contains(dump, "lookup_visible=no");
+    expect_contains(dump, "export_visible=no");
+    expect_contains(dump, "declared generated name lookup is blocked in M21g");
+    expect_contains(dump, "declared_name_identity=");
+    expect_contains(dump, "hygiene_mark=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -432,6 +538,36 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
     frontend::macro::EarlyItemExpansionResult stale = first;
     stale.inputs.front().token_count += 1U;
     EXPECT_FALSE(frontend::macro::is_valid(stale));
+}
+
+TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n"
+        "#[builder(flag)]\n"
+        "struct Other { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.inputs.size(), 2U);
+    ASSERT_EQ(result.generated_item_declarations.size(), 2U);
+    ASSERT_EQ(result.declared_generated_names.size(), 2U);
+
+    EXPECT_NE(result.inputs[0].item.value, result.inputs[1].item.value);
+    EXPECT_EQ(result.inputs[0].attribute_index, 0U);
+    EXPECT_EQ(result.inputs[1].attribute_index, 0U);
+    EXPECT_NE(result.generated_item_declarations[0].generated_item_name,
+        result.generated_item_declarations[1].generated_item_name);
+    expect_contains(result.generated_item_declarations[0].generated_item_name,
+        "__aurex_macro_declared:0:0:0:0:builder");
+    expect_contains(result.generated_item_declarations[1].generated_item_name,
+        "__aurex_macro_declared:0:0:1:0:builder");
+    EXPECT_EQ(result.declared_generated_names[0].declared_name,
+        result.generated_item_declarations[0].generated_item_name);
+    EXPECT_EQ(result.declared_generated_names[1].declared_name,
+        result.generated_item_declarations[1].generated_item_name);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -784,6 +920,168 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksHygieneAndTraceStubContract)
     refresh_expansion_result(source_map_identity);
     EXPECT_NE(source_map_identity.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(source_map_identity));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedItemAndDeclaredNameDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.generated_item_declarations.empty());
+    ASSERT_FALSE(baseline.declared_generated_names.empty());
+
+    frontend::macro::EarlyItemExpansionResult missing_declaration = baseline;
+    missing_declaration.generated_item_declarations.clear();
+    refresh_expansion_result(missing_declaration);
+    EXPECT_EQ(missing_declaration.summary.generated_item_declaration_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_declaration));
+
+    frontend::macro::EarlyItemExpansionResult missing_declared_name = baseline;
+    missing_declared_name.declared_generated_names.clear();
+    refresh_expansion_result(missing_declared_name);
+    EXPECT_EQ(missing_declared_name.summary.declared_generated_name_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_declared_name));
+
+    frontend::macro::EarlyItemExpansionResult empty_declaration_identity = baseline;
+    empty_declaration_identity.generated_item_declarations.front().declaration_identity = {};
+    refresh_expansion_result(empty_declaration_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_declaration_identity));
+
+    frontend::macro::EarlyItemExpansionResult empty_generated_item_key = baseline;
+    empty_generated_item_key.generated_item_declarations.front().generated_item_key = {};
+    refresh_expansion_result(empty_generated_item_key);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_generated_item_key));
+
+    frontend::macro::EarlyItemExpansionResult wrong_declaration_role = baseline;
+    wrong_declaration_role.generated_item_declarations.front().declaration_role = "wrong_role";
+    refresh_expansion_result(wrong_declaration_role);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_declaration_role));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_item_name = baseline;
+    wrong_generated_item_name.generated_item_declarations.front().generated_item_name =
+        "__aurex_macro_declared:wrong";
+    refresh_expansion_result(wrong_generated_item_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_item_name));
+
+    frontend::macro::EarlyItemExpansionResult materialized_declaration = baseline;
+    materialized_declaration.generated_item_declarations.front().materialized_tokens = true;
+    refresh_expansion_result(materialized_declaration);
+    EXPECT_EQ(materialized_declaration.summary.materialized_generated_item_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(materialized_declaration));
+
+    frontend::macro::EarlyItemExpansionResult unplanned_declaration = baseline;
+    unplanned_declaration.generated_item_declarations.front().planned = false;
+    refresh_expansion_result(unplanned_declaration);
+    EXPECT_EQ(unplanned_declaration.summary.planned_generated_item_declaration_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(unplanned_declaration));
+
+    frontend::macro::EarlyItemExpansionResult parsed_declaration = baseline;
+    parsed_declaration.generated_item_declarations.front().parsed = true;
+    refresh_expansion_result(parsed_declaration);
+    EXPECT_EQ(parsed_declaration.summary.parsed_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parsed_declaration));
+
+    frontend::macro::EarlyItemExpansionResult sema_visible_declaration = baseline;
+    sema_visible_declaration.generated_item_declarations.front().sema_visible = true;
+    refresh_expansion_result(sema_visible_declaration);
+    EXPECT_EQ(sema_visible_declaration.summary.sema_visible_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(sema_visible_declaration));
+
+    frontend::macro::EarlyItemExpansionResult wrong_declaration_name_set = baseline;
+    wrong_declaration_name_set.generated_item_declarations.front().declared_name_set =
+        query::stable_fingerprint("wrong declaration name set");
+    refresh_expansion_result(wrong_declaration_name_set);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_declaration_name_set));
+
+    frontend::macro::EarlyItemExpansionResult empty_declared_name_identity = baseline;
+    empty_declared_name_identity.declared_generated_names.front().declared_name_identity = {};
+    refresh_expansion_result(empty_declared_name_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_declared_name_identity));
+
+    frontend::macro::EarlyItemExpansionResult empty_hygiene_mark = baseline;
+    empty_hygiene_mark.declared_generated_names.front().hygiene_mark = {};
+    refresh_expansion_result(empty_hygiene_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_hygiene_mark));
+
+    frontend::macro::EarlyItemExpansionResult wrong_namespace = baseline;
+    wrong_namespace.declared_generated_names.front().namespace_kind = "value";
+    refresh_expansion_result(wrong_namespace);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_namespace));
+
+    frontend::macro::EarlyItemExpansionResult wrong_declared_name = baseline;
+    wrong_declared_name.declared_generated_names.front().declared_name =
+        "__aurex_macro_declared:wrong";
+    refresh_expansion_result(wrong_declared_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_declared_name));
+
+    frontend::macro::EarlyItemExpansionResult lookup_visible = baseline;
+    lookup_visible.declared_generated_names.front().lookup_visible = true;
+    refresh_expansion_result(lookup_visible);
+    EXPECT_EQ(lookup_visible.summary.lookup_visible_declared_name_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(lookup_visible));
+
+    frontend::macro::EarlyItemExpansionResult export_visible = baseline;
+    export_visible.declared_generated_names.front().export_visible = true;
+    refresh_expansion_result(export_visible);
+    EXPECT_EQ(export_visible.summary.export_visible_declared_name_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(export_visible));
+
+    frontend::macro::EarlyItemExpansionResult sema_visible_name = baseline;
+    sema_visible_name.declared_generated_names.front().sema_visible = true;
+    refresh_expansion_result(sema_visible_name);
+    EXPECT_EQ(sema_visible_name.summary.sema_visible_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(sema_visible_name));
+
+    frontend::macro::EarlyItemExpansionResult user_code_name = baseline;
+    user_code_name.declared_generated_names.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code_name);
+    EXPECT_EQ(user_code_name.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code_name));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksGeneratedItemAndDeclaredNameContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.generated_item_declarations.empty());
+    ASSERT_FALSE(baseline.declared_generated_names.empty());
+
+    frontend::macro::EarlyItemExpansionResult declaration_identity = baseline;
+    declaration_identity.generated_item_declarations.front().declaration_identity =
+        query::stable_fingerprint("different declaration identity");
+    refresh_expansion_result(declaration_identity);
+    EXPECT_NE(declaration_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(declaration_identity));
+
+    frontend::macro::EarlyItemExpansionResult generated_item_key = baseline;
+    generated_item_key.generated_item_declarations.front().generated_item_key =
+        query::stable_fingerprint("different generated item key");
+    refresh_expansion_result(generated_item_key);
+    EXPECT_NE(generated_item_key.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_item_key));
+
+    frontend::macro::EarlyItemExpansionResult declared_name_identity = baseline;
+    declared_name_identity.declared_generated_names.front().declared_name_identity =
+        query::stable_fingerprint("different declared name identity");
+    refresh_expansion_result(declared_name_identity);
+    EXPECT_NE(declared_name_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(declared_name_identity));
+
+    frontend::macro::EarlyItemExpansionResult hygiene_mark = baseline;
+    hygiene_mark.declared_generated_names.front().hygiene_mark =
+        query::stable_fingerprint("different declared name hygiene mark");
+    refresh_expansion_result(hygiene_mark);
+    EXPECT_NE(hygiene_mark.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(hygiene_mark));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

@@ -272,6 +272,46 @@ struct GeneratedTokenParserAdmissionGateStub {
     bool produced_user_generated_code = false;
 };
 
+struct ParserAdmissionDiagnosticProjectionStub {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    base::SourceRange primary_anchor{};
+    base::SourceRange token_tree_anchor{};
+    query::StableFingerprint128 parse_gate_identity;
+    query::StableFingerprint128 diagnostic_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    query::StableFingerprint128 token_plan_identity;
+    query::StableFingerprint128 token_buffer_identity;
+    query::StableFingerprint128 materialization_identity;
+    query::StableFingerprint128 generated_buffer_identity;
+    query::StableFingerprint128 parse_config_fingerprint;
+    query::StableFingerprint128 source_map_identity;
+    query::StableFingerprint128 hygiene_mark;
+    query::StableFingerprint128 trace_identity;
+    std::string diagnostic_policy;
+    std::string blocker_category;
+    std::string token_buffer_blocker;
+    std::string generated_part_parse_blocker;
+    std::string user_message;
+    std::string debug_projection_name;
+    base::u64 token_count = 0;
+    bool token_buffer_materialized = false;
+    bool token_records_available = false;
+    bool parser_admitted = false;
+    bool parse_ready = false;
+    bool parser_consumable = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool produced_user_generated_code = false;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -314,6 +354,13 @@ struct EarlyItemExpansionSummary {
     base::u64 token_record_available_gate_count = 0;
     base::u64 parser_blocked_token_buffer_count = 0;
     base::u64 parser_admitted_token_buffer_count = 0;
+    base::u64 parser_admission_diagnostic_stub_count = 0;
+    base::u64 parser_admission_diagnostic_blocked_count = 0;
+    base::u64 derive_parser_admission_diagnostic_count = 0;
+    base::u64 empty_parser_admission_diagnostic_count = 0;
+    base::u64 emit_expanded_projection_available_count = 0;
+    base::u64 parser_admission_debug_trace_projection_count = 0;
+    base::u64 parser_admission_source_map_projection_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -339,6 +386,7 @@ struct EarlyItemExpansionResult {
     std::vector<GeneratedTokenBufferStub> generated_token_buffers;
     std::vector<GeneratedTokenRecord> generated_token_records;
     std::vector<GeneratedTokenParserAdmissionGateStub> parser_admission_gates;
+    std::vector<ParserAdmissionDiagnosticProjectionStub> parser_admission_diagnostics;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -361,6 +409,7 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const GeneratedTokenBufferStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedTokenRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedTokenParserAdmissionGateStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const ParserAdmissionDiagnosticProjectionStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

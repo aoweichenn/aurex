@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21J_EXPANSION_NAME =
-    "M21j Generated Token Parser Admission Gate";
-constexpr std::string_view FRONTEND_MACRO_M21J_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21j.generated_token_parser_admission_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M21K_EXPANSION_NAME =
+    "M21k Parser Admission Diagnostic Projection Gate";
+constexpr std::string_view FRONTEND_MACRO_M21K_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m21k.parser_admission_diagnostic_projection_gate.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -96,6 +96,12 @@ constexpr std::string_view FRONTEND_MACRO_M21J_PARSER_ADMISSION_GATE_MARKER =
     "frontend.macro.m21j.generated_token_parser_admission_gate_stub.v1";
 constexpr std::string_view FRONTEND_MACRO_M21J_PARSE_GATE_IDENTITY_MARKER =
     "frontend.macro.m21j.parse_gate_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21K_DIAGNOSTIC_PROJECTION_MARKER =
+    "frontend.macro.m21k.parser_admission_diagnostic_projection_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21K_DIAGNOSTIC_IDENTITY_MARKER =
+    "frontend.macro.m21k.parser_admission_diagnostic_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21K_DIAGNOSTIC_ANCHOR_MARKER =
+    "frontend.macro.m21k.parser_admission_diagnostic_anchor.v1";
 constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_PLAN_IDENTITY_MARKER =
     "frontend.macro.m21h.token_plan_identity.v1";
 constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_BUFFER_IDENTITY_MARKER =
@@ -128,6 +134,20 @@ constexpr std::string_view FRONTEND_MACRO_M21J_EMPTY_PARSE_BLOCKER =
     "empty or non-derive generated token buffer parser admission remains blocked in M21j";
 constexpr std::string_view FRONTEND_MACRO_M21J_MISSING_PARSE_MERGE_STUB =
     "early item macro expansion missing generated module part parse merge stub";
+constexpr std::string_view FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY =
+    "parser_admission_blocked_diagnostic_projection_v1";
+constexpr std::string_view FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY =
+    "derive_token_buffer_parser_admission_blocked";
+constexpr std::string_view FRONTEND_MACRO_M21K_EMPTY_BLOCKER_CATEGORY =
+    "empty_token_buffer_parser_admission_blocked";
+constexpr std::string_view FRONTEND_MACRO_M21K_GENERATED_PART_PARSE_BLOCKER =
+    "generated module part parse remains blocked before parser admission diagnostics in M21k";
+constexpr std::string_view FRONTEND_MACRO_M21K_DERIVE_USER_MESSAGE =
+    "generated derive token buffer is compiler-owned but parser admission remains blocked in M21k";
+constexpr std::string_view FRONTEND_MACRO_M21K_EMPTY_USER_MESSAGE =
+    "generated token buffer is empty and parser admission remains blocked in M21k";
+constexpr std::string_view FRONTEND_MACRO_M21K_DEBUG_PROJECTION_PREFIX =
+    "m21k-parser-admission:";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_BEGIN_TOKEN_TEXT =
     "__aurex_builtin_derive_begin";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_END_TOKEN_TEXT =
@@ -389,6 +409,35 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
                                                         : FRONTEND_MACRO_M21J_EMPTY_PARSE_BLOCKER;
 }
 
+[[nodiscard]] std::string_view parser_admission_diagnostic_category_for_input(
+    const EarlyItemMacroInput& input) noexcept
+{
+    return compiler_owned_token_prototype_enabled(input) ? FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY
+                                                        : FRONTEND_MACRO_M21K_EMPTY_BLOCKER_CATEGORY;
+}
+
+[[nodiscard]] std::string_view parser_admission_diagnostic_message_for_input(
+    const EarlyItemMacroInput& input) noexcept
+{
+    return compiler_owned_token_prototype_enabled(input) ? FRONTEND_MACRO_M21K_DERIVE_USER_MESSAGE
+                                                        : FRONTEND_MACRO_M21K_EMPTY_USER_MESSAGE;
+}
+
+[[nodiscard]] std::string parser_admission_debug_projection_name(const EarlyItemMacroInput& input)
+{
+    std::string name(FRONTEND_MACRO_M21K_DEBUG_PROJECTION_PREFIX);
+    name += std::to_string(input.module.value);
+    name.push_back(':');
+    name += std::to_string(input.part_index);
+    name.push_back(':');
+    name += std::to_string(input.item.value);
+    name.push_back(':');
+    name += std::to_string(input.attribute_index);
+    name.push_back(':');
+    name += input.attribute_name;
+    return name;
+}
+
 [[nodiscard]] bool token_buffer_kind_is_compiler_owned(const std::string_view token_buffer_kind) noexcept
 {
     return token_buffer_kind == FRONTEND_MACRO_M21I_DERIVE_TOKEN_BUFFER_KIND
@@ -428,6 +477,26 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
             && stub.token_count == 0
             && stub.empty
             && !stub.materialized_tokens;
+    }
+    return false;
+}
+
+[[nodiscard]] bool parser_admission_diagnostic_category_is_valid(
+    const ParserAdmissionDiagnosticProjectionStub& stub) noexcept
+{
+    if (stub.blocker_category == FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY) {
+        return stub.token_buffer_blocker == FRONTEND_MACRO_M21J_DERIVE_PARSE_BLOCKER
+            && stub.user_message == FRONTEND_MACRO_M21K_DERIVE_USER_MESSAGE
+            && stub.token_count > 0
+            && stub.token_buffer_materialized
+            && stub.token_records_available;
+    }
+    if (stub.blocker_category == FRONTEND_MACRO_M21K_EMPTY_BLOCKER_CATEGORY) {
+        return stub.token_buffer_blocker == FRONTEND_MACRO_M21J_EMPTY_PARSE_BLOCKER
+            && stub.user_message == FRONTEND_MACRO_M21K_EMPTY_USER_MESSAGE
+            && stub.token_count == 0
+            && !stub.token_buffer_materialized
+            && !stub.token_records_available;
     }
     return false;
 }
@@ -525,6 +594,73 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     builder.mix_bool(buffer.materialized_tokens);
     builder.mix_bool(token_records_available);
     builder.mix_bool(compiler_owned_token_prototype_enabled(input));
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 parser_admission_diagnostic_anchor_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenParserAdmissionGateStub& gate,
+    const ExpansionTraceStub& trace) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21K_DIAGNOSTIC_ANCHOR_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.begin));
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.end));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.begin));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.end));
+    builder.mix_fingerprint(gate.parse_gate_identity);
+    builder.mix_fingerprint(trace.trace_identity);
+    builder.mix_fingerprint(trace.diagnostic_anchor);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 parser_admission_diagnostic_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate,
+    const ExpansionTraceStub& trace,
+    const query::StableFingerprint128 diagnostic_anchor,
+    const std::string_view debug_projection_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21K_DIAGNOSTIC_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(placeholder.output_fingerprint);
+    builder.mix_fingerprint(gate.parse_gate_identity);
+    builder.mix_fingerprint(diagnostic_anchor);
+    builder.mix_fingerprint(buffer.token_plan_identity);
+    builder.mix_fingerprint(buffer.token_buffer_identity);
+    builder.mix_fingerprint(buffer.materialization_identity);
+    builder.mix_fingerprint(parse_merge_stub.generated_buffer_identity);
+    builder.mix_fingerprint(parse_merge_stub.parse_config_fingerprint);
+    builder.mix_fingerprint(buffer.source_map_identity);
+    builder.mix_fingerprint(buffer.hygiene_mark);
+    builder.mix_fingerprint(trace.trace_identity);
+    builder.mix_fingerprint(trace.generated_source_map_identity);
+    builder.mix_string(FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY);
+    builder.mix_string(parser_admission_diagnostic_category_for_input(input));
+    builder.mix_string(parser_admission_blocker_for_input(input));
+    builder.mix_string(FRONTEND_MACRO_M21K_GENERATED_PART_PARSE_BLOCKER);
+    builder.mix_string(parser_admission_diagnostic_message_for_input(input));
+    builder.mix_string(debug_projection_name);
+    builder.mix_u64(buffer.token_count);
+    builder.mix_bool(buffer.materialized_tokens);
+    builder.mix_bool(buffer.token_count > 0);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
     return builder.finish();
 }
 
@@ -834,6 +970,59 @@ void append_generated_token_records_for_attribute(std::vector<GeneratedTokenReco
         true,
         buffer.materialized_tokens,
         token_records_available,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] ParserAdmissionDiagnosticProjectionStub make_parser_admission_diagnostic_projection_stub(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const ExpansionTraceStub& trace,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate)
+{
+    const std::string debug_projection_name = parser_admission_debug_projection_name(input);
+    const query::StableFingerprint128 diagnostic_anchor =
+        parser_admission_diagnostic_anchor_identity(input, gate, trace);
+    return ParserAdmissionDiagnosticProjectionStub{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        input.attached_part,
+        placeholder.generated_part,
+        input.attribute_range,
+        input.token_tree_range,
+        gate.parse_gate_identity,
+        parser_admission_diagnostic_identity(input, placeholder, parse_merge_stub, buffer, gate, trace,
+            diagnostic_anchor, debug_projection_name),
+        diagnostic_anchor,
+        gate.token_plan_identity,
+        gate.token_buffer_identity,
+        gate.materialization_identity,
+        parse_merge_stub.generated_buffer_identity,
+        parse_merge_stub.parse_config_fingerprint,
+        buffer.source_map_identity,
+        buffer.hygiene_mark,
+        trace.trace_identity,
+        std::string(FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY),
+        std::string(parser_admission_diagnostic_category_for_input(input)),
+        std::string(parser_admission_blocker_for_input(input)),
+        std::string(FRONTEND_MACRO_M21K_GENERATED_PART_PARSE_BLOCKER),
+        std::string(parser_admission_diagnostic_message_for_input(input)),
+        debug_projection_name,
+        gate.token_count,
+        gate.token_buffer_materialized,
+        gate.token_records_available,
+        false,
         false,
         false,
         false,
@@ -1209,6 +1398,53 @@ void mix_generated_token_parser_admission_gate_stub(
     builder.mix_bool(stub.produced_user_generated_code);
 }
 
+void mix_parser_admission_diagnostic_projection_stub(
+    query::StableHashBuilder& builder, const ParserAdmissionDiagnosticProjectionStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21K_DIAGNOSTIC_PROJECTION_MARKER);
+    builder.mix_u32(stub.item.value);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.part_index);
+    builder.mix_u32(stub.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.generated_part));
+    builder.mix_u64(static_cast<base::u64>(stub.primary_anchor.source.value));
+    builder.mix_u64(static_cast<base::u64>(stub.primary_anchor.begin));
+    builder.mix_u64(static_cast<base::u64>(stub.primary_anchor.end));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_anchor.source.value));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_anchor.begin));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_anchor.end));
+    builder.mix_fingerprint(stub.parse_gate_identity);
+    builder.mix_fingerprint(stub.diagnostic_identity);
+    builder.mix_fingerprint(stub.diagnostic_anchor_identity);
+    builder.mix_fingerprint(stub.token_plan_identity);
+    builder.mix_fingerprint(stub.token_buffer_identity);
+    builder.mix_fingerprint(stub.materialization_identity);
+    builder.mix_fingerprint(stub.generated_buffer_identity);
+    builder.mix_fingerprint(stub.parse_config_fingerprint);
+    builder.mix_fingerprint(stub.source_map_identity);
+    builder.mix_fingerprint(stub.hygiene_mark);
+    builder.mix_fingerprint(stub.trace_identity);
+    builder.mix_string(stub.diagnostic_policy);
+    builder.mix_string(stub.blocker_category);
+    builder.mix_string(stub.token_buffer_blocker);
+    builder.mix_string(stub.generated_part_parse_blocker);
+    builder.mix_string(stub.user_message);
+    builder.mix_string(stub.debug_projection_name);
+    builder.mix_u64(stub.token_count);
+    builder.mix_bool(stub.token_buffer_materialized);
+    builder.mix_bool(stub.token_records_available);
+    builder.mix_bool(stub.parser_admitted);
+    builder.mix_bool(stub.parse_ready);
+    builder.mix_bool(stub.parser_consumable);
+    builder.mix_bool(stub.generated_part_parsed);
+    builder.mix_bool(stub.generated_part_merged);
+    builder.mix_bool(stub.emit_expanded_available);
+    builder.mix_bool(stub.debug_trace_available);
+    builder.mix_bool(stub.source_map_available);
+    builder.mix_bool(stub.produced_user_generated_code);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -1252,6 +1488,13 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.token_record_available_gate_count);
     builder.mix_u64(summary.parser_blocked_token_buffer_count);
     builder.mix_u64(summary.parser_admitted_token_buffer_count);
+    builder.mix_u64(summary.parser_admission_diagnostic_stub_count);
+    builder.mix_u64(summary.parser_admission_diagnostic_blocked_count);
+    builder.mix_u64(summary.derive_parser_admission_diagnostic_count);
+    builder.mix_u64(summary.empty_parser_admission_diagnostic_count);
+    builder.mix_u64(summary.emit_expanded_projection_available_count);
+    builder.mix_u64(summary.parser_admission_debug_trace_projection_count);
+    builder.mix_u64(summary.parser_admission_source_map_projection_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -1306,6 +1549,13 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.token_record_available_gate_count == rhs.token_record_available_gate_count
         && lhs.parser_blocked_token_buffer_count == rhs.parser_blocked_token_buffer_count
         && lhs.parser_admitted_token_buffer_count == rhs.parser_admitted_token_buffer_count
+        && lhs.parser_admission_diagnostic_stub_count == rhs.parser_admission_diagnostic_stub_count
+        && lhs.parser_admission_diagnostic_blocked_count == rhs.parser_admission_diagnostic_blocked_count
+        && lhs.derive_parser_admission_diagnostic_count == rhs.derive_parser_admission_diagnostic_count
+        && lhs.empty_parser_admission_diagnostic_count == rhs.empty_parser_admission_diagnostic_count
+        && lhs.emit_expanded_projection_available_count == rhs.emit_expanded_projection_available_count
+        && lhs.parser_admission_debug_trace_projection_count == rhs.parser_admission_debug_trace_projection_count
+        && lhs.parser_admission_source_map_projection_count == rhs.parser_admission_source_map_projection_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -1652,6 +1902,58 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && !gate.produced_user_generated_code;
 }
 
+[[nodiscard]] bool parser_admission_diagnostic_matches_input(
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const ExpansionTraceStub& trace,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate) noexcept
+{
+    const std::string expected_debug_projection_name = parser_admission_debug_projection_name(input);
+    const query::StableFingerprint128 expected_anchor =
+        parser_admission_diagnostic_anchor_identity(input, gate, trace);
+    return diagnostic.item.value == input.item.value
+        && diagnostic.module.value == input.module.value
+        && diagnostic.part_index == input.part_index
+        && diagnostic.attribute_index == input.attribute_index
+        && diagnostic.attached_part == input.attached_part
+        && diagnostic.generated_part == placeholder.generated_part
+        && source_ranges_equal(diagnostic.primary_anchor, input.attribute_range)
+        && source_ranges_equal(diagnostic.token_tree_anchor, input.token_tree_range)
+        && diagnostic.parse_gate_identity == gate.parse_gate_identity
+        && diagnostic.diagnostic_anchor_identity == expected_anchor
+        && diagnostic.diagnostic_identity == parser_admission_diagnostic_identity(input, placeholder,
+               parse_merge_stub, buffer, gate, trace, expected_anchor, expected_debug_projection_name)
+        && diagnostic.token_plan_identity == gate.token_plan_identity
+        && diagnostic.token_buffer_identity == gate.token_buffer_identity
+        && diagnostic.materialization_identity == gate.materialization_identity
+        && diagnostic.generated_buffer_identity == parse_merge_stub.generated_buffer_identity
+        && diagnostic.parse_config_fingerprint == parse_merge_stub.parse_config_fingerprint
+        && diagnostic.source_map_identity == buffer.source_map_identity
+        && diagnostic.hygiene_mark == buffer.hygiene_mark
+        && diagnostic.trace_identity == trace.trace_identity
+        && diagnostic.diagnostic_policy == FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY
+        && diagnostic.blocker_category == parser_admission_diagnostic_category_for_input(input)
+        && diagnostic.token_buffer_blocker == parser_admission_blocker_for_input(input)
+        && diagnostic.generated_part_parse_blocker == FRONTEND_MACRO_M21K_GENERATED_PART_PARSE_BLOCKER
+        && diagnostic.user_message == parser_admission_diagnostic_message_for_input(input)
+        && diagnostic.debug_projection_name == expected_debug_projection_name
+        && diagnostic.token_count == gate.token_count
+        && diagnostic.token_buffer_materialized == gate.token_buffer_materialized
+        && diagnostic.token_records_available == gate.token_records_available
+        && !diagnostic.parser_admitted
+        && !diagnostic.parse_ready
+        && !diagnostic.parser_consumable
+        && !diagnostic.generated_part_parsed
+        && !diagnostic.generated_part_merged
+        && !diagnostic.emit_expanded_available
+        && !diagnostic.debug_trace_available
+        && !diagnostic.source_map_available
+        && !diagnostic.produced_user_generated_code;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -1676,7 +1978,8 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         || result.inputs.size() != result.declared_generated_names.size()
         || result.inputs.size() != result.token_materialization_admissions.size()
         || result.inputs.size() != result.generated_token_buffers.size()
-        || result.inputs.size() != result.parser_admission_gates.size()) {
+        || result.inputs.size() != result.parser_admission_gates.size()
+        || result.inputs.size() != result.parser_admission_diagnostics.size()) {
         return false;
     }
     for (base::usize index = 0; index < result.inputs.size(); ++index) {
@@ -1705,7 +2008,10 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
                 input, *placeholder, result.hygiene_stubs[index], result.trace_stubs[index],
                 result.token_materialization_admissions[index])
             || !parser_admission_gate_matches_input(result.parser_admission_gates[index],
-                input, *placeholder, *parse_merge_stub, result.generated_token_buffers[index])) {
+                input, *placeholder, *parse_merge_stub, result.generated_token_buffers[index])
+            || !parser_admission_diagnostic_matches_input(result.parser_admission_diagnostics[index],
+                input, *placeholder, *parse_merge_stub, result.trace_stubs[index],
+                result.generated_token_buffers[index], result.parser_admission_gates[index])) {
             return false;
         }
     }
@@ -2103,6 +2409,47 @@ bool is_valid(const GeneratedTokenParserAdmissionGateStub& stub) noexcept
         && !stub.produced_user_generated_code;
 }
 
+bool is_valid(const ParserAdmissionDiagnosticProjectionStub& stub) noexcept
+{
+    return syntax::is_valid(stub.item)
+        && syntax::is_valid(stub.module)
+        && query::is_valid(stub.attached_part)
+        && query::is_valid(stub.generated_part)
+        && stub.generated_part.kind == query::ModulePartKind::generated
+        && stub.generated_part.file.role == query::SourceRole::generated
+        && source_range_is_well_formed(stub.primary_anchor)
+        && source_range_is_well_formed(stub.token_tree_anchor)
+        && is_nonzero_fingerprint(stub.parse_gate_identity)
+        && is_nonzero_fingerprint(stub.diagnostic_identity)
+        && is_nonzero_fingerprint(stub.diagnostic_anchor_identity)
+        && is_nonzero_fingerprint(stub.token_plan_identity)
+        && is_nonzero_fingerprint(stub.token_buffer_identity)
+        && is_nonzero_fingerprint(stub.materialization_identity)
+        && is_nonzero_fingerprint(stub.generated_buffer_identity)
+        && is_nonzero_fingerprint(stub.parse_config_fingerprint)
+        && is_nonzero_fingerprint(stub.source_map_identity)
+        && is_nonzero_fingerprint(stub.hygiene_mark)
+        && is_nonzero_fingerprint(stub.trace_identity)
+        && stub.token_plan_identity != stub.token_buffer_identity
+        && stub.materialization_identity != stub.token_buffer_identity
+        && stub.parse_gate_identity != stub.token_buffer_identity
+        && stub.diagnostic_identity != stub.parse_gate_identity
+        && stub.diagnostic_anchor_identity != stub.diagnostic_identity
+        && stub.diagnostic_policy == FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY
+        && parser_admission_diagnostic_category_is_valid(stub)
+        && stub.generated_part_parse_blocker == FRONTEND_MACRO_M21K_GENERATED_PART_PARSE_BLOCKER
+        && !stub.debug_projection_name.empty()
+        && !stub.parser_admitted
+        && !stub.parse_ready
+        && !stub.parser_consumable
+        && !stub.generated_part_parsed
+        && !stub.generated_part_merged
+        && !stub.emit_expanded_available
+        && !stub.debug_trace_available
+        && !stub.source_map_available
+        && !stub.produced_user_generated_code;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -2110,7 +2457,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21J_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M21K_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -2159,6 +2506,11 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                })
         && std::all_of(result.parser_admission_gates.begin(), result.parser_admission_gates.end(),
                [](const GeneratedTokenParserAdmissionGateStub& stub) {
+                   return is_valid(stub);
+               })
+        && std::all_of(result.parser_admission_diagnostics.begin(),
+               result.parser_admission_diagnostics.end(),
+               [](const ParserAdmissionDiagnosticProjectionStub& stub) {
                    return is_valid(stub);
                })
         && per_input_stubs_match_inputs(result)
@@ -2382,6 +2734,40 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.parser_admission_diagnostic_stub_count =
+        static_cast<base::u64>(result.parser_admission_diagnostics.size());
+    for (const ParserAdmissionDiagnosticProjectionStub& stub : result.parser_admission_diagnostics) {
+        if (!stub.parser_admitted) {
+            ++summary.parser_admission_diagnostic_blocked_count;
+        }
+        if (stub.blocker_category == FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY) {
+            ++summary.derive_parser_admission_diagnostic_count;
+        }
+        if (stub.blocker_category == FRONTEND_MACRO_M21K_EMPTY_BLOCKER_CATEGORY) {
+            ++summary.empty_parser_admission_diagnostic_count;
+        }
+        if (stub.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (stub.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (stub.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (stub.parse_ready || stub.parser_consumable) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (stub.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (stub.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (stub.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -2389,7 +2775,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21J_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M21K_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -2439,6 +2825,10 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.parser_admission_gates.size()));
     for (const GeneratedTokenParserAdmissionGateStub& stub : result.parser_admission_gates) {
         mix_generated_token_parser_admission_gate_stub(builder, stub);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.parser_admission_diagnostics.size()));
+    for (const ParserAdmissionDiagnosticProjectionStub& stub : result.parser_admission_diagnostics) {
+        mix_parser_admission_diagnostic_projection_stub(builder, stub);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -2496,6 +2886,19 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << " token_record_available_gates=" << summary.token_record_available_gate_count
            << " parser_blocked_token_buffers=" << summary.parser_blocked_token_buffer_count
            << " parser_admitted_token_buffers=" << summary.parser_admitted_token_buffer_count
+           << " parser_admission_diagnostics=" << summary.parser_admission_diagnostic_stub_count
+           << " parser_admission_diagnostics_blocked="
+           << summary.parser_admission_diagnostic_blocked_count
+           << " derive_parser_admission_diagnostics="
+           << summary.derive_parser_admission_diagnostic_count
+           << " empty_parser_admission_diagnostics="
+           << summary.empty_parser_admission_diagnostic_count
+           << " emit_expanded_projections="
+           << summary.emit_expanded_projection_available_count
+           << " parser_admission_debug_trace_projections="
+           << summary.parser_admission_debug_trace_projection_count
+           << " parser_admission_source_map_projections="
+           << summary.parser_admission_source_map_projection_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -2737,6 +3140,58 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " parse_config=" << query::debug_string(stub.parse_config_fingerprint)
                << " parse_gate_identity=" << query::debug_string(stub.parse_gate_identity) << '\n';
     }
+    for (base::usize index = 0; index < result.parser_admission_diagnostics.size(); ++index) {
+        const ParserAdmissionDiagnosticProjectionStub& stub = result.parser_admission_diagnostics[index];
+        stream << "  parser_admission_diagnostic_projection_stub #" << index
+               << " item=" << stub.item.value
+               << " module=" << stub.module.value
+               << " part=" << stub.part_index
+               << " attribute_index=" << stub.attribute_index
+               << " policy=" << stub.diagnostic_policy
+               << " category=" << stub.blocker_category
+               << " debug_projection=" << stub.debug_projection_name
+               << " primary_anchor=" << stub.primary_anchor.source.value << ':'
+               << stub.primary_anchor.begin << ':' << stub.primary_anchor.end
+               << " token_tree_anchor=" << stub.token_tree_anchor.source.value << ':'
+               << stub.token_tree_anchor.begin << ':' << stub.token_tree_anchor.end
+               << " token_count=" << stub.token_count
+               << " token_buffer_materialized="
+               << (stub.token_buffer_materialized ? "yes" : "no")
+               << " token_records_available="
+               << (stub.token_records_available ? "yes" : "no")
+               << " parser_admitted=" << (stub.parser_admitted ? "yes" : "no")
+               << " parse_ready=" << (stub.parse_ready ? "yes" : "no")
+               << " parser_consumable=" << (stub.parser_consumable ? "yes" : "no")
+               << " generated_part_parsed="
+               << (stub.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (stub.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (stub.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (stub.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (stub.source_map_available ? "yes" : "no")
+               << " user_generated_code="
+               << (stub.produced_user_generated_code ? "yes" : "no")
+               << " token_buffer_blocker=" << stub.token_buffer_blocker
+               << " generated_part_parse_blocker=" << stub.generated_part_parse_blocker
+               << " message=" << stub.user_message
+               << " parse_gate_identity=" << query::debug_string(stub.parse_gate_identity)
+               << " diagnostic_identity=" << query::debug_string(stub.diagnostic_identity)
+               << " diagnostic_anchor="
+               << query::debug_string(stub.diagnostic_anchor_identity)
+               << " token_plan_identity=" << query::debug_string(stub.token_plan_identity)
+               << " token_buffer_identity=" << query::debug_string(stub.token_buffer_identity)
+               << " materialization_identity="
+               << query::debug_string(stub.materialization_identity)
+               << " generated_buffer_identity="
+               << query::debug_string(stub.generated_buffer_identity)
+               << " parse_config=" << query::debug_string(stub.parse_config_fingerprint)
+               << " source_map_identity=" << query::debug_string(stub.source_map_identity)
+               << " hygiene_mark=" << query::debug_string(stub.hygiene_mark)
+               << " trace_identity=" << query::debug_string(stub.trace_identity) << '\n';
+    }
     return stream.str();
 }
 
@@ -2757,7 +3212,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21J_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M21K_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     result.inputs.reserve(attribute_count);
@@ -2772,6 +3227,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.generated_token_buffers.reserve(attribute_count);
     result.generated_token_records.reserve(count_compiler_owned_generated_token_records(ast));
     result.parser_admission_gates.reserve(attribute_count);
+    result.parser_admission_diagnostics.reserve(attribute_count);
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -2822,6 +3278,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             GeneratedTokenParserAdmissionGateStub parser_admission_gate =
                 make_generated_token_parser_admission_gate_stub(input, *generated_part, *parse_merge_stub,
                     token_buffer);
+            ParserAdmissionDiagnosticProjectionStub parser_admission_diagnostic =
+                make_parser_admission_diagnostic_projection_stub(input, *generated_part, *parse_merge_stub,
+                    trace, token_buffer, parser_admission_gate);
             append_generated_token_records_for_attribute(result.generated_token_records, input, attribute,
                 token_buffer);
             result.source_maps.push_back(make_source_map_placeholder(input));
@@ -2832,6 +3291,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             result.token_materialization_admissions.push_back(std::move(admission));
             result.generated_token_buffers.push_back(std::move(token_buffer));
             result.parser_admission_gates.push_back(std::move(parser_admission_gate));
+            result.parser_admission_diagnostics.push_back(std::move(parser_admission_diagnostic));
             result.inputs.push_back(std::move(input));
         }
     }

@@ -1,5 +1,62 @@
 # 版本文档
 
+## M21k Parser Admission Diagnostic Projection Gate
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21j 的 compiler-owned parser admission
+gate 扩展为稳定 diagnostic / dump projection。该阶段仍不执行用户宏、不生成 source text、不让 parser 消费
+generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::ParserAdmissionDiagnosticProjectionStub`。
+- 新增 `is_valid(const ParserAdmissionDiagnosticProjectionStub&)`。
+- `EarlyItemExpansionResult` 新增 `parser_admission_diagnostics`。
+- `EarlyItemExpansionSummary` 新增 parser admission diagnostic、blocked diagnostic、derive / empty category、
+  emit-expanded projection、debug trace projection 和 source-map projection 计数。
+- 每个 macro input 都有一个 deterministic parser admission diagnostic projection。
+- diagnostic 固定 `diagnostic_policy = parser_admission_blocked_diagnostic_projection_v1`。
+- diagnostic 固定 `diagnostic_identity`，并混入 input、generated part、M21j parse gate identity、diagnostic anchor、
+  token plan、token buffer、materialization、M21e generated buffer identity、M21e parse config、source-map、
+  hygiene、trace、policy、blocker category、blocker message、debug projection name、token count 和 blocked flags。
+- diagnostic 固定 `diagnostic_anchor_identity`，并混入 source anchor、token-tree anchor、parse gate identity、
+  trace identity 和 M21f diagnostic anchor。
+- 非 `derive` input 的 diagnostic 固定
+  `blocker_category = empty_token_buffer_parser_admission_blocked`。
+- `derive` input 的 diagnostic 固定
+  `blocker_category = derive_token_buffer_parser_admission_blocked`。
+- diagnostic 同时记录 token buffer admission blocker 和 generated module part parse blocker。
+- 所有 diagnostic 固定 `parser_admitted=false`、`parse_ready=false` 和 `parser_consumable=false`。
+- 所有 diagnostic 固定 `generated_part_parsed=false`、`generated_part_merged=false`、
+  `emit_expanded_available=false`、`debug_trace_available=false`、`source_map_available=false` 和
+  `produced_user_generated_code=false`。
+- validation 要求 diagnostic 与 input、source anchors、generated part placeholder、M21e parse / merge stub、M21i
+  token buffer、M21j parser gate、source-map identity、hygiene mark 和 trace identity 一一对应。
+- validation 拒绝 parser-admitted、parse-ready、parser-consumable、parsed / merged generated part、emit-expanded
+  projection、debug trace projection、source-map projection 或 produced user code。
+- dump 会输出 `parser_admission_diagnostic_projection_stub`、policy、category、source anchors、token records
+  availability、parser flags、emit/debug/source-map availability、diagnostic identity、diagnostic anchor、parse
+  gate identity 和 trace identity。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21j Generated Token Parser Admission Gate
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21i 的 compiler-owned generated token

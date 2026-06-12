@@ -217,6 +217,20 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.parser_admission_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::ParserAdmissionDiagnosticProjectionStub* parser_admission_diagnostic_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.parser_admission_diagnostics.begin(),
+        result.parser_admission_diagnostics.end(),
+        [&input](const frontend::macro::ParserAdmissionDiagnosticProjectionStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.parser_admission_diagnostics.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -324,7 +338,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21j Generated Token Parser Admission Gate");
+    EXPECT_EQ(result.name, "M21k Parser Admission Diagnostic Projection Gate");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -370,6 +384,13 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.token_record_available_gate_count, 1U);
     EXPECT_EQ(result.summary.parser_blocked_token_buffer_count, 2U);
     EXPECT_EQ(result.summary.parser_admitted_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_diagnostic_stub_count, 2U);
+    EXPECT_EQ(result.summary.parser_admission_diagnostic_blocked_count, 2U);
+    EXPECT_EQ(result.summary.derive_parser_admission_diagnostic_count, 1U);
+    EXPECT_EQ(result.summary.empty_parser_admission_diagnostic_count, 1U);
+    EXPECT_EQ(result.summary.emit_expanded_projection_available_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_debug_trace_projection_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_source_map_projection_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -643,6 +664,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(derive_buffer->produced_user_generated_code);
 
     ASSERT_EQ(result.parser_admission_gates.size(), 2U);
+    ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
     const frontend::macro::GeneratedTokenParserAdmissionGateStub* const builder_gate =
         parser_admission_gate_for_input(result, *builder);
     ASSERT_NE(builder_gate, nullptr);
@@ -703,6 +725,76 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(derive_gate->produced_user_generated_code);
     EXPECT_NE(builder_gate->parse_gate_identity, derive_gate->parse_gate_identity);
 
+    const frontend::macro::ParserAdmissionDiagnosticProjectionStub* const builder_diagnostic =
+        parser_admission_diagnostic_for_input(result, *builder);
+    ASSERT_NE(builder_diagnostic, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_diagnostic));
+    EXPECT_EQ(builder_diagnostic->part_index, builder->part_index);
+    EXPECT_EQ(builder_diagnostic->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_diagnostic->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_diagnostic->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_diagnostic->primary_anchor.source.value, builder->attribute_range.source.value);
+    EXPECT_EQ(builder_diagnostic->primary_anchor.begin, builder->attribute_range.begin);
+    EXPECT_EQ(builder_diagnostic->primary_anchor.end, builder->attribute_range.end);
+    EXPECT_EQ(builder_diagnostic->token_tree_anchor.source.value, builder->token_tree_range.source.value);
+    EXPECT_EQ(builder_diagnostic->token_tree_anchor.begin, builder->token_tree_range.begin);
+    EXPECT_EQ(builder_diagnostic->token_tree_anchor.end, builder->token_tree_range.end);
+    EXPECT_EQ(builder_diagnostic->parse_gate_identity, builder_gate->parse_gate_identity);
+    EXPECT_GT(builder_diagnostic->diagnostic_identity.byte_count, 0U);
+    EXPECT_GT(builder_diagnostic->diagnostic_anchor_identity.byte_count, 0U);
+    EXPECT_NE(builder_diagnostic->diagnostic_identity, builder_diagnostic->parse_gate_identity);
+    EXPECT_EQ(builder_diagnostic->token_plan_identity, builder_gate->token_plan_identity);
+    EXPECT_EQ(builder_diagnostic->token_buffer_identity, builder_gate->token_buffer_identity);
+    EXPECT_EQ(builder_diagnostic->materialization_identity, builder_gate->materialization_identity);
+    EXPECT_EQ(builder_diagnostic->generated_buffer_identity, stub.generated_buffer_identity);
+    EXPECT_EQ(builder_diagnostic->parse_config_fingerprint, stub.parse_config_fingerprint);
+    EXPECT_EQ(builder_diagnostic->source_map_identity, builder_buffer->source_map_identity);
+    EXPECT_EQ(builder_diagnostic->hygiene_mark, builder_buffer->hygiene_mark);
+    EXPECT_EQ(builder_diagnostic->trace_identity, builder_trace->trace_identity);
+    EXPECT_EQ(builder_diagnostic->diagnostic_policy,
+        "parser_admission_blocked_diagnostic_projection_v1");
+    EXPECT_EQ(builder_diagnostic->blocker_category, "empty_token_buffer_parser_admission_blocked");
+    EXPECT_EQ(builder_diagnostic->token_buffer_blocker,
+        "empty or non-derive generated token buffer parser admission remains blocked in M21j");
+    expect_contains(builder_diagnostic->generated_part_parse_blocker,
+        "generated module part parse remains blocked before parser admission diagnostics in M21k");
+    expect_contains(builder_diagnostic->user_message,
+        "generated token buffer is empty and parser admission remains blocked in M21k");
+    expect_contains(builder_diagnostic->debug_projection_name,
+        "m21k-parser-admission:0:0:0:0:builder");
+    EXPECT_EQ(builder_diagnostic->token_count, 0U);
+    EXPECT_FALSE(builder_diagnostic->token_buffer_materialized);
+    EXPECT_FALSE(builder_diagnostic->token_records_available);
+    EXPECT_FALSE(builder_diagnostic->parser_admitted);
+    EXPECT_FALSE(builder_diagnostic->parse_ready);
+    EXPECT_FALSE(builder_diagnostic->parser_consumable);
+    EXPECT_FALSE(builder_diagnostic->generated_part_parsed);
+    EXPECT_FALSE(builder_diagnostic->generated_part_merged);
+    EXPECT_FALSE(builder_diagnostic->emit_expanded_available);
+    EXPECT_FALSE(builder_diagnostic->debug_trace_available);
+    EXPECT_FALSE(builder_diagnostic->source_map_available);
+    EXPECT_FALSE(builder_diagnostic->produced_user_generated_code);
+
+    const frontend::macro::ParserAdmissionDiagnosticProjectionStub* const derive_diagnostic =
+        parser_admission_diagnostic_for_input(result, *derive);
+    ASSERT_NE(derive_diagnostic, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_diagnostic));
+    EXPECT_EQ(derive_diagnostic->parse_gate_identity, derive_gate->parse_gate_identity);
+    EXPECT_EQ(derive_diagnostic->token_count, derive_gate->token_count);
+    EXPECT_TRUE(derive_diagnostic->token_buffer_materialized);
+    EXPECT_TRUE(derive_diagnostic->token_records_available);
+    EXPECT_EQ(derive_diagnostic->blocker_category, "derive_token_buffer_parser_admission_blocked");
+    EXPECT_EQ(derive_diagnostic->token_buffer_blocker,
+        "compiler-owned derive generated token buffer parser admission remains blocked in M21j");
+    expect_contains(derive_diagnostic->user_message,
+        "generated derive token buffer is compiler-owned but parser admission remains blocked in M21k");
+    expect_contains(derive_diagnostic->debug_projection_name,
+        "m21k-parser-admission:0:0:0:1:derive");
+    EXPECT_FALSE(derive_diagnostic->emit_expanded_available);
+    EXPECT_FALSE(derive_diagnostic->debug_trace_available);
+    EXPECT_FALSE(derive_diagnostic->source_map_available);
+    EXPECT_NE(builder_diagnostic->diagnostic_identity, derive_diagnostic->diagnostic_identity);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -737,7 +829,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21j Generated Token Parser Admission Gate");
+    expect_contains(summary, "early_item_expansion name=M21k Parser Admission Diagnostic Projection Gate");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -773,6 +865,13 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "token_record_available_gates=1");
     expect_contains(summary, "parser_blocked_token_buffers=2");
     expect_contains(summary, "parser_admitted_token_buffers=0");
+    expect_contains(summary, "parser_admission_diagnostics=2");
+    expect_contains(summary, "parser_admission_diagnostics_blocked=2");
+    expect_contains(summary, "derive_parser_admission_diagnostics=1");
+    expect_contains(summary, "empty_parser_admission_diagnostics=1");
+    expect_contains(summary, "emit_expanded_projections=0");
+    expect_contains(summary, "parser_admission_debug_trace_projections=0");
+    expect_contains(summary, "parser_admission_source_map_projections=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -866,6 +965,24 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "compiler-owned derive generated token buffer parser admission remains blocked in M21j");
     expect_contains(dump, "generated_buffer_identity=");
     expect_contains(dump, "parse_gate_identity=");
+    expect_contains(dump, "parser_admission_diagnostic_projection_stub #0");
+    expect_contains(dump, "policy=parser_admission_blocked_diagnostic_projection_v1");
+    expect_contains(dump, "category=empty_token_buffer_parser_admission_blocked");
+    expect_contains(dump, "category=derive_token_buffer_parser_admission_blocked");
+    expect_contains(dump, "debug_projection=m21k-parser-admission:0:0:0:0:builder");
+    expect_contains(dump, "debug_projection=m21k-parser-admission:0:0:0:1:derive");
+    expect_contains(dump, "primary_anchor=");
+    expect_contains(dump, "token_tree_anchor=");
+    expect_contains(dump, "emit_expanded_available=no");
+    expect_contains(dump, "debug_trace_available=no");
+    expect_contains(dump, "source_map_available=no");
+    expect_contains(dump, "token_buffer_blocker=empty or non-derive generated token buffer parser admission remains blocked in M21j");
+    expect_contains(dump, "generated_part_parse_blocker=generated module part parse remains blocked before parser admission diagnostics in M21k");
+    expect_contains(dump, "message=generated token buffer is empty and parser admission remains blocked in M21k");
+    expect_contains(dump, "message=generated derive token buffer is compiler-owned but parser admission remains blocked in M21k");
+    expect_contains(dump, "diagnostic_identity=");
+    expect_contains(dump, "diagnostic_anchor=");
+    expect_contains(dump, "trace_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -910,6 +1027,7 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
     ASSERT_EQ(result.token_materialization_admissions.size(), 2U);
     ASSERT_EQ(result.generated_token_buffers.size(), 2U);
     ASSERT_EQ(result.parser_admission_gates.size(), 2U);
+    ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
 
     EXPECT_NE(result.inputs[0].item.value, result.inputs[1].item.value);
     EXPECT_EQ(result.inputs[0].attribute_index, 0U);
@@ -940,6 +1058,14 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
         result.generated_token_buffers[1].token_stream_name);
     EXPECT_NE(result.parser_admission_gates[0].parse_gate_identity,
         result.parser_admission_gates[1].parse_gate_identity);
+    EXPECT_NE(result.parser_admission_diagnostics[0].debug_projection_name,
+        result.parser_admission_diagnostics[1].debug_projection_name);
+    expect_contains(result.parser_admission_diagnostics[0].debug_projection_name,
+        "m21k-parser-admission:0:0:0:0:builder");
+    expect_contains(result.parser_admission_diagnostics[1].debug_projection_name,
+        "m21k-parser-admission:0:0:1:0:builder");
+    EXPECT_NE(result.parser_admission_diagnostics[0].diagnostic_identity,
+        result.parser_admission_diagnostics[1].diagnostic_identity);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -2049,6 +2175,255 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionGateContract)
     refresh_expansion_result(availability);
     EXPECT_NE(availability.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(availability));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsParserAdmissionDiagnosticProjectionDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.parser_admission_diagnostics.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_projection = baseline;
+    missing_projection.parser_admission_diagnostics.clear();
+    refresh_expansion_result(missing_projection);
+    EXPECT_EQ(missing_projection.summary.parser_admission_diagnostic_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_projection));
+
+    frontend::macro::EarlyItemExpansionResult empty_diagnostic_identity = baseline;
+    empty_diagnostic_identity.parser_admission_diagnostics.front().diagnostic_identity = {};
+    refresh_expansion_result(empty_diagnostic_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_diagnostic_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_diagnostic_identity = baseline;
+    wrong_diagnostic_identity.parser_admission_diagnostics.front().diagnostic_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic identity");
+    refresh_expansion_result(wrong_diagnostic_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_diagnostic_identity));
+
+    frontend::macro::EarlyItemExpansionResult empty_anchor_identity = baseline;
+    empty_anchor_identity.parser_admission_diagnostics.front().diagnostic_anchor_identity = {};
+    refresh_expansion_result(empty_anchor_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_anchor_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_anchor_identity = baseline;
+    wrong_anchor_identity.parser_admission_diagnostics.front().diagnostic_anchor_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic anchor");
+    refresh_expansion_result(wrong_anchor_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_anchor_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_parse_gate_identity = baseline;
+    wrong_parse_gate_identity.parser_admission_diagnostics.front().parse_gate_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic parse gate");
+    refresh_expansion_result(wrong_parse_gate_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_parse_gate_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_plan = baseline;
+    wrong_token_plan.parser_admission_diagnostics.front().token_plan_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic token plan");
+    refresh_expansion_result(wrong_token_plan);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_plan));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_buffer = baseline;
+    wrong_token_buffer.parser_admission_diagnostics.front().token_buffer_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic token buffer");
+    refresh_expansion_result(wrong_token_buffer);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_buffer));
+
+    frontend::macro::EarlyItemExpansionResult wrong_materialization = baseline;
+    wrong_materialization.parser_admission_diagnostics.front().materialization_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic materialization");
+    refresh_expansion_result(wrong_materialization);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_materialization));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_buffer = baseline;
+    wrong_generated_buffer.parser_admission_diagnostics.front().generated_buffer_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic generated buffer");
+    refresh_expansion_result(wrong_generated_buffer);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_buffer));
+
+    frontend::macro::EarlyItemExpansionResult wrong_parse_config = baseline;
+    wrong_parse_config.parser_admission_diagnostics.front().parse_config_fingerprint =
+        query::stable_fingerprint("wrong parser admission diagnostic parse config");
+    refresh_expansion_result(wrong_parse_config);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_parse_config));
+
+    frontend::macro::EarlyItemExpansionResult wrong_source_map = baseline;
+    wrong_source_map.parser_admission_diagnostics.front().source_map_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic source map");
+    refresh_expansion_result(wrong_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_source_map));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene = baseline;
+    wrong_hygiene.parser_admission_diagnostics.front().hygiene_mark =
+        query::stable_fingerprint("wrong parser admission diagnostic hygiene");
+    refresh_expansion_result(wrong_hygiene);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene));
+
+    frontend::macro::EarlyItemExpansionResult wrong_trace = baseline;
+    wrong_trace.parser_admission_diagnostics.front().trace_identity =
+        query::stable_fingerprint("wrong parser admission diagnostic trace");
+    refresh_expansion_result(wrong_trace);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_trace));
+
+    frontend::macro::EarlyItemExpansionResult wrong_policy = baseline;
+    wrong_policy.parser_admission_diagnostics.front().diagnostic_policy = "wrong_diagnostic_policy";
+    refresh_expansion_result(wrong_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_category = baseline;
+    wrong_category.parser_admission_diagnostics.front().blocker_category =
+        "empty_token_buffer_parser_admission_blocked";
+    refresh_expansion_result(wrong_category);
+    EXPECT_EQ(wrong_category.summary.derive_parser_admission_diagnostic_count, 0U);
+    EXPECT_EQ(wrong_category.summary.empty_parser_admission_diagnostic_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_category));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_buffer_blocker = baseline;
+    wrong_token_buffer_blocker.parser_admission_diagnostics.front().token_buffer_blocker =
+        "wrong token buffer blocker";
+    refresh_expansion_result(wrong_token_buffer_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_buffer_blocker));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_part_blocker = baseline;
+    wrong_generated_part_blocker.parser_admission_diagnostics.front().generated_part_parse_blocker =
+        "wrong generated part parse blocker";
+    refresh_expansion_result(wrong_generated_part_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_part_blocker));
+
+    frontend::macro::EarlyItemExpansionResult wrong_user_message = baseline;
+    wrong_user_message.parser_admission_diagnostics.front().user_message =
+        "wrong parser admission diagnostic message";
+    refresh_expansion_result(wrong_user_message);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_user_message));
+
+    frontend::macro::EarlyItemExpansionResult wrong_debug_projection = baseline;
+    wrong_debug_projection.parser_admission_diagnostics.front().debug_projection_name =
+        "m21k-parser-admission:wrong";
+    refresh_expansion_result(wrong_debug_projection);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_debug_projection));
+
+    frontend::macro::EarlyItemExpansionResult wrong_primary_anchor = baseline;
+    wrong_primary_anchor.parser_admission_diagnostics.front().primary_anchor.begin += 1U;
+    refresh_expansion_result(wrong_primary_anchor);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_primary_anchor));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_tree_anchor = baseline;
+    wrong_token_tree_anchor.parser_admission_diagnostics.front().token_tree_anchor.end += 1U;
+    refresh_expansion_result(wrong_token_tree_anchor);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_tree_anchor));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_count = baseline;
+    wrong_token_count.parser_admission_diagnostics.front().token_count = 0U;
+    refresh_expansion_result(wrong_token_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_count));
+
+    frontend::macro::EarlyItemExpansionResult missing_materialization = baseline;
+    missing_materialization.parser_admission_diagnostics.front().token_buffer_materialized = false;
+    refresh_expansion_result(missing_materialization);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_materialization));
+
+    frontend::macro::EarlyItemExpansionResult missing_records = baseline;
+    missing_records.parser_admission_diagnostics.front().token_records_available = false;
+    refresh_expansion_result(missing_records);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_records));
+
+    frontend::macro::EarlyItemExpansionResult parser_admitted = baseline;
+    parser_admitted.parser_admission_diagnostics.front().parser_admitted = true;
+    refresh_expansion_result(parser_admitted);
+    EXPECT_EQ(parser_admitted.summary.parser_admission_diagnostic_blocked_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_admitted));
+
+    frontend::macro::EarlyItemExpansionResult parse_ready = baseline;
+    parse_ready.parser_admission_diagnostics.front().parse_ready = true;
+    refresh_expansion_result(parse_ready);
+    EXPECT_EQ(parse_ready.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parse_ready));
+
+    frontend::macro::EarlyItemExpansionResult parser_consumable = baseline;
+    parser_consumable.parser_admission_diagnostics.front().parser_consumable = true;
+    refresh_expansion_result(parser_consumable);
+    EXPECT_EQ(parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult generated_part_parsed = baseline;
+    generated_part_parsed.parser_admission_diagnostics.front().generated_part_parsed = true;
+    refresh_expansion_result(generated_part_parsed);
+    EXPECT_EQ(generated_part_parsed.summary.parsed_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_part_parsed));
+
+    frontend::macro::EarlyItemExpansionResult generated_part_merged = baseline;
+    generated_part_merged.parser_admission_diagnostics.front().generated_part_merged = true;
+    refresh_expansion_result(generated_part_merged);
+    EXPECT_EQ(generated_part_merged.summary.merged_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_part_merged));
+
+    frontend::macro::EarlyItemExpansionResult emit_expanded = baseline;
+    emit_expanded.parser_admission_diagnostics.front().emit_expanded_available = true;
+    refresh_expansion_result(emit_expanded);
+    EXPECT_EQ(emit_expanded.summary.emit_expanded_projection_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(emit_expanded));
+
+    frontend::macro::EarlyItemExpansionResult debug_trace = baseline;
+    debug_trace.parser_admission_diagnostics.front().debug_trace_available = true;
+    refresh_expansion_result(debug_trace);
+    EXPECT_EQ(debug_trace.summary.parser_admission_debug_trace_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_trace));
+
+    frontend::macro::EarlyItemExpansionResult source_map = baseline;
+    source_map.parser_admission_diagnostics.front().source_map_available = true;
+    refresh_expansion_result(source_map);
+    EXPECT_EQ(source_map.summary.parser_admission_source_map_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(source_map));
+
+    frontend::macro::EarlyItemExpansionResult user_code = baseline;
+    user_code.parser_admission_diagnostics.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code);
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionDiagnosticProjectionContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.parser_admission_diagnostics.empty());
+
+    frontend::macro::EarlyItemExpansionResult diagnostic_identity = baseline;
+    diagnostic_identity.parser_admission_diagnostics.front().diagnostic_identity =
+        query::stable_fingerprint("different diagnostic identity");
+    refresh_expansion_result(diagnostic_identity);
+    EXPECT_NE(diagnostic_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(diagnostic_identity));
+
+    frontend::macro::EarlyItemExpansionResult category = baseline;
+    category.parser_admission_diagnostics.front().blocker_category =
+        "empty_token_buffer_parser_admission_blocked";
+    refresh_expansion_result(category);
+    EXPECT_NE(category.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(category));
+
+    frontend::macro::EarlyItemExpansionResult debug_projection = baseline;
+    debug_projection.parser_admission_diagnostics.front().debug_projection_name =
+        "m21k-parser-admission:different";
+    refresh_expansion_result(debug_projection);
+    EXPECT_NE(debug_projection.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_projection));
+
+    frontend::macro::EarlyItemExpansionResult source_anchor = baseline;
+    source_anchor.parser_admission_diagnostics.front().primary_anchor.end += 1U;
+    refresh_expansion_result(source_anchor);
+    EXPECT_NE(source_anchor.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(source_anchor));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

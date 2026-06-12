@@ -1,9 +1,33 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21j Generated Token Parser Admission Gate
+阶段：M21k Parser Admission Diagnostic Projection Gate
 
 ## 总体状态
+
+2026-06-12：M21k Parser Admission Diagnostic Projection Gate 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21j parser admission gate 转成可验证的 diagnostic / dump
+projection。
+
+新增 `ParserAdmissionDiagnosticProjectionStub`，并给 `EarlyItemExpansionResult` 增加
+`parser_admission_diagnostics`。每个 macro input 现在都有 deterministic parser admission diagnostic projection，
+绑定 M21j `parse_gate_identity`、M21e `generated_buffer_identity` / `parse_config_fingerprint`、M21i
+`token_plan_identity`、`token_buffer_identity`、`materialization_identity`、`source_map_identity`、
+`hygiene_mark` 和 M21f `trace_identity`，并固定 `diagnostic_identity` 与
+`diagnostic_anchor_identity`。policy 固定为
+`parser_admission_blocked_diagnostic_projection_v1`。非 `derive` projection 记录
+`blocker_category=empty_token_buffer_parser_admission_blocked`；`derive` projection 记录
+`blocker_category=derive_token_buffer_parser_admission_blocked`，并可记录 `token_buffer_materialized=true` 和
+`token_records_available=true`，但仍固定 `parser_admitted=false`、`parse_ready=false`、
+`parser_consumable=false`、`generated_part_parsed=false`、`generated_part_merged=false`、
+`emit_expanded_available=false`、`debug_trace_available=false`、`source_map_available=false` 和
+`produced_user_generated_code=false`。summary / dump / fingerprint / validation 会拒绝 diagnostic projection 与
+input / source anchor / parser gate / generated part / parse config / token buffer / materialization / source-map /
+hygiene / trace 不能一一重算的漂移。新增说明见
+[Aurex M21k Parser Admission Diagnostic Projection Gate](m21k-parser-admission-diagnostic-projection-gate.md)。
 
 2026-06-12：M21j Generated Token Parser Admission Gate 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

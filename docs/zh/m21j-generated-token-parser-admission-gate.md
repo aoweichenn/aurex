@@ -227,3 +227,6 @@ projection 做成更接近 future user-facing 的报告模型，特别是：
 - 固定 parser admission diagnostic 的 source anchor、gate identity 和 blocker category。
 - 继续保持 no standard library、no runtime helper、no external procedural macro、no user-generated code。
 
+该建议已由 [Aurex M21k Parser Admission Diagnostic Projection Gate](m21k-parser-admission-diagnostic-projection-gate.md)
+实现。M21k 新增 `ParserAdmissionDiagnosticProjectionStub` 和 `parser_admission_diagnostics`，但仍保持
+parser-blocked / no user-generated code。

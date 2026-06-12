@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21j generated token parser admission gate 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21k parser admission diagnostic projection gate 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -68,10 +68,21 @@ input 都有 `GeneratedTokenParserAdmissionGateStub`，并绑定 M21e `generated
 `parser_admitted=false`、`parse_ready=false`、`parser_consumable=false`、`generated_part_parsed=false`、
 `generated_part_merged=false`、`sema_visible=false` 和 `produced_user_generated_code=false`。
 
-下一步建议继续 M21k：仍保持 parser-blocked / no user-code，不直接打开 parser consumption，而是把 parser
-admission diagnostic / dump projection 做成稳定调试面。M21k 应区分 token buffer admission blocker 和 generated
-module part parse blocker，固定 source anchor、blocker category、gate identity 和 future `--emit-expanded`
-projection，同时继续不实现 external procedural macro、标准库、runtime helper 或真实用户代码生成。
+M21k 已把 parser admission diagnostic / dump projection 固定到同一 `macro.expand_items` boundary：每个 macro
+input 都有 `ParserAdmissionDiagnosticProjectionStub`，并绑定 M21j `parse_gate_identity`、M21e
+`generated_buffer_identity` / `parse_config_fingerprint`、M21i token buffer / materialization identity、source-map
+identity、hygiene mark、M21f trace identity、source anchor 和 token-tree anchor。policy 固定为
+`parser_admission_blocked_diagnostic_projection_v1`。projection 会区分
+`empty_token_buffer_parser_admission_blocked` 和 `derive_token_buffer_parser_admission_blocked`，同时记录 token
+buffer admission blocker 与 generated module part parse blocker；但所有 projection 仍固定
+`parser_admitted=false`、`parse_ready=false`、`parser_consumable=false`、`generated_part_parsed=false`、
+`generated_part_merged=false`、`emit_expanded_available=false`、`debug_trace_available=false`、
+`source_map_available=false` 和 `produced_user_generated_code=false`。
+
+下一步建议继续 M21l：仍保持 parser-blocked / no user-code，不直接打开 parser consumption，而是把 M21k
+diagnostic projection 汇总成 tooling/query 可复用的 report surface。M21l 应固定 report identity、category totals、
+source anchor ordering、diagnostic projection grouping 和 negative validation matrix，同时继续不实现 external
+procedural macro、标准库、runtime helper、generated source text 或真实用户代码生成。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

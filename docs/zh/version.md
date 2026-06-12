@@ -1,5 +1,44 @@
 # 版本文档
 
+## M21c Early Item Macro Expansion Plan
+
+当前版本把 M21b 的 item attribute token-tree surface 接到 query-level early item expansion facts。该阶段仍不执行
+宏、不生成用户代码，也不引入标准库。
+
+新增或固定：
+
+- 新增 `MacroExpansionFact`。
+- 新增 `MacroExpansionSummary`。
+- 新增 `MacroExpansionPlan`。
+- 新增 `MacroExpansionFactKind`。
+- 新增 `MacroExpansionStage`。
+- 新增 `MacroExpansionPolicy`。
+- 新增 `m21c_macro_expansion_plan_baseline()`。
+- 新增 `is_valid_m21c_macro_expansion_plan()`。
+- 新增 `macro_expansion_plan_fingerprint()`。
+- 新增 `summarize_macro_expansion_plan()` 和 `dump_macro_expansion_plan()`。
+- 固定 `attribute_token_tree_input` 事实，把 `ItemNode::attributes` / `AttributeTokenDecl` 作为宏输入面。
+- 固定 `builtin_derive_passthrough` 事实，保持 `#[derive(Copy, Eq, Hash)]` 兼容旧 `DeriveDecl` 语义。
+- 固定 `early_item_expansion_query_key` 事实，要求真实展开使用 macro definition identity、attached item stable key 和 token-tree fingerprint。
+- 固定 `generated_module_part_noop` 事实，要求未来生成代码使用 `SourceRole::generated` 和 `ModulePartKind::generated`。
+- 固定 `expansion_source_map_stub` 事实，为 expansion origin / debug trace 留出接口。
+- 固定 `unimplemented_item_attribute_blocker` 事实，作为 sema 非 `derive` attribute blocker 的消息来源。
+- 固定 `external_procedural_macro_blocked` 事实，external procedural macro 继续留到 future sandbox 阶段。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- 真实 hygiene resolution。
+- 真实 expansion source map。
+- 真实 generated module part parse / merge。
+- `--emit-expanded` 或 macro trace CLI。
+
 ## M21b AttributeDecl / Token Tree Surface
 
 当前版本把 M21a 选定的 token tree / attribute surface 落到 frontend。该阶段仍不实现完整 macro/proc-macro、

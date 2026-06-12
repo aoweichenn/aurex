@@ -1,6 +1,7 @@
 #include <aurex/frontend/sema/function_registry.hpp>
 #include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/frontend/sema/sema_messages.hpp>
+#include <aurex/infrastructure/query/macro_expansion_facts.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -1424,7 +1425,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_derive_attributes()
             }
             this->core_.report_unsupported(
                 attribute.range,
-                std::string(SEMA_ITEM_ATTRIBUTE_MACRO_UNIMPLEMENTED) + std::string(attribute.name));
+                query::m21c_item_attribute_macro_unimplemented_message(attribute.name));
         }
         if (item.derives.empty()) {
             continue;

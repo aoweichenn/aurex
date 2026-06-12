@@ -104,9 +104,9 @@ M21b 仍不实现：
 - AST compact payload copy / move / materialize。
 - 非 `derive` attribute sema blocker。
 
-## 下一步
+## 后续
 
-M21c 应继续实现：
+M21c 已继续把 M21b 的输入面接到 query-level early item expansion facts。后续真实展开仍需继续实现：
 
 - Early Item Expansion Pipeline。
 - Generated Module Part。

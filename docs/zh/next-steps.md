@@ -5,15 +5,21 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21b attribute / token tree surface 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21c early item expansion plan 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
 继续兼容现有内建 derive capability。非 `derive` item attribute 现在可以被 parser/AST/dump 索引，但 sema 会明确报错
 `item attribute macros are parsed but macro expansion is not implemented yet`。
 
-下一步建议继续 M21c：实现 early item expansion pipeline、generated module part、expansion source map 和
-query-backed macro expansion key / fingerprint。M21c 仍不应实现标准库、external procedural macro 或 typed expression macro。
+M21c 已把该输入面接到 query-level early item expansion facts：`MacroExpansionPlan` 固定 attribute token-tree input、
+builtin derive passthrough、early item expansion query key、`SourceRole::generated` / `ModulePartKind::generated`
+no-op generated module part、expansion source map stub、unimplemented item attribute blocker 和 external procedural
+macro future blocker。M21c 仍不生成用户代码，也不实现标准库、external procedural macro 或 typed expression macro。
+
+下一步建议继续 M21d：实现真实 no-op early expansion pass / driver pipeline boundary，把 expansion result
+container、generated part placeholder 和 source map record 接到编译流程，但仍保持 external procedural macro、
+typed expression macro、标准库和真实用户代码生成关闭。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

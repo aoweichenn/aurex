@@ -25,6 +25,7 @@ if(BUILD_TESTING)
         tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
         tests/gtest/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts_tests.cpp
         tests/gtest/infrastructure/query/macro_design_gate_tests.cpp
+        tests/gtest/infrastructure/query/macro_expansion_facts_tests.cpp
         tests/gtest/infrastructure/query/owned_dyn_drop_allocator_identity_gate_tests.cpp
         tests/gtest/infrastructure/query/owned_dyn_ir_shape_prototype_gate_tests.cpp
         tests/gtest/infrastructure/query/owned_dyn_runtime_admission_gate_tests.cpp
@@ -156,6 +157,7 @@ if(BUILD_TESTING)
             tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
             tests/gtest/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts_tests.cpp
             tests/gtest/infrastructure/query/macro_design_gate_tests.cpp
+            tests/gtest/infrastructure/query/macro_expansion_facts_tests.cpp
             tests/gtest/infrastructure/query/owned_dyn_drop_allocator_identity_gate_tests.cpp
             tests/gtest/infrastructure/query/owned_dyn_ir_shape_prototype_gate_tests.cpp
             tests/gtest/infrastructure/query/owned_dyn_runtime_admission_gate_tests.cpp

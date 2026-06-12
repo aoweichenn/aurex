@@ -1,0 +1,241 @@
+#include <aurex/infrastructure/query/macro_expansion_facts.hpp>
+
+#include <algorithm>
+#include <string>
+
+#include <gtest/gtest.h>
+
+namespace aurex::test {
+namespace {
+
+constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_KIND = 231U;
+constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_STAGE = 232U;
+constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY = 233U;
+constexpr base::usize QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT = 7U;
+
+[[nodiscard]] const query::MacroExpansionFact* find_fact(
+    const query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
+{
+    const auto found = std::find_if(plan.facts.begin(), plan.facts.end(),
+        [kind](const query::MacroExpansionFact& fact) {
+            return fact.kind == kind;
+        });
+    return found == plan.facts.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] query::MacroExpansionFact* find_fact(
+    query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
+{
+    const auto found = std::find_if(plan.facts.begin(), plan.facts.end(),
+        [kind](const query::MacroExpansionFact& fact) {
+            return fact.kind == kind;
+        });
+    return found == plan.facts.end() ? nullptr : &*found;
+}
+
+} // namespace
+
+TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
+{
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(query::MacroExpansionFactKind::attribute_token_tree_input),
+        "attribute_token_tree_input");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(query::MacroExpansionFactKind::builtin_derive_passthrough),
+        "builtin_derive_passthrough");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(query::MacroExpansionFactKind::early_item_expansion_query_key),
+        "early_item_expansion_query_key");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(query::MacroExpansionFactKind::generated_module_part_noop),
+        "generated_module_part_noop");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(query::MacroExpansionFactKind::expansion_source_map_stub),
+        "expansion_source_map_stub");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::unimplemented_item_attribute_blocker),
+        "unimplemented_item_attribute_blocker");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::external_procedural_macro_blocked),
+        "external_procedural_macro_blocked");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  static_cast<query::MacroExpansionFactKind>(QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)),
+        "invalid");
+
+    EXPECT_EQ(query::macro_expansion_stage_name(query::MacroExpansionStage::parsed_attribute_surface),
+        "parsed_attribute_surface");
+    EXPECT_EQ(query::macro_expansion_stage_name(query::MacroExpansionStage::early_item_expansion),
+        "early_item_expansion");
+    EXPECT_EQ(query::macro_expansion_stage_name(query::MacroExpansionStage::generated_part_planning),
+        "generated_part_planning");
+    EXPECT_EQ(query::macro_expansion_stage_name(query::MacroExpansionStage::sema_blocker),
+        "sema_blocker");
+    EXPECT_EQ(query::macro_expansion_stage_name(query::MacroExpansionStage::future_stage),
+        "future_stage");
+    EXPECT_EQ(query::macro_expansion_stage_name(
+                  static_cast<query::MacroExpansionStage>(QUERY_TEST_INVALID_MACRO_EXPANSION_STAGE)),
+        "invalid");
+
+    EXPECT_EQ(query::macro_expansion_policy_name(query::MacroExpansionPolicy::attribute_token_tree_v1),
+        "attribute_token_tree_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(query::MacroExpansionPolicy::builtin_derive_passthrough_v1),
+        "builtin_derive_passthrough_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(query::MacroExpansionPolicy::expansion_query_fingerprint_v1),
+        "expansion_query_fingerprint_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(query::MacroExpansionPolicy::generated_module_part_noop_v1),
+        "generated_module_part_noop_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(query::MacroExpansionPolicy::source_map_trace_stub_v1),
+        "source_map_trace_stub_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::unimplemented_item_attribute_blocker_v1),
+        "unimplemented_item_attribute_blocker_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::external_proc_macro_sandbox_future_v1),
+        "external_proc_macro_sandbox_future_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  static_cast<query::MacroExpansionPolicy>(QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY)),
+        "invalid");
+
+    EXPECT_FALSE(query::is_valid(static_cast<query::MacroExpansionFactKind>(
+        QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)));
+    EXPECT_FALSE(query::is_valid(static_cast<query::MacroExpansionStage>(
+        QUERY_TEST_INVALID_MACRO_EXPANSION_STAGE)));
+    EXPECT_FALSE(query::is_valid(static_cast<query::MacroExpansionPolicy>(
+        QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY)));
+}
+
+TEST(QueryUnit, MacroExpansionPlanM21cPinsEarlyItemExpansionNoopPipeline)
+{
+    const query::MacroExpansionPlan plan = query::m21c_macro_expansion_plan_baseline();
+
+    ASSERT_EQ(plan.name, "M21c Early Item Macro Expansion Plan");
+    ASSERT_EQ(plan.facts.size(), QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_TRUE(query::is_valid(plan));
+    EXPECT_TRUE(query::is_valid_m21c_macro_expansion_plan(plan));
+    EXPECT_EQ(plan.fingerprint, query::macro_expansion_plan_fingerprint(plan));
+
+    const query::MacroExpansionFact* attribute_input =
+        find_fact(plan, query::MacroExpansionFactKind::attribute_token_tree_input);
+    ASSERT_NE(attribute_input, nullptr);
+    EXPECT_TRUE(attribute_input->consumes_attribute_decl);
+    EXPECT_TRUE(attribute_input->consumes_attribute_token_tree);
+    EXPECT_FALSE(attribute_input->requires_query_key);
+    EXPECT_EQ(attribute_input->input_fact, "ItemNode::attributes");
+
+    const query::MacroExpansionFact* derive =
+        find_fact(plan, query::MacroExpansionFactKind::builtin_derive_passthrough);
+    ASSERT_NE(derive, nullptr);
+    EXPECT_TRUE(derive->preserves_builtin_derive);
+    EXPECT_TRUE(derive->requires_query_key);
+    EXPECT_FALSE(derive->blocks_unimplemented_item_attribute);
+
+    const query::MacroExpansionFact* generated =
+        find_fact(plan, query::MacroExpansionFactKind::generated_module_part_noop);
+    ASSERT_NE(generated, nullptr);
+    EXPECT_TRUE(generated->requires_generated_module_part);
+    EXPECT_TRUE(generated->uses_generated_source_role);
+    EXPECT_TRUE(generated->uses_generated_module_part_kind);
+    EXPECT_EQ(generated->generated_source_role, query::SourceRole::generated);
+    EXPECT_EQ(generated->generated_part_kind, query::ModulePartKind::generated);
+    EXPECT_FALSE(generated->produces_user_generated_code);
+
+    const query::MacroExpansionFact* blocker =
+        find_fact(plan, query::MacroExpansionFactKind::unimplemented_item_attribute_blocker);
+    ASSERT_NE(blocker, nullptr);
+    EXPECT_EQ(blocker->stage, query::MacroExpansionStage::sema_blocker);
+    EXPECT_TRUE(blocker->blocks_unimplemented_item_attribute);
+    EXPECT_EQ(query::m21c_item_attribute_macro_unimplemented_message("builder"),
+        "item attribute macros are parsed but macro expansion is not implemented yet: builder");
+}
+
+TEST(QueryUnit, MacroExpansionPlanM21cSummaryAndDumpAreStable)
+{
+    const query::MacroExpansionPlan plan = query::m21c_macro_expansion_plan_baseline();
+    const query::MacroExpansionSummary summary = query::summarize_macro_expansion_plan_counts(plan);
+
+    EXPECT_EQ(summary.fact_count, 7U);
+    EXPECT_EQ(summary.attribute_input_count, 1U);
+    EXPECT_EQ(summary.builtin_derive_passthrough_count, 1U);
+    EXPECT_EQ(summary.query_key_count, 1U);
+    EXPECT_EQ(summary.generated_part_count, 1U);
+    EXPECT_EQ(summary.source_map_stub_count, 1U);
+    EXPECT_EQ(summary.sema_blocker_count, 1U);
+    EXPECT_EQ(summary.future_external_count, 1U);
+    EXPECT_EQ(summary.user_generated_code_count, 0U);
+    EXPECT_EQ(summary.standard_library_required_count, 0U);
+    EXPECT_EQ(summary.runtime_required_count, 0U);
+    EXPECT_EQ(summary.external_process_required_count, 1U);
+    EXPECT_EQ(summary.unimplemented_item_attribute_blocker_count, 2U);
+
+    query::MacroExpansionPlan changed = plan;
+    ASSERT_FALSE(changed.facts.empty());
+    changed.facts.front().output_fact = "changed output fact";
+    changed.summary = query::summarize_macro_expansion_plan_counts(changed);
+    changed.fingerprint = query::macro_expansion_plan_fingerprint(changed);
+    EXPECT_NE(plan.fingerprint, changed.fingerprint);
+
+    const std::string summary_text = query::summarize_macro_expansion_plan(plan);
+    EXPECT_NE(summary_text.find("macro_expansion_plan name=M21c Early Item Macro Expansion Plan"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("facts=7"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("generated_parts=1"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("user_generated_code=0"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("standard_library_required=0"), std::string::npos) << summary_text;
+
+    const std::string dump = query::dump_macro_expansion_plan(plan);
+    EXPECT_NE(dump.find("kind=generated_module_part_noop"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("policy=expansion_query_fingerprint_v1"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("output_fact=macro expansion query key fingerprint"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("blocker_fact=macro expansion output missing"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("external procedural macros are not executed in M21c"), std::string::npos) << dump;
+}
+
+TEST(QueryUnit, MacroExpansionPlanM21cValidationRejectsBoundaryDrift)
+{
+    const query::MacroExpansionPlan plan = query::m21c_macro_expansion_plan_baseline();
+    ASSERT_TRUE(query::is_valid_m21c_macro_expansion_plan(plan));
+
+    query::MacroExpansionPlan wrong_name = plan;
+    wrong_name.name = "wrong macro expansion plan";
+    wrong_name.fingerprint = query::macro_expansion_plan_fingerprint(wrong_name);
+    EXPECT_FALSE(query::is_valid(wrong_name));
+
+    query::MacroExpansionPlan generated_code = plan;
+    query::MacroExpansionFact* const generated =
+        find_fact(generated_code, query::MacroExpansionFactKind::generated_module_part_noop);
+    ASSERT_NE(generated, nullptr);
+    generated->produces_user_generated_code = true;
+    generated_code.summary = query::summarize_macro_expansion_plan_counts(generated_code);
+    generated_code.fingerprint = query::macro_expansion_plan_fingerprint(generated_code);
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(generated_code));
+
+    query::MacroExpansionPlan hidden_stdlib = plan;
+    query::MacroExpansionFact* const blocker =
+        find_fact(hidden_stdlib, query::MacroExpansionFactKind::unimplemented_item_attribute_blocker);
+    ASSERT_NE(blocker, nullptr);
+    blocker->standard_library_required = true;
+    hidden_stdlib.summary = query::summarize_macro_expansion_plan_counts(hidden_stdlib);
+    hidden_stdlib.fingerprint = query::macro_expansion_plan_fingerprint(hidden_stdlib);
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(hidden_stdlib));
+
+    query::MacroExpansionPlan wrong_generated_identity = plan;
+    query::MacroExpansionFact* const generated_identity =
+        find_fact(wrong_generated_identity, query::MacroExpansionFactKind::generated_module_part_noop);
+    ASSERT_NE(generated_identity, nullptr);
+    generated_identity->generated_part_kind = query::ModulePartKind::primary;
+    wrong_generated_identity.summary = query::summarize_macro_expansion_plan_counts(wrong_generated_identity);
+    wrong_generated_identity.fingerprint = query::macro_expansion_plan_fingerprint(wrong_generated_identity);
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(wrong_generated_identity));
+
+    query::MacroExpansionPlan stale_summary = plan;
+    stale_summary.summary.fact_count += 1U;
+    stale_summary.fingerprint = query::macro_expansion_plan_fingerprint(stale_summary);
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(stale_summary));
+
+    query::MacroExpansionPlan duplicate_kind = plan;
+    query::MacroExpansionFact* const external =
+        find_fact(duplicate_kind, query::MacroExpansionFactKind::external_procedural_macro_blocked);
+    ASSERT_NE(external, nullptr);
+    external->kind = query::MacroExpansionFactKind::generated_module_part_noop;
+    duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
+    duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(duplicate_kind));
+}
+
+} // namespace aurex::test

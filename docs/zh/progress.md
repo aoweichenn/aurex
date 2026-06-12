@@ -1,9 +1,26 @@
 # 当前进度文档
 
-版本：0.1.7
-阶段：M21b AttributeDecl / Token Tree Surface
+版本：0.1.8
+阶段：M21c Early Item Macro Expansion Plan
 
 ## 总体状态
+
+2026-06-12：M21c Early Item Macro Expansion Plan 已完成。本阶段仍不实现标准库、runtime helper、external
+procedural macro、typed expression macro、真实 hygiene resolution、真实 expansion source map、generated module
+part parse / merge 或 macro-generated user code lowering；它把 M21b 已保存的 `AttributeDecl` /
+`AttributeTokenDecl` 输入面接到 query-level early item expansion facts。
+
+新增 `MacroExpansionFact`、`MacroExpansionSummary`、`MacroExpansionPlan`、`MacroExpansionFactKind`、
+`MacroExpansionStage`、`MacroExpansionPolicy`、`m21c_macro_expansion_plan_baseline()`、
+`is_valid_m21c_macro_expansion_plan()`、`macro_expansion_plan_fingerprint()`、summary 和 dump。M21c baseline 固定
+attribute token-tree input、builtin derive passthrough、early item expansion query key、`SourceRole::generated` /
+`ModulePartKind::generated` no-op generated module part、expansion source map stub、unimplemented item attribute
+sema blocker 和 external procedural macro future blocker。
+
+非 `derive` item attribute 的 sema blocker 现在从 M21c query facts 的消息接口取得：
+`item attribute macros are parsed but macro expansion is not implemented yet: <name>`。这让后续真正接入 early
+expansion output 时，可以用同一套 facts 区分 builtin passthrough、已展开 attribute 和仍需阻断的 attribute。
+新增说明见 [Aurex M21c Early Item Macro Expansion Plan](m21c-early-item-macro-expansion-plan.md)。
 
 2026-06-12：M21b AttributeDecl / Token Tree Surface 已完成。本阶段没有实现标准库、runtime helper、external
 procedural macro、typed expression macro、hygiene、expansion source map 或真实宏展开；它把 M21a 的

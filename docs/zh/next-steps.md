@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21e generated module part parse/merge stub contract 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21f hygiene/source-map/debug-trace stub contract 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -28,9 +28,17 @@ generated placeholder 都有 `GeneratedModulePartParseMergeStub`，并记录 det
 M21e 仍不修改 AST、不 parse / merge generated module part、不执行 external procedural macro、不实现 typed expression
 macro、不引入标准库，也不生成用户代码。
 
-下一步建议继续 M21f：补 hygiene / source-map / debug trace 的真实数据结构地基，或者在不打开 external procedural
-macro 的前提下准备 compiler-owned derive / attached item codegen 的 generated item contract。优先级上不建议直接打开
-external procedural macro；第一条真实代码生成主线仍应是 compiler-owned derive / attached item codegen。
+M21f 已把 hygiene / source-map / debug trace 的结构化 stub contract 固定到同一 `macro.expand_items` boundary：
+每个 macro input 都有 `ExpansionHygieneStub` 和 `ExpansionTraceStub`，并记录 deterministic `call_site_mark`、
+`definition_site_mark`、`generated_fresh_mark`、`declared_name_set`、`trace_identity`、
+`generated_source_map_identity`、`diagnostic_anchor`、`origin_mark_hygiene_v1` 和
+`expansion_source_map_debug_trace_v1`。M21f 仍不修改 AST、不 parse / merge generated module part、不执行 external
+procedural macro、不实现 typed expression macro、不引入标准库，也不生成用户代码。
+
+下一步建议继续 M21g：在不打开 external procedural macro 的前提下准备 compiler-owned derive / attached item
+codegen 的 generated item / declared names contract。优先级上不建议直接打开 external procedural macro；第一条真实
+代码生成主线仍应是 compiler-owned derive / attached item codegen，并且必须继续消费 M21e/M21f 已固定的 parse/merge、
+hygiene、source-map 和 debug-trace stub facts。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

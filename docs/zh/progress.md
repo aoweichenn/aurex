@@ -1,9 +1,23 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21e Generated Module Part Parse/Merge Stub Contract
+阶段：M21f Hygiene Source Map Debug Trace Stub Contract
 
 ## 总体状态
+
+2026-06-12：M21f Hygiene Source Map Debug Trace Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、declared generated names lookup、generated module part
+parse / merge 或 macro-generated user code lowering；它把 M21a 设计 gate 要求的 hygiene/source-map/debug-trace
+事实落成 `macro.expand_items` 边界上的结构化 stub contract。
+
+新增 `ExpansionHygieneStub` 和 `ExpansionTraceStub`，并给 `EarlyItemExpansionResult` 增加 `hygiene_stubs`
+和 `trace_stubs`。每个 parsed item attribute 现在都有 deterministic `call_site_mark`、`definition_site_mark`、
+`generated_fresh_mark`、`declared_name_set`、`trace_identity`、`generated_source_map_identity` 和
+`diagnostic_anchor`。policy 固定为 `origin_mark_hygiene_v1` 和 `expansion_source_map_debug_trace_v1`。
+summary / dump / fingerprint / validation 会拒绝 hygiene stub resolved、declared names visible、call-site local
+capture、真实 source map、debug trace、`--emit-expanded` 或任何 stub 与 input 不能一一重算的漂移。新增说明见
+[Aurex M21f Hygiene Source Map Debug Trace Stub Contract](m21f-hygiene-source-map-debug-trace-stub-contract.md)。
 
 2026-06-12：M21e Generated Module Part Parse/Merge Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

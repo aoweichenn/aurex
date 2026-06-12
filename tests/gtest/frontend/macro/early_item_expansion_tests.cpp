@@ -120,6 +120,32 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.inputs.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::ExpansionHygieneStub* hygiene_stub_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.hygiene_stubs.begin(), result.hygiene_stubs.end(),
+        [&input](const frontend::macro::ExpansionHygieneStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.hygiene_stubs.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::ExpansionTraceStub* trace_stub_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.trace_stubs.begin(), result.trace_stubs.end(),
+        [&input](const frontend::macro::ExpansionTraceStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.trace_stubs.end() ? nullptr : &*found;
+}
+
 void refresh_expansion_result(frontend::macro::EarlyItemExpansionResult& result)
 {
     result.summary = frontend::macro::summarize_early_item_expansion_counts(result);
@@ -192,7 +218,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21e Generated Module Part Parse/Merge Stub Contract");
+    EXPECT_EQ(result.name, "M21f Hygiene Source Map Debug Trace Stub Contract");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -206,6 +232,14 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.merge_blocked_count, 1U);
     EXPECT_EQ(result.summary.sema_visible_generated_part_count, 0U);
     EXPECT_EQ(result.summary.source_map_placeholder_count, 2U);
+    EXPECT_EQ(result.summary.hygiene_stub_count, 2U);
+    EXPECT_EQ(result.summary.unresolved_hygiene_stub_count, 2U);
+    EXPECT_EQ(result.summary.declared_name_stub_count, 2U);
+    EXPECT_EQ(result.summary.call_site_capture_count, 0U);
+    EXPECT_EQ(result.summary.trace_stub_count, 2U);
+    EXPECT_EQ(result.summary.real_source_map_count, 0U);
+    EXPECT_EQ(result.summary.debug_trace_available_count, 0U);
+    EXPECT_EQ(result.summary.cli_emit_expanded_available_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
     EXPECT_EQ(result.summary.merged_generated_part_count, 0U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
@@ -279,14 +313,66 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.source_maps[0].expansion_origin, builder->query_key_fingerprint);
     EXPECT_EQ(result.source_maps[1].expansion_origin, derive->query_key_fingerprint);
 
+    ASSERT_EQ(result.hygiene_stubs.size(), 2U);
+    const frontend::macro::ExpansionHygieneStub* const builder_hygiene =
+        hygiene_stub_for_input(result, *builder);
+    ASSERT_NE(builder_hygiene, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_hygiene));
+    EXPECT_EQ(builder_hygiene->part_index, builder->part_index);
+    EXPECT_EQ(builder_hygiene->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_hygiene->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_hygiene->expansion_origin, builder->query_key_fingerprint);
+    EXPECT_GT(builder_hygiene->call_site_mark.byte_count, 0U);
+    EXPECT_GT(builder_hygiene->definition_site_mark.byte_count, 0U);
+    EXPECT_GT(builder_hygiene->generated_fresh_mark.byte_count, 0U);
+    EXPECT_GT(builder_hygiene->declared_name_set.byte_count, 0U);
+    EXPECT_NE(builder_hygiene->call_site_mark, builder_hygiene->definition_site_mark);
+    EXPECT_NE(builder_hygiene->definition_site_mark, builder_hygiene->generated_fresh_mark);
+    EXPECT_EQ(builder_hygiene->policy, "origin_mark_hygiene_v1");
+    EXPECT_FALSE(builder_hygiene->resolved);
+    EXPECT_FALSE(builder_hygiene->declared_names_visible);
+    EXPECT_FALSE(builder_hygiene->captures_call_site_locals);
+
+    ASSERT_EQ(result.trace_stubs.size(), 2U);
+    const frontend::macro::ExpansionTraceStub* const builder_trace =
+        trace_stub_for_input(result, *builder);
+    ASSERT_NE(builder_trace, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_trace));
+    EXPECT_EQ(builder_trace->part_index, builder->part_index);
+    EXPECT_EQ(builder_trace->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_trace->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_trace->attribute_range.source.value, builder->attribute_range.source.value);
+    EXPECT_EQ(builder_trace->attribute_range.begin, builder->attribute_range.begin);
+    EXPECT_EQ(builder_trace->attribute_range.end, builder->attribute_range.end);
+    EXPECT_EQ(builder_trace->token_tree_range.source.value, builder->token_tree_range.source.value);
+    EXPECT_EQ(builder_trace->token_tree_range.begin, builder->token_tree_range.begin);
+    EXPECT_EQ(builder_trace->token_tree_range.end, builder->token_tree_range.end);
+    EXPECT_EQ(builder_trace->expansion_origin, builder->query_key_fingerprint);
+    EXPECT_GT(builder_trace->trace_identity.byte_count, 0U);
+    EXPECT_GT(builder_trace->generated_source_map_identity.byte_count, 0U);
+    EXPECT_GT(builder_trace->diagnostic_anchor.byte_count, 0U);
+    EXPECT_NE(builder_trace->trace_identity, builder_trace->generated_source_map_identity);
+    EXPECT_EQ(builder_trace->trace_policy, "expansion_source_map_debug_trace_v1");
+    expect_contains(builder_trace->blocker_reason, "blocked in M21f");
+    EXPECT_FALSE(builder_trace->real_source_map);
+    EXPECT_FALSE(builder_trace->debug_trace_available);
+    EXPECT_FALSE(builder_trace->cli_emit_expanded_available);
+
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_contains(summary, "early_item_expansion name=M21f Hygiene Source Map Debug Trace Stub Contract");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
     expect_contains(summary, "parse_blocked=1");
     expect_contains(summary, "merge_blocked=1");
     expect_contains(summary, "sema_visible_generated_parts=0");
+    expect_contains(summary, "hygiene_stubs=2");
+    expect_contains(summary, "unresolved_hygiene_stubs=2");
+    expect_contains(summary, "declared_name_stubs=2");
+    expect_contains(summary, "trace_stubs=2");
+    expect_contains(summary, "real_source_maps=0");
+    expect_contains(summary, "debug_traces=0");
+    expect_contains(summary, "cli_emit_expanded=0");
     expect_contains(summary, "user_generated_code=0");
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -305,6 +391,22 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "parse_config=");
     expect_contains(dump, "merge_ordering=");
     expect_contains(dump, "source_map #1");
+    expect_contains(dump, "hygiene_stub #0");
+    expect_contains(dump, "policy=origin_mark_hygiene_v1");
+    expect_contains(dump, "resolved=no");
+    expect_contains(dump, "declared_names_visible=no");
+    expect_contains(dump, "captures_call_site_locals=no");
+    expect_contains(dump, "call_site_mark=");
+    expect_contains(dump, "definition_site_mark=");
+    expect_contains(dump, "generated_fresh_mark=");
+    expect_contains(dump, "declared_name_set=");
+    expect_contains(dump, "trace_stub #0");
+    expect_contains(dump, "policy=expansion_source_map_debug_trace_v1");
+    expect_contains(dump, "cli_emit_expanded=no");
+    expect_contains(dump, "real macro source map and debug trace are blocked in M21f");
+    expect_contains(dump, "trace_identity=");
+    expect_contains(dump, "generated_source_map=");
+    expect_contains(dump, "diagnostic_anchor=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -467,6 +569,12 @@ TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
     refresh_expansion_result(real_source_map);
     EXPECT_FALSE(frontend::macro::is_valid(real_source_map));
 
+    frontend::macro::EarlyItemExpansionResult source_map_debug_trace = baseline;
+    ASSERT_FALSE(source_map_debug_trace.source_maps.empty());
+    source_map_debug_trace.source_maps.front().debug_trace_available = true;
+    refresh_expansion_result(source_map_debug_trace);
+    EXPECT_FALSE(frontend::macro::is_valid(source_map_debug_trace));
+
     frontend::macro::EarlyItemExpansionResult stale_summary = baseline;
     stale_summary.summary.macro_input_count += 1U;
     EXPECT_FALSE(frontend::macro::is_valid(stale_summary));
@@ -506,6 +614,176 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParseMergeStubContract)
     refresh_expansion_result(blocker);
     EXPECT_NE(blocker.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(blocker));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsHygieneAndTraceStubDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.source_maps.empty());
+    ASSERT_FALSE(baseline.hygiene_stubs.empty());
+    ASSERT_FALSE(baseline.trace_stubs.empty());
+
+    frontend::macro::EarlyItemExpansionResult missing_source_map = baseline;
+    missing_source_map.source_maps.clear();
+    refresh_expansion_result(missing_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_source_map));
+
+    frontend::macro::EarlyItemExpansionResult missing_hygiene = baseline;
+    missing_hygiene.hygiene_stubs.clear();
+    refresh_expansion_result(missing_hygiene);
+    EXPECT_EQ(missing_hygiene.summary.hygiene_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_hygiene));
+
+    frontend::macro::EarlyItemExpansionResult empty_call_site_mark = baseline;
+    empty_call_site_mark.hygiene_stubs.front().call_site_mark = {};
+    refresh_expansion_result(empty_call_site_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_call_site_mark));
+
+    frontend::macro::EarlyItemExpansionResult empty_definition_site_mark = baseline;
+    empty_definition_site_mark.hygiene_stubs.front().definition_site_mark = {};
+    refresh_expansion_result(empty_definition_site_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_definition_site_mark));
+
+    frontend::macro::EarlyItemExpansionResult empty_generated_fresh_mark = baseline;
+    empty_generated_fresh_mark.hygiene_stubs.front().generated_fresh_mark = {};
+    refresh_expansion_result(empty_generated_fresh_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_generated_fresh_mark));
+
+    frontend::macro::EarlyItemExpansionResult empty_declared_name_set = baseline;
+    empty_declared_name_set.hygiene_stubs.front().declared_name_set = {};
+    refresh_expansion_result(empty_declared_name_set);
+    EXPECT_EQ(empty_declared_name_set.summary.declared_name_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_declared_name_set));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene_origin = baseline;
+    wrong_hygiene_origin.hygiene_stubs.front().expansion_origin =
+        query::stable_fingerprint("wrong hygiene origin");
+    refresh_expansion_result(wrong_hygiene_origin);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene_origin));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene_policy = baseline;
+    wrong_hygiene_policy.hygiene_stubs.front().policy = "wrong_hygiene_policy";
+    refresh_expansion_result(wrong_hygiene_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene_policy));
+
+    frontend::macro::EarlyItemExpansionResult resolved_hygiene = baseline;
+    resolved_hygiene.hygiene_stubs.front().resolved = true;
+    refresh_expansion_result(resolved_hygiene);
+    EXPECT_EQ(resolved_hygiene.summary.unresolved_hygiene_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(resolved_hygiene));
+
+    frontend::macro::EarlyItemExpansionResult visible_declared_names = baseline;
+    visible_declared_names.hygiene_stubs.front().declared_names_visible = true;
+    refresh_expansion_result(visible_declared_names);
+    EXPECT_FALSE(frontend::macro::is_valid(visible_declared_names));
+
+    frontend::macro::EarlyItemExpansionResult call_site_capture = baseline;
+    call_site_capture.hygiene_stubs.front().captures_call_site_locals = true;
+    refresh_expansion_result(call_site_capture);
+    EXPECT_EQ(call_site_capture.summary.call_site_capture_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(call_site_capture));
+
+    frontend::macro::EarlyItemExpansionResult missing_trace = baseline;
+    missing_trace.trace_stubs.clear();
+    refresh_expansion_result(missing_trace);
+    EXPECT_EQ(missing_trace.summary.trace_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_trace));
+
+    frontend::macro::EarlyItemExpansionResult empty_trace_identity = baseline;
+    empty_trace_identity.trace_stubs.front().trace_identity = {};
+    refresh_expansion_result(empty_trace_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_trace_identity));
+
+    frontend::macro::EarlyItemExpansionResult empty_generated_source_map = baseline;
+    empty_generated_source_map.trace_stubs.front().generated_source_map_identity = {};
+    refresh_expansion_result(empty_generated_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_generated_source_map));
+
+    frontend::macro::EarlyItemExpansionResult empty_diagnostic_anchor = baseline;
+    empty_diagnostic_anchor.trace_stubs.front().diagnostic_anchor = {};
+    refresh_expansion_result(empty_diagnostic_anchor);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_diagnostic_anchor));
+
+    frontend::macro::EarlyItemExpansionResult wrong_trace_policy = baseline;
+    wrong_trace_policy.trace_stubs.front().trace_policy = "wrong_trace_policy";
+    refresh_expansion_result(wrong_trace_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_trace_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_trace_blocker = baseline;
+    wrong_trace_blocker.trace_stubs.front().blocker_reason = "wrong blocker";
+    refresh_expansion_result(wrong_trace_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_trace_blocker));
+
+    frontend::macro::EarlyItemExpansionResult trace_real_source_map = baseline;
+    trace_real_source_map.trace_stubs.front().real_source_map = true;
+    refresh_expansion_result(trace_real_source_map);
+    EXPECT_EQ(trace_real_source_map.summary.real_source_map_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(trace_real_source_map));
+
+    frontend::macro::EarlyItemExpansionResult trace_debug_available = baseline;
+    trace_debug_available.trace_stubs.front().debug_trace_available = true;
+    refresh_expansion_result(trace_debug_available);
+    EXPECT_EQ(trace_debug_available.summary.debug_trace_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(trace_debug_available));
+
+    frontend::macro::EarlyItemExpansionResult trace_cli_emit = baseline;
+    trace_cli_emit.trace_stubs.front().cli_emit_expanded_available = true;
+    refresh_expansion_result(trace_cli_emit);
+    EXPECT_EQ(trace_cli_emit.summary.cli_emit_expanded_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(trace_cli_emit));
+
+    frontend::macro::EarlyItemExpansionResult wrong_trace_origin = baseline;
+    wrong_trace_origin.trace_stubs.front().expansion_origin =
+        query::stable_fingerprint("wrong trace origin");
+    refresh_expansion_result(wrong_trace_origin);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_trace_origin));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksHygieneAndTraceStubContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.hygiene_stubs.empty());
+    ASSERT_FALSE(baseline.trace_stubs.empty());
+
+    frontend::macro::EarlyItemExpansionResult hygiene_mark = baseline;
+    hygiene_mark.hygiene_stubs.front().call_site_mark =
+        query::stable_fingerprint("different call site mark");
+    refresh_expansion_result(hygiene_mark);
+    EXPECT_NE(hygiene_mark.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(hygiene_mark));
+
+    frontend::macro::EarlyItemExpansionResult declared_names = baseline;
+    declared_names.hygiene_stubs.front().declared_name_set =
+        query::stable_fingerprint("different declared name set");
+    refresh_expansion_result(declared_names);
+    EXPECT_NE(declared_names.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(declared_names));
+
+    frontend::macro::EarlyItemExpansionResult trace_identity = baseline;
+    trace_identity.trace_stubs.front().trace_identity =
+        query::stable_fingerprint("different trace identity");
+    refresh_expansion_result(trace_identity);
+    EXPECT_NE(trace_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(trace_identity));
+
+    frontend::macro::EarlyItemExpansionResult source_map_identity = baseline;
+    source_map_identity.trace_stubs.front().generated_source_map_identity =
+        query::stable_fingerprint("different generated source map identity");
+    refresh_expansion_result(source_map_identity);
+    EXPECT_NE(source_map_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(source_map_identity));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

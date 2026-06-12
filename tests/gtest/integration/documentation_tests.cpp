@@ -337,7 +337,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21e Generated Module Part Parse/Merge Stub Contract**");
+        "docs/zh/README.md", "文档基线：**M21f Hygiene Source Map Debug Trace Stub Contract**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -371,9 +371,22 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "Aurex M21d No-op Early Item Macro Expansion Boundary");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21f Hygiene Source Map Debug Trace Stub Contract");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21e Generated Module Part Parse/Merge Stub Contract");
+        "阶段：M21f Hygiene Source Map Debug Trace Stub Contract");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
+    expect_document_contains("docs/zh/progress.md", "ExpansionHygieneStub");
+    expect_document_contains("docs/zh/progress.md", "ExpansionTraceStub");
+    expect_document_contains("docs/zh/progress.md", "call_site_mark");
+    expect_document_contains("docs/zh/progress.md", "definition_site_mark");
+    expect_document_contains("docs/zh/progress.md", "generated_fresh_mark");
+    expect_document_contains("docs/zh/progress.md", "declared_name_set");
+    expect_document_contains("docs/zh/progress.md", "trace_identity");
+    expect_document_contains("docs/zh/progress.md", "generated_source_map_identity");
+    expect_document_contains("docs/zh/progress.md", "diagnostic_anchor");
+    expect_document_contains("docs/zh/progress.md", "origin_mark_hygiene_v1");
+    expect_document_contains("docs/zh/progress.md", "expansion_source_map_debug_trace_v1");
     expect_document_contains("docs/zh/progress.md", "GeneratedModulePartParseMergeStub");
     expect_document_contains("docs/zh/progress.md", "GeneratedModulePartLifecycleState");
     expect_document_contains("docs/zh/progress.md", "generated_buffer_identity");
@@ -390,6 +403,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21f Hygiene Source Map Debug Trace Stub Contract");
+    expect_document_contains("docs/zh/version.md", "ExpansionHygieneStub");
+    expect_document_contains("docs/zh/version.md", "ExpansionTraceStub");
+    expect_document_contains("docs/zh/version.md", "origin_mark_hygiene_v1");
+    expect_document_contains("docs/zh/version.md", "expansion_source_map_debug_trace_v1");
     expect_document_contains("docs/zh/version.md",
         "## M21e Generated Module Part Parse/Merge Stub Contract");
     expect_document_contains("docs/zh/version.md", "GeneratedModulePartParseMergeStub");
@@ -452,6 +471,28 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "ModulePartKind::generated");
     expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
         "仍不生成用户代码");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "Aurex M21f Hygiene Source Map Debug Trace Stub Contract");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "阶段：M21f Hygiene Source Map Debug Trace Stub Contract");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "ExpansionHygieneStub");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "ExpansionTraceStub");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "origin_mark_hygiene_v1");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "expansion_source_map_debug_trace_v1");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "macro_hygiene_mark_fact");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "macro_expansion_trace_fact");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "macro_generated_source_map_fact");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "macro.expand_items");
+    expect_document_contains("docs/zh/m21f-hygiene-source-map-debug-trace-stub-contract.md",
+        "M21f 仍不生成用户代码");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

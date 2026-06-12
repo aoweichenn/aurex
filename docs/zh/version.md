@@ -1,5 +1,54 @@
 # 版本文档
 
+## M21f Hygiene Source Map Debug Trace Stub Contract
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21e 的 generated module part parse / merge
+stub contract 扩展为 hygiene/source-map/debug-trace stub contract。该阶段仍不执行宏、不生成用户代码，也不引入
+标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::ExpansionHygieneStub`。
+- 新增 `frontend::macro::ExpansionTraceStub`。
+- 新增 `is_valid(const ExpansionHygieneStub&)`。
+- 新增 `is_valid(const ExpansionTraceStub&)`。
+- `EarlyItemExpansionResult` 新增 `hygiene_stubs`。
+- `EarlyItemExpansionResult` 新增 `trace_stubs`。
+- `EarlyItemExpansionSummary` 新增 hygiene stub、unresolved hygiene、declared name stub、call-site capture、
+  trace stub、real source map、debug trace 和 `--emit-expanded` 计数。
+- 每个 macro input 都有一个 deterministic hygiene stub。
+- hygiene stub 固定 `call_site_mark`。
+- hygiene stub 固定 `definition_site_mark`。
+- hygiene stub 固定 `generated_fresh_mark`。
+- hygiene stub 固定 `declared_name_set`。
+- hygiene policy 固定为 `origin_mark_hygiene_v1`。
+- 每个 macro input 都有一个 deterministic trace stub。
+- trace stub 固定 `trace_identity`。
+- trace stub 固定 `generated_source_map_identity`。
+- trace stub 固定 `diagnostic_anchor`。
+- trace policy 固定为 `expansion_source_map_debug_trace_v1`。
+- validation 要求 source-map placeholder、hygiene stub 和 trace stub 与 input 一一对应。
+- validation 拒绝 hygiene resolved、declared names visible 或 call-site local capture。
+- validation 拒绝 real source map、debug trace 或 `--emit-expanded` 可用。
+- dump 会输出 `hygiene_stub`、`trace_stub`、policy、mark identity、source-map identity、diagnostic anchor 和 blocker。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21e Generated Module Part Parse/Merge Stub Contract
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21d 的 generated placeholder 扩展为

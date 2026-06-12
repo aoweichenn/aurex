@@ -8,10 +8,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21E_EXPANSION_NAME =
-    "M21e Generated Module Part Parse/Merge Stub Contract";
-constexpr std::string_view FRONTEND_MACRO_M21E_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21e.generated_part_parse_merge_stub_contract.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_EXPANSION_NAME =
+    "M21f Hygiene Source Map Debug Trace Stub Contract";
+constexpr std::string_view FRONTEND_MACRO_M21F_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m21f.hygiene_source_map_debug_trace_stub_contract.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -40,6 +40,28 @@ constexpr std::string_view FRONTEND_MACRO_M21E_GENERATED_BUFFER_PREFIX =
     "m21e-noop-generated-buffer:";
 constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER =
     "generated module part parse and merge are blocked in M21e";
+constexpr std::string_view FRONTEND_MACRO_M21F_HYGIENE_STUB_MARKER =
+    "frontend.macro.m21f.hygiene_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_CALL_SITE_MARK_MARKER =
+    "frontend.macro.m21f.call_site_mark.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_DEFINITION_SITE_MARK_MARKER =
+    "frontend.macro.m21f.definition_site_mark.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_GENERATED_FRESH_MARK_MARKER =
+    "frontend.macro.m21f.generated_fresh_mark.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_DECLARED_NAME_SET_MARKER =
+    "frontend.macro.m21f.declared_name_set.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_TRACE_STUB_MARKER =
+    "frontend.macro.m21f.trace_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_TRACE_IDENTITY_MARKER =
+    "frontend.macro.m21f.trace_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_GENERATED_SOURCE_MAP_MARKER =
+    "frontend.macro.m21f.generated_source_map_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_DIAGNOSTIC_ANCHOR_MARKER =
+    "frontend.macro.m21f.diagnostic_anchor.v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_HYGIENE_POLICY = "origin_mark_hygiene_v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_TRACE_POLICY = "expansion_source_map_debug_trace_v1";
+constexpr std::string_view FRONTEND_MACRO_M21F_TRACE_BLOCKER =
+    "real macro source map and debug trace are blocked in M21f";
 
 [[nodiscard]] base::Error internal_error(const std::string_view message)
 {
@@ -49,6 +71,12 @@ constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER =
 [[nodiscard]] bool source_range_is_well_formed(const base::SourceRange& range) noexcept
 {
     return range.well_formed();
+}
+
+[[nodiscard]] bool source_ranges_equal(
+    const base::SourceRange& lhs, const base::SourceRange& rhs) noexcept
+{
+    return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
 }
 
 [[nodiscard]] bool is_nonzero_fingerprint(const query::StableFingerprint128 fingerprint) noexcept
@@ -123,6 +151,41 @@ constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER =
     return builder.finish();
 }
 
+void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItemMacroInput& input) noexcept
+{
+    builder.mix_u32(input.item.value);
+    builder.mix_u32(input.module.value);
+    builder.mix_u32(input.part_index);
+    builder.mix_u32(input.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(input.attached_part));
+    builder.mix_fingerprint(input.query_key_fingerprint);
+}
+
+[[nodiscard]] query::StableFingerprint128 hygiene_mark_fingerprint(
+    const std::string_view marker, const EarlyItemMacroInput& input) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(marker);
+    mix_macro_input_identity(builder, input);
+    builder.mix_fingerprint(input.token_tree_fingerprint);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 trace_stub_fingerprint(
+    const std::string_view marker, const EarlyItemMacroInput& input) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(marker);
+    mix_macro_input_identity(builder, input);
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.begin));
+    builder.mix_u64(static_cast<base::u64>(input.attribute_range.end));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.begin));
+    builder.mix_u64(static_cast<base::u64>(input.token_tree_range.end));
+    return builder.finish();
+}
+
 [[nodiscard]] GeneratedModulePartParseMergeStub make_parse_merge_stub(
     const GeneratedModulePartPlaceholder& placeholder)
 {
@@ -143,6 +206,48 @@ constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER =
         GeneratedModulePartLifecycleState::merge_blocked,
         true,
         false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] ExpansionHygieneStub make_hygiene_stub(const EarlyItemMacroInput& input)
+{
+    return ExpansionHygieneStub{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        input.attached_part,
+        input.query_key_fingerprint,
+        hygiene_mark_fingerprint(FRONTEND_MACRO_M21F_CALL_SITE_MARK_MARKER, input),
+        hygiene_mark_fingerprint(FRONTEND_MACRO_M21F_DEFINITION_SITE_MARK_MARKER, input),
+        hygiene_mark_fingerprint(FRONTEND_MACRO_M21F_GENERATED_FRESH_MARK_MARKER, input),
+        hygiene_mark_fingerprint(FRONTEND_MACRO_M21F_DECLARED_NAME_SET_MARKER, input),
+        std::string(FRONTEND_MACRO_M21F_HYGIENE_POLICY),
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] ExpansionTraceStub make_trace_stub(const EarlyItemMacroInput& input)
+{
+    return ExpansionTraceStub{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        input.attached_part,
+        input.attribute_range,
+        input.token_tree_range,
+        input.query_key_fingerprint,
+        trace_stub_fingerprint(FRONTEND_MACRO_M21F_TRACE_IDENTITY_MARKER, input),
+        trace_stub_fingerprint(FRONTEND_MACRO_M21F_GENERATED_SOURCE_MAP_MARKER, input),
+        trace_stub_fingerprint(FRONTEND_MACRO_M21F_DIAGNOSTIC_ANCHOR_MARKER, input),
+        std::string(FRONTEND_MACRO_M21F_TRACE_POLICY),
+        std::string(FRONTEND_MACRO_M21F_TRACE_BLOCKER),
         false,
         false,
         false,
@@ -282,6 +387,50 @@ void mix_source_map(query::StableHashBuilder& builder, const ExpansionSourceMapP
     builder.mix_bool(source_map.debug_trace_available);
 }
 
+void mix_hygiene_stub(query::StableHashBuilder& builder, const ExpansionHygieneStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21F_HYGIENE_STUB_MARKER);
+    builder.mix_u32(stub.item.value);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.part_index);
+    builder.mix_u32(stub.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.attached_part));
+    builder.mix_fingerprint(stub.expansion_origin);
+    builder.mix_fingerprint(stub.call_site_mark);
+    builder.mix_fingerprint(stub.definition_site_mark);
+    builder.mix_fingerprint(stub.generated_fresh_mark);
+    builder.mix_fingerprint(stub.declared_name_set);
+    builder.mix_string(stub.policy);
+    builder.mix_bool(stub.resolved);
+    builder.mix_bool(stub.declared_names_visible);
+    builder.mix_bool(stub.captures_call_site_locals);
+}
+
+void mix_trace_stub(query::StableHashBuilder& builder, const ExpansionTraceStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21F_TRACE_STUB_MARKER);
+    builder.mix_u32(stub.item.value);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.part_index);
+    builder.mix_u32(stub.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.attached_part));
+    builder.mix_u64(static_cast<base::u64>(stub.attribute_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(stub.attribute_range.begin));
+    builder.mix_u64(static_cast<base::u64>(stub.attribute_range.end));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_range.begin));
+    builder.mix_u64(static_cast<base::u64>(stub.token_tree_range.end));
+    builder.mix_fingerprint(stub.expansion_origin);
+    builder.mix_fingerprint(stub.trace_identity);
+    builder.mix_fingerprint(stub.generated_source_map_identity);
+    builder.mix_fingerprint(stub.diagnostic_anchor);
+    builder.mix_string(stub.trace_policy);
+    builder.mix_string(stub.blocker_reason);
+    builder.mix_bool(stub.real_source_map);
+    builder.mix_bool(stub.debug_trace_available);
+    builder.mix_bool(stub.cli_emit_expanded_available);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -295,6 +444,14 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.merge_blocked_count);
     builder.mix_u64(summary.sema_visible_generated_part_count);
     builder.mix_u64(summary.source_map_placeholder_count);
+    builder.mix_u64(summary.hygiene_stub_count);
+    builder.mix_u64(summary.unresolved_hygiene_stub_count);
+    builder.mix_u64(summary.declared_name_stub_count);
+    builder.mix_u64(summary.call_site_capture_count);
+    builder.mix_u64(summary.trace_stub_count);
+    builder.mix_u64(summary.real_source_map_count);
+    builder.mix_u64(summary.debug_trace_available_count);
+    builder.mix_u64(summary.cli_emit_expanded_available_count);
     builder.mix_u64(summary.parsed_generated_part_count);
     builder.mix_u64(summary.merged_generated_part_count);
     builder.mix_u64(summary.user_generated_code_count);
@@ -317,6 +474,14 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.merge_blocked_count == rhs.merge_blocked_count
         && lhs.sema_visible_generated_part_count == rhs.sema_visible_generated_part_count
         && lhs.source_map_placeholder_count == rhs.source_map_placeholder_count
+        && lhs.hygiene_stub_count == rhs.hygiene_stub_count
+        && lhs.unresolved_hygiene_stub_count == rhs.unresolved_hygiene_stub_count
+        && lhs.declared_name_stub_count == rhs.declared_name_stub_count
+        && lhs.call_site_capture_count == rhs.call_site_capture_count
+        && lhs.trace_stub_count == rhs.trace_stub_count
+        && lhs.real_source_map_count == rhs.real_source_map_count
+        && lhs.debug_trace_available_count == rhs.debug_trace_available_count
+        && lhs.cli_emit_expanded_available_count == rhs.cli_emit_expanded_available_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
         && lhs.merged_generated_part_count == rhs.merged_generated_part_count
         && lhs.user_generated_code_count == rhs.user_generated_code_count
@@ -355,6 +520,56 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && stub.expansion_origin == placeholder.output_fingerprint;
 }
 
+[[nodiscard]] bool source_map_matches_input(
+    const ExpansionSourceMapPlaceholder& source_map, const EarlyItemMacroInput& input) noexcept
+{
+    return source_map.item.value == input.item.value
+        && source_map.module.value == input.module.value
+        && source_map.attribute_index == input.attribute_index
+        && source_ranges_equal(source_map.attribute_range, input.attribute_range)
+        && source_ranges_equal(source_map.token_tree_range, input.token_tree_range)
+        && source_map.expansion_origin == input.query_key_fingerprint;
+}
+
+[[nodiscard]] bool hygiene_stub_matches_input(
+    const ExpansionHygieneStub& stub, const EarlyItemMacroInput& input) noexcept
+{
+    return stub.item.value == input.item.value
+        && stub.module.value == input.module.value
+        && stub.part_index == input.part_index
+        && stub.attribute_index == input.attribute_index
+        && stub.attached_part == input.attached_part
+        && stub.expansion_origin == input.query_key_fingerprint
+        && stub.call_site_mark == hygiene_mark_fingerprint(FRONTEND_MACRO_M21F_CALL_SITE_MARK_MARKER, input)
+        && stub.definition_site_mark == hygiene_mark_fingerprint(
+               FRONTEND_MACRO_M21F_DEFINITION_SITE_MARK_MARKER, input)
+        && stub.generated_fresh_mark == hygiene_mark_fingerprint(
+               FRONTEND_MACRO_M21F_GENERATED_FRESH_MARK_MARKER, input)
+        && stub.declared_name_set == hygiene_mark_fingerprint(
+               FRONTEND_MACRO_M21F_DECLARED_NAME_SET_MARKER, input)
+        && stub.policy == FRONTEND_MACRO_M21F_HYGIENE_POLICY;
+}
+
+[[nodiscard]] bool trace_stub_matches_input(
+    const ExpansionTraceStub& stub, const EarlyItemMacroInput& input) noexcept
+{
+    return stub.item.value == input.item.value
+        && stub.module.value == input.module.value
+        && stub.part_index == input.part_index
+        && stub.attribute_index == input.attribute_index
+        && stub.attached_part == input.attached_part
+        && source_ranges_equal(stub.attribute_range, input.attribute_range)
+        && source_ranges_equal(stub.token_tree_range, input.token_tree_range)
+        && stub.expansion_origin == input.query_key_fingerprint
+        && stub.trace_identity == trace_stub_fingerprint(FRONTEND_MACRO_M21F_TRACE_IDENTITY_MARKER, input)
+        && stub.generated_source_map_identity == trace_stub_fingerprint(
+               FRONTEND_MACRO_M21F_GENERATED_SOURCE_MAP_MARKER, input)
+        && stub.diagnostic_anchor == trace_stub_fingerprint(
+               FRONTEND_MACRO_M21F_DIAGNOSTIC_ANCHOR_MARKER, input)
+        && stub.trace_policy == FRONTEND_MACRO_M21F_TRACE_POLICY
+        && stub.blocker_reason == FRONTEND_MACRO_M21F_TRACE_BLOCKER;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -364,6 +579,24 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     }
     for (base::usize index = 0; index < generated_parts.size(); ++index) {
         if (!stub_matches_placeholder(generated_part_stubs[index], generated_parts[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool per_input_stubs_match_inputs(const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.inputs.size() != result.source_maps.size()
+        || result.inputs.size() != result.hygiene_stubs.size()
+        || result.inputs.size() != result.trace_stubs.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.inputs.size(); ++index) {
+        const EarlyItemMacroInput& input = result.inputs[index];
+        if (!source_map_matches_input(result.source_maps[index], input)
+            || !hygiene_stub_matches_input(result.hygiene_stubs[index], input)
+            || !trace_stub_matches_input(result.trace_stubs[index], input)) {
             return false;
         }
     }
@@ -572,6 +805,40 @@ bool is_valid(const ExpansionSourceMapPlaceholder& placeholder) noexcept
         && !placeholder.debug_trace_available;
 }
 
+bool is_valid(const ExpansionHygieneStub& stub) noexcept
+{
+    return syntax::is_valid(stub.item)
+        && syntax::is_valid(stub.module)
+        && query::is_valid(stub.attached_part)
+        && is_nonzero_fingerprint(stub.expansion_origin)
+        && is_nonzero_fingerprint(stub.call_site_mark)
+        && is_nonzero_fingerprint(stub.definition_site_mark)
+        && is_nonzero_fingerprint(stub.generated_fresh_mark)
+        && is_nonzero_fingerprint(stub.declared_name_set)
+        && stub.policy == FRONTEND_MACRO_M21F_HYGIENE_POLICY
+        && !stub.resolved
+        && !stub.declared_names_visible
+        && !stub.captures_call_site_locals;
+}
+
+bool is_valid(const ExpansionTraceStub& stub) noexcept
+{
+    return syntax::is_valid(stub.item)
+        && syntax::is_valid(stub.module)
+        && query::is_valid(stub.attached_part)
+        && source_range_is_well_formed(stub.attribute_range)
+        && source_range_is_well_formed(stub.token_tree_range)
+        && is_nonzero_fingerprint(stub.expansion_origin)
+        && is_nonzero_fingerprint(stub.trace_identity)
+        && is_nonzero_fingerprint(stub.generated_source_map_identity)
+        && is_nonzero_fingerprint(stub.diagnostic_anchor)
+        && stub.trace_policy == FRONTEND_MACRO_M21F_TRACE_POLICY
+        && stub.blocker_reason == FRONTEND_MACRO_M21F_TRACE_BLOCKER
+        && !stub.real_source_map
+        && !stub.debug_trace_available
+        && !stub.cli_emit_expanded_available;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -579,7 +846,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21E_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M21F_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -597,6 +864,15 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const ExpansionSourceMapPlaceholder& placeholder) {
                    return is_valid(placeholder);
                })
+        && std::all_of(result.hygiene_stubs.begin(), result.hygiene_stubs.end(),
+               [](const ExpansionHygieneStub& stub) {
+                   return is_valid(stub);
+               })
+        && std::all_of(result.trace_stubs.begin(), result.trace_stubs.end(),
+               [](const ExpansionTraceStub& stub) {
+                   return is_valid(stub);
+               })
+        && per_input_stubs_match_inputs(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -655,6 +931,30 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
         }
     }
     summary.source_map_placeholder_count = static_cast<base::u64>(result.source_maps.size());
+    summary.hygiene_stub_count = static_cast<base::u64>(result.hygiene_stubs.size());
+    for (const ExpansionHygieneStub& stub : result.hygiene_stubs) {
+        if (!stub.resolved) {
+            ++summary.unresolved_hygiene_stub_count;
+        }
+        if (is_nonzero_fingerprint(stub.declared_name_set)) {
+            ++summary.declared_name_stub_count;
+        }
+        if (stub.captures_call_site_locals) {
+            ++summary.call_site_capture_count;
+        }
+    }
+    summary.trace_stub_count = static_cast<base::u64>(result.trace_stubs.size());
+    for (const ExpansionTraceStub& stub : result.trace_stubs) {
+        if (stub.real_source_map) {
+            ++summary.real_source_map_count;
+        }
+        if (stub.debug_trace_available) {
+            ++summary.debug_trace_available_count;
+        }
+        if (stub.cli_emit_expanded_available) {
+            ++summary.cli_emit_expanded_available_count;
+        }
+    }
     return summary;
 }
 
@@ -662,7 +962,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21E_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M21F_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -680,6 +980,14 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.source_maps.size()));
     for (const ExpansionSourceMapPlaceholder& source_map : result.source_maps) {
         mix_source_map(builder, source_map);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.hygiene_stubs.size()));
+    for (const ExpansionHygieneStub& stub : result.hygiene_stubs) {
+        mix_hygiene_stub(builder, stub);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.trace_stubs.size()));
+    for (const ExpansionTraceStub& stub : result.trace_stubs) {
+        mix_trace_stub(builder, stub);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -701,6 +1009,13 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << " merge_blocked=" << summary.merge_blocked_count
            << " sema_visible_generated_parts=" << summary.sema_visible_generated_part_count
            << " source_map_placeholders=" << summary.source_map_placeholder_count
+           << " hygiene_stubs=" << summary.hygiene_stub_count
+           << " unresolved_hygiene_stubs=" << summary.unresolved_hygiene_stub_count
+           << " declared_name_stubs=" << summary.declared_name_stub_count
+           << " trace_stubs=" << summary.trace_stub_count
+           << " real_source_maps=" << summary.real_source_map_count
+           << " debug_traces=" << summary.debug_trace_available_count
+           << " cli_emit_expanded=" << summary.cli_emit_expanded_available_count
            << " user_generated_code=" << summary.user_generated_code_count
            << " standard_library_required=" << summary.standard_library_required_count
            << " runtime_required=" << summary.runtime_required_count
@@ -762,6 +1077,41 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " real_source_map=" << (source_map.real_source_map ? "yes" : "no")
                << " debug_trace=" << (source_map.debug_trace_available ? "yes" : "no") << '\n';
     }
+    for (base::usize index = 0; index < result.hygiene_stubs.size(); ++index) {
+        const ExpansionHygieneStub& stub = result.hygiene_stubs[index];
+        stream << "  hygiene_stub #" << index
+               << " item=" << stub.item.value
+               << " module=" << stub.module.value
+               << " part=" << stub.part_index
+               << " attribute_index=" << stub.attribute_index
+               << " policy=" << stub.policy
+               << " resolved=" << (stub.resolved ? "yes" : "no")
+               << " declared_names_visible=" << (stub.declared_names_visible ? "yes" : "no")
+               << " captures_call_site_locals=" << (stub.captures_call_site_locals ? "yes" : "no")
+               << " origin=" << query::debug_string(stub.expansion_origin)
+               << " call_site_mark=" << query::debug_string(stub.call_site_mark)
+               << " definition_site_mark=" << query::debug_string(stub.definition_site_mark)
+               << " generated_fresh_mark=" << query::debug_string(stub.generated_fresh_mark)
+               << " declared_name_set=" << query::debug_string(stub.declared_name_set) << '\n';
+    }
+    for (base::usize index = 0; index < result.trace_stubs.size(); ++index) {
+        const ExpansionTraceStub& stub = result.trace_stubs[index];
+        stream << "  trace_stub #" << index
+               << " item=" << stub.item.value
+               << " module=" << stub.module.value
+               << " part=" << stub.part_index
+               << " attribute_index=" << stub.attribute_index
+               << " policy=" << stub.trace_policy
+               << " real_source_map=" << (stub.real_source_map ? "yes" : "no")
+               << " debug_trace=" << (stub.debug_trace_available ? "yes" : "no")
+               << " cli_emit_expanded=" << (stub.cli_emit_expanded_available ? "yes" : "no")
+               << " blocker=" << stub.blocker_reason
+               << " origin=" << query::debug_string(stub.expansion_origin)
+               << " trace_identity=" << query::debug_string(stub.trace_identity)
+               << " generated_source_map="
+               << query::debug_string(stub.generated_source_map_identity)
+               << " diagnostic_anchor=" << query::debug_string(stub.diagnostic_anchor) << '\n';
+    }
     return stream.str();
 }
 
@@ -782,12 +1132,14 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21E_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M21F_EXPANSION_NAME);
     result.plan = plan;
     result.inputs.reserve(ast.items.size());
     result.generated_parts.reserve(ast.items.size());
     result.generated_part_stubs.reserve(ast.items.size());
     result.source_maps.reserve(ast.items.size());
+    result.hygiene_stubs.reserve(ast.items.size());
+    result.trace_stubs.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -814,6 +1166,8 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             EarlyItemMacroInput input = make_macro_input(ast, item_id,
                 base::checked_u32(attribute_index, "early item macro attribute index"), attribute, attached_part);
             result.source_maps.push_back(make_source_map_placeholder(input));
+            result.hygiene_stubs.push_back(make_hygiene_stub(input));
+            result.trace_stubs.push_back(make_trace_stub(input));
             result.inputs.push_back(std::move(input));
         }
     }

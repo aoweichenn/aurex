@@ -231,6 +231,35 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.parser_admission_diagnostics.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::ParserAdmissionDiagnosticReportEntry*
+parser_admission_report_entry_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.parser_admission_report_entries.begin(),
+        result.parser_admission_report_entries.end(),
+        [&input](const frontend::macro::ParserAdmissionDiagnosticReportEntry& entry) {
+            return entry.item.value == input.item.value
+                && entry.module.value == input.module.value
+                && entry.attribute_index == input.attribute_index;
+        });
+    return found == result.parser_admission_report_entries.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::ParserAdmissionDiagnosticReport*
+parser_admission_report_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.parser_admission_reports.begin(),
+        result.parser_admission_reports.end(),
+        [&generated_part](const frontend::macro::ParserAdmissionDiagnosticReport& report) {
+            return report.module.value == generated_part.module.value
+                && report.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.parser_admission_reports.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -338,7 +367,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21k Parser Admission Diagnostic Projection Gate");
+    EXPECT_EQ(result.name, "M21l Parser Admission Diagnostic Report Projection");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -391,6 +420,16 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.emit_expanded_projection_available_count, 0U);
     EXPECT_EQ(result.summary.parser_admission_debug_trace_projection_count, 0U);
     EXPECT_EQ(result.summary.parser_admission_source_map_projection_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_report_entry_count, 2U);
+    EXPECT_EQ(result.summary.parser_admission_report_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_blocked_entry_count, 2U);
+    EXPECT_EQ(result.summary.parser_admission_report_derive_entry_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_empty_entry_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_token_record_available_entry_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_visible_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.parser_admission_report_unordered_anchor_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_report_parser_consumable_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -665,6 +704,8 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
 
     ASSERT_EQ(result.parser_admission_gates.size(), 2U);
     ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
+    ASSERT_EQ(result.parser_admission_report_entries.size(), 2U);
+    ASSERT_EQ(result.parser_admission_reports.size(), 1U);
     const frontend::macro::GeneratedTokenParserAdmissionGateStub* const builder_gate =
         parser_admission_gate_for_input(result, *builder);
     ASSERT_NE(builder_gate, nullptr);
@@ -795,6 +836,83 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(derive_diagnostic->source_map_available);
     EXPECT_NE(builder_diagnostic->diagnostic_identity, derive_diagnostic->diagnostic_identity);
 
+    const frontend::macro::ParserAdmissionDiagnosticReportEntry* const builder_report_entry =
+        parser_admission_report_entry_for_input(result, *builder);
+    ASSERT_NE(builder_report_entry, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_report_entry));
+    EXPECT_EQ(builder_report_entry->part_index, builder->part_index);
+    EXPECT_EQ(builder_report_entry->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_report_entry->report_index, 0U);
+    EXPECT_EQ(builder_report_entry->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_report_entry->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_report_entry->diagnostic_identity, builder_diagnostic->diagnostic_identity);
+    EXPECT_EQ(builder_report_entry->diagnostic_anchor_identity,
+        builder_diagnostic->diagnostic_anchor_identity);
+    EXPECT_GT(builder_report_entry->report_entry_identity.byte_count, 0U);
+    EXPECT_NE(builder_report_entry->report_entry_identity, builder_report_entry->diagnostic_identity);
+    EXPECT_EQ(builder_report_entry->parse_gate_identity, builder_gate->parse_gate_identity);
+    EXPECT_EQ(builder_report_entry->blocker_category, builder_diagnostic->blocker_category);
+    EXPECT_EQ(builder_report_entry->debug_projection_name, builder_diagnostic->debug_projection_name);
+    EXPECT_EQ(builder_report_entry->query_projection_name, "m21l-parser-admission-report:0:0");
+    EXPECT_EQ(builder_report_entry->token_count, builder_diagnostic->token_count);
+    EXPECT_FALSE(builder_report_entry->token_records_available);
+    EXPECT_FALSE(builder_report_entry->parser_admitted);
+    EXPECT_TRUE(builder_report_entry->report_visible);
+    EXPECT_TRUE(builder_report_entry->query_reusable);
+    EXPECT_FALSE(builder_report_entry->parser_consumable);
+    EXPECT_FALSE(builder_report_entry->emit_expanded_available);
+    EXPECT_FALSE(builder_report_entry->produced_user_generated_code);
+
+    const frontend::macro::ParserAdmissionDiagnosticReportEntry* const derive_report_entry =
+        parser_admission_report_entry_for_input(result, *derive);
+    ASSERT_NE(derive_report_entry, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_report_entry));
+    EXPECT_EQ(derive_report_entry->report_index, 1U);
+    EXPECT_EQ(derive_report_entry->diagnostic_identity, derive_diagnostic->diagnostic_identity);
+    EXPECT_EQ(derive_report_entry->diagnostic_anchor_identity,
+        derive_diagnostic->diagnostic_anchor_identity);
+    EXPECT_EQ(derive_report_entry->parse_gate_identity, derive_gate->parse_gate_identity);
+    EXPECT_EQ(derive_report_entry->blocker_category, "derive_token_buffer_parser_admission_blocked");
+    EXPECT_EQ(derive_report_entry->query_projection_name, builder_report_entry->query_projection_name);
+    EXPECT_TRUE(derive_report_entry->token_records_available);
+    EXPECT_FALSE(derive_report_entry->parser_admitted);
+    EXPECT_NE(builder_report_entry->report_entry_identity, derive_report_entry->report_entry_identity);
+
+    const frontend::macro::ParserAdmissionDiagnosticReport* const report =
+        parser_admission_report_for_part(result, generated);
+    ASSERT_NE(report, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*report));
+    EXPECT_EQ(report->module.value, generated.module.value);
+    EXPECT_EQ(report->source_part_index, generated.source_part_index);
+    EXPECT_EQ(report->attached_part, generated.source_part);
+    EXPECT_EQ(report->generated_part, generated.generated_part);
+    EXPECT_GT(report->report_identity.byte_count, 0U);
+    EXPECT_GT(report->report_anchor_identity.byte_count, 0U);
+    EXPECT_GT(report->report_grouping_identity.byte_count, 0U);
+    EXPECT_NE(report->report_identity, report->report_anchor_identity);
+    EXPECT_NE(report->report_identity, report->report_grouping_identity);
+    EXPECT_EQ(report->parse_config_fingerprint, stub.parse_config_fingerprint);
+    EXPECT_EQ(report->generated_buffer_identity, stub.generated_buffer_identity);
+    EXPECT_EQ(report->report_policy, "parser_admission_blocked_report_query_projection_v1");
+    EXPECT_EQ(report->report_query_name, "m21l-parser-admission-report:0:0");
+    expect_contains(report->blocked_reason,
+        "parser admission diagnostic report remains parser-blocked in M21l");
+    EXPECT_EQ(report->entry_count, 2U);
+    EXPECT_EQ(report->blocked_entry_count, 2U);
+    EXPECT_EQ(report->derive_entry_count, 1U);
+    EXPECT_EQ(report->empty_entry_count, 1U);
+    EXPECT_EQ(report->token_record_available_entry_count, 1U);
+    EXPECT_TRUE(report->query_reusable);
+    EXPECT_TRUE(report->report_visible);
+    EXPECT_TRUE(report->source_anchor_ordered);
+    EXPECT_FALSE(report->parser_admitted);
+    EXPECT_FALSE(report->parse_ready);
+    EXPECT_FALSE(report->parser_consumable);
+    EXPECT_FALSE(report->emit_expanded_available);
+    EXPECT_FALSE(report->debug_trace_available);
+    EXPECT_FALSE(report->source_map_available);
+    EXPECT_FALSE(report->produced_user_generated_code);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -829,7 +947,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21k Parser Admission Diagnostic Projection Gate");
+    expect_contains(summary, "early_item_expansion name=M21l Parser Admission Diagnostic Report Projection");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -872,6 +990,16 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "emit_expanded_projections=0");
     expect_contains(summary, "parser_admission_debug_trace_projections=0");
     expect_contains(summary, "parser_admission_source_map_projections=0");
+    expect_contains(summary, "parser_admission_report_entries=2");
+    expect_contains(summary, "parser_admission_reports=1");
+    expect_contains(summary, "parser_admission_report_blocked_entries=2");
+    expect_contains(summary, "derive_parser_admission_report_entries=1");
+    expect_contains(summary, "empty_parser_admission_report_entries=1");
+    expect_contains(summary, "parser_admission_report_token_record_available_entries=1");
+    expect_contains(summary, "parser_admission_report_visible=1");
+    expect_contains(summary, "parser_admission_report_query_reusable=1");
+    expect_contains(summary, "parser_admission_report_unordered_anchors=0");
+    expect_contains(summary, "parser_admission_report_parser_consumable=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -983,6 +1111,26 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "diagnostic_identity=");
     expect_contains(dump, "diagnostic_anchor=");
     expect_contains(dump, "trace_identity=");
+    expect_contains(dump, "parser_admission_report_entry #0");
+    expect_contains(dump, "report_index=0");
+    expect_contains(dump, "report_index=1");
+    expect_contains(dump, "query_projection=m21l-parser-admission-report:0:0");
+    expect_contains(dump, "report_visible=yes");
+    expect_contains(dump, "query_reusable=yes");
+    expect_contains(dump, "report_entry_identity=");
+    expect_contains(dump, "parser_admission_diagnostic_report #0");
+    expect_contains(dump, "policy=parser_admission_blocked_report_query_projection_v1");
+    expect_contains(dump, "query=m21l-parser-admission-report:0:0");
+    expect_contains(dump, "entries=2");
+    expect_contains(dump, "blocked_entries=2");
+    expect_contains(dump, "derive_entries=1");
+    expect_contains(dump, "empty_entries=1");
+    expect_contains(dump, "token_record_available_entries=1");
+    expect_contains(dump, "source_anchor_ordered=yes");
+    expect_contains(dump, "parser admission diagnostic report remains parser-blocked in M21l");
+    expect_contains(dump, "report_identity=");
+    expect_contains(dump, "report_anchor_identity=");
+    expect_contains(dump, "report_grouping_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -1028,6 +1176,8 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
     ASSERT_EQ(result.generated_token_buffers.size(), 2U);
     ASSERT_EQ(result.parser_admission_gates.size(), 2U);
     ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
+    ASSERT_EQ(result.parser_admission_report_entries.size(), 2U);
+    ASSERT_EQ(result.parser_admission_reports.size(), 1U);
 
     EXPECT_NE(result.inputs[0].item.value, result.inputs[1].item.value);
     EXPECT_EQ(result.inputs[0].attribute_index, 0U);
@@ -1066,6 +1216,16 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
         "m21k-parser-admission:0:0:1:0:builder");
     EXPECT_NE(result.parser_admission_diagnostics[0].diagnostic_identity,
         result.parser_admission_diagnostics[1].diagnostic_identity);
+    EXPECT_NE(result.parser_admission_report_entries[0].report_entry_identity,
+        result.parser_admission_report_entries[1].report_entry_identity);
+    EXPECT_EQ(result.parser_admission_report_entries[0].query_projection_name,
+        "m21l-parser-admission-report:0:0");
+    EXPECT_EQ(result.parser_admission_report_entries[1].query_projection_name,
+        result.parser_admission_report_entries[0].query_projection_name);
+    EXPECT_EQ(result.parser_admission_reports.front().entry_count, 2U);
+    EXPECT_EQ(result.parser_admission_reports.front().blocked_entry_count, 2U);
+    EXPECT_EQ(result.parser_admission_reports.front().empty_entry_count, 2U);
+    EXPECT_EQ(result.parser_admission_reports.front().derive_entry_count, 0U);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -2424,6 +2584,250 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionDiagnosticProje
     refresh_expansion_result(source_anchor);
     EXPECT_NE(source_anchor.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(source_anchor));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsParserAdmissionReportProjectionDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.parser_admission_report_entries.size(), 2U);
+    ASSERT_EQ(baseline.parser_admission_reports.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_entries = baseline;
+    missing_entries.parser_admission_report_entries.clear();
+    refresh_expansion_result(missing_entries);
+    EXPECT_EQ(missing_entries.summary.parser_admission_report_entry_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_entries));
+
+    frontend::macro::EarlyItemExpansionResult missing_reports = baseline;
+    missing_reports.parser_admission_reports.clear();
+    refresh_expansion_result(missing_reports);
+    EXPECT_EQ(missing_reports.summary.parser_admission_report_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_reports));
+
+    frontend::macro::EarlyItemExpansionResult wrong_entry_identity = baseline;
+    wrong_entry_identity.parser_admission_report_entries.front().report_entry_identity =
+        query::stable_fingerprint("wrong parser admission report entry identity");
+    refresh_expansion_result(wrong_entry_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_entry_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_entry_anchor = baseline;
+    wrong_entry_anchor.parser_admission_report_entries.front().diagnostic_anchor_identity =
+        query::stable_fingerprint("wrong parser admission report entry anchor");
+    refresh_expansion_result(wrong_entry_anchor);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_entry_anchor));
+
+    frontend::macro::EarlyItemExpansionResult wrong_entry_category = baseline;
+    wrong_entry_category.parser_admission_report_entries.back().blocker_category =
+        "empty_token_buffer_parser_admission_blocked";
+    refresh_expansion_result(wrong_entry_category);
+    EXPECT_EQ(wrong_entry_category.summary.parser_admission_report_derive_entry_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_entry_category));
+
+    frontend::macro::EarlyItemExpansionResult wrong_query_name = baseline;
+    wrong_query_name.parser_admission_report_entries.front().query_projection_name =
+        "m21l-parser-admission-report:wrong";
+    refresh_expansion_result(wrong_query_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_query_name));
+
+    frontend::macro::EarlyItemExpansionResult wrong_report_index = baseline;
+    wrong_report_index.parser_admission_report_entries.back().report_index = 0U;
+    refresh_expansion_result(wrong_report_index);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_report_index));
+
+    frontend::macro::EarlyItemExpansionResult entry_parser_admitted = baseline;
+    entry_parser_admitted.parser_admission_report_entries.front().parser_admitted = true;
+    refresh_expansion_result(entry_parser_admitted);
+    EXPECT_EQ(entry_parser_admitted.summary.parser_admission_report_blocked_entry_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_parser_admitted));
+
+    frontend::macro::EarlyItemExpansionResult entry_not_visible = baseline;
+    entry_not_visible.parser_admission_report_entries.front().report_visible = false;
+    refresh_expansion_result(entry_not_visible);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_not_visible));
+
+    frontend::macro::EarlyItemExpansionResult entry_not_reusable = baseline;
+    entry_not_reusable.parser_admission_report_entries.front().query_reusable = false;
+    refresh_expansion_result(entry_not_reusable);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_not_reusable));
+
+    frontend::macro::EarlyItemExpansionResult entry_parser_consumable = baseline;
+    entry_parser_consumable.parser_admission_report_entries.front().parser_consumable = true;
+    refresh_expansion_result(entry_parser_consumable);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult entry_emit_expanded = baseline;
+    entry_emit_expanded.parser_admission_report_entries.front().emit_expanded_available = true;
+    refresh_expansion_result(entry_emit_expanded);
+    EXPECT_EQ(entry_emit_expanded.summary.emit_expanded_projection_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_emit_expanded));
+
+    frontend::macro::EarlyItemExpansionResult entry_user_code = baseline;
+    entry_user_code.parser_admission_report_entries.front().produced_user_generated_code = true;
+    refresh_expansion_result(entry_user_code);
+    EXPECT_EQ(entry_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_user_code));
+
+    frontend::macro::EarlyItemExpansionResult wrong_report_identity = baseline;
+    wrong_report_identity.parser_admission_reports.front().report_identity =
+        query::stable_fingerprint("wrong parser admission report identity");
+    refresh_expansion_result(wrong_report_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_report_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_report_group = baseline;
+    wrong_report_group.parser_admission_reports.front().report_grouping_identity =
+        query::stable_fingerprint("wrong parser admission report grouping");
+    refresh_expansion_result(wrong_report_group);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_report_group));
+
+    frontend::macro::EarlyItemExpansionResult wrong_report_anchor = baseline;
+    wrong_report_anchor.parser_admission_reports.front().report_anchor_identity =
+        query::stable_fingerprint("wrong parser admission report anchor");
+    refresh_expansion_result(wrong_report_anchor);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_report_anchor));
+
+    frontend::macro::EarlyItemExpansionResult wrong_parse_config = baseline;
+    wrong_parse_config.parser_admission_reports.front().parse_config_fingerprint =
+        query::stable_fingerprint("wrong parser admission report parse config");
+    refresh_expansion_result(wrong_parse_config);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_parse_config));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_buffer = baseline;
+    wrong_generated_buffer.parser_admission_reports.front().generated_buffer_identity =
+        query::stable_fingerprint("wrong parser admission report generated buffer");
+    refresh_expansion_result(wrong_generated_buffer);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_buffer));
+
+    frontend::macro::EarlyItemExpansionResult wrong_policy = baseline;
+    wrong_policy.parser_admission_reports.front().report_policy = "wrong_report_policy";
+    refresh_expansion_result(wrong_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_report_query = baseline;
+    wrong_report_query.parser_admission_reports.front().report_query_name =
+        "m21l-parser-admission-report:wrong";
+    refresh_expansion_result(wrong_report_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_report_query));
+
+    frontend::macro::EarlyItemExpansionResult wrong_blocker = baseline;
+    wrong_blocker.parser_admission_reports.front().blocked_reason = "wrong report blocker";
+    refresh_expansion_result(wrong_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_blocker));
+
+    frontend::macro::EarlyItemExpansionResult wrong_entry_count = baseline;
+    wrong_entry_count.parser_admission_reports.front().entry_count = 1U;
+    refresh_expansion_result(wrong_entry_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_entry_count));
+
+    frontend::macro::EarlyItemExpansionResult wrong_category_totals = baseline;
+    wrong_category_totals.parser_admission_reports.front().derive_entry_count = 0U;
+    refresh_expansion_result(wrong_category_totals);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_category_totals));
+
+    frontend::macro::EarlyItemExpansionResult report_not_visible = baseline;
+    report_not_visible.parser_admission_reports.front().report_visible = false;
+    refresh_expansion_result(report_not_visible);
+    EXPECT_EQ(report_not_visible.summary.parser_admission_report_visible_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_not_visible));
+
+    frontend::macro::EarlyItemExpansionResult report_not_reusable = baseline;
+    report_not_reusable.parser_admission_reports.front().query_reusable = false;
+    refresh_expansion_result(report_not_reusable);
+    EXPECT_EQ(report_not_reusable.summary.parser_admission_report_query_reusable_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_not_reusable));
+
+    frontend::macro::EarlyItemExpansionResult unordered_report = baseline;
+    unordered_report.parser_admission_reports.front().source_anchor_ordered = false;
+    refresh_expansion_result(unordered_report);
+    EXPECT_EQ(unordered_report.summary.parser_admission_report_unordered_anchor_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(unordered_report));
+
+    frontend::macro::EarlyItemExpansionResult report_parser_admitted = baseline;
+    report_parser_admitted.parser_admission_reports.front().parser_admitted = true;
+    refresh_expansion_result(report_parser_admitted);
+    EXPECT_FALSE(frontend::macro::is_valid(report_parser_admitted));
+
+    frontend::macro::EarlyItemExpansionResult report_parse_ready = baseline;
+    report_parse_ready.parser_admission_reports.front().parse_ready = true;
+    refresh_expansion_result(report_parse_ready);
+    EXPECT_EQ(report_parse_ready.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_parse_ready));
+
+    frontend::macro::EarlyItemExpansionResult report_parser_consumable = baseline;
+    report_parser_consumable.parser_admission_reports.front().parser_consumable = true;
+    refresh_expansion_result(report_parser_consumable);
+    EXPECT_EQ(report_parser_consumable.summary.parser_admission_report_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult report_emit_expanded = baseline;
+    report_emit_expanded.parser_admission_reports.front().emit_expanded_available = true;
+    refresh_expansion_result(report_emit_expanded);
+    EXPECT_EQ(report_emit_expanded.summary.emit_expanded_projection_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_emit_expanded));
+
+    frontend::macro::EarlyItemExpansionResult report_debug_trace = baseline;
+    report_debug_trace.parser_admission_reports.front().debug_trace_available = true;
+    refresh_expansion_result(report_debug_trace);
+    EXPECT_EQ(report_debug_trace.summary.parser_admission_debug_trace_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_debug_trace));
+
+    frontend::macro::EarlyItemExpansionResult report_source_map = baseline;
+    report_source_map.parser_admission_reports.front().source_map_available = true;
+    refresh_expansion_result(report_source_map);
+    EXPECT_EQ(report_source_map.summary.parser_admission_source_map_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_source_map));
+
+    frontend::macro::EarlyItemExpansionResult report_user_code = baseline;
+    report_user_code.parser_admission_reports.front().produced_user_generated_code = true;
+    refresh_expansion_result(report_user_code);
+    EXPECT_EQ(report_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(report_user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionReportProjectionContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.parser_admission_report_entries.empty());
+    ASSERT_FALSE(baseline.parser_admission_reports.empty());
+
+    frontend::macro::EarlyItemExpansionResult entry_identity = baseline;
+    entry_identity.parser_admission_report_entries.front().report_entry_identity =
+        query::stable_fingerprint("different parser admission report entry identity");
+    refresh_expansion_result(entry_identity);
+    EXPECT_NE(entry_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_identity));
+
+    frontend::macro::EarlyItemExpansionResult entry_query = baseline;
+    entry_query.parser_admission_report_entries.front().query_projection_name =
+        "m21l-parser-admission-report:different";
+    refresh_expansion_result(entry_query);
+    EXPECT_NE(entry_query.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(entry_query));
+
+    frontend::macro::EarlyItemExpansionResult report_identity = baseline;
+    report_identity.parser_admission_reports.front().report_identity =
+        query::stable_fingerprint("different parser admission report identity");
+    refresh_expansion_result(report_identity);
+    EXPECT_NE(report_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(report_identity));
+
+    frontend::macro::EarlyItemExpansionResult report_totals = baseline;
+    report_totals.parser_admission_reports.front().blocked_entry_count = 0U;
+    refresh_expansion_result(report_totals);
+    EXPECT_NE(report_totals.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(report_totals));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

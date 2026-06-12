@@ -1,9 +1,32 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21k Parser Admission Diagnostic Projection Gate
+阶段：M21l Parser Admission Diagnostic Report Projection
 
 ## 总体状态
+
+2026-06-12：M21l Parser Admission Diagnostic Report Projection 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21k parser admission diagnostic projection 汇总成
+tooling/query 可复用的 report surface。
+
+新增 `ParserAdmissionDiagnosticReportEntry` 和 `ParserAdmissionDiagnosticReport`，并给
+`EarlyItemExpansionResult` 增加 `parser_admission_report_entries` 和 `parser_admission_reports`。每个 M21k
+diagnostic projection 现在都有 deterministic report entry，绑定 `diagnostic_identity`、
+`diagnostic_anchor_identity`、`report_entry_identity`、M21j `parse_gate_identity`、source anchor、token-tree
+anchor、blocker category、debug projection name 和 `m21l-parser-admission-report:<module>:<part>` query projection
+name。每个 generated module part 现在都有 deterministic report，绑定 M21e `generated_buffer_identity` /
+`parse_config_fingerprint`，并固定 `parser_admission_blocked_report_query_projection_v1`、`report_identity`、
+`report_anchor_identity`、`report_grouping_identity`、blocked entry totals、derive / empty category totals、
+token-record-available totals 和 `source_anchor_ordered=true`。report / entry 仍固定
+`parser_admitted=false`、`parse_ready=false`、`parser_consumable=false`、`emit_expanded_available=false`、
+`debug_trace_available=false`、`source_map_available=false` 和 `produced_user_generated_code=false`。summary /
+dump / fingerprint / validation 会拒绝 report entry 与 diagnostic 不能重算、report 与 generated part /
+parse-merge stub / entry grouping 不能重算、category totals 漂移、source-anchor ordering 漂移或任何 parser /
+debug / source-map / emit / user-code flag 被打开。新增说明见
+[Aurex M21l Parser Admission Diagnostic Report Projection](m21l-parser-admission-diagnostic-report-projection.md)。
 
 2026-06-12：M21k Parser Admission Diagnostic Projection Gate 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

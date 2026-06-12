@@ -77,6 +77,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m21h-token-materialization-admission-stub-contract.md",
         "docs/zh/m21i-compiler-owned-generated-token-buffer-prototype.md",
         "docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "docs/zh/m21k-parser-admission-diagnostic-projection-gate.md",
+        "docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -343,7 +345,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21k Parser Admission Diagnostic Projection Gate**");
+        "docs/zh/README.md", "文档基线：**M21l Parser Admission Diagnostic Report Projection**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -389,11 +391,24 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M21j Generated Token Parser Admission Gate");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21k Parser Admission Diagnostic Projection Gate");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21l Parser Admission Diagnostic Report Projection");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21k Parser Admission Diagnostic Projection Gate");
+        "阶段：M21l Parser Admission Diagnostic Report Projection");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
     expect_document_contains("docs/zh/progress.md", "ParserAdmissionDiagnosticProjectionStub");
     expect_document_contains("docs/zh/progress.md", "parser_admission_diagnostics");
+    expect_document_contains("docs/zh/progress.md", "ParserAdmissionDiagnosticReportEntry");
+    expect_document_contains("docs/zh/progress.md", "ParserAdmissionDiagnosticReport");
+    expect_document_contains("docs/zh/progress.md", "parser_admission_report_entries");
+    expect_document_contains("docs/zh/progress.md", "parser_admission_reports");
+    expect_document_contains("docs/zh/progress.md",
+        "parser_admission_blocked_report_query_projection_v1");
+    expect_document_contains("docs/zh/progress.md", "report_entry_identity");
+    expect_document_contains("docs/zh/progress.md", "report_identity");
+    expect_document_contains("docs/zh/progress.md", "report_anchor_identity");
+    expect_document_contains("docs/zh/progress.md", "report_grouping_identity");
+    expect_document_contains("docs/zh/progress.md", "m21l-parser-admission-report:<module>:<part>");
     expect_document_contains("docs/zh/progress.md",
         "parser_admission_blocked_diagnostic_projection_v1");
     expect_document_contains("docs/zh/progress.md",
@@ -457,6 +472,19 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21l Parser Admission Diagnostic Report Projection");
+    expect_document_contains("docs/zh/version.md", "ParserAdmissionDiagnosticReportEntry");
+    expect_document_contains("docs/zh/version.md", "ParserAdmissionDiagnosticReport");
+    expect_document_contains("docs/zh/version.md", "parser_admission_report_entries");
+    expect_document_contains("docs/zh/version.md", "parser_admission_reports");
+    expect_document_contains("docs/zh/version.md",
+        "parser_admission_blocked_report_query_projection_v1");
+    expect_document_contains("docs/zh/version.md", "report_entry_identity");
+    expect_document_contains("docs/zh/version.md", "report_identity");
+    expect_document_contains("docs/zh/version.md", "report_anchor_identity");
+    expect_document_contains("docs/zh/version.md", "report_grouping_identity");
+    expect_document_contains("docs/zh/version.md", "source_anchor_ordered=true");
     expect_document_contains("docs/zh/version.md",
         "## M21k Parser Admission Diagnostic Projection Gate");
     expect_document_contains("docs/zh/version.md", "ParserAdmissionDiagnosticProjectionStub");
@@ -694,6 +722,32 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "emit_expanded_available = false");
     expect_document_contains("docs/zh/m21k-parser-admission-diagnostic-projection-gate.md",
         "M21k 仍不生成用户代码");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "Aurex M21l Parser Admission Diagnostic Report Projection");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "阶段：M21l Parser Admission Diagnostic Report Projection");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "ParserAdmissionDiagnosticReportEntry");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "ParserAdmissionDiagnosticReport");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "parser_admission_report_entries");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "parser_admission_blocked_report_query_projection_v1");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "report_entry_identity");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "report_identity");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "report_anchor_identity");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "report_grouping_identity");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "m21l-parser-admission-report:<module>:<part>");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "source_anchor_ordered=true");
+    expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "M21l 仍不实现");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

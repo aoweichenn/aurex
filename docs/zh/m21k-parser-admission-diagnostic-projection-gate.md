@@ -251,7 +251,10 @@ M21k validation 会拒绝以下漂移：
 
 ## 下一步
 
-下一步建议继续 M21l：仍保持 parser-blocked / no user-code，做 parser admission report / query projection
-hardening。M21l 应把 M21k diagnostic projection 汇总成 tooling/query 可复用的 report surface，固定 report identity、
-category totals、source anchor ordering 和 negative validation matrix；仍不打开 parser consumption，不执行 external
-procedural macro，不生成 source text，不实现标准库或 runtime helper。
+该建议已由 [Aurex M21l Parser Admission Diagnostic Report Projection](m21l-parser-admission-diagnostic-report-projection.md)
+实现。M21l 新增 `ParserAdmissionDiagnosticReportEntry`、`ParserAdmissionDiagnosticReport`、
+`parser_admission_report_entries` 和 `parser_admission_reports`，把 M21k diagnostic projection 汇总成
+tooling/query 可复用的 report surface，并固定 report identity、category totals、source anchor ordering 和
+negative validation matrix。M21l 仍保持 parser-blocked / no user-code。
+
+下一步建议继续 M21m：仍不打开 parser consumption，先做 generated token parser consumption readiness preflight。

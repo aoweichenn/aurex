@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M21k Parser Admission Diagnostic Projection Gate**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M21l Parser Admission Diagnostic Report Projection**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -89,7 +89,14 @@ future `--emit-expanded` / debug trace / source-map projection unavailable state
 `generated_part_merged=false`、`emit_expanded_available=false`、`debug_trace_available=false`、
 `source_map_available=false` 和 `produced_user_generated_code=false`。typed expression macro 和 external procedural
 macro 继续后移，标准库、runtime helper、文本替换宏、parser-consumable generated token buffer、真实 generated
-source text 和真实用户宏展开仍不实现。
+source text 和真实用户宏展开仍不实现。M21l 已新增 `ParserAdmissionDiagnosticReportEntry`、
+`ParserAdmissionDiagnosticReport`、`parser_admission_report_entries` 和 `parser_admission_reports`，把 M21k 的
+per-input diagnostic projection 汇总为 generated module part 级 report/query projection，并固定
+`parser_admission_blocked_report_query_projection_v1`、`report_entry_identity`、`report_identity`、
+`report_anchor_identity`、`report_grouping_identity`、`m21l-parser-admission-report:<module>:<part>` query name、
+category totals、source anchor ordering 和 report-level blocked flags。M21l 仍保持 `parser_admitted=false`、
+`parse_ready=false`、`parser_consumable=false`、`emit_expanded_available=false`、
+`debug_trace_available=false`、`source_map_available=false` 和 `produced_user_generated_code=false`。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -159,6 +166,7 @@ source text 和真实用户宏展开仍不实现。
 - [Aurex M21i Compiler-Owned Generated Token Buffer Prototype](m21i-compiler-owned-generated-token-buffer-prototype.md)
 - [Aurex M21j Generated Token Parser Admission Gate](m21j-generated-token-parser-admission-gate.md)
 - [Aurex M21k Parser Admission Diagnostic Projection Gate](m21k-parser-admission-diagnostic-projection-gate.md)
+- [Aurex M21l Parser Admission Diagnostic Report Projection](m21l-parser-admission-diagnostic-report-projection.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

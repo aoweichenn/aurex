@@ -1,5 +1,66 @@
 # 版本文档
 
+## M21l Parser Admission Diagnostic Report Projection
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21k 的 per-input parser admission
+diagnostic projection 汇总为 generated module part 级 report/query projection。该阶段仍不执行用户宏、不生成
+source text、不让 parser 消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，
+也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::ParserAdmissionDiagnosticReportEntry`。
+- 新增 `frontend::macro::ParserAdmissionDiagnosticReport`。
+- 新增 `is_valid(const ParserAdmissionDiagnosticReportEntry&)`。
+- 新增 `is_valid(const ParserAdmissionDiagnosticReport&)`。
+- `EarlyItemExpansionResult` 新增 `parser_admission_report_entries`。
+- `EarlyItemExpansionResult` 新增 `parser_admission_reports`。
+- `EarlyItemExpansionSummary` 新增 parser admission report entry、report、blocked entry、derive / empty entry、
+  token-record-available entry、visible report、query-reusable report、unordered anchor 和 parser-consumable
+  report 计数。
+- 每个 M21k diagnostic projection 都有一个 deterministic report entry。
+- 每个 generated module part 都有一个 deterministic parser admission report。
+- report entry 固定 `report_entry_identity`，并混入 diagnostic identity、diagnostic anchor、parse gate identity、
+  source anchors、category、debug projection name、query projection name、token count 和 blocked flags。
+- report 固定 `report_policy = parser_admission_blocked_report_query_projection_v1`。
+- report 固定 `report_query_name = m21l-parser-admission-report:<module>:<part>`。
+- report 固定 `report_identity`、`report_anchor_identity` 和 `report_grouping_identity`。
+- report 绑定 M21e `generated_buffer_identity` 和 `parse_config_fingerprint`。
+- report 从 entries 重算 `entry_count`、`blocked_entry_count`、`derive_entry_count`、`empty_entry_count` 和
+  `token_record_available_entry_count`。
+- report 固定 `source_anchor_ordered=true`。
+- report / entry 固定 query/debug projection 可见：`report_visible=true`、`query_reusable=true`。
+- report / entry 仍固定 `parser_admitted=false`、`parse_ready=false`、`parser_consumable=false`、
+  `emit_expanded_available=false`、`debug_trace_available=false`、`source_map_available=false` 和
+  `produced_user_generated_code=false`。
+- validation 要求 report entry 与 M21k diagnostic projection 一一对应。
+- validation 要求 report 与 generated part、M21e parse / merge stub 和该 part 下 report entries 一一对应。
+- validation 拒绝 identity、anchor、category totals、query name、source-anchor ordering、parser/debug/source-map/
+  emit/user-code flags 漂移。
+- dump 会输出 `parser_admission_report_entry`、`parser_admission_diagnostic_report`、query projection name、
+  report totals、report identity、report anchor identity、report grouping identity、generated buffer identity 和
+  parse config。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21k Parser Admission Diagnostic Projection Gate
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21j 的 compiler-owned parser admission

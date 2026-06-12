@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21k parser admission diagnostic projection gate 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21l parser admission report projection 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -79,10 +79,21 @@ buffer admission blocker 与 generated module part parse blocker；但所有 pro
 `generated_part_merged=false`、`emit_expanded_available=false`、`debug_trace_available=false`、
 `source_map_available=false` 和 `produced_user_generated_code=false`。
 
-下一步建议继续 M21l：仍保持 parser-blocked / no user-code，不直接打开 parser consumption，而是把 M21k
-diagnostic projection 汇总成 tooling/query 可复用的 report surface。M21l 应固定 report identity、category totals、
-source anchor ordering、diagnostic projection grouping 和 negative validation matrix，同时继续不实现 external
-procedural macro、标准库、runtime helper、generated source text 或真实用户代码生成。
+M21l 已把 parser admission diagnostic report / query projection 固定到同一 `macro.expand_items` boundary：每个
+M21k diagnostic 都有 `ParserAdmissionDiagnosticReportEntry`，每个 generated module part 都有
+`ParserAdmissionDiagnosticReport`。report entry 绑定 diagnostic identity、diagnostic anchor、parse gate identity、
+source anchors、category、debug projection 和 `m21l-parser-admission-report:<module>:<part>` query projection name；
+report 绑定 M21e `generated_buffer_identity` / `parse_config_fingerprint`，并固定
+`parser_admission_blocked_report_query_projection_v1`、`report_identity`、`report_anchor_identity`、
+`report_grouping_identity`、blocked / derive / empty / token-record-available totals 和
+`source_anchor_ordered=true`。M21l 仍固定 `parser_admitted=false`、`parse_ready=false`、
+`parser_consumable=false`、`emit_expanded_available=false`、`debug_trace_available=false`、
+`source_map_available=false` 和 `produced_user_generated_code=false`。
+
+下一步建议继续 M21m：仍保持 parser-blocked / no user-code，不直接 parse generated module part，而是做 generated
+token parser consumption readiness preflight。M21m 应固定 token stream shape、delimiter balance、source-anchor
+coverage、hygiene/source-map prerequisites、parse config compatibility 和 failure diagnostics；仍不执行 external
+procedural macro，不生成 source text，不实现标准库或 runtime helper。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

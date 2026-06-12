@@ -312,6 +312,63 @@ struct ParserAdmissionDiagnosticProjectionStub {
     bool produced_user_generated_code = false;
 };
 
+struct ParserAdmissionDiagnosticReportEntry {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    base::u32 report_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    base::SourceRange primary_anchor{};
+    base::SourceRange token_tree_anchor{};
+    query::StableFingerprint128 diagnostic_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    query::StableFingerprint128 report_entry_identity;
+    query::StableFingerprint128 parse_gate_identity;
+    std::string blocker_category;
+    std::string debug_projection_name;
+    std::string query_projection_name;
+    base::u64 token_count = 0;
+    bool token_records_available = false;
+    bool parser_admitted = false;
+    bool report_visible = true;
+    bool query_reusable = true;
+    bool parser_consumable = false;
+    bool emit_expanded_available = false;
+    bool produced_user_generated_code = false;
+};
+
+struct ParserAdmissionDiagnosticReport {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 report_identity;
+    query::StableFingerprint128 report_anchor_identity;
+    query::StableFingerprint128 report_grouping_identity;
+    query::StableFingerprint128 parse_config_fingerprint;
+    query::StableFingerprint128 generated_buffer_identity;
+    std::string report_policy;
+    std::string report_query_name;
+    std::string blocked_reason;
+    base::u64 entry_count = 0;
+    base::u64 blocked_entry_count = 0;
+    base::u64 derive_entry_count = 0;
+    base::u64 empty_entry_count = 0;
+    base::u64 token_record_available_entry_count = 0;
+    bool query_reusable = true;
+    bool report_visible = true;
+    bool source_anchor_ordered = true;
+    bool parser_admitted = false;
+    bool parse_ready = false;
+    bool parser_consumable = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool produced_user_generated_code = false;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -361,6 +418,16 @@ struct EarlyItemExpansionSummary {
     base::u64 emit_expanded_projection_available_count = 0;
     base::u64 parser_admission_debug_trace_projection_count = 0;
     base::u64 parser_admission_source_map_projection_count = 0;
+    base::u64 parser_admission_report_entry_count = 0;
+    base::u64 parser_admission_report_count = 0;
+    base::u64 parser_admission_report_blocked_entry_count = 0;
+    base::u64 parser_admission_report_derive_entry_count = 0;
+    base::u64 parser_admission_report_empty_entry_count = 0;
+    base::u64 parser_admission_report_token_record_available_entry_count = 0;
+    base::u64 parser_admission_report_visible_count = 0;
+    base::u64 parser_admission_report_query_reusable_count = 0;
+    base::u64 parser_admission_report_unordered_anchor_count = 0;
+    base::u64 parser_admission_report_parser_consumable_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -387,6 +454,8 @@ struct EarlyItemExpansionResult {
     std::vector<GeneratedTokenRecord> generated_token_records;
     std::vector<GeneratedTokenParserAdmissionGateStub> parser_admission_gates;
     std::vector<ParserAdmissionDiagnosticProjectionStub> parser_admission_diagnostics;
+    std::vector<ParserAdmissionDiagnosticReportEntry> parser_admission_report_entries;
+    std::vector<ParserAdmissionDiagnosticReport> parser_admission_reports;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -410,6 +479,8 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const GeneratedTokenRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedTokenParserAdmissionGateStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const ParserAdmissionDiagnosticProjectionStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const ParserAdmissionDiagnosticReportEntry& entry) noexcept;
+[[nodiscard]] bool is_valid(const ParserAdmissionDiagnosticReport& report) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

@@ -84,12 +84,33 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return query::module_key(package, path);
 }
 
-[[nodiscard]] query::ModulePartKey primary_part_key()
+[[nodiscard]] query::ModulePartKey module_part_key_for_index(const base::u32 part_index)
 {
     const query::PackageKey package = package_key();
     const query::ModuleKey module = module_key(package);
-    const query::FileKey file = query::file_key(package, "/virtual/tests/macro/early_item_expansion.ax");
-    return query::module_part_key(module, file, query::ModulePartKind::primary, "<primary>");
+    if (part_index == 0U) {
+        const query::FileKey file = query::file_key(package, "/virtual/tests/macro/early_item_expansion.ax");
+        return query::module_part_key(module, file, query::ModulePartKind::primary, "<primary>");
+    }
+    const std::string part_name = "part" + std::to_string(part_index);
+    const std::string source_path = "/virtual/tests/macro/early_item_expansion.parts/" + part_name + ".ax";
+    const query::FileKey file = query::file_key(package, source_path);
+    return query::module_part_key(module, file, query::ModulePartKind::fragment, part_name, part_index);
+}
+
+[[nodiscard]] query::ModulePartKey primary_part_key()
+{
+    return module_part_key_for_index(0U);
+}
+
+[[nodiscard]] std::vector<std::vector<query::ModulePartKey>> part_key_table(const base::u32 part_count)
+{
+    std::vector<std::vector<query::ModulePartKey>> keys(1U);
+    keys.front().reserve(part_count);
+    for (base::u32 part_index = 0U; part_index < part_count; ++part_index) {
+        keys.front().push_back(module_part_key_for_index(part_index));
+    }
+    return keys;
 }
 
 [[nodiscard]] std::vector<std::vector<query::ModulePartKey>> single_part_key_table()
@@ -289,6 +310,50 @@ parser_consumption_contract_gate_for_part(
     return found == result.parser_consumption_contract_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::BuiltinDeriveExpansionAdmissionGate*
+builtin_derive_admission_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_expansion_admissions.begin(),
+        result.builtin_derive_expansion_admissions.end(),
+        [&input](const frontend::macro::BuiltinDeriveExpansionAdmissionGate& gate) {
+            return gate.item.value == input.item.value
+                && gate.module.value == input.module.value
+                && gate.attribute_index == input.attribute_index;
+        });
+    return found == result.builtin_derive_expansion_admissions.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveSemanticExpansionPlan*
+builtin_derive_semantic_plan_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_semantic_plans.begin(),
+        result.builtin_derive_semantic_plans.end(),
+        [&input](const frontend::macro::BuiltinDeriveSemanticExpansionPlan& plan) {
+            return plan.item.value == input.item.value
+                && plan.module.value == input.module.value
+                && plan.attribute_index == input.attribute_index;
+        });
+    return found == result.builtin_derive_semantic_plans.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate*
+builtin_derive_parser_release_gate_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_parser_release_gates.begin(),
+        result.builtin_derive_parser_release_gates.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate& gate) {
+            return gate.module.value == generated_part.module.value
+                && gate.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_parser_release_gates.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -396,7 +461,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21o Macro Expansion Boundary Release Closure");
+    EXPECT_EQ(result.name, "M22c Builtin Derive Parser Consumption Release Gate");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -478,6 +543,23 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.macro_boundary_closure_query_reusable_count, 1U);
     EXPECT_EQ(result.summary.macro_boundary_closure_complete_count, 1U);
     EXPECT_EQ(result.summary.macro_boundary_closure_parser_consumption_enabled_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_admission_gate_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_derive_admission_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_non_derive_blocked_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_visible_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_capability_candidate_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_plan_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_plan_visible_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_plan_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_copy_capability_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_eq_capability_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_hash_capability_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_gate_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_parser_consumable_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -754,6 +836,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
     ASSERT_EQ(result.parser_admission_report_entries.size(), 2U);
     ASSERT_EQ(result.parser_admission_reports.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 1U);
     ASSERT_EQ(result.parser_readiness_preflight_entries.size(), 2U);
     ASSERT_EQ(result.parser_consumption_contract_gates.size(), 1U);
     ASSERT_EQ(result.macro_boundary_closure_reports.size(), 1U);
@@ -1092,6 +1177,164 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(closure.external_process_required);
     EXPECT_FALSE(closure.produced_user_generated_code);
 
+    ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 1U);
+    const frontend::macro::BuiltinDeriveExpansionAdmissionGate* const builder_derive_admission =
+        builtin_derive_admission_for_input(result, *builder);
+    ASSERT_NE(builder_derive_admission, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_derive_admission));
+    EXPECT_EQ(builder_derive_admission->part_index, builder->part_index);
+    EXPECT_EQ(builder_derive_admission->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_derive_admission->admission_index, 0U);
+    EXPECT_EQ(builder_derive_admission->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_derive_admission->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_derive_admission->token_buffer_identity, builder_buffer->token_buffer_identity);
+    EXPECT_EQ(builder_derive_admission->preflight_identity, builder_preflight->preflight_identity);
+    EXPECT_EQ(builder_derive_admission->parse_gate_identity, builder_gate->parse_gate_identity);
+    EXPECT_EQ(builder_derive_admission->diagnostic_identity, builder_diagnostic->diagnostic_identity);
+    EXPECT_EQ(builder_derive_admission->closure_identity, closure.closure_identity);
+    EXPECT_GT(builder_derive_admission->admission_identity.byte_count, 0U);
+    EXPECT_EQ(builder_derive_admission->admission_policy,
+        "builtin_derive_expansion_admission_gate_v1");
+    EXPECT_EQ(builder_derive_admission->admission_kind,
+        "non_derive_attribute_expansion_blocked");
+    EXPECT_EQ(builder_derive_admission->query_name,
+        "m22a-builtin-derive-admission:0:0:0:0:builder");
+    expect_contains(builder_derive_admission->blocker_reason,
+        "non-derive item attribute expansion remains blocked in M22a");
+    EXPECT_EQ(builder_derive_admission->token_count, 0U);
+    EXPECT_EQ(builder_derive_admission->capability_candidate_count, 0U);
+    EXPECT_FALSE(builder_derive_admission->builtin_derive_input);
+    EXPECT_TRUE(builder_derive_admission->compiler_owned);
+    EXPECT_FALSE(builder_derive_admission->token_records_available);
+    EXPECT_TRUE(builder_derive_admission->preflight_available);
+    EXPECT_TRUE(builder_derive_admission->admission_visible);
+    EXPECT_TRUE(builder_derive_admission->query_reusable);
+    EXPECT_FALSE(builder_derive_admission->parser_consumption_enabled);
+    EXPECT_FALSE(builder_derive_admission->external_process_required);
+    EXPECT_FALSE(builder_derive_admission->standard_library_required);
+    EXPECT_FALSE(builder_derive_admission->runtime_required);
+    EXPECT_FALSE(builder_derive_admission->generated_source_text);
+    EXPECT_FALSE(builder_derive_admission->produced_user_generated_code);
+
+    const frontend::macro::BuiltinDeriveExpansionAdmissionGate* const derive_expansion_admission =
+        builtin_derive_admission_for_input(result, *derive);
+    ASSERT_NE(derive_expansion_admission, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_expansion_admission));
+    EXPECT_EQ(derive_expansion_admission->admission_index, 1U);
+    EXPECT_EQ(derive_expansion_admission->token_buffer_identity, derive_buffer->token_buffer_identity);
+    EXPECT_EQ(derive_expansion_admission->preflight_identity, derive_preflight->preflight_identity);
+    EXPECT_EQ(derive_expansion_admission->parse_gate_identity, derive_gate->parse_gate_identity);
+    EXPECT_EQ(derive_expansion_admission->diagnostic_identity, derive_diagnostic->diagnostic_identity);
+    EXPECT_EQ(derive_expansion_admission->closure_identity, closure.closure_identity);
+    EXPECT_EQ(derive_expansion_admission->admission_kind,
+        "builtin_derive_expansion_candidate");
+    EXPECT_EQ(derive_expansion_admission->query_name,
+        "m22a-builtin-derive-admission:0:0:0:1:derive");
+    expect_contains(derive_expansion_admission->blocker_reason,
+        "builtin derive expansion admission remains parser-blocked in M22a");
+    EXPECT_EQ(derive_expansion_admission->token_count, derive_buffer->token_count);
+    EXPECT_EQ(derive_expansion_admission->capability_candidate_count, 2U);
+    EXPECT_EQ(derive_expansion_admission->unsupported_candidate_count, 0U);
+    EXPECT_EQ(derive_expansion_admission->duplicate_candidate_count, 0U);
+    EXPECT_TRUE(derive_expansion_admission->builtin_derive_input);
+    EXPECT_TRUE(derive_expansion_admission->token_records_available);
+    EXPECT_FALSE(derive_expansion_admission->parser_consumption_enabled);
+    EXPECT_NE(builder_derive_admission->admission_identity,
+        derive_expansion_admission->admission_identity);
+
+    const frontend::macro::BuiltinDeriveSemanticExpansionPlan* const builder_semantic_plan =
+        builtin_derive_semantic_plan_for_input(result, *builder);
+    ASSERT_NE(builder_semantic_plan, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_semantic_plan));
+    EXPECT_EQ(builder_semantic_plan->semantic_plan_index, 0U);
+    EXPECT_EQ(builder_semantic_plan->admission_identity,
+        builder_derive_admission->admission_identity);
+    EXPECT_EQ(builder_semantic_plan->semantic_policy,
+        "builtin_derive_semantic_expansion_plan_v1");
+    EXPECT_EQ(builder_semantic_plan->target_kind, "struct");
+    EXPECT_EQ(builder_semantic_plan->semantic_model, "capability_fact_lowering_plan");
+    expect_contains(builder_semantic_plan->blocker_reason,
+        "builtin derive semantic expansion remains capability-only and parser-blocked in M22b");
+    EXPECT_EQ(builder_semantic_plan->capability_count, 0U);
+    EXPECT_EQ(builder_semantic_plan->copy_capability_count, 0U);
+    EXPECT_EQ(builder_semantic_plan->eq_capability_count, 0U);
+    EXPECT_EQ(builder_semantic_plan->hash_capability_count, 0U);
+    EXPECT_FALSE(builder_semantic_plan->builtin_derive_input);
+    EXPECT_TRUE(builder_semantic_plan->target_struct_or_enum);
+    EXPECT_FALSE(builder_semantic_plan->uses_existing_builtin_derive_capability_path);
+    EXPECT_FALSE(builder_semantic_plan->requires_ast_mutation);
+    EXPECT_FALSE(builder_semantic_plan->requires_generated_items);
+    EXPECT_FALSE(builder_semantic_plan->requires_standard_library);
+    EXPECT_FALSE(builder_semantic_plan->requires_runtime);
+    EXPECT_FALSE(builder_semantic_plan->external_process_required);
+    EXPECT_FALSE(builder_semantic_plan->parser_consumption_enabled);
+    EXPECT_FALSE(builder_semantic_plan->produced_user_generated_code);
+    EXPECT_TRUE(builder_semantic_plan->plan_visible);
+    EXPECT_TRUE(builder_semantic_plan->query_reusable);
+
+    const frontend::macro::BuiltinDeriveSemanticExpansionPlan* const derive_semantic_plan =
+        builtin_derive_semantic_plan_for_input(result, *derive);
+    ASSERT_NE(derive_semantic_plan, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_semantic_plan));
+    EXPECT_EQ(derive_semantic_plan->semantic_plan_index, 1U);
+    EXPECT_EQ(derive_semantic_plan->admission_identity,
+        derive_expansion_admission->admission_identity);
+    EXPECT_EQ(derive_semantic_plan->target_kind, "struct");
+    EXPECT_EQ(derive_semantic_plan->capability_count, 2U);
+    EXPECT_EQ(derive_semantic_plan->copy_capability_count, 1U);
+    EXPECT_EQ(derive_semantic_plan->eq_capability_count, 1U);
+    EXPECT_EQ(derive_semantic_plan->hash_capability_count, 0U);
+    EXPECT_TRUE(derive_semantic_plan->builtin_derive_input);
+    EXPECT_TRUE(derive_semantic_plan->target_struct_or_enum);
+    EXPECT_TRUE(derive_semantic_plan->uses_existing_builtin_derive_capability_path);
+    EXPECT_FALSE(derive_semantic_plan->requires_generated_items);
+    EXPECT_FALSE(derive_semantic_plan->parser_consumption_enabled);
+    EXPECT_NE(builder_semantic_plan->semantic_plan_identity,
+        derive_semantic_plan->semantic_plan_identity);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate* const release_gate =
+        builtin_derive_parser_release_gate_for_part(result, generated);
+    ASSERT_NE(release_gate, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*release_gate));
+    EXPECT_EQ(release_gate->module.value, generated.module.value);
+    EXPECT_EQ(release_gate->source_part_index, generated.source_part_index);
+    EXPECT_EQ(release_gate->attached_part, generated.source_part);
+    EXPECT_EQ(release_gate->generated_part, generated.generated_part);
+    EXPECT_EQ(release_gate->contract_identity, contract->contract_identity);
+    EXPECT_EQ(release_gate->closure_identity, closure.closure_identity);
+    EXPECT_GT(release_gate->admission_group_identity.byte_count, 0U);
+    EXPECT_GT(release_gate->semantic_plan_group_identity.byte_count, 0U);
+    EXPECT_GT(release_gate->release_gate_identity.byte_count, 0U);
+    EXPECT_EQ(release_gate->release_policy,
+        "builtin_derive_parser_consumption_release_gate_v1");
+    EXPECT_EQ(release_gate->release_query_name,
+        "m22c-builtin-derive-parser-release:0:0");
+    expect_contains(release_gate->blocked_reason,
+        "builtin derive parser consumption release remains blocked in M22c");
+    EXPECT_EQ(release_gate->admission_count, 2U);
+    EXPECT_EQ(release_gate->derive_admission_count, 1U);
+    EXPECT_EQ(release_gate->semantic_plan_count, 2U);
+    EXPECT_EQ(release_gate->capability_total_count, 2U);
+    EXPECT_EQ(release_gate->parser_consumable_contract_count, 0U);
+    EXPECT_TRUE(release_gate->rollback_diagnostics_available);
+    EXPECT_TRUE(release_gate->debug_trace_prerequisite_available);
+    EXPECT_TRUE(release_gate->source_map_prerequisite_available);
+    EXPECT_TRUE(release_gate->hygiene_prerequisite_available);
+    EXPECT_FALSE(release_gate->parser_consumption_enabled);
+    EXPECT_FALSE(release_gate->generated_part_parsed);
+    EXPECT_FALSE(release_gate->generated_part_merged);
+    EXPECT_FALSE(release_gate->emit_expanded_available);
+    EXPECT_FALSE(release_gate->debug_trace_available);
+    EXPECT_FALSE(release_gate->source_map_available);
+    EXPECT_FALSE(release_gate->standard_library_required);
+    EXPECT_FALSE(release_gate->runtime_required);
+    EXPECT_FALSE(release_gate->external_process_required);
+    EXPECT_FALSE(release_gate->produced_user_generated_code);
+    EXPECT_TRUE(release_gate->release_visible);
+    EXPECT_TRUE(release_gate->query_reusable);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -1126,7 +1369,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21o Macro Expansion Boundary Release Closure");
+    expect_contains(summary, "early_item_expansion name=M22c Builtin Derive Parser Consumption Release Gate");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -1198,6 +1441,23 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "macro_boundary_closure_query_reusable=1");
     expect_contains(summary, "macro_boundary_closure_complete=1");
     expect_contains(summary, "macro_boundary_closure_parser_consumption_enabled=0");
+    expect_contains(summary, "builtin_derive_expansion_admissions=2");
+    expect_contains(summary, "builtin_derive_expansion_derive_admissions=1");
+    expect_contains(summary, "builtin_derive_expansion_non_derive_blocked=1");
+    expect_contains(summary, "builtin_derive_expansion_visible=2");
+    expect_contains(summary, "builtin_derive_expansion_query_reusable=2");
+    expect_contains(summary, "builtin_derive_expansion_capability_candidates=2");
+    expect_contains(summary, "builtin_derive_semantic_plans=2");
+    expect_contains(summary, "builtin_derive_semantic_plan_visible=2");
+    expect_contains(summary, "builtin_derive_semantic_plan_query_reusable=2");
+    expect_contains(summary, "builtin_derive_semantic_capabilities=2");
+    expect_contains(summary, "builtin_derive_semantic_copy_capabilities=1");
+    expect_contains(summary, "builtin_derive_semantic_eq_capabilities=1");
+    expect_contains(summary, "builtin_derive_semantic_hash_capabilities=0");
+    expect_contains(summary, "builtin_derive_parser_release_gates=1");
+    expect_contains(summary, "builtin_derive_parser_release_visible=1");
+    expect_contains(summary, "builtin_derive_parser_release_query_reusable=1");
+    expect_contains(summary, "builtin_derive_parser_release_parser_consumable=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -1359,6 +1619,38 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "M21 macro expansion boundary remains parser-blocked after M21o closure");
     expect_contains(dump, "closure_identity=");
     expect_contains(dump, "closure_grouping_identity=");
+    expect_contains(dump, "builtin_derive_expansion_admission_gate #0");
+    expect_contains(dump, "policy=builtin_derive_expansion_admission_gate_v1");
+    expect_contains(dump, "kind=non_derive_attribute_expansion_blocked");
+    expect_contains(dump, "kind=builtin_derive_expansion_candidate");
+    expect_contains(dump, "query=m22a-builtin-derive-admission:0:0:0:1:derive");
+    expect_contains(dump, "capability_candidates=2");
+    expect_contains(dump, "builtin derive expansion admission remains parser-blocked in M22a");
+    expect_contains(dump, "admission_identity=");
+    expect_contains(dump, "builtin_derive_semantic_expansion_plan #0");
+    expect_contains(dump, "policy=builtin_derive_semantic_expansion_plan_v1");
+    expect_contains(dump, "target_kind=struct");
+    expect_contains(dump, "semantic_model=capability_fact_lowering_plan");
+    expect_contains(dump, "copy=1");
+    expect_contains(dump, "eq=1");
+    expect_contains(dump, "hash=0");
+    expect_contains(dump, "requires_generated_items=no");
+    expect_contains(dump, "requires_standard_library=no");
+    expect_contains(dump, "requires_runtime=no");
+    expect_contains(dump, "builtin derive semantic expansion remains capability-only and parser-blocked in M22b");
+    expect_contains(dump, "capability_set_identity=");
+    expect_contains(dump, "semantic_plan_identity=");
+    expect_contains(dump, "builtin_derive_parser_consumption_release_gate #0");
+    expect_contains(dump, "policy=builtin_derive_parser_consumption_release_gate_v1");
+    expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:0");
+    expect_contains(dump, "admissions=2");
+    expect_contains(dump, "derive_admissions=1");
+    expect_contains(dump, "semantic_plans=2");
+    expect_contains(dump, "capabilities=2");
+    expect_contains(dump, "parser_consumable_contracts=0");
+    expect_contains(dump, "rollback_diagnostics_available=yes");
+    expect_contains(dump, "builtin derive parser consumption release remains blocked in M22c");
+    expect_contains(dump, "release_gate_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -1454,6 +1746,176 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
     EXPECT_EQ(result.parser_admission_reports.front().blocked_entry_count, 2U);
     EXPECT_EQ(result.parser_admission_reports.front().empty_entry_count, 2U);
     EXPECT_EQ(result.parser_admission_reports.front().derive_entry_count, 0U);
+    EXPECT_EQ(result.builtin_derive_expansion_admissions.front().query_name,
+        "m22a-builtin-derive-admission:0:0:0:0:builder");
+    EXPECT_EQ(result.builtin_derive_expansion_admissions.back().query_name,
+        "m22a-builtin-derive-admission:0:0:1:0:builder");
+    EXPECT_EQ(result.builtin_derive_parser_release_gates.front().admission_count, 2U);
+    EXPECT_EQ(result.builtin_derive_parser_release_gates.front().derive_admission_count, 0U);
+}
+
+TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq, Eq, Hash)]\n"
+        "enum Mode { fast, slow }\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.inputs.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 1U);
+
+    const frontend::macro::EarlyItemMacroInput& input = result.inputs.front();
+    EXPECT_EQ(input.attribute_name, "derive");
+    EXPECT_EQ(input.disposition,
+        frontend::macro::EarlyItemExpansionDisposition::builtin_derive_passthrough);
+
+    const frontend::macro::BuiltinDeriveExpansionAdmissionGate& admission =
+        result.builtin_derive_expansion_admissions.front();
+    EXPECT_EQ(admission.admission_kind, "builtin_derive_expansion_candidate");
+    EXPECT_EQ(admission.query_name, "m22a-builtin-derive-admission:0:0:0:0:derive");
+    EXPECT_EQ(admission.capability_candidate_count, 4U);
+    EXPECT_EQ(admission.unsupported_candidate_count, 0U);
+    EXPECT_EQ(admission.duplicate_candidate_count, 1U);
+    EXPECT_TRUE(admission.builtin_derive_input);
+    EXPECT_TRUE(admission.token_records_available);
+    EXPECT_FALSE(admission.parser_consumption_enabled);
+    EXPECT_FALSE(admission.produced_user_generated_code);
+
+    const frontend::macro::BuiltinDeriveSemanticExpansionPlan& plan =
+        result.builtin_derive_semantic_plans.front();
+    EXPECT_EQ(plan.target_kind, "enum");
+    EXPECT_TRUE(plan.target_struct_or_enum);
+    EXPECT_TRUE(plan.uses_existing_builtin_derive_capability_path);
+    EXPECT_EQ(plan.capability_count, 4U);
+    EXPECT_EQ(plan.copy_capability_count, 1U);
+    EXPECT_EQ(plan.eq_capability_count, 2U);
+    EXPECT_EQ(plan.hash_capability_count, 1U);
+    EXPECT_FALSE(plan.requires_generated_items);
+    EXPECT_FALSE(plan.parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate& release_gate =
+        result.builtin_derive_parser_release_gates.front();
+    EXPECT_EQ(release_gate.admission_count, 1U);
+    EXPECT_EQ(release_gate.derive_admission_count, 1U);
+    EXPECT_EQ(release_gate.semantic_plan_count, 1U);
+    EXPECT_EQ(release_gate.capability_total_count, 4U);
+    EXPECT_EQ(release_gate.parser_consumable_contract_count, 0U);
+    EXPECT_TRUE(release_gate.rollback_diagnostics_available);
+    EXPECT_FALSE(release_gate.parser_consumption_enabled);
+
+    EXPECT_EQ(result.summary.builtin_derive_expansion_capability_candidate_count, 4U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 4U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_eq_capability_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_hash_capability_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_gate_count, 1U);
+    EXPECT_EQ(result.summary.user_generated_code_count, 0U);
+
+    const std::string dump = frontend::macro::dump_early_item_expansion(result);
+    expect_contains(dump, "duplicate_candidates=1");
+    expect_contains(dump, "target_kind=enum");
+    expect_contains(dump, "capabilities=4");
+    expect_contains(dump, "builtin derive parser consumption release remains blocked in M22c");
+}
+
+TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy)]\n"
+        "struct Primary { value: i32; }\n"
+        "#[builder(flag)]\n"
+        "struct Secondary { value: i32; }\n";
+
+    syntax::AstModule module = parse_success(source);
+    assign_single_module_ownership(module);
+    ASSERT_EQ(module.items.size(), 2U);
+    ASSERT_EQ(module.item_part_indices.size(), module.items.size());
+    module.item_part_indices[0] = 0U;
+    module.item_part_indices[1] = 1U;
+    std::vector<std::vector<query::ModulePartKey>> part_keys = part_key_table(2U);
+
+    auto expanded = frontend::macro::expand_early_item_macros_noop(module, part_keys);
+    ASSERT_TRUE(expanded) << expanded.error().message;
+    const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
+
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.inputs.size(), 2U);
+    ASSERT_EQ(result.generated_parts.size(), 2U);
+    ASSERT_EQ(result.parser_consumption_contract_gates.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 2U);
+
+    EXPECT_EQ(result.generated_parts[0].source_part_index, 0U);
+    EXPECT_EQ(result.generated_parts[0].source_part, part_keys[0][0]);
+    EXPECT_EQ(result.generated_parts[1].source_part_index, 1U);
+    EXPECT_EQ(result.generated_parts[1].source_part, part_keys[0][1]);
+
+    const frontend::macro::EarlyItemMacroInput& derive_input = result.inputs[0];
+    const frontend::macro::EarlyItemMacroInput& builder_input = result.inputs[1];
+    EXPECT_EQ(derive_input.part_index, 0U);
+    EXPECT_EQ(builder_input.part_index, 1U);
+    EXPECT_EQ(derive_input.attribute_name, "derive");
+    EXPECT_EQ(builder_input.attribute_name, "builder");
+
+    const frontend::macro::BuiltinDeriveExpansionAdmissionGate* const derive_admission =
+        builtin_derive_admission_for_input(result, derive_input);
+    ASSERT_NE(derive_admission, nullptr);
+    EXPECT_EQ(derive_admission->query_name,
+        "m22a-builtin-derive-admission:0:0:0:0:derive");
+    EXPECT_EQ(derive_admission->capability_candidate_count, 1U);
+    EXPECT_TRUE(derive_admission->builtin_derive_input);
+
+    const frontend::macro::BuiltinDeriveExpansionAdmissionGate* const builder_admission =
+        builtin_derive_admission_for_input(result, builder_input);
+    ASSERT_NE(builder_admission, nullptr);
+    EXPECT_EQ(builder_admission->query_name,
+        "m22a-builtin-derive-admission:0:1:1:0:builder");
+    EXPECT_EQ(builder_admission->capability_candidate_count, 0U);
+    EXPECT_FALSE(builder_admission->builtin_derive_input);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate* const primary_release =
+        builtin_derive_parser_release_gate_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_release, nullptr);
+    EXPECT_EQ(primary_release->release_query_name, "m22c-builtin-derive-parser-release:0:0");
+    EXPECT_EQ(primary_release->admission_count, 1U);
+    EXPECT_EQ(primary_release->derive_admission_count, 1U);
+    EXPECT_EQ(primary_release->semantic_plan_count, 1U);
+    EXPECT_EQ(primary_release->capability_total_count, 1U);
+    EXPECT_FALSE(primary_release->parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionReleaseGate* const secondary_release =
+        builtin_derive_parser_release_gate_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_release, nullptr);
+    EXPECT_EQ(secondary_release->release_query_name, "m22c-builtin-derive-parser-release:0:1");
+    EXPECT_EQ(secondary_release->admission_count, 1U);
+    EXPECT_EQ(secondary_release->derive_admission_count, 0U);
+    EXPECT_EQ(secondary_release->semantic_plan_count, 1U);
+    EXPECT_EQ(secondary_release->capability_total_count, 0U);
+    EXPECT_FALSE(secondary_release->parser_consumption_enabled);
+    EXPECT_NE(primary_release->admission_group_identity,
+        secondary_release->admission_group_identity);
+    EXPECT_NE(primary_release->semantic_plan_group_identity,
+        secondary_release->semantic_plan_group_identity);
+    EXPECT_NE(primary_release->release_gate_identity, secondary_release->release_gate_identity);
+
+    EXPECT_EQ(result.summary.builtin_derive_expansion_admission_gate_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_derive_admission_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_expansion_non_derive_blocked_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_plan_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_gate_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_release_parser_consumable_count, 0U);
+
+    const std::string dump = frontend::macro::dump_early_item_expansion(result);
+    expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:0");
+    expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:1");
+    expect_contains(dump, "source_part=1");
+    expect_contains(dump, "part=1");
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -3280,6 +3742,182 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserReadinessContractAndClos
     refresh_expansion_result(closure_identity);
     EXPECT_NE(closure_identity.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(closure_identity));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsBuiltinDeriveM22Drift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.builtin_derive_expansion_admissions.size(), 2U);
+    ASSERT_EQ(baseline.builtin_derive_semantic_plans.size(), 2U);
+    ASSERT_EQ(baseline.builtin_derive_parser_release_gates.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_admissions = baseline;
+    missing_admissions.builtin_derive_expansion_admissions.clear();
+    refresh_expansion_result(missing_admissions);
+    EXPECT_EQ(missing_admissions.summary.builtin_derive_expansion_admission_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_admissions));
+
+    frontend::macro::EarlyItemExpansionResult wrong_admission_identity = baseline;
+    wrong_admission_identity.builtin_derive_expansion_admissions.back().admission_identity =
+        query::stable_fingerprint("wrong builtin derive admission identity");
+    refresh_expansion_result(wrong_admission_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_admission_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_admission_kind = baseline;
+    wrong_admission_kind.builtin_derive_expansion_admissions.back().admission_kind =
+        "non_derive_attribute_expansion_blocked";
+    refresh_expansion_result(wrong_admission_kind);
+    EXPECT_EQ(wrong_admission_kind.summary.builtin_derive_expansion_derive_admission_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_admission_kind));
+
+    frontend::macro::EarlyItemExpansionResult wrong_admission_query = baseline;
+    wrong_admission_query.builtin_derive_expansion_admissions.back().query_name =
+        "m22a-builtin-derive-admission:wrong";
+    refresh_expansion_result(wrong_admission_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_admission_query));
+
+    frontend::macro::EarlyItemExpansionResult wrong_candidate_count = baseline;
+    wrong_candidate_count.builtin_derive_expansion_admissions.back().capability_candidate_count = 1U;
+    refresh_expansion_result(wrong_candidate_count);
+    EXPECT_NE(wrong_candidate_count.summary.builtin_derive_expansion_capability_candidate_count,
+        baseline.summary.builtin_derive_expansion_capability_candidate_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_candidate_count));
+
+    frontend::macro::EarlyItemExpansionResult admission_parser_enabled = baseline;
+    admission_parser_enabled.builtin_derive_expansion_admissions.back().parser_consumption_enabled = true;
+    refresh_expansion_result(admission_parser_enabled);
+    EXPECT_EQ(admission_parser_enabled.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult admission_standard_library = baseline;
+    admission_standard_library.builtin_derive_expansion_admissions.back().standard_library_required = true;
+    refresh_expansion_result(admission_standard_library);
+    EXPECT_EQ(admission_standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_standard_library));
+
+    frontend::macro::EarlyItemExpansionResult missing_plans = baseline;
+    missing_plans.builtin_derive_semantic_plans.clear();
+    refresh_expansion_result(missing_plans);
+    EXPECT_EQ(missing_plans.summary.builtin_derive_semantic_plan_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_plans));
+
+    frontend::macro::EarlyItemExpansionResult wrong_semantic_identity = baseline;
+    wrong_semantic_identity.builtin_derive_semantic_plans.back().semantic_plan_identity =
+        query::stable_fingerprint("wrong builtin derive semantic plan");
+    refresh_expansion_result(wrong_semantic_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_semantic_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_target_kind = baseline;
+    wrong_target_kind.builtin_derive_semantic_plans.back().target_kind = "enum";
+    refresh_expansion_result(wrong_target_kind);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_target_kind));
+
+    frontend::macro::EarlyItemExpansionResult wrong_capability_total = baseline;
+    wrong_capability_total.builtin_derive_semantic_plans.back().capability_count = 2U;
+    refresh_expansion_result(wrong_capability_total);
+    EXPECT_EQ(wrong_capability_total.summary.builtin_derive_semantic_capability_count, 2U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_capability_total));
+
+    frontend::macro::EarlyItemExpansionResult semantic_requires_generated_items = baseline;
+    semantic_requires_generated_items.builtin_derive_semantic_plans.back().requires_generated_items = true;
+    refresh_expansion_result(semantic_requires_generated_items);
+    EXPECT_FALSE(frontend::macro::is_valid(semantic_requires_generated_items));
+
+    frontend::macro::EarlyItemExpansionResult semantic_runtime = baseline;
+    semantic_runtime.builtin_derive_semantic_plans.back().requires_runtime = true;
+    refresh_expansion_result(semantic_runtime);
+    EXPECT_EQ(semantic_runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(semantic_runtime));
+
+    frontend::macro::EarlyItemExpansionResult missing_release = baseline;
+    missing_release.builtin_derive_parser_release_gates.clear();
+    refresh_expansion_result(missing_release);
+    EXPECT_EQ(missing_release.summary.builtin_derive_parser_release_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_release));
+
+    frontend::macro::EarlyItemExpansionResult wrong_release_identity = baseline;
+    wrong_release_identity.builtin_derive_parser_release_gates.front().release_gate_identity =
+        query::stable_fingerprint("wrong builtin derive parser release gate");
+    refresh_expansion_result(wrong_release_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_release_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_release_counts = baseline;
+    wrong_release_counts.builtin_derive_parser_release_gates.front().derive_admission_count = 0U;
+    refresh_expansion_result(wrong_release_counts);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_release_counts));
+
+    frontend::macro::EarlyItemExpansionResult release_parser_enabled = baseline;
+    release_parser_enabled.builtin_derive_parser_release_gates.front().parser_consumption_enabled = true;
+    refresh_expansion_result(release_parser_enabled);
+    EXPECT_EQ(release_parser_enabled.summary.builtin_derive_parser_release_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(release_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult release_debug_trace = baseline;
+    release_debug_trace.builtin_derive_parser_release_gates.front().debug_trace_available = true;
+    refresh_expansion_result(release_debug_trace);
+    EXPECT_EQ(release_debug_trace.summary.parser_admission_debug_trace_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(release_debug_trace));
+
+    frontend::macro::EarlyItemExpansionResult release_external_process = baseline;
+    release_external_process.builtin_derive_parser_release_gates.front().external_process_required = true;
+    refresh_expansion_result(release_external_process);
+    EXPECT_EQ(release_external_process.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(release_external_process));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM22Facts)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.builtin_derive_expansion_admissions.empty());
+    ASSERT_FALSE(baseline.builtin_derive_semantic_plans.empty());
+    ASSERT_FALSE(baseline.builtin_derive_parser_release_gates.empty());
+
+    frontend::macro::EarlyItemExpansionResult admission_identity = baseline;
+    admission_identity.builtin_derive_expansion_admissions.front().admission_identity =
+        query::stable_fingerprint("different builtin derive admission identity");
+    refresh_expansion_result(admission_identity);
+    EXPECT_NE(admission_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_identity));
+
+    frontend::macro::EarlyItemExpansionResult admission_query = baseline;
+    admission_query.builtin_derive_expansion_admissions.front().query_name =
+        "m22a-builtin-derive-admission:different";
+    refresh_expansion_result(admission_query);
+    EXPECT_NE(admission_query.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_query));
+
+    frontend::macro::EarlyItemExpansionResult semantic_identity = baseline;
+    semantic_identity.builtin_derive_semantic_plans.front().semantic_plan_identity =
+        query::stable_fingerprint("different builtin derive semantic plan identity");
+    refresh_expansion_result(semantic_identity);
+    EXPECT_NE(semantic_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(semantic_identity));
+
+    frontend::macro::EarlyItemExpansionResult semantic_capabilities = baseline;
+    semantic_capabilities.builtin_derive_semantic_plans.front().hash_capability_count = 0U;
+    refresh_expansion_result(semantic_capabilities);
+    EXPECT_NE(semantic_capabilities.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(semantic_capabilities));
+
+    frontend::macro::EarlyItemExpansionResult release_identity = baseline;
+    release_identity.builtin_derive_parser_release_gates.front().release_gate_identity =
+        query::stable_fingerprint("different builtin derive parser release identity");
+    refresh_expansion_result(release_identity);
+    EXPECT_NE(release_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(release_identity));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

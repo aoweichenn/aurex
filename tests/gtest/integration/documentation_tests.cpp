@@ -82,6 +82,9 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m21m-generated-token-parser-readiness-preflight.md",
         "docs/zh/m21n-parser-consumption-contract-gate.md",
         "docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "docs/zh/m22a-builtin-derive-expansion-admission-gate.md",
+        "docs/zh/m22b-builtin-derive-semantic-expansion-plan.md",
+        "docs/zh/m22c-builtin-derive-parser-consumption-release-gate.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -348,7 +351,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21o Macro Expansion Boundary Release Closure**");
+        "docs/zh/README.md", "文档基线：**M22c Builtin Derive Parser Consumption Release Gate**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -401,8 +404,24 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "Aurex M21n Parser Consumption Contract Gate");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21o Macro Expansion Boundary Release Closure");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M22a Builtin Derive Expansion Admission Gate");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M22b Builtin Derive Semantic Expansion Plan");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M22c Builtin Derive Parser Consumption Release Gate");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21o Macro Expansion Boundary Release Closure");
+        "阶段：M22c Builtin Derive Parser Consumption Release Gate");
+    expect_document_contains("docs/zh/progress.md", "BuiltinDeriveExpansionAdmissionGate");
+    expect_document_contains("docs/zh/progress.md", "BuiltinDeriveSemanticExpansionPlan");
+    expect_document_contains("docs/zh/progress.md", "BuiltinDeriveParserConsumptionReleaseGate");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_expansion_admissions");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_semantic_plans");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_parser_release_gates");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_expansion_admission_gate_v1");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_semantic_expansion_plan_v1");
+    expect_document_contains("docs/zh/progress.md", "builtin_derive_parser_consumption_release_gate_v1");
+    expect_document_contains("docs/zh/progress.md", "m22c-builtin-derive-parser-release:<module>:<part>");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
     expect_document_contains("docs/zh/progress.md", "GeneratedTokenParserReadinessPreflightEntry");
     expect_document_contains("docs/zh/progress.md", "GeneratedTokenParserConsumptionContractGate");
@@ -504,6 +523,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M22c Builtin Derive Parser Consumption Release Gate");
+    expect_document_contains("docs/zh/version.md", "BuiltinDeriveExpansionAdmissionGate");
+    expect_document_contains("docs/zh/version.md", "BuiltinDeriveSemanticExpansionPlan");
+    expect_document_contains("docs/zh/version.md", "BuiltinDeriveParserConsumptionReleaseGate");
+    expect_document_contains("docs/zh/version.md", "m22a-builtin-derive-admission:<module>:<part>");
+    expect_document_contains("docs/zh/version.md", "m22c-builtin-derive-parser-release:<module>:<part>");
     expect_document_contains("docs/zh/version.md",
         "## M21o Macro Expansion Boundary Release Closure");
     expect_document_contains("docs/zh/version.md",
@@ -982,11 +1008,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M20c drop / allocator identity prerequisite gate");
     expect_document_contains("docs/zh/next-steps.md", "M20d Runtime Lowering ABI Design Closure 已完成");
     expect_document_contains("docs/zh/next-steps.md",
-        "当前实现入口：M21 宏系统主线已开启，M21o macro expansion boundary release closure 已收口");
+        "当前实现入口：M21/M22 宏系统主线已开启，M22c builtin derive parser release gate 已收口");
     expect_document_contains("docs/zh/next-steps.md",
-        "下一步建议进入 M22：仍保持 no-stdlib / no-runtime");
-    expect_document_contains("docs/zh/next-steps.md", "builtin derive expansion admission design");
-    expect_document_contains("docs/zh/next-steps.md", "parser consumption admission 条件");
+        "M22a-M22c 已完成 builtin derive parser release gate 准备");
+    expect_document_contains("docs/zh/next-steps.md",
+        "下一步建议进入 M22d/M23 之前的 release-hardening 小步");
+    expect_document_contains("docs/zh/next-steps.md", "no-parser-consumption");
+    expect_document_contains("docs/zh/next-steps.md", "失败回滚诊断设计");
     expect_document_contains("docs/zh/next-steps.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/next-steps.md", "composition_supertrait_chains");
     expect_document_contains("docs/zh/language-feature-inventory.md",
@@ -1020,7 +1048,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20d 已新增 `OwnedDynRuntimeLoweringAbiGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
-        "阶段：M21o Macro Expansion Boundary Release Closure");
+        "阶段：M22c Builtin Derive Parser Consumption Release Gate");
     expect_document_contains("docs/zh/language-feature-inventory.md", "M21m 新增");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "`GeneratedTokenParserReadinessPreflightEntry`");
@@ -1030,6 +1058,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/language-feature-inventory.md", "`MacroExpansionBoundaryClosureReport`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "`M21o Macro Expansion Boundary Release Closure`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M22a 新增 `BuiltinDeriveExpansionAdmissionGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M22b 新增 `BuiltinDeriveSemanticExpansionPlan`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M22c 新增 `BuiltinDeriveParserConsumptionReleaseGate`");
     expect_document_contains("docs/zh/language-manual.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
     expect_document_contains(
         "docs/zh/language-manual.md",

@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M21o Macro Expansion Boundary Release Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M22c Builtin Derive Parser Consumption Release Gate**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -108,7 +108,20 @@ compatibility、hygiene/source-map prerequisites 和 diagnostic projection avail
 `m21_macro_expansion_boundary_release_closure_v1` closure report，并把 result name 推进为
 `M21o Macro Expansion Boundary Release Closure`。M21o 仍保持 parser consumption、generated source text、
 generated module part parse/merge、AST mutation、emit-expanded、debug/source-map projection、标准库、runtime helper
-和 macro-generated user code 全部关闭。
+和 macro-generated user code 全部关闭。M22a 已新增 `BuiltinDeriveExpansionAdmissionGate` 和
+`builtin_derive_expansion_admissions`，为每个 macro input 固定
+`builtin_derive_expansion_admission_gate_v1`、`admission_identity`、
+`m22a-builtin-derive-admission:<module>:<part>:<item>:<attr>:<name>` query name、derive/non-derive admission kind
+以及 capability candidate 计数；M22b 已新增 `BuiltinDeriveSemanticExpansionPlan` 和
+`builtin_derive_semantic_plans`，把现有内建 `#[derive(Copy, Eq, Hash)]` capability path 投影为
+`builtin_derive_semantic_expansion_plan_v1`、`capability_fact_lowering_plan`、`capability_set_identity` 和
+`semantic_plan_identity`；M22c 已新增 `BuiltinDeriveParserConsumptionReleaseGate` 和
+`builtin_derive_parser_release_gates`，按 generated part 汇总 admission/semantic plan，固定
+`builtin_derive_parser_consumption_release_gate_v1`、`m22c-builtin-derive-parser-release:<module>:<part>`、
+rollback diagnostics/debug trace/source-map/hygiene prerequisites，并把 result name 推进为
+`M22c Builtin Derive Parser Consumption Release Gate`。M22a-M22c 仍保持 parser consumption、generated source text、
+generated module part parse/merge、AST mutation、emit-expanded、debug/source-map projection、标准库、runtime helper、
+external procedural macro 和 macro-generated user code 全部关闭。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -182,6 +195,9 @@ generated module part parse/merge、AST mutation、emit-expanded、debug/source-
 - [Aurex M21m Generated Token Parser Consumption Readiness Preflight](m21m-generated-token-parser-readiness-preflight.md)
 - [Aurex M21n Parser Consumption Contract Gate](m21n-parser-consumption-contract-gate.md)
 - [Aurex M21o Macro Expansion Boundary Release Closure](m21o-macro-expansion-boundary-release-closure.md)
+- [Aurex M22a Builtin Derive Expansion Admission Gate](m22a-builtin-derive-expansion-admission-gate.md)
+- [Aurex M22b Builtin Derive Semantic Expansion Plan](m22b-builtin-derive-semantic-expansion-plan.md)
+- [Aurex M22c Builtin Derive Parser Consumption Release Gate](m22c-builtin-derive-parser-consumption-release-gate.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

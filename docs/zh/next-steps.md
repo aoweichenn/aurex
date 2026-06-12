@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21o macro expansion boundary release closure 已收口
+## 当前实现入口：M21/M22 宏系统主线已开启，M22c builtin derive parser release gate 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -116,9 +116,24 @@ contract gate、blocked contract gate 和 parser-consumable contract gate counts
 procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser consumption，不实现
 标准库或 runtime helper。
 
-下一步建议进入 M22：仍保持 no-stdlib / no-runtime，先做 builtin derive expansion admission design。M22 不应立刻
-执行用户自定义 macro，也不应直接打开 external procedural macro；应先设计内建 derive 的 generated token
-语义、hygiene/source-map/debug trace 最小真实化边界、parser consumption admission 条件和失败回滚诊断。
+M22a-M22c 已完成 builtin derive parser release gate 准备：M22a 新增 `BuiltinDeriveExpansionAdmissionGate` 和
+`builtin_derive_expansion_admissions`，固定 `builtin_derive_expansion_admission_gate_v1`、`admission_identity`、
+`m22a-builtin-derive-admission:<module>:<part>:<item>:<attr>:<name>` query name、derive/non-derive admission kind
+和 capability candidate 计数；M22b 新增 `BuiltinDeriveSemanticExpansionPlan` 和
+`builtin_derive_semantic_plans`，复用现有内建 `#[derive(Copy, Eq, Hash)]` capability path，固定
+`builtin_derive_semantic_expansion_plan_v1`、`capability_fact_lowering_plan`、`capability_set_identity`、
+`semantic_plan_identity`、target kind 和 Copy/Eq/Hash capability 计数；M22c 新增
+`BuiltinDeriveParserConsumptionReleaseGate` 和 `builtin_derive_parser_release_gates`，按 generated module part 汇总
+M22a/M22b，绑定 M21n `contract_identity` 与 M21o `closure_identity`，固定
+`builtin_derive_parser_consumption_release_gate_v1`、`m22c-builtin-derive-parser-release:<module>:<part>`、
+rollback diagnostics/debug trace/source-map/hygiene prerequisites，并把当前 result name 推进到
+`M22c Builtin Derive Parser Consumption Release Gate`。M22c 仍不执行用户自定义 macro，不打开 external procedural
+macro，不生成 source text，不 parse / merge generated module part，不打开 parser consumption，不实现标准库或
+runtime helper。
+
+下一步建议进入 M22d/M23 之前的 release-hardening 小步：保持 no-stdlib / no-runtime / no-parser-consumption，先补
+builtin derive parser release gate 的跨 part / 多 item negative matrix、debug dump 稳定性和后续打开 parser
+consumption 所需的失败回滚诊断设计；不要直接进入用户自定义宏或 external procedural macro。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

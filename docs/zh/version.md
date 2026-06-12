@@ -1,5 +1,71 @@
 # 版本文档
 
+## M22c Builtin Derive Parser Consumption Release Gate
+
+当前版本在 M21o 宏展开边界 closure 之后，完成 M22a/M22b/M22c 三段 builtin derive parser consumption
+释放门禁准备。`EarlyItemExpansionResult` 的 result name 固定为
+`M22c Builtin Derive Parser Consumption Release Gate`。本阶段仍不执行用户宏、不生成 source text、不让 parser
+消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveExpansionAdmissionGate`。
+- 新增 `frontend::macro::BuiltinDeriveSemanticExpansionPlan`。
+- 新增 `frontend::macro::BuiltinDeriveParserConsumptionReleaseGate`。
+- 新增 `is_valid(const BuiltinDeriveExpansionAdmissionGate&)`。
+- 新增 `is_valid(const BuiltinDeriveSemanticExpansionPlan&)`。
+- 新增 `is_valid(const BuiltinDeriveParserConsumptionReleaseGate&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_expansion_admissions`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_semantic_plans`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_parser_release_gates`。
+- `EarlyItemExpansionSummary` 新增 builtin derive admission、semantic plan、parser release gate 和 Copy/Eq/Hash
+  capability 计数。
+- M22a admission gate 固定 `builtin_derive_expansion_admission_gate_v1`。
+- M22a admission query name 固定
+  `m22a-builtin-derive-admission:<module>:<part>:<item>:<attr>:<name>`；文档测试也保留
+  `m22a-builtin-derive-admission:<module>:<part>` 作为前缀锚点。
+- M22a admission kind 固定为 `builtin_derive_expansion_candidate` 或
+  `non_derive_attribute_expansion_blocked`。
+- M22a admission 绑定 M21i `token_buffer_identity`、M21m `preflight_identity`、M21j `parse_gate_identity`、
+  M21k `diagnostic_identity` 和 M21o `closure_identity`。
+- M22a 记录 `capability_candidate_count`、`unsupported_candidate_count` 和 `duplicate_candidate_count`。
+- M22b semantic plan 固定 `builtin_derive_semantic_expansion_plan_v1`。
+- M22b semantic model 固定为 `capability_fact_lowering_plan`。
+- M22b 复用现有内建 `#[derive(Copy, Eq, Hash)]` capability path，记录 target kind、Copy/Eq/Hash capability
+  count、`capability_set_identity` 和 `semantic_plan_identity`。
+- M22c release gate 固定 `builtin_derive_parser_consumption_release_gate_v1`。
+- M22c release query name 固定 `m22c-builtin-derive-parser-release:<module>:<part>`。
+- M22c release gate 绑定 M21n `contract_identity`、M21o `closure_identity`、M22a admission group identity 和
+  M22b semantic plan group identity。
+- M22c release gate 汇总 admission、derive admission、semantic plan、capability total 和
+  parser-consumable contract counts。
+- M22c release gate 固定 rollback diagnostics、debug trace、source-map 和 hygiene prerequisites 为 available。
+- validation 拒绝 M22 admission / semantic plan / release gate identity 漂移、totals 漂移、parser consumption 被打开、
+  standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_expansion_admission_gate`、`builtin_derive_semantic_expansion_plan` 和
+  `builtin_derive_parser_consumption_release_gate`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21o Macro Expansion Boundary Release Closure
 
 当前版本把 M21m generated token parser readiness preflight 和 M21n parser consumption contract gate 汇总成

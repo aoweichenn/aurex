@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21O_EXPANSION_NAME =
-    "M21o Macro Expansion Boundary Release Closure";
-constexpr std::string_view FRONTEND_MACRO_M21O_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21o.macro_expansion_boundary_release_closure.v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_EXPANSION_NAME =
+    "M22c Builtin Derive Parser Consumption Release Gate";
+constexpr std::string_view FRONTEND_MACRO_M22C_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m22c.builtin_derive_parser_consumption_release_gate.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -146,6 +146,8 @@ constexpr std::string_view FRONTEND_MACRO_M21J_EMPTY_PARSE_BLOCKER =
     "empty or non-derive generated token buffer parser admission remains blocked in M21j";
 constexpr std::string_view FRONTEND_MACRO_M21J_MISSING_PARSE_MERGE_STUB =
     "early item macro expansion missing generated module part parse merge stub";
+constexpr std::string_view FRONTEND_MACRO_M22_MISSING_INPUT_AST_VIEW =
+    "early item macro expansion missing M22 input AST view";
 constexpr std::string_view FRONTEND_MACRO_M21K_DIAGNOSTIC_POLICY =
     "parser_admission_blocked_diagnostic_projection_v1";
 constexpr std::string_view FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY =
@@ -206,6 +208,54 @@ constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME =
     "m21o-macro-boundary-closure";
 constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_BLOCKER =
     "M21 macro expansion boundary remains parser-blocked after M21o closure";
+constexpr std::string_view FRONTEND_MACRO_M22A_ADMISSION_GATE_MARKER =
+    "frontend.macro.m22a.builtin_derive_expansion_admission_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M22A_ADMISSION_IDENTITY_MARKER =
+    "frontend.macro.m22a.builtin_derive_expansion_admission_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22A_ADMISSION_POLICY =
+    "builtin_derive_expansion_admission_gate_v1";
+constexpr std::string_view FRONTEND_MACRO_M22A_DERIVE_ADMISSION_KIND =
+    "builtin_derive_expansion_candidate";
+constexpr std::string_view FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKED_KIND =
+    "non_derive_attribute_expansion_blocked";
+constexpr std::string_view FRONTEND_MACRO_M22A_QUERY_NAME_PREFIX =
+    "m22a-builtin-derive-admission:";
+constexpr std::string_view FRONTEND_MACRO_M22A_DERIVE_BLOCKER =
+    "builtin derive expansion admission remains parser-blocked in M22a";
+constexpr std::string_view FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKER =
+    "non-derive item attribute expansion remains blocked in M22a";
+constexpr std::string_view FRONTEND_MACRO_M22B_SEMANTIC_PLAN_MARKER =
+    "frontend.macro.m22b.builtin_derive_semantic_expansion_plan.v1";
+constexpr std::string_view FRONTEND_MACRO_M22B_SEMANTIC_PLAN_IDENTITY_MARKER =
+    "frontend.macro.m22b.builtin_derive_semantic_plan_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22B_CAPABILITY_SET_IDENTITY_MARKER =
+    "frontend.macro.m22b.builtin_derive_capability_set_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22B_SEMANTIC_POLICY =
+    "builtin_derive_semantic_expansion_plan_v1";
+constexpr std::string_view FRONTEND_MACRO_M22B_SEMANTIC_MODEL =
+    "capability_fact_lowering_plan";
+constexpr std::string_view FRONTEND_MACRO_M22B_BLOCKER =
+    "builtin derive semantic expansion remains capability-only and parser-blocked in M22b";
+constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_GATE_MARKER =
+    "frontend.macro.m22c.builtin_derive_parser_consumption_release_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_GATE_IDENTITY_MARKER =
+    "frontend.macro.m22c.builtin_derive_parser_release_gate_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_ADMISSION_GROUP_IDENTITY_MARKER =
+    "frontend.macro.m22c.builtin_derive_admission_group_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_SEMANTIC_PLAN_GROUP_IDENTITY_MARKER =
+    "frontend.macro.m22c.builtin_derive_semantic_plan_group_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_POLICY =
+    "builtin_derive_parser_consumption_release_gate_v1";
+constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_QUERY_NAME_PREFIX =
+    "m22c-builtin-derive-parser-release:";
+constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_BLOCKER =
+    "builtin derive parser consumption release remains blocked in M22c";
+constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_STRUCT = "struct";
+constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_ENUM = "enum";
+constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_OTHER = "other";
+constexpr std::string_view FRONTEND_MACRO_M22_CAPABILITY_COPY = "Copy";
+constexpr std::string_view FRONTEND_MACRO_M22_CAPABILITY_EQ = "Eq";
+constexpr std::string_view FRONTEND_MACRO_M22_CAPABILITY_HASH = "Hash";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_BEGIN_TOKEN_TEXT =
     "__aurex_builtin_derive_begin";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_END_TOKEN_TEXT =
@@ -514,6 +564,144 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     name.push_back(':');
     name += std::to_string(source_part_index);
     return name;
+}
+
+[[nodiscard]] std::string builtin_derive_admission_query_name(const EarlyItemMacroInput& input)
+{
+    std::string name(FRONTEND_MACRO_M22A_QUERY_NAME_PREFIX);
+    name += std::to_string(input.module.value);
+    name.push_back(':');
+    name += std::to_string(input.part_index);
+    name.push_back(':');
+    name += std::to_string(input.item.value);
+    name.push_back(':');
+    name += std::to_string(input.attribute_index);
+    name.push_back(':');
+    name += input.attribute_name;
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_parser_release_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M22C_RELEASE_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] bool builtin_derive_input(const EarlyItemMacroInput& input) noexcept
+{
+    return input.disposition == EarlyItemExpansionDisposition::builtin_derive_passthrough;
+}
+
+[[nodiscard]] std::string_view builtin_derive_admission_kind_for_input(
+    const EarlyItemMacroInput& input) noexcept
+{
+    return builtin_derive_input(input) ? FRONTEND_MACRO_M22A_DERIVE_ADMISSION_KIND
+                                       : FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKED_KIND;
+}
+
+[[nodiscard]] std::string_view builtin_derive_admission_blocker_for_input(
+    const EarlyItemMacroInput& input) noexcept
+{
+    return builtin_derive_input(input) ? FRONTEND_MACRO_M22A_DERIVE_BLOCKER
+                                       : FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKER;
+}
+
+[[nodiscard]] bool builtin_derive_candidate_name_supported(const std::string_view name) noexcept
+{
+    return name == FRONTEND_MACRO_M22_CAPABILITY_COPY
+        || name == FRONTEND_MACRO_M22_CAPABILITY_EQ
+        || name == FRONTEND_MACRO_M22_CAPABILITY_HASH;
+}
+
+[[nodiscard]] bool attribute_token_is_derive_capability_candidate(
+    const syntax::AttributeTokenDecl& token) noexcept
+{
+    return token.kind == syntax::TokenKind::identifier
+        && token.depth == 1U
+        && token.group == syntax::AttributeTokenTreeGroupKind::none;
+}
+
+[[nodiscard]] base::u64 count_builtin_derive_capability_candidates(
+    const syntax::AttributeDecl& attribute) noexcept
+{
+    base::u64 count = 0;
+    for (const syntax::AttributeTokenDecl& token : attribute.token_tree) {
+        if (attribute_token_is_derive_capability_candidate(token)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+[[nodiscard]] base::u64 count_builtin_derive_unsupported_candidates(
+    const syntax::AttributeDecl& attribute) noexcept
+{
+    base::u64 count = 0;
+    for (const syntax::AttributeTokenDecl& token : attribute.token_tree) {
+        if (attribute_token_is_derive_capability_candidate(token)
+            && !builtin_derive_candidate_name_supported(token.text)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+[[nodiscard]] bool contains_string_view(
+    const std::vector<std::string_view>& values, const std::string_view value) noexcept
+{
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+[[nodiscard]] base::u64 count_builtin_derive_duplicate_candidates(
+    const syntax::AttributeDecl& attribute)
+{
+    std::vector<std::string_view> seen;
+    seen.reserve(attribute.token_tree.size());
+    base::u64 duplicates = 0;
+    for (const syntax::AttributeTokenDecl& token : attribute.token_tree) {
+        if (!attribute_token_is_derive_capability_candidate(token)
+            || !builtin_derive_candidate_name_supported(token.text)) {
+            continue;
+        }
+        if (contains_string_view(seen, token.text)) {
+            ++duplicates;
+            continue;
+        }
+        seen.push_back(token.text);
+    }
+    return duplicates;
+}
+
+[[nodiscard]] std::string_view builtin_derive_target_kind(const syntax::ItemNode& item) noexcept
+{
+    if (item.kind == syntax::ItemKind::struct_decl) {
+        return FRONTEND_MACRO_M22_TARGET_KIND_STRUCT;
+    }
+    if (item.kind == syntax::ItemKind::enum_decl) {
+        return FRONTEND_MACRO_M22_TARGET_KIND_ENUM;
+    }
+    return FRONTEND_MACRO_M22_TARGET_KIND_OTHER;
+}
+
+[[nodiscard]] bool builtin_derive_target_is_struct_or_enum(const syntax::ItemNode& item) noexcept
+{
+    return item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::enum_decl;
+}
+
+[[nodiscard]] base::u64 count_derive_capability(
+    const syntax::ItemNode& item, const std::string_view capability) noexcept
+{
+    base::u64 count = 0;
+    for (const syntax::DeriveDecl& derive : item.derives) {
+        if (derive.name == capability) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 [[nodiscard]] bool token_buffer_kind_is_compiler_owned(const std::string_view token_buffer_kind) noexcept
@@ -1929,6 +2117,404 @@ void append_generated_token_records_for_attribute(std::vector<GeneratedTokenReco
     };
 }
 
+[[nodiscard]] query::StableFingerprint128 builtin_derive_admission_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& parser_gate,
+    const GeneratedTokenParserReadinessPreflightEntry& preflight,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const std::string_view query_name,
+    const base::u32 admission_index,
+    const base::u64 capability_candidate_count,
+    const base::u64 unsupported_candidate_count,
+    const base::u64 duplicate_candidate_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22A_ADMISSION_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_u32(admission_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(buffer.generated_part));
+    builder.mix_fingerprint(buffer.token_buffer_identity);
+    builder.mix_fingerprint(preflight.preflight_identity);
+    builder.mix_fingerprint(parser_gate.parse_gate_identity);
+    builder.mix_fingerprint(diagnostic.diagnostic_identity);
+    builder.mix_fingerprint(closure.closure_identity);
+    builder.mix_string(FRONTEND_MACRO_M22A_ADMISSION_POLICY);
+    builder.mix_string(builtin_derive_admission_kind_for_input(input));
+    builder.mix_string(query_name);
+    builder.mix_string(builtin_derive_admission_blocker_for_input(input));
+    builder.mix_u64(buffer.token_count);
+    builder.mix_u64(capability_candidate_count);
+    builder.mix_u64(unsupported_candidate_count);
+    builder.mix_u64(duplicate_candidate_count);
+    builder.mix_bool(builtin_derive_input(input));
+    builder.mix_bool(true);
+    builder.mix_bool(parser_gate.token_records_available);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveExpansionAdmissionGate make_builtin_derive_expansion_admission_gate(
+    const EarlyItemMacroInput& input,
+    const syntax::AttributeDecl& attribute,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& parser_gate,
+    const GeneratedTokenParserReadinessPreflightEntry& preflight,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const base::u32 admission_index)
+{
+    const std::string query_name = builtin_derive_admission_query_name(input);
+    const base::u64 capability_candidate_count =
+        builtin_derive_input(input) ? count_builtin_derive_capability_candidates(attribute) : 0U;
+    const base::u64 unsupported_candidate_count =
+        builtin_derive_input(input) ? count_builtin_derive_unsupported_candidates(attribute) : 0U;
+    const base::u64 duplicate_candidate_count =
+        builtin_derive_input(input) ? count_builtin_derive_duplicate_candidates(attribute) : 0U;
+    return BuiltinDeriveExpansionAdmissionGate{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        admission_index,
+        input.attached_part,
+        buffer.generated_part,
+        buffer.token_buffer_identity,
+        preflight.preflight_identity,
+        parser_gate.parse_gate_identity,
+        diagnostic.diagnostic_identity,
+        closure.closure_identity,
+        builtin_derive_admission_identity(input, buffer, parser_gate, preflight, diagnostic, closure,
+            query_name, admission_index, capability_candidate_count, unsupported_candidate_count,
+            duplicate_candidate_count),
+        std::string(FRONTEND_MACRO_M22A_ADMISSION_POLICY),
+        std::string(builtin_derive_admission_kind_for_input(input)),
+        query_name,
+        std::string(builtin_derive_admission_blocker_for_input(input)),
+        buffer.token_count,
+        capability_candidate_count,
+        unsupported_candidate_count,
+        duplicate_candidate_count,
+        builtin_derive_input(input),
+        true,
+        parser_gate.token_records_available,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_capability_set_identity(
+    const EarlyItemMacroInput& input,
+    const BuiltinDeriveExpansionAdmissionGate& admission,
+    const std::string_view target_kind,
+    const base::u64 copy_capability_count,
+    const base::u64 eq_capability_count,
+    const base::u64 hash_capability_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22B_CAPABILITY_SET_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_fingerprint(admission.admission_identity);
+    builder.mix_string(target_kind);
+    builder.mix_u64(copy_capability_count);
+    builder.mix_u64(eq_capability_count);
+    builder.mix_u64(hash_capability_count);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_semantic_plan_identity(
+    const EarlyItemMacroInput& input,
+    const BuiltinDeriveExpansionAdmissionGate& admission,
+    const query::StableFingerprint128 capability_set_identity,
+    const std::string_view target_kind,
+    const base::u32 semantic_plan_index,
+    const base::u64 capability_count,
+    const base::u64 copy_capability_count,
+    const base::u64 eq_capability_count,
+    const base::u64 hash_capability_count,
+    const bool target_struct_or_enum) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22B_SEMANTIC_PLAN_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_u32(semantic_plan_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(admission.generated_part));
+    builder.mix_fingerprint(admission.token_buffer_identity);
+    builder.mix_fingerprint(admission.preflight_identity);
+    builder.mix_fingerprint(admission.admission_identity);
+    builder.mix_fingerprint(capability_set_identity);
+    builder.mix_string(FRONTEND_MACRO_M22B_SEMANTIC_POLICY);
+    builder.mix_string(target_kind);
+    builder.mix_string(FRONTEND_MACRO_M22B_SEMANTIC_MODEL);
+    builder.mix_string(FRONTEND_MACRO_M22B_BLOCKER);
+    builder.mix_u64(capability_count);
+    builder.mix_u64(copy_capability_count);
+    builder.mix_u64(eq_capability_count);
+    builder.mix_u64(hash_capability_count);
+    builder.mix_bool(builtin_derive_input(input));
+    builder.mix_bool(target_struct_or_enum);
+    builder.mix_bool(builtin_derive_input(input));
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveSemanticExpansionPlan make_builtin_derive_semantic_expansion_plan(
+    const EarlyItemMacroInput& input,
+    const syntax::ItemNode& item,
+    const BuiltinDeriveExpansionAdmissionGate& admission,
+    const base::u32 semantic_plan_index)
+{
+    const base::u64 copy_capability_count = builtin_derive_input(input)
+        ? count_derive_capability(item, FRONTEND_MACRO_M22_CAPABILITY_COPY)
+        : 0U;
+    const base::u64 eq_capability_count = builtin_derive_input(input)
+        ? count_derive_capability(item, FRONTEND_MACRO_M22_CAPABILITY_EQ)
+        : 0U;
+    const base::u64 hash_capability_count = builtin_derive_input(input)
+        ? count_derive_capability(item, FRONTEND_MACRO_M22_CAPABILITY_HASH)
+        : 0U;
+    const std::string_view target_kind = builtin_derive_target_kind(item);
+    const bool target_struct_or_enum = builtin_derive_target_is_struct_or_enum(item);
+    const base::u64 capability_count = copy_capability_count + eq_capability_count + hash_capability_count;
+    const query::StableFingerprint128 capability_set_identity =
+        builtin_derive_capability_set_identity(input, admission, target_kind, copy_capability_count,
+            eq_capability_count, hash_capability_count);
+    return BuiltinDeriveSemanticExpansionPlan{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        semantic_plan_index,
+        input.attached_part,
+        admission.generated_part,
+        admission.token_buffer_identity,
+        admission.preflight_identity,
+        admission.admission_identity,
+        builtin_derive_semantic_plan_identity(input, admission, capability_set_identity,
+            target_kind, semantic_plan_index, capability_count, copy_capability_count,
+            eq_capability_count, hash_capability_count, target_struct_or_enum),
+        capability_set_identity,
+        std::string(FRONTEND_MACRO_M22B_SEMANTIC_POLICY),
+        std::string(target_kind),
+        std::string(FRONTEND_MACRO_M22B_SEMANTIC_MODEL),
+        std::string(FRONTEND_MACRO_M22B_BLOCKER),
+        capability_count,
+        copy_capability_count,
+        eq_capability_count,
+        hash_capability_count,
+        builtin_derive_input(input),
+        target_struct_or_enum,
+        builtin_derive_input(input),
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_admission_group_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22C_ADMISSION_GROUP_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    base::u64 admission_count = 0;
+    for (const BuiltinDeriveExpansionAdmissionGate& admission : admissions) {
+        if (admission.module.value != placeholder.module.value
+            || admission.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++admission_count;
+        builder.mix_fingerprint(admission.admission_identity);
+        builder.mix_string(admission.admission_kind);
+        builder.mix_u64(admission.capability_candidate_count);
+    }
+    builder.mix_u64(admission_count);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_semantic_plan_group_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22C_SEMANTIC_PLAN_GROUP_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    base::u64 plan_count = 0;
+    for (const BuiltinDeriveSemanticExpansionPlan& plan : plans) {
+        if (plan.module.value != placeholder.module.value
+            || plan.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++plan_count;
+        builder.mix_fingerprint(plan.semantic_plan_identity);
+        builder.mix_fingerprint(plan.capability_set_identity);
+        builder.mix_u64(plan.capability_count);
+    }
+    builder.mix_u64(plan_count);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_parser_release_gate_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& contract,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const query::StableFingerprint128 admission_group_identity,
+    const query::StableFingerprint128 semantic_plan_group_identity,
+    const std::string_view release_query_name,
+    const base::u64 admission_count,
+    const base::u64 derive_admission_count,
+    const base::u64 semantic_plan_count,
+    const base::u64 capability_total_count,
+    const base::u64 parser_consumable_contract_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22C_RELEASE_GATE_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(contract.contract_identity);
+    builder.mix_fingerprint(closure.closure_identity);
+    builder.mix_fingerprint(admission_group_identity);
+    builder.mix_fingerprint(semantic_plan_group_identity);
+    builder.mix_string(FRONTEND_MACRO_M22C_RELEASE_POLICY);
+    builder.mix_string(release_query_name);
+    builder.mix_string(FRONTEND_MACRO_M22C_RELEASE_BLOCKER);
+    builder.mix_u64(admission_count);
+    builder.mix_u64(derive_admission_count);
+    builder.mix_u64(semantic_plan_count);
+    builder.mix_u64(capability_total_count);
+    builder.mix_u64(parser_consumable_contract_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveParserConsumptionReleaseGate make_builtin_derive_parser_consumption_release_gate(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& contract,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans)
+{
+    base::u64 admission_count = 0;
+    base::u64 derive_admission_count = 0;
+    base::u64 semantic_plan_count = 0;
+    base::u64 capability_total_count = 0;
+    for (const BuiltinDeriveExpansionAdmissionGate& admission : admissions) {
+        if (admission.module.value != placeholder.module.value
+            || admission.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++admission_count;
+        if (admission.builtin_derive_input) {
+            ++derive_admission_count;
+        }
+    }
+    for (const BuiltinDeriveSemanticExpansionPlan& plan : plans) {
+        if (plan.module.value != placeholder.module.value
+            || plan.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++semantic_plan_count;
+        capability_total_count += plan.capability_count;
+    }
+    const base::u64 parser_consumable_contract_count = contract.parser_consumable ? 1U : 0U;
+    const query::StableFingerprint128 admission_group_identity =
+        builtin_derive_admission_group_identity(placeholder, admissions);
+    const query::StableFingerprint128 semantic_plan_group_identity =
+        builtin_derive_semantic_plan_group_identity(placeholder, plans);
+    const std::string release_query_name =
+        builtin_derive_parser_release_query_name(placeholder.module, placeholder.source_part_index);
+    return BuiltinDeriveParserConsumptionReleaseGate{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        contract.contract_identity,
+        closure.closure_identity,
+        admission_group_identity,
+        semantic_plan_group_identity,
+        builtin_derive_parser_release_gate_identity(placeholder, contract, closure,
+            admission_group_identity, semantic_plan_group_identity, release_query_name, admission_count,
+            derive_admission_count, semantic_plan_count, capability_total_count,
+            parser_consumable_contract_count),
+        std::string(FRONTEND_MACRO_M22C_RELEASE_POLICY),
+        release_query_name,
+        std::string(FRONTEND_MACRO_M22C_RELEASE_BLOCKER),
+        admission_count,
+        derive_admission_count,
+        semantic_plan_count,
+        capability_total_count,
+        parser_consumable_contract_count,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
     const query::ModulePartKey source_part, const syntax::ModuleId module, const base::u32 part_index)
 {
@@ -2526,6 +3112,122 @@ void mix_macro_boundary_closure_report(
     builder.mix_bool(report.produced_user_generated_code);
 }
 
+void mix_builtin_derive_expansion_admission_gate(
+    query::StableHashBuilder& builder, const BuiltinDeriveExpansionAdmissionGate& gate) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22A_ADMISSION_GATE_MARKER);
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_u32(gate.attribute_index);
+    builder.mix_u32(gate.admission_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.generated_part));
+    builder.mix_fingerprint(gate.token_buffer_identity);
+    builder.mix_fingerprint(gate.preflight_identity);
+    builder.mix_fingerprint(gate.parse_gate_identity);
+    builder.mix_fingerprint(gate.diagnostic_identity);
+    builder.mix_fingerprint(gate.closure_identity);
+    builder.mix_fingerprint(gate.admission_identity);
+    builder.mix_string(gate.admission_policy);
+    builder.mix_string(gate.admission_kind);
+    builder.mix_string(gate.query_name);
+    builder.mix_string(gate.blocker_reason);
+    builder.mix_u64(gate.token_count);
+    builder.mix_u64(gate.capability_candidate_count);
+    builder.mix_u64(gate.unsupported_candidate_count);
+    builder.mix_u64(gate.duplicate_candidate_count);
+    builder.mix_bool(gate.builtin_derive_input);
+    builder.mix_bool(gate.compiler_owned);
+    builder.mix_bool(gate.token_records_available);
+    builder.mix_bool(gate.preflight_available);
+    builder.mix_bool(gate.admission_visible);
+    builder.mix_bool(gate.query_reusable);
+    builder.mix_bool(gate.parser_consumption_enabled);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.generated_source_text);
+    builder.mix_bool(gate.produced_user_generated_code);
+}
+
+void mix_builtin_derive_semantic_expansion_plan(
+    query::StableHashBuilder& builder, const BuiltinDeriveSemanticExpansionPlan& plan) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22B_SEMANTIC_PLAN_MARKER);
+    builder.mix_u32(plan.item.value);
+    builder.mix_u32(plan.module.value);
+    builder.mix_u32(plan.part_index);
+    builder.mix_u32(plan.attribute_index);
+    builder.mix_u32(plan.semantic_plan_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(plan.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(plan.generated_part));
+    builder.mix_fingerprint(plan.token_buffer_identity);
+    builder.mix_fingerprint(plan.preflight_identity);
+    builder.mix_fingerprint(plan.admission_identity);
+    builder.mix_fingerprint(plan.semantic_plan_identity);
+    builder.mix_fingerprint(plan.capability_set_identity);
+    builder.mix_string(plan.semantic_policy);
+    builder.mix_string(plan.target_kind);
+    builder.mix_string(plan.semantic_model);
+    builder.mix_string(plan.blocker_reason);
+    builder.mix_u64(plan.capability_count);
+    builder.mix_u64(plan.copy_capability_count);
+    builder.mix_u64(plan.eq_capability_count);
+    builder.mix_u64(plan.hash_capability_count);
+    builder.mix_bool(plan.builtin_derive_input);
+    builder.mix_bool(plan.target_struct_or_enum);
+    builder.mix_bool(plan.uses_existing_builtin_derive_capability_path);
+    builder.mix_bool(plan.requires_ast_mutation);
+    builder.mix_bool(plan.requires_generated_items);
+    builder.mix_bool(plan.requires_standard_library);
+    builder.mix_bool(plan.requires_runtime);
+    builder.mix_bool(plan.external_process_required);
+    builder.mix_bool(plan.parser_consumption_enabled);
+    builder.mix_bool(plan.produced_user_generated_code);
+    builder.mix_bool(plan.plan_visible);
+    builder.mix_bool(plan.query_reusable);
+}
+
+void mix_builtin_derive_parser_consumption_release_gate(
+    query::StableHashBuilder& builder, const BuiltinDeriveParserConsumptionReleaseGate& gate) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22C_RELEASE_GATE_MARKER);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.generated_part));
+    builder.mix_fingerprint(gate.contract_identity);
+    builder.mix_fingerprint(gate.closure_identity);
+    builder.mix_fingerprint(gate.admission_group_identity);
+    builder.mix_fingerprint(gate.semantic_plan_group_identity);
+    builder.mix_fingerprint(gate.release_gate_identity);
+    builder.mix_string(gate.release_policy);
+    builder.mix_string(gate.release_query_name);
+    builder.mix_string(gate.blocked_reason);
+    builder.mix_u64(gate.admission_count);
+    builder.mix_u64(gate.derive_admission_count);
+    builder.mix_u64(gate.semantic_plan_count);
+    builder.mix_u64(gate.capability_total_count);
+    builder.mix_u64(gate.parser_consumable_contract_count);
+    builder.mix_bool(gate.rollback_diagnostics_available);
+    builder.mix_bool(gate.debug_trace_prerequisite_available);
+    builder.mix_bool(gate.source_map_prerequisite_available);
+    builder.mix_bool(gate.hygiene_prerequisite_available);
+    builder.mix_bool(gate.parser_consumption_enabled);
+    builder.mix_bool(gate.generated_part_parsed);
+    builder.mix_bool(gate.generated_part_merged);
+    builder.mix_bool(gate.emit_expanded_available);
+    builder.mix_bool(gate.debug_trace_available);
+    builder.mix_bool(gate.source_map_available);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.produced_user_generated_code);
+    builder.mix_bool(gate.release_visible);
+    builder.mix_bool(gate.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -2605,6 +3307,23 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.macro_boundary_closure_query_reusable_count);
     builder.mix_u64(summary.macro_boundary_closure_complete_count);
     builder.mix_u64(summary.macro_boundary_closure_parser_consumption_enabled_count);
+    builder.mix_u64(summary.builtin_derive_expansion_admission_gate_count);
+    builder.mix_u64(summary.builtin_derive_expansion_derive_admission_count);
+    builder.mix_u64(summary.builtin_derive_expansion_non_derive_blocked_count);
+    builder.mix_u64(summary.builtin_derive_expansion_visible_count);
+    builder.mix_u64(summary.builtin_derive_expansion_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_expansion_capability_candidate_count);
+    builder.mix_u64(summary.builtin_derive_semantic_plan_count);
+    builder.mix_u64(summary.builtin_derive_semantic_plan_visible_count);
+    builder.mix_u64(summary.builtin_derive_semantic_plan_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_semantic_capability_count);
+    builder.mix_u64(summary.builtin_derive_semantic_copy_capability_count);
+    builder.mix_u64(summary.builtin_derive_semantic_eq_capability_count);
+    builder.mix_u64(summary.builtin_derive_semantic_hash_capability_count);
+    builder.mix_u64(summary.builtin_derive_parser_release_gate_count);
+    builder.mix_u64(summary.builtin_derive_parser_release_visible_count);
+    builder.mix_u64(summary.builtin_derive_parser_release_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_parser_release_parser_consumable_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -2709,6 +3428,39 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.macro_boundary_closure_complete_count == rhs.macro_boundary_closure_complete_count
         && lhs.macro_boundary_closure_parser_consumption_enabled_count
             == rhs.macro_boundary_closure_parser_consumption_enabled_count
+        && lhs.builtin_derive_expansion_admission_gate_count
+            == rhs.builtin_derive_expansion_admission_gate_count
+        && lhs.builtin_derive_expansion_derive_admission_count
+            == rhs.builtin_derive_expansion_derive_admission_count
+        && lhs.builtin_derive_expansion_non_derive_blocked_count
+            == rhs.builtin_derive_expansion_non_derive_blocked_count
+        && lhs.builtin_derive_expansion_visible_count
+            == rhs.builtin_derive_expansion_visible_count
+        && lhs.builtin_derive_expansion_query_reusable_count
+            == rhs.builtin_derive_expansion_query_reusable_count
+        && lhs.builtin_derive_expansion_capability_candidate_count
+            == rhs.builtin_derive_expansion_capability_candidate_count
+        && lhs.builtin_derive_semantic_plan_count == rhs.builtin_derive_semantic_plan_count
+        && lhs.builtin_derive_semantic_plan_visible_count
+            == rhs.builtin_derive_semantic_plan_visible_count
+        && lhs.builtin_derive_semantic_plan_query_reusable_count
+            == rhs.builtin_derive_semantic_plan_query_reusable_count
+        && lhs.builtin_derive_semantic_capability_count
+            == rhs.builtin_derive_semantic_capability_count
+        && lhs.builtin_derive_semantic_copy_capability_count
+            == rhs.builtin_derive_semantic_copy_capability_count
+        && lhs.builtin_derive_semantic_eq_capability_count
+            == rhs.builtin_derive_semantic_eq_capability_count
+        && lhs.builtin_derive_semantic_hash_capability_count
+            == rhs.builtin_derive_semantic_hash_capability_count
+        && lhs.builtin_derive_parser_release_gate_count
+            == rhs.builtin_derive_parser_release_gate_count
+        && lhs.builtin_derive_parser_release_visible_count
+            == rhs.builtin_derive_parser_release_visible_count
+        && lhs.builtin_derive_parser_release_query_reusable_count
+            == rhs.builtin_derive_parser_release_query_reusable_count
+        && lhs.builtin_derive_parser_release_parser_consumable_count
+            == rhs.builtin_derive_parser_release_parser_consumable_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -3526,6 +4278,252 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             result.macro_boundary_closure_reports.front(), result);
 }
 
+[[nodiscard]] bool builtin_derive_expansion_admission_matches_input(
+    const BuiltinDeriveExpansionAdmissionGate& admission,
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& parser_gate,
+    const GeneratedTokenParserReadinessPreflightEntry& preflight,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const base::u32 admission_index) noexcept
+{
+    const std::string expected_query_name = builtin_derive_admission_query_name(input);
+    return admission.item.value == input.item.value
+        && admission.module.value == input.module.value
+        && admission.part_index == input.part_index
+        && admission.attribute_index == input.attribute_index
+        && admission.admission_index == admission_index
+        && admission.attached_part == input.attached_part
+        && admission.generated_part == buffer.generated_part
+        && admission.token_buffer_identity == buffer.token_buffer_identity
+        && admission.preflight_identity == preflight.preflight_identity
+        && admission.parse_gate_identity == parser_gate.parse_gate_identity
+        && admission.diagnostic_identity == diagnostic.diagnostic_identity
+        && admission.closure_identity == closure.closure_identity
+        && admission.admission_identity == builtin_derive_admission_identity(input, buffer, parser_gate,
+               preflight, diagnostic, closure, expected_query_name, admission_index,
+               admission.capability_candidate_count, admission.unsupported_candidate_count,
+               admission.duplicate_candidate_count)
+        && admission.admission_policy == FRONTEND_MACRO_M22A_ADMISSION_POLICY
+        && admission.admission_kind == builtin_derive_admission_kind_for_input(input)
+        && admission.query_name == expected_query_name
+        && admission.blocker_reason == builtin_derive_admission_blocker_for_input(input)
+        && admission.token_count == buffer.token_count
+        && admission.builtin_derive_input == builtin_derive_input(input)
+        && admission.compiler_owned
+        && admission.token_records_available == parser_gate.token_records_available
+        && admission.preflight_available
+        && admission.admission_visible
+        && admission.query_reusable
+        && !admission.parser_consumption_enabled
+        && !admission.external_process_required
+        && !admission.standard_library_required
+        && !admission.runtime_required
+        && !admission.generated_source_text
+        && !admission.produced_user_generated_code;
+}
+
+[[nodiscard]] bool builtin_derive_expansion_admissions_match_inputs(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_expansion_admissions.size() != result.inputs.size()
+        || result.macro_boundary_closure_reports.size() != 1U) {
+        return false;
+    }
+    const MacroExpansionBoundaryClosureReport& closure = result.macro_boundary_closure_reports.front();
+    for (base::usize index = 0; index < result.builtin_derive_expansion_admissions.size(); ++index) {
+        if (index > std::numeric_limits<base::u32>::max()) {
+            return false;
+        }
+        if (!builtin_derive_expansion_admission_matches_input(
+                result.builtin_derive_expansion_admissions[index],
+                result.inputs[index],
+                result.generated_token_buffers[index],
+                result.parser_admission_gates[index],
+                result.parser_readiness_preflight_entries[index],
+                result.parser_admission_diagnostics[index],
+                closure,
+                static_cast<base::u32>(index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_semantic_plan_matches_admission(
+    const BuiltinDeriveSemanticExpansionPlan& plan,
+    const EarlyItemMacroInput& input,
+    const BuiltinDeriveExpansionAdmissionGate& admission,
+    const base::u32 semantic_plan_index) noexcept
+{
+    const bool target_struct_or_enum = plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_STRUCT
+        || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_ENUM;
+    const query::StableFingerprint128 expected_capability_set_identity =
+        builtin_derive_capability_set_identity(input, admission, plan.target_kind,
+            plan.copy_capability_count, plan.eq_capability_count, plan.hash_capability_count);
+    const query::StableFingerprint128 expected_semantic_plan_identity =
+        builtin_derive_semantic_plan_identity(input, admission, expected_capability_set_identity,
+            plan.target_kind, semantic_plan_index, plan.capability_count, plan.copy_capability_count,
+            plan.eq_capability_count, plan.hash_capability_count, target_struct_or_enum);
+    return plan.item.value == input.item.value
+        && plan.module.value == input.module.value
+        && plan.part_index == input.part_index
+        && plan.attribute_index == input.attribute_index
+        && plan.semantic_plan_index == semantic_plan_index
+        && plan.attached_part == input.attached_part
+        && plan.generated_part == admission.generated_part
+        && plan.token_buffer_identity == admission.token_buffer_identity
+        && plan.preflight_identity == admission.preflight_identity
+        && plan.admission_identity == admission.admission_identity
+        && plan.semantic_plan_identity == expected_semantic_plan_identity
+        && plan.capability_set_identity == expected_capability_set_identity
+        && plan.semantic_plan_identity != plan.capability_set_identity
+        && plan.semantic_policy == FRONTEND_MACRO_M22B_SEMANTIC_POLICY
+        && (plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_STRUCT
+            || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_ENUM
+            || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_OTHER)
+        && plan.semantic_model == FRONTEND_MACRO_M22B_SEMANTIC_MODEL
+        && plan.blocker_reason == FRONTEND_MACRO_M22B_BLOCKER
+        && plan.capability_count == plan.copy_capability_count + plan.eq_capability_count
+            + plan.hash_capability_count
+        && plan.capability_count <= admission.capability_candidate_count
+        && plan.builtin_derive_input == admission.builtin_derive_input
+        && plan.builtin_derive_input == builtin_derive_input(input)
+        && plan.target_struct_or_enum == target_struct_or_enum
+        && plan.uses_existing_builtin_derive_capability_path == plan.builtin_derive_input
+        && !plan.requires_ast_mutation
+        && !plan.requires_generated_items
+        && !plan.requires_standard_library
+        && !plan.requires_runtime
+        && !plan.external_process_required
+        && !plan.parser_consumption_enabled
+        && !plan.produced_user_generated_code
+        && plan.plan_visible
+        && plan.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_semantic_plans_match_inputs(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_semantic_plans.size() != result.inputs.size()
+        || result.builtin_derive_expansion_admissions.size() != result.inputs.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_semantic_plans.size(); ++index) {
+        if (index > std::numeric_limits<base::u32>::max()) {
+            return false;
+        }
+        if (!builtin_derive_semantic_plan_matches_admission(
+                result.builtin_derive_semantic_plans[index],
+                result.inputs[index],
+                result.builtin_derive_expansion_admissions[index],
+                static_cast<base::u32>(index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_parser_release_gate_matches_group(
+    const BuiltinDeriveParserConsumptionReleaseGate& gate,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& contract,
+    const MacroExpansionBoundaryClosureReport& closure,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans) noexcept
+{
+    base::u64 admission_count = 0;
+    base::u64 derive_admission_count = 0;
+    base::u64 semantic_plan_count = 0;
+    base::u64 capability_total_count = 0;
+    for (const BuiltinDeriveExpansionAdmissionGate& admission : admissions) {
+        if (admission.module.value != placeholder.module.value
+            || admission.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++admission_count;
+        if (admission.builtin_derive_input) {
+            ++derive_admission_count;
+        }
+    }
+    for (const BuiltinDeriveSemanticExpansionPlan& plan : plans) {
+        if (plan.module.value != placeholder.module.value
+            || plan.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++semantic_plan_count;
+        capability_total_count += plan.capability_count;
+    }
+    const base::u64 parser_consumable_contract_count = contract.parser_consumable ? 1U : 0U;
+    const query::StableFingerprint128 expected_admission_group_identity =
+        builtin_derive_admission_group_identity(placeholder, admissions);
+    const query::StableFingerprint128 expected_semantic_plan_group_identity =
+        builtin_derive_semantic_plan_group_identity(placeholder, plans);
+    const std::string expected_query_name =
+        builtin_derive_parser_release_query_name(placeholder.module, placeholder.source_part_index);
+    return gate.module.value == placeholder.module.value
+        && gate.source_part_index == placeholder.source_part_index
+        && gate.attached_part == placeholder.source_part
+        && gate.generated_part == placeholder.generated_part
+        && gate.contract_identity == contract.contract_identity
+        && gate.closure_identity == closure.closure_identity
+        && gate.admission_group_identity == expected_admission_group_identity
+        && gate.semantic_plan_group_identity == expected_semantic_plan_group_identity
+        && gate.release_gate_identity == builtin_derive_parser_release_gate_identity(placeholder, contract,
+               closure, expected_admission_group_identity, expected_semantic_plan_group_identity,
+               expected_query_name, admission_count, derive_admission_count, semantic_plan_count,
+               capability_total_count, parser_consumable_contract_count)
+        && gate.release_policy == FRONTEND_MACRO_M22C_RELEASE_POLICY
+        && gate.release_query_name == expected_query_name
+        && gate.blocked_reason == FRONTEND_MACRO_M22C_RELEASE_BLOCKER
+        && gate.admission_count == admission_count
+        && gate.derive_admission_count == derive_admission_count
+        && gate.semantic_plan_count == semantic_plan_count
+        && gate.capability_total_count == capability_total_count
+        && gate.parser_consumable_contract_count == parser_consumable_contract_count
+        && gate.rollback_diagnostics_available
+        && gate.debug_trace_prerequisite_available
+        && gate.source_map_prerequisite_available
+        && gate.hygiene_prerequisite_available
+        && !gate.parser_consumption_enabled
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.release_visible
+        && gate.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_parser_release_gates_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_parser_release_gates.size() != result.generated_parts.size()
+        || result.parser_consumption_contract_gates.size() != result.generated_parts.size()
+        || result.macro_boundary_closure_reports.size() != 1U) {
+        return false;
+    }
+    const MacroExpansionBoundaryClosureReport& closure = result.macro_boundary_closure_reports.front();
+    for (base::usize index = 0; index < result.builtin_derive_parser_release_gates.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_parser_release_gate_matches_group(
+                result.builtin_derive_parser_release_gates[index],
+                placeholder,
+                result.parser_consumption_contract_gates[index],
+                closure,
+                result.builtin_derive_expansion_admissions,
+                result.builtin_derive_semantic_plans)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -4190,6 +5188,127 @@ bool is_valid(const MacroExpansionBoundaryClosureReport& report) noexcept
         && !report.produced_user_generated_code;
 }
 
+bool is_valid(const BuiltinDeriveExpansionAdmissionGate& gate) noexcept
+{
+    const bool derive_admission = gate.admission_kind == FRONTEND_MACRO_M22A_DERIVE_ADMISSION_KIND;
+    const bool non_derive_blocked = gate.admission_kind == FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKED_KIND;
+    return syntax::is_valid(gate.item)
+        && syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && query::is_valid(gate.generated_part)
+        && gate.generated_part.kind == query::ModulePartKind::generated
+        && gate.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(gate.token_buffer_identity)
+        && is_nonzero_fingerprint(gate.preflight_identity)
+        && is_nonzero_fingerprint(gate.parse_gate_identity)
+        && is_nonzero_fingerprint(gate.diagnostic_identity)
+        && is_nonzero_fingerprint(gate.closure_identity)
+        && is_nonzero_fingerprint(gate.admission_identity)
+        && gate.admission_identity != gate.token_buffer_identity
+        && gate.admission_identity != gate.preflight_identity
+        && gate.admission_policy == FRONTEND_MACRO_M22A_ADMISSION_POLICY
+        && (derive_admission || non_derive_blocked)
+        && gate.builtin_derive_input == derive_admission
+        && !gate.query_name.empty()
+        && ((derive_admission && gate.blocker_reason == FRONTEND_MACRO_M22A_DERIVE_BLOCKER)
+            || (non_derive_blocked && gate.blocker_reason == FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKER))
+        && (!derive_admission || gate.token_count > 0)
+        && (!non_derive_blocked || gate.token_count == 0)
+        && (!non_derive_blocked || gate.capability_candidate_count == 0U)
+        && gate.unsupported_candidate_count <= gate.capability_candidate_count
+        && gate.duplicate_candidate_count <= gate.capability_candidate_count
+        && gate.compiler_owned
+        && gate.token_records_available == (gate.token_count > 0)
+        && gate.preflight_available
+        && gate.admission_visible
+        && gate.query_reusable
+        && !gate.parser_consumption_enabled
+        && !gate.external_process_required
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.generated_source_text
+        && !gate.produced_user_generated_code;
+}
+
+bool is_valid(const BuiltinDeriveSemanticExpansionPlan& plan) noexcept
+{
+    const bool target_kind_valid = plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_STRUCT
+        || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_ENUM
+        || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_OTHER;
+    const bool target_struct_or_enum = plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_STRUCT
+        || plan.target_kind == FRONTEND_MACRO_M22_TARGET_KIND_ENUM;
+    return syntax::is_valid(plan.item)
+        && syntax::is_valid(plan.module)
+        && query::is_valid(plan.attached_part)
+        && query::is_valid(plan.generated_part)
+        && plan.generated_part.kind == query::ModulePartKind::generated
+        && plan.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(plan.token_buffer_identity)
+        && is_nonzero_fingerprint(plan.preflight_identity)
+        && is_nonzero_fingerprint(plan.admission_identity)
+        && is_nonzero_fingerprint(plan.semantic_plan_identity)
+        && is_nonzero_fingerprint(plan.capability_set_identity)
+        && plan.semantic_plan_identity != plan.capability_set_identity
+        && plan.semantic_plan_identity != plan.admission_identity
+        && plan.semantic_policy == FRONTEND_MACRO_M22B_SEMANTIC_POLICY
+        && target_kind_valid
+        && plan.target_struct_or_enum == target_struct_or_enum
+        && plan.semantic_model == FRONTEND_MACRO_M22B_SEMANTIC_MODEL
+        && plan.blocker_reason == FRONTEND_MACRO_M22B_BLOCKER
+        && plan.capability_count == plan.copy_capability_count + plan.eq_capability_count
+            + plan.hash_capability_count
+        && (!plan.builtin_derive_input || plan.uses_existing_builtin_derive_capability_path)
+        && (!plan.uses_existing_builtin_derive_capability_path || plan.builtin_derive_input)
+        && !plan.requires_ast_mutation
+        && !plan.requires_generated_items
+        && !plan.requires_standard_library
+        && !plan.requires_runtime
+        && !plan.external_process_required
+        && !plan.parser_consumption_enabled
+        && !plan.produced_user_generated_code
+        && plan.plan_visible
+        && plan.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveParserConsumptionReleaseGate& gate) noexcept
+{
+    return syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && query::is_valid(gate.generated_part)
+        && gate.generated_part.kind == query::ModulePartKind::generated
+        && gate.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(gate.contract_identity)
+        && is_nonzero_fingerprint(gate.closure_identity)
+        && is_nonzero_fingerprint(gate.admission_group_identity)
+        && is_nonzero_fingerprint(gate.semantic_plan_group_identity)
+        && is_nonzero_fingerprint(gate.release_gate_identity)
+        && gate.release_gate_identity != gate.contract_identity
+        && gate.release_gate_identity != gate.closure_identity
+        && gate.release_gate_identity != gate.admission_group_identity
+        && gate.release_policy == FRONTEND_MACRO_M22C_RELEASE_POLICY
+        && !gate.release_query_name.empty()
+        && gate.blocked_reason == FRONTEND_MACRO_M22C_RELEASE_BLOCKER
+        && gate.derive_admission_count <= gate.admission_count
+        && gate.semantic_plan_count == gate.admission_count
+        && gate.parser_consumable_contract_count == 0U
+        && gate.rollback_diagnostics_available
+        && gate.debug_trace_prerequisite_available
+        && gate.source_map_prerequisite_available
+        && gate.hygiene_prerequisite_available
+        && !gate.parser_consumption_enabled
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.release_visible
+        && gate.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -4197,7 +5316,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21O_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M22C_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -4277,6 +5396,21 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const MacroExpansionBoundaryClosureReport& report) {
                    return is_valid(report);
                })
+        && std::all_of(result.builtin_derive_expansion_admissions.begin(),
+               result.builtin_derive_expansion_admissions.end(),
+               [](const BuiltinDeriveExpansionAdmissionGate& gate) {
+                   return is_valid(gate);
+               })
+        && std::all_of(result.builtin_derive_semantic_plans.begin(),
+               result.builtin_derive_semantic_plans.end(),
+               [](const BuiltinDeriveSemanticExpansionPlan& plan) {
+                   return is_valid(plan);
+               })
+        && std::all_of(result.builtin_derive_parser_release_gates.begin(),
+               result.builtin_derive_parser_release_gates.end(),
+               [](const BuiltinDeriveParserConsumptionReleaseGate& gate) {
+                   return is_valid(gate);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -4284,6 +5418,9 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && parser_readiness_preflight_entries_match_inputs(result)
         && parser_consumption_contract_gates_match_groups(result)
         && macro_boundary_closure_reports_match_result(result)
+        && builtin_derive_expansion_admissions_match_inputs(result)
+        && builtin_derive_semantic_plans_match_inputs(result)
+        && builtin_derive_parser_release_gates_match_groups(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -4714,6 +5851,115 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.builtin_derive_expansion_admission_gate_count =
+        static_cast<base::u64>(result.builtin_derive_expansion_admissions.size());
+    for (const BuiltinDeriveExpansionAdmissionGate& gate :
+        result.builtin_derive_expansion_admissions) {
+        if (gate.builtin_derive_input) {
+            ++summary.builtin_derive_expansion_derive_admission_count;
+        }
+        if (gate.admission_kind == FRONTEND_MACRO_M22A_NON_DERIVE_BLOCKED_KIND) {
+            ++summary.builtin_derive_expansion_non_derive_blocked_count;
+        }
+        if (gate.admission_visible) {
+            ++summary.builtin_derive_expansion_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.builtin_derive_expansion_query_reusable_count;
+        }
+        summary.builtin_derive_expansion_capability_candidate_count +=
+            gate.capability_candidate_count;
+        if (gate.parser_consumption_enabled) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.generated_source_text) {
+            ++summary.generated_source_text_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_semantic_plan_count =
+        static_cast<base::u64>(result.builtin_derive_semantic_plans.size());
+    for (const BuiltinDeriveSemanticExpansionPlan& plan :
+        result.builtin_derive_semantic_plans) {
+        if (plan.plan_visible) {
+            ++summary.builtin_derive_semantic_plan_visible_count;
+        }
+        if (plan.query_reusable) {
+            ++summary.builtin_derive_semantic_plan_query_reusable_count;
+        }
+        summary.builtin_derive_semantic_capability_count += plan.capability_count;
+        summary.builtin_derive_semantic_copy_capability_count += plan.copy_capability_count;
+        summary.builtin_derive_semantic_eq_capability_count += plan.eq_capability_count;
+        summary.builtin_derive_semantic_hash_capability_count += plan.hash_capability_count;
+        if (plan.requires_standard_library) {
+            ++summary.standard_library_required_count;
+        }
+        if (plan.requires_runtime) {
+            ++summary.runtime_required_count;
+        }
+        if (plan.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (plan.parser_consumption_enabled) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (plan.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_parser_release_gate_count =
+        static_cast<base::u64>(result.builtin_derive_parser_release_gates.size());
+    for (const BuiltinDeriveParserConsumptionReleaseGate& gate :
+        result.builtin_derive_parser_release_gates) {
+        if (gate.release_visible) {
+            ++summary.builtin_derive_parser_release_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.builtin_derive_parser_release_query_reusable_count;
+        }
+        if (gate.parser_consumable_contract_count > 0U || gate.parser_consumption_enabled) {
+            ++summary.builtin_derive_parser_release_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (gate.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (gate.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (gate.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (gate.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -4721,7 +5967,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21O_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M22C_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -4798,6 +6044,21 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     for (const MacroExpansionBoundaryClosureReport& report :
         result.macro_boundary_closure_reports) {
         mix_macro_boundary_closure_report(builder, report);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_expansion_admissions.size()));
+    for (const BuiltinDeriveExpansionAdmissionGate& gate :
+        result.builtin_derive_expansion_admissions) {
+        mix_builtin_derive_expansion_admission_gate(builder, gate);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_semantic_plans.size()));
+    for (const BuiltinDeriveSemanticExpansionPlan& plan :
+        result.builtin_derive_semantic_plans) {
+        mix_builtin_derive_semantic_expansion_plan(builder, plan);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_parser_release_gates.size()));
+    for (const BuiltinDeriveParserConsumptionReleaseGate& gate :
+        result.builtin_derive_parser_release_gates) {
+        mix_builtin_derive_parser_consumption_release_gate(builder, gate);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -4925,6 +6186,40 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.macro_boundary_closure_complete_count
            << " macro_boundary_closure_parser_consumption_enabled="
            << summary.macro_boundary_closure_parser_consumption_enabled_count
+           << " builtin_derive_expansion_admissions="
+           << summary.builtin_derive_expansion_admission_gate_count
+           << " builtin_derive_expansion_derive_admissions="
+           << summary.builtin_derive_expansion_derive_admission_count
+           << " builtin_derive_expansion_non_derive_blocked="
+           << summary.builtin_derive_expansion_non_derive_blocked_count
+           << " builtin_derive_expansion_visible="
+           << summary.builtin_derive_expansion_visible_count
+           << " builtin_derive_expansion_query_reusable="
+           << summary.builtin_derive_expansion_query_reusable_count
+           << " builtin_derive_expansion_capability_candidates="
+           << summary.builtin_derive_expansion_capability_candidate_count
+           << " builtin_derive_semantic_plans="
+           << summary.builtin_derive_semantic_plan_count
+           << " builtin_derive_semantic_plan_visible="
+           << summary.builtin_derive_semantic_plan_visible_count
+           << " builtin_derive_semantic_plan_query_reusable="
+           << summary.builtin_derive_semantic_plan_query_reusable_count
+           << " builtin_derive_semantic_capabilities="
+           << summary.builtin_derive_semantic_capability_count
+           << " builtin_derive_semantic_copy_capabilities="
+           << summary.builtin_derive_semantic_copy_capability_count
+           << " builtin_derive_semantic_eq_capabilities="
+           << summary.builtin_derive_semantic_eq_capability_count
+           << " builtin_derive_semantic_hash_capabilities="
+           << summary.builtin_derive_semantic_hash_capability_count
+           << " builtin_derive_parser_release_gates="
+           << summary.builtin_derive_parser_release_gate_count
+           << " builtin_derive_parser_release_visible="
+           << summary.builtin_derive_parser_release_visible_count
+           << " builtin_derive_parser_release_query_reusable="
+           << summary.builtin_derive_parser_release_query_reusable_count
+           << " builtin_derive_parser_release_parser_consumable="
+           << summary.builtin_derive_parser_release_parser_consumable_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -5441,6 +6736,149 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(report.closure_grouping_identity)
                << '\n';
     }
+    for (base::usize index = 0; index < result.builtin_derive_expansion_admissions.size(); ++index) {
+        const BuiltinDeriveExpansionAdmissionGate& gate =
+            result.builtin_derive_expansion_admissions[index];
+        stream << "  builtin_derive_expansion_admission_gate #" << index
+               << " item=" << gate.item.value
+               << " module=" << gate.module.value
+               << " part=" << gate.part_index
+               << " attribute_index=" << gate.attribute_index
+               << " admission_index=" << gate.admission_index
+               << " policy=" << gate.admission_policy
+               << " kind=" << gate.admission_kind
+               << " query=" << gate.query_name
+               << " token_count=" << gate.token_count
+               << " capability_candidates=" << gate.capability_candidate_count
+               << " unsupported_candidates=" << gate.unsupported_candidate_count
+               << " duplicate_candidates=" << gate.duplicate_candidate_count
+               << " builtin_derive_input=" << (gate.builtin_derive_input ? "yes" : "no")
+               << " compiler_owned=" << (gate.compiler_owned ? "yes" : "no")
+               << " token_records_available="
+               << (gate.token_records_available ? "yes" : "no")
+               << " preflight_available=" << (gate.preflight_available ? "yes" : "no")
+               << " admission_visible=" << (gate.admission_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (gate.parser_consumption_enabled ? "yes" : "no")
+               << " external_process_required="
+               << (gate.external_process_required ? "yes" : "no")
+               << " standard_library_required="
+               << (gate.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (gate.runtime_required ? "yes" : "no")
+               << " generated_source_text=" << (gate.generated_source_text ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " blocker=" << gate.blocker_reason
+               << " token_buffer_identity="
+               << query::debug_string(gate.token_buffer_identity)
+               << " preflight_identity=" << query::debug_string(gate.preflight_identity)
+               << " parse_gate_identity=" << query::debug_string(gate.parse_gate_identity)
+               << " diagnostic_identity=" << query::debug_string(gate.diagnostic_identity)
+               << " closure_identity=" << query::debug_string(gate.closure_identity)
+               << " admission_identity=" << query::debug_string(gate.admission_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_semantic_plans.size(); ++index) {
+        const BuiltinDeriveSemanticExpansionPlan& plan =
+            result.builtin_derive_semantic_plans[index];
+        stream << "  builtin_derive_semantic_expansion_plan #" << index
+               << " item=" << plan.item.value
+               << " module=" << plan.module.value
+               << " part=" << plan.part_index
+               << " attribute_index=" << plan.attribute_index
+               << " semantic_plan_index=" << plan.semantic_plan_index
+               << " policy=" << plan.semantic_policy
+               << " target_kind=" << plan.target_kind
+               << " semantic_model=" << plan.semantic_model
+               << " capabilities=" << plan.capability_count
+               << " copy=" << plan.copy_capability_count
+               << " eq=" << plan.eq_capability_count
+               << " hash=" << plan.hash_capability_count
+               << " builtin_derive_input=" << (plan.builtin_derive_input ? "yes" : "no")
+               << " target_struct_or_enum="
+               << (plan.target_struct_or_enum ? "yes" : "no")
+               << " existing_builtin_path="
+               << (plan.uses_existing_builtin_derive_capability_path ? "yes" : "no")
+               << " requires_ast_mutation=" << (plan.requires_ast_mutation ? "yes" : "no")
+               << " requires_generated_items="
+               << (plan.requires_generated_items ? "yes" : "no")
+               << " requires_standard_library="
+               << (plan.requires_standard_library ? "yes" : "no")
+               << " requires_runtime=" << (plan.requires_runtime ? "yes" : "no")
+               << " external_process_required="
+               << (plan.external_process_required ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (plan.parser_consumption_enabled ? "yes" : "no")
+               << " user_generated_code="
+               << (plan.produced_user_generated_code ? "yes" : "no")
+               << " plan_visible=" << (plan.plan_visible ? "yes" : "no")
+               << " query_reusable=" << (plan.query_reusable ? "yes" : "no")
+               << " blocker=" << plan.blocker_reason
+               << " token_buffer_identity="
+               << query::debug_string(plan.token_buffer_identity)
+               << " preflight_identity=" << query::debug_string(plan.preflight_identity)
+               << " admission_identity=" << query::debug_string(plan.admission_identity)
+               << " capability_set_identity="
+               << query::debug_string(plan.capability_set_identity)
+               << " semantic_plan_identity="
+               << query::debug_string(plan.semantic_plan_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_parser_release_gates.size(); ++index) {
+        const BuiltinDeriveParserConsumptionReleaseGate& gate =
+            result.builtin_derive_parser_release_gates[index];
+        stream << "  builtin_derive_parser_consumption_release_gate #" << index
+               << " module=" << gate.module.value
+               << " source_part=" << gate.source_part_index
+               << " policy=" << gate.release_policy
+               << " query=" << gate.release_query_name
+               << " admissions=" << gate.admission_count
+               << " derive_admissions=" << gate.derive_admission_count
+               << " semantic_plans=" << gate.semantic_plan_count
+               << " capabilities=" << gate.capability_total_count
+               << " parser_consumable_contracts="
+               << gate.parser_consumable_contract_count
+               << " rollback_diagnostics_available="
+               << (gate.rollback_diagnostics_available ? "yes" : "no")
+               << " debug_trace_prerequisite_available="
+               << (gate.debug_trace_prerequisite_available ? "yes" : "no")
+               << " source_map_prerequisite_available="
+               << (gate.source_map_prerequisite_available ? "yes" : "no")
+               << " hygiene_prerequisite_available="
+               << (gate.hygiene_prerequisite_available ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (gate.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (gate.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (gate.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (gate.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (gate.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (gate.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (gate.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (gate.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (gate.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " release_visible=" << (gate.release_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " blocker=" << gate.blocked_reason
+               << " contract_identity=" << query::debug_string(gate.contract_identity)
+               << " closure_identity=" << query::debug_string(gate.closure_identity)
+               << " admission_group_identity="
+               << query::debug_string(gate.admission_group_identity)
+               << " semantic_plan_group_identity="
+               << query::debug_string(gate.semantic_plan_group_identity)
+               << " release_gate_identity="
+               << query::debug_string(gate.release_gate_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -5461,9 +6899,13 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21O_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M22C_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
+    std::vector<base::usize> input_item_indices;
+    std::vector<base::usize> input_attribute_indices;
+    input_item_indices.reserve(attribute_count);
+    input_attribute_indices.reserve(attribute_count);
     result.inputs.reserve(attribute_count);
     result.generated_parts.reserve(ast.items.size());
     result.generated_part_stubs.reserve(ast.items.size());
@@ -5482,6 +6924,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.parser_readiness_preflight_entries.reserve(attribute_count);
     result.parser_consumption_contract_gates.reserve(ast.items.size());
     result.macro_boundary_closure_reports.reserve(1U);
+    result.builtin_derive_expansion_admissions.reserve(attribute_count);
+    result.builtin_derive_semantic_plans.reserve(attribute_count);
+    result.builtin_derive_parser_release_gates.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -5546,6 +6991,8 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             result.generated_token_buffers.push_back(std::move(token_buffer));
             result.parser_admission_gates.push_back(std::move(parser_admission_gate));
             result.parser_admission_diagnostics.push_back(std::move(parser_admission_diagnostic));
+            input_item_indices.push_back(item_index);
+            input_attribute_indices.push_back(attribute_index);
             result.inputs.push_back(std::move(input));
         }
     }
@@ -5592,6 +7039,38 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
                 result.parser_readiness_preflight_entries));
     }
     result.macro_boundary_closure_reports.push_back(make_macro_boundary_closure_report(result));
+    const MacroExpansionBoundaryClosureReport& closure = result.macro_boundary_closure_reports.front();
+    for (base::usize index = 0; index < result.inputs.size(); ++index) {
+        if (input_item_indices[index] >= ast.items.size()
+            || input_attribute_indices[index] >= ast.items[input_item_indices[index]].attributes.size()) {
+            return base::Result<EarlyItemExpansionResult>::fail(
+                internal_error(FRONTEND_MACRO_M22_MISSING_INPUT_AST_VIEW));
+        }
+        const syntax::ItemNode& item = ast.items[input_item_indices[index]];
+        const syntax::AttributeDecl& attribute = item.attributes[input_attribute_indices[index]];
+        result.builtin_derive_expansion_admissions.push_back(
+            make_builtin_derive_expansion_admission_gate(result.inputs[index],
+                attribute,
+                result.generated_token_buffers[index],
+                result.parser_admission_gates[index],
+                result.parser_readiness_preflight_entries[index],
+                result.parser_admission_diagnostics[index],
+                closure,
+                base::checked_u32(index, "builtin derive expansion admission index")));
+        result.builtin_derive_semantic_plans.push_back(
+            make_builtin_derive_semantic_expansion_plan(result.inputs[index],
+                item,
+                result.builtin_derive_expansion_admissions[index],
+                base::checked_u32(index, "builtin derive semantic expansion plan index")));
+    }
+    for (base::usize index = 0; index < result.generated_parts.size(); ++index) {
+        result.builtin_derive_parser_release_gates.push_back(
+            make_builtin_derive_parser_consumption_release_gate(result.generated_parts[index],
+                result.parser_consumption_contract_gates[index],
+                closure,
+                result.builtin_derive_expansion_admissions,
+                result.builtin_derive_semantic_plans));
+    }
 
     result.summary = summarize_early_item_expansion_counts(result);
     result.fingerprint = early_item_expansion_fingerprint(result);

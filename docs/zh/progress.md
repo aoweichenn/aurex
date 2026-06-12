@@ -1,9 +1,37 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21o Macro Expansion Boundary Release Closure
+阶段：M22c Builtin Derive Parser Consumption Release Gate
 
 ## 总体状态
+
+2026-06-12：M22c Builtin Derive Parser Consumption Release Gate 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21o 之后的 builtin derive expansion admission、semantic plan
+和 parser release gate 固定成可验证事实。
+
+新增 `BuiltinDeriveExpansionAdmissionGate`、`BuiltinDeriveSemanticExpansionPlan` 和
+`BuiltinDeriveParserConsumptionReleaseGate`，并给 `EarlyItemExpansionResult` 增加
+`builtin_derive_expansion_admissions`、`builtin_derive_semantic_plans` 和
+`builtin_derive_parser_release_gates`。M22a admission gate 绑定 M21i token buffer、M21m preflight、M21j parser
+gate、M21k diagnostic projection 和 M21o closure，固定
+`builtin_derive_expansion_admission_gate_v1`、`admission_identity`、
+`m22a-builtin-derive-admission:<module>:<part>:<item>:<attr>:<name>`、derive/non-derive admission kind 和
+capability candidate 计数。M22b semantic plan 复用现有内建 `#[derive(Copy, Eq, Hash)]` capability path，固定
+`builtin_derive_semantic_expansion_plan_v1`、`capability_fact_lowering_plan`、`capability_set_identity`、
+`semantic_plan_identity`、target kind 和 Copy/Eq/Hash capability 计数。M22c release gate 按 generated module part
+汇总 M22a/M22b，绑定 M21n `contract_identity` 和 M21o `closure_identity`，固定
+`builtin_derive_parser_consumption_release_gate_v1`、
+`m22c-builtin-derive-parser-release:<module>:<part>`、`release_gate_identity`、admission group identity、
+semantic plan group identity、rollback diagnostics/debug trace/source-map/hygiene prerequisites，并把
+`EarlyItemExpansionResult::name` 推进为 `M22c Builtin Derive Parser Consumption Release Gate`。summary / dump /
+fingerprint / validation 会拒绝 M22 identity 漂移、capability totals 漂移、parser consumption 被打开、
+standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+新增说明见 [Aurex M22a Builtin Derive Expansion Admission Gate](m22a-builtin-derive-expansion-admission-gate.md)、
+[Aurex M22b Builtin Derive Semantic Expansion Plan](m22b-builtin-derive-semantic-expansion-plan.md) 和
+[Aurex M22c Builtin Derive Parser Consumption Release Gate](m22c-builtin-derive-parser-consumption-release-gate.md)。
 
 2026-06-12：M21o Macro Expansion Boundary Release Closure 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

@@ -29,7 +29,16 @@ add_library(aurex_driver
     src/application/driver/core/project_model.cpp
     src/application/driver/profile/profile.cpp
 )
-target_link_libraries(aurex_driver PUBLIC aurex_base aurex_project aurex_syntax aurex_lex aurex_parse aurex_sema aurex_ir)
+target_link_libraries(aurex_driver PUBLIC
+    aurex_base
+    aurex_project
+    aurex_syntax
+    aurex_lex
+    aurex_parse
+    aurex_macro
+    aurex_sema
+    aurex_ir
+)
 target_link_libraries(aurex_driver PRIVATE
     aurex_pipeline_stage
 )

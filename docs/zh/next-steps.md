@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21c early item expansion plan 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21d no-op early expansion boundary 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -17,9 +17,14 @@ builtin derive passthrough、early item expansion query key、`SourceRole::gener
 no-op generated module part、expansion source map stub、unimplemented item attribute blocker 和 external procedural
 macro future blocker。M21c 仍不生成用户代码，也不实现标准库、external procedural macro 或 typed expression macro。
 
-下一步建议继续 M21d：实现真实 no-op early expansion pass / driver pipeline boundary，把 expansion result
-container、generated part placeholder 和 source map record 接到编译流程，但仍保持 external procedural macro、
-typed expression macro、标准库和真实用户代码生成关闭。
+M21d 已把 M21c plan 接到真实 frontend pipeline boundary：`FrontendPipeline::load_modules()` 会在 module loading /
+AST combine 之后、sema 之前运行 `macro.expand_items`，产出 `EarlyItemExpansionResult`、每个 parsed attribute 的
+query-key fingerprint、generated part placeholder 和 source-map placeholder。M21d 仍不修改 AST、不 parse / merge
+generated module part、不执行 external procedural macro、不实现 typed expression macro、不引入标准库，也不生成用户代码。
+
+下一步建议继续 M21e：固定 generated module part parse / merge stub contract，或先做 hygiene/source-map/debug trace
+的真实数据结构地基。优先级上不建议直接打开 external procedural macro；第一条真实代码生成主线仍应是
+compiler-owned derive / attached item codegen。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

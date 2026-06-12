@@ -1276,6 +1276,11 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"output\": \"module AST\"",
                 "\"diagnostic_ownership\": \"parser diagnostic sink\"",
                 "\"cache_query_impact\": \"feeds module graph and query records\"",
+                "\"name\": \"macro.expand_items\"",
+                "\"id\": \"early_item_macro_expand\"",
+                "\"input\": \"combined AST module + macro expansion plan\"",
+                "\"output\": \"no-op early item expansion result\"",
+                "\"diagnostic_ownership\": \"macro expansion boundary result\"",
                 "\"name\": \"sema.analyze\"",
                 "\"name\": \"incremental_cache.query_diff\"",
                 "\"name\": \"incremental_cache.query_plan\"",
@@ -1348,6 +1353,7 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"module.read\"",
                 "\"name\": \"module.lex\"",
                 "\"name\": \"module.parse\"",
+                "\"name\": \"macro.expand_items\"",
                 "\"name\": \"ast.dump\"",
             });
         expect_not_contains(ast_profile_text, "\"name\": \"sema.analyze\"");
@@ -1356,6 +1362,7 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
             run_profiled_emit(driver::EmitKind::checked, tmp_root() / "hello.checked.profile.json");
         expect_contains_all(checked_profile_text,
             {
+                "\"name\": \"macro.expand_items\"",
                 "\"name\": \"sema.analyze\"",
                 "\"name\": \"checked.dump\"",
             });
@@ -1478,6 +1485,8 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_lex), "module.lex");
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_parse), "module.parse");
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_append), "module.append");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::early_item_macro_expand),
+        "macro.expand_items");
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::ast_dump), "ast.dump");
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::modules_dump), "modules.dump");
     EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::sema_analyze), "sema.analyze");

@@ -96,6 +96,15 @@ constexpr std::array<PipelineStageRecord, PIPELINE_STAGE_RECORD_COUNT> PIPELINE_
         "feeds module graph records",
     },
     {
+        PipelineStageId::early_item_macro_expand,
+        "early_item_macro_expand",
+        "combined AST module + macro expansion plan",
+        "no-op early item expansion result",
+        "macro.expand_items",
+        "macro expansion boundary result",
+        "records early item expansion fingerprints before sema",
+    },
+    {
         PipelineStageId::ast_dump,
         "ast_dump",
         "combined AST module",

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/application/driver/module_record.hpp>
+#include <aurex/frontend/macro/early_item_expansion.hpp>
 #include <aurex/frontend/sema/checked_module.hpp>
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/base/result.hpp>
@@ -18,6 +19,7 @@ namespace aurex::driver {
 struct FrontendModuleOutput {
     syntax::AstModule ast;
     std::vector<ModuleRecord> modules;
+    frontend::macro::EarlyItemExpansionResult early_item_expansion;
 };
 
 class FrontendPipeline final {

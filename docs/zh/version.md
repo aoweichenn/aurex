@@ -1,5 +1,46 @@
 # 版本文档
 
+## M21d No-op Early Item Macro Expansion Boundary
+
+当前版本把 M21c 的 early item expansion plan 接入真实 frontend pipeline。该阶段仍不执行宏、不生成用户代码，
+也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::EarlyItemMacroInput`。
+- 新增 `frontend::macro::GeneratedModulePartPlaceholder`。
+- 新增 `frontend::macro::ExpansionSourceMapPlaceholder`。
+- 新增 `frontend::macro::EarlyItemExpansionSummary`。
+- 新增 `frontend::macro::EarlyItemExpansionResult`。
+- 新增 `frontend::macro::EarlyItemExpansionDisposition`。
+- 新增 `expand_early_item_macros_noop()`。
+- 新增 `early_item_expansion_fingerprint()`。
+- 新增 `summarize_early_item_expansion()` 和 `dump_early_item_expansion()`。
+- 新增 `aurex_macro` target。
+- 新增 driver pipeline stage `early_item_macro_expand`，profile name 为 `macro.expand_items`。
+- `FrontendPipeline::load_modules()` 现在在 module loading / AST combine 之后、sema 之前运行 no-op early item expansion。
+- 每个 parsed item attribute 都会生成 deterministic token-tree fingerprint 和 query-key fingerprint。
+- `derive` attribute 标记为 `builtin_derive_passthrough`，继续兼容内建 derive path。
+- 非 `derive` item attribute 标记为 `blocked_unimplemented_attribute`。
+- 每个带 attribute 的 source module part 都有 `SourceRole::generated` / `ModulePartKind::generated` placeholder。
+- 每个 macro input 都有 source-map placeholder，但 `real_source_map=false` 且 `debug_trace_available=false`。
+- validation 固定 M21d no-op 边界：generated part 不能 parsed、不能 merged、不能 produced user-generated code。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- 真实 expansion source map。
+- `--emit-expanded` 或 macro trace CLI。
+
 ## M21c Early Item Macro Expansion Plan
 
 当前版本把 M21b 的 item attribute token-tree surface 接到 query-level early item expansion facts。该阶段仍不执行

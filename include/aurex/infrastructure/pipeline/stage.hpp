@@ -22,6 +22,7 @@ enum class PipelineStageId {
     module_lex,
     module_parse,
     module_append,
+    early_item_macro_expand,
     ast_dump,
     modules_dump,
     sema_analyze,

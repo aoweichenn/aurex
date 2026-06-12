@@ -1,9 +1,22 @@
 # 当前进度文档
 
-版本：0.1.8
-阶段：M21c Early Item Macro Expansion Plan
+版本：0.1.9
+阶段：M21d No-op Early Item Macro Expansion Boundary
 
 ## 总体状态
+
+2026-06-12：M21d No-op Early Item Macro Expansion Boundary 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、generated module part parse / merge 或 macro-generated user code lowering；它把 M21c 的 plan
+接到真实 frontend pipeline boundary。
+
+新增 `EarlyItemExpansionResult`、`EarlyItemMacroInput`、`GeneratedModulePartPlaceholder`、
+`ExpansionSourceMapPlaceholder`、`EarlyItemExpansionSummary`、`EarlyItemExpansionDisposition` 和
+`expand_early_item_macros_noop()`。driver 现在在 module loading / AST combine 之后、sema 之前运行
+`macro.expand_items` profile stage，收集每个 parsed item attribute 的 query-key fingerprint、token-tree fingerprint、
+generated module part placeholder 和 source-map placeholder。`derive` attribute 继续标记为
+`builtin_derive_passthrough`，其他 item attribute 标记为 `blocked_unimplemented_attribute`。新增说明见
+[Aurex M21d No-op Early Item Macro Expansion Boundary](m21d-noop-early-item-expansion-boundary.md)。
 
 2026-06-12：M21c Early Item Macro Expansion Plan 已完成。本阶段仍不实现标准库、runtime helper、external
 procedural macro、typed expression macro、真实 hygiene resolution、真实 expansion source map、generated module

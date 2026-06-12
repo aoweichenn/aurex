@@ -3,6 +3,7 @@
 #include <aurex/application/driver/invocation.hpp>
 #include <aurex/application/driver/module_loader.hpp>
 #include <aurex/application/driver/profile.hpp>
+#include <aurex/frontend/macro/early_item_expansion.hpp>
 #include <aurex/frontend/lex/lexer.hpp>
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/frontend/syntax/core/ast_dump.hpp>
@@ -27,6 +28,30 @@ namespace {
         || emit_kind == EmitKind::object || emit_kind == EmitKind::executable;
 }
 
+[[nodiscard]] std::vector<std::vector<query::ModulePartKey>> make_module_part_key_table(
+    const std::span<const ModuleRecord> modules)
+{
+    std::vector<std::vector<query::ModulePartKey>> module_part_keys;
+    module_part_keys.reserve(modules.size());
+    for (const ModuleRecord& module : modules) {
+        std::vector<query::ModulePartKey> part_keys;
+        if (!module.parts.empty()) {
+            base::u32 max_part_index = 0;
+            for (const ModulePartRecord& part : module.parts) {
+                max_part_index = std::max(max_part_index, part.stable_index);
+            }
+            part_keys.resize(static_cast<base::usize>(max_part_index) + 1U);
+            for (const ModulePartRecord& part : module.parts) {
+                if (query::is_valid(part.key)) {
+                    part_keys[part.stable_index] = part.key;
+                }
+            }
+        }
+        module_part_keys.push_back(std::move(part_keys));
+    }
+    return module_part_keys;
+}
+
 [[nodiscard]] sema::SemanticOptions make_semantic_options(
     const EmitKind emit_kind, const std::span<const ModuleRecord> modules)
 {
@@ -34,24 +59,10 @@ namespace {
     sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(emit_kind) || emit_kind == EmitKind::typed;
     sema_options.retain_body_flow_graphs = emit_kind == EmitKind::checked || emit_kind == EmitKind::typed;
     sema_options.module_packages.reserve(modules.size());
-    sema_options.module_part_keys.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
         sema_options.module_packages.push_back(module.package);
-        std::vector<query::ModulePartKey> part_keys;
-        if (!module.parts.empty()) {
-            base::u32 max_part_index = 0;
-            for (const ModulePartRecord& part : module.parts) {
-                max_part_index = std::max(max_part_index, part.stable_index);
-            }
-            part_keys.resize(static_cast<base::usize>(max_part_index) + 1);
-            for (const ModulePartRecord& part : module.parts) {
-                if (query::is_valid(part.key)) {
-                    part_keys[part.stable_index] = part.key;
-                }
-            }
-        }
-        sema_options.module_part_keys.push_back(std::move(part_keys));
     }
+    sema_options.module_part_keys = make_module_part_key_table(modules);
     return sema_options;
 }
 
@@ -147,9 +158,23 @@ base::Result<FrontendModuleOutput> FrontendPipeline::load_modules()
     }
 
     auto module_records = loader.modules();
+    std::vector<ModuleRecord> modules(module_records.begin(), module_records.end());
+    std::vector<std::vector<query::ModulePartKey>> module_part_keys =
+        make_module_part_key_table(std::span<const ModuleRecord>(modules));
+    syntax::AstModule ast = ast_result.take_value();
+    auto expansion_result = [&] {
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::early_item_macro_expand);
+        return frontend::macro::expand_early_item_macros_noop(
+            ast, std::span<const std::vector<query::ModulePartKey>>(module_part_keys));
+    }();
+    if (!expansion_result) {
+        return base::Result<FrontendModuleOutput>::fail(expansion_result.error());
+    }
+
     FrontendModuleOutput frontend{
-        ast_result.take_value(),
-        std::vector<ModuleRecord>(module_records.begin(), module_records.end()),
+        std::move(ast),
+        std::move(modules),
+        expansion_result.take_value(),
     };
     return base::Result<FrontendModuleOutput>::ok(std::move(frontend));
 }

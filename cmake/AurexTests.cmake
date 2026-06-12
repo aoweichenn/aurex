@@ -69,6 +69,7 @@ if(BUILD_TESTING)
         tests/gtest/infrastructure/base/base_tests.cpp
         tests/gtest/frontend/syntax/ast_dump_tests.cpp
         tests/gtest/frontend/lex/lexer_tests.cpp
+        tests/gtest/frontend/macro/early_item_expansion_tests.cpp
         tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
         tests/gtest/frontend/parse/parser_tests.cpp
         tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
@@ -95,6 +96,7 @@ if(BUILD_TESTING)
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
+        aurex_macro
         aurex_tooling
     )
     target_include_directories(aurex_frontend_tests PRIVATE
@@ -127,6 +129,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/syntax/ast_dump_tests.cpp
             tests/gtest/frontend/parse/randomized_frontend_tests.cpp
             tests/gtest/frontend/lex/lexer_tests.cpp
+            tests/gtest/frontend/macro/early_item_expansion_tests.cpp
             tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
             tests/gtest/frontend/parse/parser_tests.cpp
             tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp

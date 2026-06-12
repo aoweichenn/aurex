@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M22F_EXPANSION_NAME =
-    "M22f Builtin Derive Rollback Diagnostic Design Gate";
-constexpr std::string_view FRONTEND_MACRO_M22F_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m22f.builtin_derive_rollback_diagnostic_design_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M23C_EXPANSION_NAME =
+    "M23c Builtin Derive Parser Pre-Consumption Verification Closure";
+constexpr std::string_view FRONTEND_MACRO_M23C_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m23c.builtin_derive_preconsumption_verification_closure.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -281,6 +281,37 @@ constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_QUERY_NAME_PREFIX =
     "m22f-builtin-derive-rollback-diagnostic:";
 constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER =
     "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f";
+constexpr std::string_view FRONTEND_MACRO_M23A_ADMISSION_PROTOCOL_MARKER =
+    "frontend.macro.m23a.builtin_derive_parser_consumption_admission_protocol.v1";
+constexpr std::string_view FRONTEND_MACRO_M23A_ADMISSION_PROTOCOL_IDENTITY_MARKER =
+    "frontend.macro.m23a.builtin_derive_parser_consumption_admission_protocol_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M23A_ADMISSION_POLICY =
+    "builtin_derive_parser_consumption_admission_protocol_v1";
+constexpr std::string_view FRONTEND_MACRO_M23A_ADMISSION_QUERY_NAME_PREFIX =
+    "m23a-builtin-derive-parser-consumption-admission:";
+constexpr std::string_view FRONTEND_MACRO_M23A_ADMISSION_BLOCKER =
+    "builtin derive parser consumption admission protocol remains no-parser-consumption in M23a";
+constexpr std::string_view FRONTEND_MACRO_M23B_CHECKPOINT_PROTOCOL_MARKER =
+    "frontend.macro.m23b.builtin_derive_checkpoint_rollback_protocol.v1";
+constexpr std::string_view FRONTEND_MACRO_M23B_CHECKPOINT_PROTOCOL_IDENTITY_MARKER =
+    "frontend.macro.m23b.builtin_derive_checkpoint_rollback_protocol_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M23B_CHECKPOINT_POLICY =
+    "builtin_derive_parser_checkpoint_rollback_protocol_v1";
+constexpr std::string_view FRONTEND_MACRO_M23B_CHECKPOINT_QUERY_NAME_PREFIX =
+    "m23b-builtin-derive-checkpoint-rollback:";
+constexpr std::string_view FRONTEND_MACRO_M23B_CHECKPOINT_BLOCKER =
+    "builtin derive checkpoint rollback protocol remains design-only and parser-blocked in M23b";
+constexpr base::u64 FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT = 3U;
+constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_CLOSURE_MARKER =
+    "frontend.macro.m23c.builtin_derive_preconsumption_verification_closure.v1";
+constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_CLOSURE_IDENTITY_MARKER =
+    "frontend.macro.m23c.builtin_derive_preconsumption_verification_closure_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_POLICY =
+    "builtin_derive_parser_preconsumption_verification_closure_v1";
+constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_QUERY_NAME_PREFIX =
+    "m23c-builtin-derive-preconsumption-verification:";
+constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER =
+    "builtin derive pre-consumption verification closure keeps parser consumption blocked in M23c";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_STRUCT = "struct";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_ENUM = "enum";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_OTHER = "other";
@@ -646,6 +677,36 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     const syntax::ModuleId module, const base::u32 source_part_index)
 {
     std::string name(FRONTEND_MACRO_M22F_ROLLBACK_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_parser_consumption_admission_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M23A_ADMISSION_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_checkpoint_rollback_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M23B_CHECKPOINT_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_preconsumption_verification_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M23C_VERIFICATION_QUERY_NAME_PREFIX);
     name += std::to_string(module.value);
     name.push_back(':');
     name += std::to_string(source_part_index);
@@ -2996,6 +3057,366 @@ void append_generated_token_records_for_attribute(std::vector<GeneratedTokenReco
     };
 }
 
+[[nodiscard]] base::u64 count_part_local_token_buffers(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenBufferStub>& buffers) noexcept
+{
+    return static_cast<base::u64>(std::count_if(buffers.begin(), buffers.end(),
+        [&placeholder](const GeneratedTokenBufferStub& buffer) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                buffer.module, buffer.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_token_records(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenRecord>& records) noexcept
+{
+    return static_cast<base::u64>(std::count_if(records.begin(), records.end(),
+        [&placeholder](const GeneratedTokenRecord& record) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                record.module, record.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_derive_candidate_buffers(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenBufferStub>& buffers) noexcept
+{
+    return static_cast<base::u64>(std::count_if(buffers.begin(), buffers.end(),
+        [&placeholder](const GeneratedTokenBufferStub& buffer) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       buffer.module, buffer.part_index)
+                && buffer.token_buffer_kind == FRONTEND_MACRO_M21I_DERIVE_TOKEN_BUFFER_KIND;
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_empty_candidate_buffers(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenBufferStub>& buffers) noexcept
+{
+    return static_cast<base::u64>(std::count_if(buffers.begin(), buffers.end(),
+        [&placeholder](const GeneratedTokenBufferStub& buffer) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       buffer.module, buffer.part_index)
+                && buffer.token_buffer_kind == FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND;
+        }));
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_parser_consumption_admission_protocol_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate,
+    const std::string_view query_name,
+    const base::u64 token_buffer_count,
+    const base::u64 token_record_count,
+    const base::u64 derive_candidate_count,
+    const base::u64 empty_candidate_count,
+    const base::u64 blocked_diagnostic_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M23A_ADMISSION_PROTOCOL_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(parser_contract.contract_identity);
+    builder.mix_fingerprint(release_gate.release_gate_identity);
+    builder.mix_fingerprint(rollback_gate.rollback_gate_identity);
+    builder.mix_string(FRONTEND_MACRO_M23A_ADMISSION_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M23A_ADMISSION_BLOCKER);
+    builder.mix_u64(token_buffer_count);
+    builder.mix_u64(token_record_count);
+    builder.mix_u64(derive_candidate_count);
+    builder.mix_u64(empty_candidate_count);
+    builder.mix_u64(blocked_diagnostic_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveParserConsumptionAdmissionProtocol
+make_builtin_derive_parser_consumption_admission_protocol(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate,
+    const std::vector<GeneratedTokenBufferStub>& buffers,
+    const std::vector<GeneratedTokenRecord>& records,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics)
+{
+    const base::u64 token_buffer_count = count_part_local_token_buffers(placeholder, buffers);
+    const base::u64 token_record_count = count_part_local_token_records(placeholder, records);
+    const base::u64 derive_candidate_count = count_part_local_derive_candidate_buffers(placeholder, buffers);
+    const base::u64 empty_candidate_count = count_part_local_empty_candidate_buffers(placeholder, buffers);
+    const base::u64 blocked_diagnostic_count = count_part_local_blocked_diagnostics(placeholder, diagnostics);
+    const std::string query_name =
+        builtin_derive_parser_consumption_admission_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return BuiltinDeriveParserConsumptionAdmissionProtocol{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        parser_contract.contract_identity,
+        release_gate.release_gate_identity,
+        rollback_gate.rollback_gate_identity,
+        builtin_derive_parser_consumption_admission_protocol_identity(placeholder, parser_contract,
+            release_gate, rollback_gate, query_name, token_buffer_count, token_record_count,
+            derive_candidate_count, empty_candidate_count, blocked_diagnostic_count),
+        std::string(FRONTEND_MACRO_M23A_ADMISSION_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M23A_ADMISSION_BLOCKER),
+        token_buffer_count,
+        token_record_count,
+        derive_candidate_count,
+        empty_candidate_count,
+        blocked_diagnostic_count,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_checkpoint_rollback_protocol_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate,
+    const std::string_view query_name,
+    const base::u64 checkpoint_count,
+    const base::u64 rollback_plan_count,
+    const base::u64 token_record_count,
+    const base::u64 diagnostic_anchor_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M23B_CHECKPOINT_PROTOCOL_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(admission_protocol.admission_protocol_identity);
+    builder.mix_fingerprint(rollback_gate.rollback_gate_identity);
+    builder.mix_string(FRONTEND_MACRO_M23B_CHECKPOINT_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M23B_CHECKPOINT_BLOCKER);
+    builder.mix_u64(checkpoint_count);
+    builder.mix_u64(rollback_plan_count);
+    builder.mix_u64(token_record_count);
+    builder.mix_u64(diagnostic_anchor_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveParserConsumptionCheckpointRollbackProtocol
+make_builtin_derive_checkpoint_rollback_protocol(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate)
+{
+    const base::u64 checkpoint_count = FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT;
+    const base::u64 rollback_plan_count = FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT;
+    const base::u64 token_record_count = admission_protocol.token_record_count;
+    const base::u64 diagnostic_anchor_count = admission_protocol.blocked_diagnostic_count;
+    const std::string query_name =
+        builtin_derive_checkpoint_rollback_query_name(placeholder.module, placeholder.source_part_index);
+    return BuiltinDeriveParserConsumptionCheckpointRollbackProtocol{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        admission_protocol.admission_protocol_identity,
+        rollback_gate.rollback_gate_identity,
+        builtin_derive_checkpoint_rollback_protocol_identity(placeholder, admission_protocol, rollback_gate,
+            query_name, checkpoint_count, rollback_plan_count, token_record_count, diagnostic_anchor_count),
+        std::string(FRONTEND_MACRO_M23B_CHECKPOINT_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M23B_CHECKPOINT_BLOCKER),
+        checkpoint_count,
+        rollback_plan_count,
+        token_record_count,
+        diagnostic_anchor_count,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_preconsumption_verification_closure_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const std::string_view query_name,
+    const base::u64 admission_protocol_count,
+    const base::u64 checkpoint_protocol_count,
+    const base::u64 hardening_matrix_count,
+    const base::u64 debug_dump_contract_count,
+    const base::u64 rollback_gate_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M23C_VERIFICATION_CLOSURE_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(admission_protocol.admission_protocol_identity);
+    builder.mix_fingerprint(checkpoint_protocol.checkpoint_protocol_identity);
+    builder.mix_fingerprint(debug_contract.debug_dump_contract_identity);
+    builder.mix_string(FRONTEND_MACRO_M23C_VERIFICATION_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER);
+    builder.mix_u64(admission_protocol_count);
+    builder.mix_u64(checkpoint_protocol_count);
+    builder.mix_u64(hardening_matrix_count);
+    builder.mix_u64(debug_dump_contract_count);
+    builder.mix_u64(rollback_gate_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveParserPreConsumptionVerificationClosure
+make_builtin_derive_preconsumption_verification_closure(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate)
+{
+    const base::u64 admission_protocol_count = admission_protocol.protocol_visible ? 1U : 0U;
+    const base::u64 checkpoint_protocol_count = checkpoint_protocol.protocol_visible ? 1U : 0U;
+    const base::u64 hardening_matrix_count = matrix.matrix_visible ? 1U : 0U;
+    const base::u64 debug_dump_contract_count = debug_contract.contract_visible ? 1U : 0U;
+    const base::u64 rollback_gate_count = rollback_gate.rollback_gate_visible ? 1U : 0U;
+    const std::string query_name =
+        builtin_derive_preconsumption_verification_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return BuiltinDeriveParserPreConsumptionVerificationClosure{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        admission_protocol.admission_protocol_identity,
+        checkpoint_protocol.checkpoint_protocol_identity,
+        debug_contract.debug_dump_contract_identity,
+        builtin_derive_preconsumption_verification_closure_identity(placeholder, admission_protocol,
+            checkpoint_protocol, debug_contract, query_name, admission_protocol_count,
+            checkpoint_protocol_count, hardening_matrix_count, debug_dump_contract_count, rollback_gate_count),
+        std::string(FRONTEND_MACRO_M23C_VERIFICATION_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER),
+        admission_protocol_count,
+        checkpoint_protocol_count,
+        hardening_matrix_count,
+        debug_dump_contract_count,
+        rollback_gate_count,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
     const query::ModulePartKey source_part, const syntax::ModuleId module, const base::u32 part_index)
 {
@@ -3826,6 +4247,129 @@ void mix_builtin_derive_rollback_diagnostic_design_gate(
     builder.mix_bool(gate.query_reusable);
 }
 
+void mix_builtin_derive_parser_consumption_admission_protocol(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M23A_ADMISSION_PROTOCOL_MARKER);
+    builder.mix_u32(protocol.module.value);
+    builder.mix_u32(protocol.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(protocol.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(protocol.generated_part));
+    builder.mix_fingerprint(protocol.parser_consumption_contract_identity);
+    builder.mix_fingerprint(protocol.release_gate_identity);
+    builder.mix_fingerprint(protocol.rollback_gate_identity);
+    builder.mix_fingerprint(protocol.admission_protocol_identity);
+    builder.mix_string(protocol.admission_policy);
+    builder.mix_string(protocol.admission_query_name);
+    builder.mix_string(protocol.blocked_reason);
+    builder.mix_u64(protocol.token_buffer_count);
+    builder.mix_u64(protocol.token_record_count);
+    builder.mix_u64(protocol.derive_candidate_count);
+    builder.mix_u64(protocol.empty_candidate_count);
+    builder.mix_u64(protocol.blocked_diagnostic_count);
+    builder.mix_bool(protocol.release_gate_available);
+    builder.mix_bool(protocol.rollback_gate_available);
+    builder.mix_bool(protocol.parser_contract_available);
+    builder.mix_bool(protocol.deterministic_order_available);
+    builder.mix_bool(protocol.generated_tokens_checkpointed);
+    builder.mix_bool(protocol.admission_protocol_complete);
+    builder.mix_bool(protocol.parser_consumption_enabled);
+    builder.mix_bool(protocol.parser_admitted);
+    builder.mix_bool(protocol.generated_part_parsed);
+    builder.mix_bool(protocol.generated_part_merged);
+    builder.mix_bool(protocol.emit_expanded_available);
+    builder.mix_bool(protocol.debug_trace_available);
+    builder.mix_bool(protocol.source_map_available);
+    builder.mix_bool(protocol.standard_library_required);
+    builder.mix_bool(protocol.runtime_required);
+    builder.mix_bool(protocol.external_process_required);
+    builder.mix_bool(protocol.produced_user_generated_code);
+    builder.mix_bool(protocol.protocol_visible);
+    builder.mix_bool(protocol.query_reusable);
+}
+
+void mix_builtin_derive_checkpoint_rollback_protocol(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M23B_CHECKPOINT_PROTOCOL_MARKER);
+    builder.mix_u32(protocol.module.value);
+    builder.mix_u32(protocol.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(protocol.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(protocol.generated_part));
+    builder.mix_fingerprint(protocol.admission_protocol_identity);
+    builder.mix_fingerprint(protocol.rollback_gate_identity);
+    builder.mix_fingerprint(protocol.checkpoint_protocol_identity);
+    builder.mix_string(protocol.checkpoint_policy);
+    builder.mix_string(protocol.checkpoint_query_name);
+    builder.mix_string(protocol.blocked_reason);
+    builder.mix_u64(protocol.checkpoint_count);
+    builder.mix_u64(protocol.rollback_plan_count);
+    builder.mix_u64(protocol.token_record_count);
+    builder.mix_u64(protocol.diagnostic_anchor_count);
+    builder.mix_bool(protocol.parser_state_checkpoint_available);
+    builder.mix_bool(protocol.token_cursor_checkpoint_available);
+    builder.mix_bool(protocol.generated_part_checkpoint_available);
+    builder.mix_bool(protocol.diagnostic_replay_available);
+    builder.mix_bool(protocol.rollback_protocol_complete);
+    builder.mix_bool(protocol.rollback_execution_enabled);
+    builder.mix_bool(protocol.parser_consumption_enabled);
+    builder.mix_bool(protocol.generated_part_parsed);
+    builder.mix_bool(protocol.generated_part_merged);
+    builder.mix_bool(protocol.emit_expanded_available);
+    builder.mix_bool(protocol.debug_trace_available);
+    builder.mix_bool(protocol.source_map_available);
+    builder.mix_bool(protocol.standard_library_required);
+    builder.mix_bool(protocol.runtime_required);
+    builder.mix_bool(protocol.external_process_required);
+    builder.mix_bool(protocol.produced_user_generated_code);
+    builder.mix_bool(protocol.protocol_visible);
+    builder.mix_bool(protocol.query_reusable);
+}
+
+void mix_builtin_derive_preconsumption_verification_closure(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M23C_VERIFICATION_CLOSURE_MARKER);
+    builder.mix_u32(closure.module.value);
+    builder.mix_u32(closure.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(closure.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(closure.generated_part));
+    builder.mix_fingerprint(closure.admission_protocol_identity);
+    builder.mix_fingerprint(closure.checkpoint_protocol_identity);
+    builder.mix_fingerprint(closure.debug_dump_contract_identity);
+    builder.mix_fingerprint(closure.verification_closure_identity);
+    builder.mix_string(closure.verification_policy);
+    builder.mix_string(closure.verification_query_name);
+    builder.mix_string(closure.blocked_reason);
+    builder.mix_u64(closure.admission_protocol_count);
+    builder.mix_u64(closure.checkpoint_protocol_count);
+    builder.mix_u64(closure.hardening_matrix_count);
+    builder.mix_u64(closure.debug_dump_contract_count);
+    builder.mix_u64(closure.rollback_gate_count);
+    builder.mix_bool(closure.admission_protocol_available);
+    builder.mix_bool(closure.checkpoint_protocol_available);
+    builder.mix_bool(closure.release_hardening_available);
+    builder.mix_bool(closure.debug_dump_contract_available);
+    builder.mix_bool(closure.rollback_gate_available);
+    builder.mix_bool(closure.verification_closure_complete);
+    builder.mix_bool(closure.parser_consumption_enabled);
+    builder.mix_bool(closure.generated_part_parsed);
+    builder.mix_bool(closure.generated_part_merged);
+    builder.mix_bool(closure.sema_visible);
+    builder.mix_bool(closure.emit_expanded_available);
+    builder.mix_bool(closure.debug_trace_available);
+    builder.mix_bool(closure.source_map_available);
+    builder.mix_bool(closure.standard_library_required);
+    builder.mix_bool(closure.runtime_required);
+    builder.mix_bool(closure.external_process_required);
+    builder.mix_bool(closure.produced_user_generated_code);
+    builder.mix_bool(closure.closure_visible);
+    builder.mix_bool(closure.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -3937,6 +4481,21 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.builtin_derive_rollback_diagnostic_query_reusable_count);
     builder.mix_u64(summary.builtin_derive_rollback_diagnostic_design_complete_count);
     builder.mix_u64(summary.builtin_derive_rollback_diagnostic_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_parser_consumption_admission_protocol_count);
+    builder.mix_u64(summary.builtin_derive_parser_consumption_admission_visible_count);
+    builder.mix_u64(summary.builtin_derive_parser_consumption_admission_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_parser_consumption_admission_complete_count);
+    builder.mix_u64(summary.builtin_derive_parser_consumption_admission_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_checkpoint_rollback_protocol_count);
+    builder.mix_u64(summary.builtin_derive_checkpoint_rollback_visible_count);
+    builder.mix_u64(summary.builtin_derive_checkpoint_rollback_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_checkpoint_rollback_complete_count);
+    builder.mix_u64(summary.builtin_derive_checkpoint_rollback_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_preconsumption_verification_closure_count);
+    builder.mix_u64(summary.builtin_derive_preconsumption_verification_visible_count);
+    builder.mix_u64(summary.builtin_derive_preconsumption_verification_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_preconsumption_verification_complete_count);
+    builder.mix_u64(summary.builtin_derive_preconsumption_verification_parser_consumable_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -4104,6 +4663,36 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             == rhs.builtin_derive_rollback_diagnostic_design_complete_count
         && lhs.builtin_derive_rollback_diagnostic_parser_consumable_count
             == rhs.builtin_derive_rollback_diagnostic_parser_consumable_count
+        && lhs.builtin_derive_parser_consumption_admission_protocol_count
+            == rhs.builtin_derive_parser_consumption_admission_protocol_count
+        && lhs.builtin_derive_parser_consumption_admission_visible_count
+            == rhs.builtin_derive_parser_consumption_admission_visible_count
+        && lhs.builtin_derive_parser_consumption_admission_query_reusable_count
+            == rhs.builtin_derive_parser_consumption_admission_query_reusable_count
+        && lhs.builtin_derive_parser_consumption_admission_complete_count
+            == rhs.builtin_derive_parser_consumption_admission_complete_count
+        && lhs.builtin_derive_parser_consumption_admission_parser_consumable_count
+            == rhs.builtin_derive_parser_consumption_admission_parser_consumable_count
+        && lhs.builtin_derive_checkpoint_rollback_protocol_count
+            == rhs.builtin_derive_checkpoint_rollback_protocol_count
+        && lhs.builtin_derive_checkpoint_rollback_visible_count
+            == rhs.builtin_derive_checkpoint_rollback_visible_count
+        && lhs.builtin_derive_checkpoint_rollback_query_reusable_count
+            == rhs.builtin_derive_checkpoint_rollback_query_reusable_count
+        && lhs.builtin_derive_checkpoint_rollback_complete_count
+            == rhs.builtin_derive_checkpoint_rollback_complete_count
+        && lhs.builtin_derive_checkpoint_rollback_parser_consumable_count
+            == rhs.builtin_derive_checkpoint_rollback_parser_consumable_count
+        && lhs.builtin_derive_preconsumption_verification_closure_count
+            == rhs.builtin_derive_preconsumption_verification_closure_count
+        && lhs.builtin_derive_preconsumption_verification_visible_count
+            == rhs.builtin_derive_preconsumption_verification_visible_count
+        && lhs.builtin_derive_preconsumption_verification_query_reusable_count
+            == rhs.builtin_derive_preconsumption_verification_query_reusable_count
+        && lhs.builtin_derive_preconsumption_verification_complete_count
+            == rhs.builtin_derive_preconsumption_verification_complete_count
+        && lhs.builtin_derive_preconsumption_verification_parser_consumable_count
+            == rhs.builtin_derive_preconsumption_verification_parser_consumable_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -5399,6 +5988,251 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     return true;
 }
 
+[[nodiscard]] bool builtin_derive_parser_consumption_admission_protocol_matches_group(
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate,
+    const std::vector<GeneratedTokenBufferStub>& buffers,
+    const std::vector<GeneratedTokenRecord>& records,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics) noexcept
+{
+    const base::u64 token_buffer_count = count_part_local_token_buffers(placeholder, buffers);
+    const base::u64 token_record_count = count_part_local_token_records(placeholder, records);
+    const base::u64 derive_candidate_count = count_part_local_derive_candidate_buffers(placeholder, buffers);
+    const base::u64 empty_candidate_count = count_part_local_empty_candidate_buffers(placeholder, buffers);
+    const base::u64 blocked_diagnostic_count = count_part_local_blocked_diagnostics(placeholder, diagnostics);
+    const std::string expected_query_name =
+        builtin_derive_parser_consumption_admission_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return protocol.module.value == placeholder.module.value
+        && protocol.source_part_index == placeholder.source_part_index
+        && protocol.attached_part == placeholder.source_part
+        && protocol.generated_part == placeholder.generated_part
+        && protocol.parser_consumption_contract_identity == parser_contract.contract_identity
+        && protocol.release_gate_identity == release_gate.release_gate_identity
+        && protocol.rollback_gate_identity == rollback_gate.rollback_gate_identity
+        && protocol.admission_protocol_identity
+            == builtin_derive_parser_consumption_admission_protocol_identity(placeholder, parser_contract,
+                release_gate, rollback_gate, expected_query_name, token_buffer_count, token_record_count,
+                derive_candidate_count, empty_candidate_count, blocked_diagnostic_count)
+        && protocol.admission_policy == FRONTEND_MACRO_M23A_ADMISSION_POLICY
+        && protocol.admission_query_name == expected_query_name
+        && protocol.blocked_reason == FRONTEND_MACRO_M23A_ADMISSION_BLOCKER
+        && protocol.token_buffer_count == token_buffer_count
+        && protocol.token_record_count == token_record_count
+        && protocol.derive_candidate_count == derive_candidate_count
+        && protocol.empty_candidate_count == empty_candidate_count
+        && protocol.blocked_diagnostic_count == blocked_diagnostic_count
+        && protocol.release_gate_available
+        && protocol.rollback_gate_available
+        && protocol.parser_contract_available
+        && protocol.deterministic_order_available
+        && protocol.generated_tokens_checkpointed
+        && protocol.admission_protocol_complete
+        && !protocol.parser_consumption_enabled
+        && !protocol.parser_admitted
+        && !protocol.generated_part_parsed
+        && !protocol.generated_part_merged
+        && !protocol.emit_expanded_available
+        && !protocol.debug_trace_available
+        && !protocol.source_map_available
+        && !protocol.standard_library_required
+        && !protocol.runtime_required
+        && !protocol.external_process_required
+        && !protocol.produced_user_generated_code
+        && protocol.protocol_visible
+        && protocol.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_parser_consumption_admission_protocols_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_parser_consumption_admission_protocols.size()
+            != result.generated_parts.size()
+        || result.parser_consumption_contract_gates.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_release_gates.size() != result.generated_parts.size()
+        || result.builtin_derive_rollback_diagnostic_gates.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0;
+         index < result.builtin_derive_parser_consumption_admission_protocols.size();
+         ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_parser_consumption_admission_protocol_matches_group(
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                placeholder,
+                result.parser_consumption_contract_gates[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_rollback_diagnostic_gates[index],
+                result.generated_token_buffers,
+                result.generated_token_records,
+                result.parser_admission_diagnostics)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_checkpoint_rollback_protocol_matches_group(
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate) noexcept
+{
+    const base::u64 checkpoint_count = FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT;
+    const base::u64 rollback_plan_count = FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT;
+    const base::u64 token_record_count = admission_protocol.token_record_count;
+    const base::u64 diagnostic_anchor_count = admission_protocol.blocked_diagnostic_count;
+    const std::string expected_query_name =
+        builtin_derive_checkpoint_rollback_query_name(placeholder.module, placeholder.source_part_index);
+    return protocol.module.value == placeholder.module.value
+        && protocol.source_part_index == placeholder.source_part_index
+        && protocol.attached_part == placeholder.source_part
+        && protocol.generated_part == placeholder.generated_part
+        && protocol.admission_protocol_identity == admission_protocol.admission_protocol_identity
+        && protocol.rollback_gate_identity == rollback_gate.rollback_gate_identity
+        && protocol.checkpoint_protocol_identity == builtin_derive_checkpoint_rollback_protocol_identity(
+               placeholder, admission_protocol, rollback_gate, expected_query_name, checkpoint_count,
+               rollback_plan_count, token_record_count, diagnostic_anchor_count)
+        && protocol.checkpoint_policy == FRONTEND_MACRO_M23B_CHECKPOINT_POLICY
+        && protocol.checkpoint_query_name == expected_query_name
+        && protocol.blocked_reason == FRONTEND_MACRO_M23B_CHECKPOINT_BLOCKER
+        && protocol.checkpoint_count == checkpoint_count
+        && protocol.rollback_plan_count == rollback_plan_count
+        && protocol.token_record_count == token_record_count
+        && protocol.diagnostic_anchor_count == diagnostic_anchor_count
+        && protocol.parser_state_checkpoint_available
+        && protocol.token_cursor_checkpoint_available
+        && protocol.generated_part_checkpoint_available
+        && protocol.diagnostic_replay_available
+        && protocol.rollback_protocol_complete
+        && !protocol.rollback_execution_enabled
+        && !protocol.parser_consumption_enabled
+        && !protocol.generated_part_parsed
+        && !protocol.generated_part_merged
+        && !protocol.emit_expanded_available
+        && !protocol.debug_trace_available
+        && !protocol.source_map_available
+        && !protocol.standard_library_required
+        && !protocol.runtime_required
+        && !protocol.external_process_required
+        && !protocol.produced_user_generated_code
+        && protocol.protocol_visible
+        && protocol.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_checkpoint_rollback_protocols_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_checkpoint_rollback_protocols.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_consumption_admission_protocols.size()
+            != result.generated_parts.size()
+        || result.builtin_derive_rollback_diagnostic_gates.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_checkpoint_rollback_protocols.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_checkpoint_rollback_protocol_matches_group(
+                result.builtin_derive_checkpoint_rollback_protocols[index],
+                placeholder,
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_rollback_diagnostic_gates[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_preconsumption_verification_closure_matches_group(
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& closure,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate) noexcept
+{
+    const base::u64 admission_protocol_count = admission_protocol.protocol_visible ? 1U : 0U;
+    const base::u64 checkpoint_protocol_count = checkpoint_protocol.protocol_visible ? 1U : 0U;
+    const base::u64 hardening_matrix_count = matrix.matrix_visible ? 1U : 0U;
+    const base::u64 debug_dump_contract_count = debug_contract.contract_visible ? 1U : 0U;
+    const base::u64 rollback_gate_count = rollback_gate.rollback_gate_visible ? 1U : 0U;
+    const std::string expected_query_name =
+        builtin_derive_preconsumption_verification_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return closure.module.value == placeholder.module.value
+        && closure.source_part_index == placeholder.source_part_index
+        && closure.attached_part == placeholder.source_part
+        && closure.generated_part == placeholder.generated_part
+        && closure.admission_protocol_identity == admission_protocol.admission_protocol_identity
+        && closure.checkpoint_protocol_identity == checkpoint_protocol.checkpoint_protocol_identity
+        && closure.debug_dump_contract_identity == debug_contract.debug_dump_contract_identity
+        && closure.verification_closure_identity
+            == builtin_derive_preconsumption_verification_closure_identity(placeholder, admission_protocol,
+                checkpoint_protocol, debug_contract, expected_query_name, admission_protocol_count,
+                checkpoint_protocol_count, hardening_matrix_count, debug_dump_contract_count,
+                rollback_gate_count)
+        && closure.verification_policy == FRONTEND_MACRO_M23C_VERIFICATION_POLICY
+        && closure.verification_query_name == expected_query_name
+        && closure.blocked_reason == FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER
+        && closure.admission_protocol_count == admission_protocol_count
+        && closure.checkpoint_protocol_count == checkpoint_protocol_count
+        && closure.hardening_matrix_count == hardening_matrix_count
+        && closure.debug_dump_contract_count == debug_dump_contract_count
+        && closure.rollback_gate_count == rollback_gate_count
+        && closure.admission_protocol_available
+        && closure.checkpoint_protocol_available
+        && closure.release_hardening_available
+        && closure.debug_dump_contract_available
+        && closure.rollback_gate_available
+        && closure.verification_closure_complete
+        && !closure.parser_consumption_enabled
+        && !closure.generated_part_parsed
+        && !closure.generated_part_merged
+        && !closure.sema_visible
+        && !closure.emit_expanded_available
+        && !closure.debug_trace_available
+        && !closure.source_map_available
+        && !closure.standard_library_required
+        && !closure.runtime_required
+        && !closure.external_process_required
+        && !closure.produced_user_generated_code
+        && closure.closure_visible
+        && closure.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_preconsumption_verification_closures_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_preconsumption_verification_closures.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_consumption_admission_protocols.size()
+            != result.generated_parts.size()
+        || result.builtin_derive_checkpoint_rollback_protocols.size() != result.generated_parts.size()
+        || result.builtin_derive_release_hardening_matrices.size() != result.generated_parts.size()
+        || result.builtin_derive_debug_dump_contracts.size() != result.generated_parts.size()
+        || result.builtin_derive_rollback_diagnostic_gates.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0;
+         index < result.builtin_derive_preconsumption_verification_closures.size();
+         ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_preconsumption_verification_closure_matches_group(
+                result.builtin_derive_preconsumption_verification_closures[index],
+                placeholder,
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index],
+                result.builtin_derive_release_hardening_matrices[index],
+                result.builtin_derive_debug_dump_contracts[index],
+                result.builtin_derive_rollback_diagnostic_gates[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -6304,6 +7138,128 @@ bool is_valid(const BuiltinDeriveRollbackDiagnosticDesignGate& gate) noexcept
         && gate.query_reusable;
 }
 
+bool is_valid(const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) noexcept
+{
+    return syntax::is_valid(protocol.module)
+        && query::is_valid(protocol.attached_part)
+        && query::is_valid(protocol.generated_part)
+        && protocol.generated_part.kind == query::ModulePartKind::generated
+        && protocol.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(protocol.parser_consumption_contract_identity)
+        && is_nonzero_fingerprint(protocol.release_gate_identity)
+        && is_nonzero_fingerprint(protocol.rollback_gate_identity)
+        && is_nonzero_fingerprint(protocol.admission_protocol_identity)
+        && protocol.admission_protocol_identity != protocol.parser_consumption_contract_identity
+        && protocol.admission_protocol_identity != protocol.release_gate_identity
+        && protocol.admission_protocol_identity != protocol.rollback_gate_identity
+        && protocol.admission_policy == FRONTEND_MACRO_M23A_ADMISSION_POLICY
+        && !protocol.admission_query_name.empty()
+        && protocol.blocked_reason == FRONTEND_MACRO_M23A_ADMISSION_BLOCKER
+        && protocol.token_buffer_count == protocol.derive_candidate_count + protocol.empty_candidate_count
+        && protocol.blocked_diagnostic_count == protocol.token_buffer_count
+        && (!protocol.parser_contract_available || protocol.parser_consumption_contract_identity.byte_count > 0U)
+        && protocol.release_gate_available
+        && protocol.rollback_gate_available
+        && protocol.parser_contract_available
+        && protocol.deterministic_order_available
+        && protocol.generated_tokens_checkpointed
+        && protocol.admission_protocol_complete
+        && !protocol.parser_consumption_enabled
+        && !protocol.parser_admitted
+        && !protocol.generated_part_parsed
+        && !protocol.generated_part_merged
+        && !protocol.emit_expanded_available
+        && !protocol.debug_trace_available
+        && !protocol.source_map_available
+        && !protocol.standard_library_required
+        && !protocol.runtime_required
+        && !protocol.external_process_required
+        && !protocol.produced_user_generated_code
+        && protocol.protocol_visible
+        && protocol.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) noexcept
+{
+    return syntax::is_valid(protocol.module)
+        && query::is_valid(protocol.attached_part)
+        && query::is_valid(protocol.generated_part)
+        && protocol.generated_part.kind == query::ModulePartKind::generated
+        && protocol.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(protocol.admission_protocol_identity)
+        && is_nonzero_fingerprint(protocol.rollback_gate_identity)
+        && is_nonzero_fingerprint(protocol.checkpoint_protocol_identity)
+        && protocol.checkpoint_protocol_identity != protocol.admission_protocol_identity
+        && protocol.checkpoint_protocol_identity != protocol.rollback_gate_identity
+        && protocol.checkpoint_policy == FRONTEND_MACRO_M23B_CHECKPOINT_POLICY
+        && !protocol.checkpoint_query_name.empty()
+        && protocol.blocked_reason == FRONTEND_MACRO_M23B_CHECKPOINT_BLOCKER
+        && protocol.checkpoint_count == FRONTEND_MACRO_M23B_CHECKPOINT_PLAN_COUNT
+        && protocol.rollback_plan_count == protocol.checkpoint_count
+        && protocol.diagnostic_anchor_count > 0U
+        && protocol.parser_state_checkpoint_available
+        && protocol.token_cursor_checkpoint_available
+        && protocol.generated_part_checkpoint_available
+        && protocol.diagnostic_replay_available
+        && protocol.rollback_protocol_complete
+        && !protocol.rollback_execution_enabled
+        && !protocol.parser_consumption_enabled
+        && !protocol.generated_part_parsed
+        && !protocol.generated_part_merged
+        && !protocol.emit_expanded_available
+        && !protocol.debug_trace_available
+        && !protocol.source_map_available
+        && !protocol.standard_library_required
+        && !protocol.runtime_required
+        && !protocol.external_process_required
+        && !protocol.produced_user_generated_code
+        && protocol.protocol_visible
+        && protocol.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) noexcept
+{
+    return syntax::is_valid(closure.module)
+        && query::is_valid(closure.attached_part)
+        && query::is_valid(closure.generated_part)
+        && closure.generated_part.kind == query::ModulePartKind::generated
+        && closure.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(closure.admission_protocol_identity)
+        && is_nonzero_fingerprint(closure.checkpoint_protocol_identity)
+        && is_nonzero_fingerprint(closure.debug_dump_contract_identity)
+        && is_nonzero_fingerprint(closure.verification_closure_identity)
+        && closure.verification_closure_identity != closure.admission_protocol_identity
+        && closure.verification_closure_identity != closure.checkpoint_protocol_identity
+        && closure.verification_closure_identity != closure.debug_dump_contract_identity
+        && closure.verification_policy == FRONTEND_MACRO_M23C_VERIFICATION_POLICY
+        && !closure.verification_query_name.empty()
+        && closure.blocked_reason == FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER
+        && closure.admission_protocol_count == 1U
+        && closure.checkpoint_protocol_count == 1U
+        && closure.hardening_matrix_count == 1U
+        && closure.debug_dump_contract_count == 1U
+        && closure.rollback_gate_count == 1U
+        && closure.admission_protocol_available
+        && closure.checkpoint_protocol_available
+        && closure.release_hardening_available
+        && closure.debug_dump_contract_available
+        && closure.rollback_gate_available
+        && closure.verification_closure_complete
+        && !closure.parser_consumption_enabled
+        && !closure.generated_part_parsed
+        && !closure.generated_part_merged
+        && !closure.sema_visible
+        && !closure.emit_expanded_available
+        && !closure.debug_trace_available
+        && !closure.source_map_available
+        && !closure.standard_library_required
+        && !closure.runtime_required
+        && !closure.external_process_required
+        && !closure.produced_user_generated_code
+        && closure.closure_visible
+        && closure.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -6311,7 +7267,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M22F_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M23C_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -6421,6 +7377,21 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const BuiltinDeriveRollbackDiagnosticDesignGate& gate) {
                    return is_valid(gate);
                })
+        && std::all_of(result.builtin_derive_parser_consumption_admission_protocols.begin(),
+               result.builtin_derive_parser_consumption_admission_protocols.end(),
+               [](const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) {
+                   return is_valid(protocol);
+               })
+        && std::all_of(result.builtin_derive_checkpoint_rollback_protocols.begin(),
+               result.builtin_derive_checkpoint_rollback_protocols.end(),
+               [](const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) {
+                   return is_valid(protocol);
+               })
+        && std::all_of(result.builtin_derive_preconsumption_verification_closures.begin(),
+               result.builtin_derive_preconsumption_verification_closures.end(),
+               [](const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) {
+                   return is_valid(closure);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -6434,6 +7405,9 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && builtin_derive_release_hardening_matrices_match_groups(result)
         && builtin_derive_debug_dump_contracts_match_groups(result)
         && builtin_derive_rollback_diagnostic_gates_match_groups(result)
+        && builtin_derive_parser_consumption_admission_protocols_match_groups(result)
+        && builtin_derive_checkpoint_rollback_protocols_match_groups(result)
+        && builtin_derive_preconsumption_verification_closures_match_groups(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -7107,6 +8081,158 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.builtin_derive_parser_consumption_admission_protocol_count =
+        static_cast<base::u64>(result.builtin_derive_parser_consumption_admission_protocols.size());
+    for (const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol :
+        result.builtin_derive_parser_consumption_admission_protocols) {
+        if (protocol.protocol_visible) {
+            ++summary.builtin_derive_parser_consumption_admission_visible_count;
+        }
+        if (protocol.query_reusable) {
+            ++summary.builtin_derive_parser_consumption_admission_query_reusable_count;
+        }
+        if (protocol.release_gate_available
+            && protocol.rollback_gate_available
+            && protocol.parser_contract_available
+            && protocol.deterministic_order_available
+            && protocol.generated_tokens_checkpointed
+            && protocol.admission_protocol_complete) {
+            ++summary.builtin_derive_parser_consumption_admission_complete_count;
+        }
+        if (protocol.parser_consumption_enabled || protocol.parser_admitted) {
+            ++summary.builtin_derive_parser_consumption_admission_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (protocol.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (protocol.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (protocol.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (protocol.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (protocol.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (protocol.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (protocol.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (protocol.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (protocol.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_checkpoint_rollback_protocol_count =
+        static_cast<base::u64>(result.builtin_derive_checkpoint_rollback_protocols.size());
+    for (const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol :
+        result.builtin_derive_checkpoint_rollback_protocols) {
+        if (protocol.protocol_visible) {
+            ++summary.builtin_derive_checkpoint_rollback_visible_count;
+        }
+        if (protocol.query_reusable) {
+            ++summary.builtin_derive_checkpoint_rollback_query_reusable_count;
+        }
+        if (protocol.parser_state_checkpoint_available
+            && protocol.token_cursor_checkpoint_available
+            && protocol.generated_part_checkpoint_available
+            && protocol.diagnostic_replay_available
+            && protocol.rollback_protocol_complete) {
+            ++summary.builtin_derive_checkpoint_rollback_complete_count;
+        }
+        if (protocol.rollback_execution_enabled || protocol.parser_consumption_enabled) {
+            ++summary.builtin_derive_checkpoint_rollback_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (protocol.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (protocol.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (protocol.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (protocol.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (protocol.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (protocol.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (protocol.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (protocol.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (protocol.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_preconsumption_verification_closure_count =
+        static_cast<base::u64>(result.builtin_derive_preconsumption_verification_closures.size());
+    for (const BuiltinDeriveParserPreConsumptionVerificationClosure& closure :
+        result.builtin_derive_preconsumption_verification_closures) {
+        if (closure.closure_visible) {
+            ++summary.builtin_derive_preconsumption_verification_visible_count;
+        }
+        if (closure.query_reusable) {
+            ++summary.builtin_derive_preconsumption_verification_query_reusable_count;
+        }
+        if (closure.admission_protocol_available
+            && closure.checkpoint_protocol_available
+            && closure.release_hardening_available
+            && closure.debug_dump_contract_available
+            && closure.rollback_gate_available
+            && closure.verification_closure_complete) {
+            ++summary.builtin_derive_preconsumption_verification_complete_count;
+        }
+        if (closure.parser_consumption_enabled) {
+            ++summary.builtin_derive_preconsumption_verification_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (closure.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (closure.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (closure.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (closure.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (closure.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (closure.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (closure.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (closure.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (closure.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (closure.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -7114,7 +8240,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M22F_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M23C_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -7221,6 +8347,23 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     for (const BuiltinDeriveRollbackDiagnosticDesignGate& gate :
         result.builtin_derive_rollback_diagnostic_gates) {
         mix_builtin_derive_rollback_diagnostic_design_gate(builder, gate);
+    }
+    builder.mix_u64(
+        static_cast<base::u64>(result.builtin_derive_parser_consumption_admission_protocols.size()));
+    for (const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol :
+        result.builtin_derive_parser_consumption_admission_protocols) {
+        mix_builtin_derive_parser_consumption_admission_protocol(builder, protocol);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_checkpoint_rollback_protocols.size()));
+    for (const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol :
+        result.builtin_derive_checkpoint_rollback_protocols) {
+        mix_builtin_derive_checkpoint_rollback_protocol(builder, protocol);
+    }
+    builder.mix_u64(
+        static_cast<base::u64>(result.builtin_derive_preconsumption_verification_closures.size()));
+    for (const BuiltinDeriveParserPreConsumptionVerificationClosure& closure :
+        result.builtin_derive_preconsumption_verification_closures) {
+        mix_builtin_derive_preconsumption_verification_closure(builder, closure);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -7412,6 +8555,36 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.builtin_derive_rollback_diagnostic_design_complete_count
            << " builtin_derive_rollback_diagnostic_parser_consumable="
            << summary.builtin_derive_rollback_diagnostic_parser_consumable_count
+           << " builtin_derive_parser_consumption_admission_protocols="
+           << summary.builtin_derive_parser_consumption_admission_protocol_count
+           << " builtin_derive_parser_consumption_admission_visible="
+           << summary.builtin_derive_parser_consumption_admission_visible_count
+           << " builtin_derive_parser_consumption_admission_query_reusable="
+           << summary.builtin_derive_parser_consumption_admission_query_reusable_count
+           << " builtin_derive_parser_consumption_admission_complete="
+           << summary.builtin_derive_parser_consumption_admission_complete_count
+           << " builtin_derive_parser_consumption_admission_parser_consumable="
+           << summary.builtin_derive_parser_consumption_admission_parser_consumable_count
+           << " builtin_derive_checkpoint_rollback_protocols="
+           << summary.builtin_derive_checkpoint_rollback_protocol_count
+           << " builtin_derive_checkpoint_rollback_visible="
+           << summary.builtin_derive_checkpoint_rollback_visible_count
+           << " builtin_derive_checkpoint_rollback_query_reusable="
+           << summary.builtin_derive_checkpoint_rollback_query_reusable_count
+           << " builtin_derive_checkpoint_rollback_complete="
+           << summary.builtin_derive_checkpoint_rollback_complete_count
+           << " builtin_derive_checkpoint_rollback_parser_consumable="
+           << summary.builtin_derive_checkpoint_rollback_parser_consumable_count
+           << " builtin_derive_preconsumption_verification_closures="
+           << summary.builtin_derive_preconsumption_verification_closure_count
+           << " builtin_derive_preconsumption_verification_visible="
+           << summary.builtin_derive_preconsumption_verification_visible_count
+           << " builtin_derive_preconsumption_verification_query_reusable="
+           << summary.builtin_derive_preconsumption_verification_query_reusable_count
+           << " builtin_derive_preconsumption_verification_complete="
+           << summary.builtin_derive_preconsumption_verification_complete_count
+           << " builtin_derive_preconsumption_verification_parser_consumable="
+           << summary.builtin_derive_preconsumption_verification_parser_consumable_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -8233,6 +9406,177 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(gate.rollback_gate_identity)
                << '\n';
     }
+    for (base::usize index = 0;
+         index < result.builtin_derive_parser_consumption_admission_protocols.size();
+         ++index) {
+        const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol =
+            result.builtin_derive_parser_consumption_admission_protocols[index];
+        stream << "  builtin_derive_parser_consumption_admission_protocol #" << index
+               << " module=" << protocol.module.value
+               << " source_part=" << protocol.source_part_index
+               << " policy=" << protocol.admission_policy
+               << " query=" << protocol.admission_query_name
+               << " token_buffers=" << protocol.token_buffer_count
+               << " token_records=" << protocol.token_record_count
+               << " derive_candidates=" << protocol.derive_candidate_count
+               << " empty_candidates=" << protocol.empty_candidate_count
+               << " blocked_diagnostics=" << protocol.blocked_diagnostic_count
+               << " release_gate_available="
+               << (protocol.release_gate_available ? "yes" : "no")
+               << " rollback_gate_available="
+               << (protocol.rollback_gate_available ? "yes" : "no")
+               << " parser_contract_available="
+               << (protocol.parser_contract_available ? "yes" : "no")
+               << " deterministic_order_available="
+               << (protocol.deterministic_order_available ? "yes" : "no")
+               << " generated_tokens_checkpointed="
+               << (protocol.generated_tokens_checkpointed ? "yes" : "no")
+               << " admission_protocol_complete="
+               << (protocol.admission_protocol_complete ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (protocol.parser_consumption_enabled ? "yes" : "no")
+               << " parser_admitted=" << (protocol.parser_admitted ? "yes" : "no")
+               << " generated_part_parsed="
+               << (protocol.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (protocol.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (protocol.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (protocol.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (protocol.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (protocol.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (protocol.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (protocol.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (protocol.produced_user_generated_code ? "yes" : "no")
+               << " protocol_visible=" << (protocol.protocol_visible ? "yes" : "no")
+               << " query_reusable=" << (protocol.query_reusable ? "yes" : "no")
+               << " blocker=" << protocol.blocked_reason
+               << " parser_consumption_contract_identity="
+               << query::debug_string(protocol.parser_consumption_contract_identity)
+               << " release_gate_identity=" << query::debug_string(protocol.release_gate_identity)
+               << " rollback_gate_identity=" << query::debug_string(protocol.rollback_gate_identity)
+               << " admission_protocol_identity="
+               << query::debug_string(protocol.admission_protocol_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_checkpoint_rollback_protocols.size();
+         ++index) {
+        const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol =
+            result.builtin_derive_checkpoint_rollback_protocols[index];
+        stream << "  builtin_derive_checkpoint_rollback_protocol #" << index
+               << " module=" << protocol.module.value
+               << " source_part=" << protocol.source_part_index
+               << " policy=" << protocol.checkpoint_policy
+               << " query=" << protocol.checkpoint_query_name
+               << " checkpoints=" << protocol.checkpoint_count
+               << " rollback_plans=" << protocol.rollback_plan_count
+               << " token_records=" << protocol.token_record_count
+               << " diagnostic_anchors=" << protocol.diagnostic_anchor_count
+               << " parser_state_checkpoint_available="
+               << (protocol.parser_state_checkpoint_available ? "yes" : "no")
+               << " token_cursor_checkpoint_available="
+               << (protocol.token_cursor_checkpoint_available ? "yes" : "no")
+               << " generated_part_checkpoint_available="
+               << (protocol.generated_part_checkpoint_available ? "yes" : "no")
+               << " diagnostic_replay_available="
+               << (protocol.diagnostic_replay_available ? "yes" : "no")
+               << " rollback_protocol_complete="
+               << (protocol.rollback_protocol_complete ? "yes" : "no")
+               << " rollback_execution_enabled="
+               << (protocol.rollback_execution_enabled ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (protocol.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (protocol.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (protocol.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (protocol.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (protocol.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (protocol.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (protocol.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (protocol.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (protocol.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (protocol.produced_user_generated_code ? "yes" : "no")
+               << " protocol_visible=" << (protocol.protocol_visible ? "yes" : "no")
+               << " query_reusable=" << (protocol.query_reusable ? "yes" : "no")
+               << " blocker=" << protocol.blocked_reason
+               << " admission_protocol_identity="
+               << query::debug_string(protocol.admission_protocol_identity)
+               << " rollback_gate_identity=" << query::debug_string(protocol.rollback_gate_identity)
+               << " checkpoint_protocol_identity="
+               << query::debug_string(protocol.checkpoint_protocol_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_preconsumption_verification_closures.size();
+         ++index) {
+        const BuiltinDeriveParserPreConsumptionVerificationClosure& closure =
+            result.builtin_derive_preconsumption_verification_closures[index];
+        stream << "  builtin_derive_preconsumption_verification_closure #" << index
+               << " module=" << closure.module.value
+               << " source_part=" << closure.source_part_index
+               << " policy=" << closure.verification_policy
+               << " query=" << closure.verification_query_name
+               << " admission_protocols=" << closure.admission_protocol_count
+               << " checkpoint_protocols=" << closure.checkpoint_protocol_count
+               << " hardening_matrices=" << closure.hardening_matrix_count
+               << " debug_dump_contracts=" << closure.debug_dump_contract_count
+               << " rollback_gates=" << closure.rollback_gate_count
+               << " admission_protocol_available="
+               << (closure.admission_protocol_available ? "yes" : "no")
+               << " checkpoint_protocol_available="
+               << (closure.checkpoint_protocol_available ? "yes" : "no")
+               << " release_hardening_available="
+               << (closure.release_hardening_available ? "yes" : "no")
+               << " debug_dump_contract_available="
+               << (closure.debug_dump_contract_available ? "yes" : "no")
+               << " rollback_gate_available="
+               << (closure.rollback_gate_available ? "yes" : "no")
+               << " verification_closure_complete="
+               << (closure.verification_closure_complete ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (closure.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (closure.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (closure.generated_part_merged ? "yes" : "no")
+               << " sema_visible=" << (closure.sema_visible ? "yes" : "no")
+               << " emit_expanded_available="
+               << (closure.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (closure.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (closure.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (closure.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (closure.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (closure.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (closure.produced_user_generated_code ? "yes" : "no")
+               << " closure_visible=" << (closure.closure_visible ? "yes" : "no")
+               << " query_reusable=" << (closure.query_reusable ? "yes" : "no")
+               << " blocker=" << closure.blocked_reason
+               << " admission_protocol_identity="
+               << query::debug_string(closure.admission_protocol_identity)
+               << " checkpoint_protocol_identity="
+               << query::debug_string(closure.checkpoint_protocol_identity)
+               << " debug_dump_contract_identity="
+               << query::debug_string(closure.debug_dump_contract_identity)
+               << " verification_closure_identity="
+               << query::debug_string(closure.verification_closure_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -8253,7 +9597,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M22F_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M23C_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     std::vector<base::usize> input_item_indices;
@@ -8284,6 +9628,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.builtin_derive_release_hardening_matrices.reserve(ast.items.size());
     result.builtin_derive_debug_dump_contracts.reserve(ast.items.size());
     result.builtin_derive_rollback_diagnostic_gates.reserve(ast.items.size());
+    result.builtin_derive_parser_consumption_admission_protocols.reserve(ast.items.size());
+    result.builtin_derive_checkpoint_rollback_protocols.reserve(ast.items.size());
+    result.builtin_derive_preconsumption_verification_closures.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -8448,6 +9795,25 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
                 result.builtin_derive_debug_dump_contracts[index],
                 result.parser_admission_diagnostics,
                 result.parser_admission_report_entries));
+        result.builtin_derive_parser_consumption_admission_protocols.push_back(
+            make_builtin_derive_parser_consumption_admission_protocol(result.generated_parts[index],
+                result.parser_consumption_contract_gates[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_rollback_diagnostic_gates[index],
+                result.generated_token_buffers,
+                result.generated_token_records,
+                result.parser_admission_diagnostics));
+        result.builtin_derive_checkpoint_rollback_protocols.push_back(
+            make_builtin_derive_checkpoint_rollback_protocol(result.generated_parts[index],
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_rollback_diagnostic_gates[index]));
+        result.builtin_derive_preconsumption_verification_closures.push_back(
+            make_builtin_derive_preconsumption_verification_closure(result.generated_parts[index],
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index],
+                result.builtin_derive_release_hardening_matrices[index],
+                result.builtin_derive_debug_dump_contracts[index],
+                result.builtin_derive_rollback_diagnostic_gates[index]));
     }
 
     result.summary = summarize_early_item_expansion_counts(result);

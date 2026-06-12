@@ -1,8 +1,79 @@
 # 版本文档
 
+## M23c Builtin Derive Parser Pre-Consumption Verification Closure
+
+当前版本在 M22f builtin derive rollback diagnostic design gate 之后，完成 M23a/M23b/M23c 三段 parser
+consumption admission 收口。`EarlyItemExpansionResult` 的 result name 固定为
+`M23c Builtin Derive Parser Pre-Consumption Verification Closure`。本阶段仍不执行用户宏、不生成 source text、
+不让 parser 消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol`。
+- 新增 `frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol`。
+- 新增 `frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure`。
+- 新增 `is_valid(const BuiltinDeriveParserConsumptionAdmissionProtocol&)`。
+- 新增 `is_valid(const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol&)`。
+- 新增 `is_valid(const BuiltinDeriveParserPreConsumptionVerificationClosure&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_parser_consumption_admission_protocols`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_checkpoint_rollback_protocols`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_preconsumption_verification_closures`。
+- `EarlyItemExpansionSummary` 新增 builtin derive parser consumption admission、checkpoint rollback 和
+  preconsumption verification closure 计数。
+- M23a admission protocol 固定 `builtin_derive_parser_consumption_admission_protocol_v1`。
+- M23a admission query name 固定
+  `m23a-builtin-derive-parser-consumption-admission:<module>:<part>`。
+- M23a admission protocol 绑定 M21n `contract_identity`、M22c `release_gate_identity` 和 M22f
+  `rollback_gate_identity`。
+- M23a admission protocol 记录 token buffer、token record、derive candidate、empty candidate 和 blocked
+  diagnostic counts。
+- M23b checkpoint rollback protocol 固定 `builtin_derive_parser_checkpoint_rollback_protocol_v1`。
+- M23b checkpoint rollback query name 固定
+  `m23b-builtin-derive-checkpoint-rollback:<module>:<part>`。
+- M23b checkpoint rollback protocol 绑定 M23a `admission_protocol_identity` 和 M22f
+  `rollback_gate_identity`。
+- M23b checkpoint rollback protocol 固定 `checkpoint_count=3` 和 `rollback_plan_count=3`。
+- M23b checkpoint rollback protocol 固定 parser state checkpoint、token cursor checkpoint、generated part
+  checkpoint、diagnostic replay 和 complete protocol prerequisites。
+- M23c verification closure 固定 `builtin_derive_parser_preconsumption_verification_closure_v1`。
+- M23c verification query name 固定
+  `m23c-builtin-derive-preconsumption-verification:<module>:<part>`。
+- M23c verification closure 绑定 M23a `admission_protocol_identity`、M23b `checkpoint_protocol_identity` 和 M22e
+  `debug_dump_contract_identity`。
+- M23c verification closure 要求 admission protocol、checkpoint protocol、release hardening matrix、debug dump
+  contract 和 rollback gate 都可见。
+- validation 拒绝 M23 identity / query / count 漂移、上游 identity 串线、parser admission / parser consumption /
+  rollback execution 被打开、generated part parse / merge / sema-visible 被打开、standard library/runtime/external
+  process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_parser_consumption_admission_protocol`、
+  `builtin_derive_checkpoint_rollback_protocol` 和
+  `builtin_derive_preconsumption_verification_closure`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+- rollback execution。
+
 ## M22f Builtin Derive Rollback Diagnostic Design Gate
 
-当前版本在 M22c builtin derive parser release gate 之后，完成 M22d/M22e/M22f 三段 release-hardening
+该版本在 M22c builtin derive parser release gate 之后，完成 M22d/M22e/M22f 三段 release-hardening
 收口。`EarlyItemExpansionResult` 的 result name 固定为
 `M22f Builtin Derive Rollback Diagnostic Design Gate`。本阶段仍不执行用户宏、不生成 source text、不让 parser
 消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或

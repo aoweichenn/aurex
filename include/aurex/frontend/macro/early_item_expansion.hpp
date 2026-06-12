@@ -694,6 +694,117 @@ struct BuiltinDeriveRollbackDiagnosticDesignGate {
     bool query_reusable = true;
 };
 
+struct BuiltinDeriveParserConsumptionAdmissionProtocol {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 parser_consumption_contract_identity;
+    query::StableFingerprint128 release_gate_identity;
+    query::StableFingerprint128 rollback_gate_identity;
+    query::StableFingerprint128 admission_protocol_identity;
+    std::string admission_policy;
+    std::string admission_query_name;
+    std::string blocked_reason;
+    base::u64 token_buffer_count = 0;
+    base::u64 token_record_count = 0;
+    base::u64 derive_candidate_count = 0;
+    base::u64 empty_candidate_count = 0;
+    base::u64 blocked_diagnostic_count = 0;
+    bool release_gate_available = true;
+    bool rollback_gate_available = true;
+    bool parser_contract_available = true;
+    bool deterministic_order_available = true;
+    bool generated_tokens_checkpointed = true;
+    bool admission_protocol_complete = true;
+    bool parser_consumption_enabled = false;
+    bool parser_admitted = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool protocol_visible = true;
+    bool query_reusable = true;
+};
+
+struct BuiltinDeriveParserConsumptionCheckpointRollbackProtocol {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 admission_protocol_identity;
+    query::StableFingerprint128 rollback_gate_identity;
+    query::StableFingerprint128 checkpoint_protocol_identity;
+    std::string checkpoint_policy;
+    std::string checkpoint_query_name;
+    std::string blocked_reason;
+    base::u64 checkpoint_count = 0;
+    base::u64 rollback_plan_count = 0;
+    base::u64 token_record_count = 0;
+    base::u64 diagnostic_anchor_count = 0;
+    bool parser_state_checkpoint_available = true;
+    bool token_cursor_checkpoint_available = true;
+    bool generated_part_checkpoint_available = true;
+    bool diagnostic_replay_available = true;
+    bool rollback_protocol_complete = true;
+    bool rollback_execution_enabled = false;
+    bool parser_consumption_enabled = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool protocol_visible = true;
+    bool query_reusable = true;
+};
+
+struct BuiltinDeriveParserPreConsumptionVerificationClosure {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 admission_protocol_identity;
+    query::StableFingerprint128 checkpoint_protocol_identity;
+    query::StableFingerprint128 debug_dump_contract_identity;
+    query::StableFingerprint128 verification_closure_identity;
+    std::string verification_policy;
+    std::string verification_query_name;
+    std::string blocked_reason;
+    base::u64 admission_protocol_count = 0;
+    base::u64 checkpoint_protocol_count = 0;
+    base::u64 hardening_matrix_count = 0;
+    base::u64 debug_dump_contract_count = 0;
+    base::u64 rollback_gate_count = 0;
+    bool admission_protocol_available = true;
+    bool checkpoint_protocol_available = true;
+    bool release_hardening_available = true;
+    bool debug_dump_contract_available = true;
+    bool rollback_gate_available = true;
+    bool verification_closure_complete = true;
+    bool parser_consumption_enabled = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool sema_visible = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool closure_visible = true;
+    bool query_reusable = true;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -804,6 +915,21 @@ struct EarlyItemExpansionSummary {
     base::u64 builtin_derive_rollback_diagnostic_query_reusable_count = 0;
     base::u64 builtin_derive_rollback_diagnostic_design_complete_count = 0;
     base::u64 builtin_derive_rollback_diagnostic_parser_consumable_count = 0;
+    base::u64 builtin_derive_parser_consumption_admission_protocol_count = 0;
+    base::u64 builtin_derive_parser_consumption_admission_visible_count = 0;
+    base::u64 builtin_derive_parser_consumption_admission_query_reusable_count = 0;
+    base::u64 builtin_derive_parser_consumption_admission_complete_count = 0;
+    base::u64 builtin_derive_parser_consumption_admission_parser_consumable_count = 0;
+    base::u64 builtin_derive_checkpoint_rollback_protocol_count = 0;
+    base::u64 builtin_derive_checkpoint_rollback_visible_count = 0;
+    base::u64 builtin_derive_checkpoint_rollback_query_reusable_count = 0;
+    base::u64 builtin_derive_checkpoint_rollback_complete_count = 0;
+    base::u64 builtin_derive_checkpoint_rollback_parser_consumable_count = 0;
+    base::u64 builtin_derive_preconsumption_verification_closure_count = 0;
+    base::u64 builtin_derive_preconsumption_verification_visible_count = 0;
+    base::u64 builtin_derive_preconsumption_verification_query_reusable_count = 0;
+    base::u64 builtin_derive_preconsumption_verification_complete_count = 0;
+    base::u64 builtin_derive_preconsumption_verification_parser_consumable_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -841,6 +967,12 @@ struct EarlyItemExpansionResult {
     std::vector<BuiltinDeriveReleaseHardeningMatrix> builtin_derive_release_hardening_matrices;
     std::vector<BuiltinDeriveDebugDumpStabilityContract> builtin_derive_debug_dump_contracts;
     std::vector<BuiltinDeriveRollbackDiagnosticDesignGate> builtin_derive_rollback_diagnostic_gates;
+    std::vector<BuiltinDeriveParserConsumptionAdmissionProtocol>
+        builtin_derive_parser_consumption_admission_protocols;
+    std::vector<BuiltinDeriveParserConsumptionCheckpointRollbackProtocol>
+        builtin_derive_checkpoint_rollback_protocols;
+    std::vector<BuiltinDeriveParserPreConsumptionVerificationClosure>
+        builtin_derive_preconsumption_verification_closures;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -875,6 +1007,9 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const BuiltinDeriveReleaseHardeningMatrix& matrix) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveDebugDumpStabilityContract& contract) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveRollbackDiagnosticDesignGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

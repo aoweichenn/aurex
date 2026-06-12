@@ -396,6 +396,49 @@ builtin_derive_rollback_diagnostic_gate_for_part(
     return found == result.builtin_derive_rollback_diagnostic_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol*
+builtin_derive_parser_consumption_admission_protocol_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_parser_consumption_admission_protocols.begin(),
+        result.builtin_derive_parser_consumption_admission_protocols.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) {
+            return protocol.module.value == generated_part.module.value
+                && protocol.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_parser_consumption_admission_protocols.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol*
+builtin_derive_checkpoint_rollback_protocol_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_checkpoint_rollback_protocols.begin(),
+        result.builtin_derive_checkpoint_rollback_protocols.end(),
+        [&generated_part](
+            const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) {
+            return protocol.module.value == generated_part.module.value
+                && protocol.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_checkpoint_rollback_protocols.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure*
+builtin_derive_preconsumption_verification_closure_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_preconsumption_verification_closures.begin(),
+        result.builtin_derive_preconsumption_verification_closures.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure& closure) {
+            return closure.module.value == generated_part.module.value
+                && closure.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_preconsumption_verification_closures.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -503,7 +546,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M22f Builtin Derive Rollback Diagnostic Design Gate");
+    EXPECT_EQ(result.name, "M23c Builtin Derive Parser Pre-Consumption Verification Closure");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -617,6 +660,21 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_query_reusable_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_design_complete_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_protocol_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_protocol_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_closure_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_parser_consumable_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -899,6 +957,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_EQ(result.builtin_derive_release_hardening_matrices.size(), 1U);
     ASSERT_EQ(result.builtin_derive_debug_dump_contracts.size(), 1U);
     ASSERT_EQ(result.builtin_derive_rollback_diagnostic_gates.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_parser_consumption_admission_protocols.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_checkpoint_rollback_protocols.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_preconsumption_verification_closures.size(), 1U);
     ASSERT_EQ(result.parser_readiness_preflight_entries.size(), 2U);
     ASSERT_EQ(result.parser_consumption_contract_gates.size(), 1U);
     ASSERT_EQ(result.macro_boundary_closure_reports.size(), 1U);
@@ -1509,6 +1570,134 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_TRUE(rollback_gate->rollback_gate_visible);
     EXPECT_TRUE(rollback_gate->query_reusable);
 
+    const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol* const admission_protocol =
+        builtin_derive_parser_consumption_admission_protocol_for_part(result, generated);
+    ASSERT_NE(admission_protocol, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*admission_protocol));
+    EXPECT_EQ(admission_protocol->module.value, generated.module.value);
+    EXPECT_EQ(admission_protocol->source_part_index, generated.source_part_index);
+    EXPECT_EQ(admission_protocol->attached_part, generated.source_part);
+    EXPECT_EQ(admission_protocol->generated_part, generated.generated_part);
+    EXPECT_EQ(admission_protocol->parser_consumption_contract_identity, contract->contract_identity);
+    EXPECT_EQ(admission_protocol->release_gate_identity, release_gate->release_gate_identity);
+    EXPECT_EQ(admission_protocol->rollback_gate_identity, rollback_gate->rollback_gate_identity);
+    EXPECT_GT(admission_protocol->admission_protocol_identity.byte_count, 0U);
+    EXPECT_EQ(admission_protocol->admission_policy,
+        "builtin_derive_parser_consumption_admission_protocol_v1");
+    EXPECT_EQ(admission_protocol->admission_query_name,
+        "m23a-builtin-derive-parser-consumption-admission:0:0");
+    expect_contains(admission_protocol->blocked_reason, "no-parser-consumption in M23a");
+    EXPECT_EQ(admission_protocol->token_buffer_count, 2U);
+    EXPECT_EQ(admission_protocol->token_record_count, derive_buffer->token_count);
+    EXPECT_EQ(admission_protocol->derive_candidate_count, 1U);
+    EXPECT_EQ(admission_protocol->empty_candidate_count, 1U);
+    EXPECT_EQ(admission_protocol->blocked_diagnostic_count, 2U);
+    EXPECT_TRUE(admission_protocol->release_gate_available);
+    EXPECT_TRUE(admission_protocol->rollback_gate_available);
+    EXPECT_TRUE(admission_protocol->parser_contract_available);
+    EXPECT_TRUE(admission_protocol->deterministic_order_available);
+    EXPECT_TRUE(admission_protocol->generated_tokens_checkpointed);
+    EXPECT_TRUE(admission_protocol->admission_protocol_complete);
+    EXPECT_FALSE(admission_protocol->parser_consumption_enabled);
+    EXPECT_FALSE(admission_protocol->parser_admitted);
+    EXPECT_FALSE(admission_protocol->generated_part_parsed);
+    EXPECT_FALSE(admission_protocol->generated_part_merged);
+    EXPECT_FALSE(admission_protocol->emit_expanded_available);
+    EXPECT_FALSE(admission_protocol->debug_trace_available);
+    EXPECT_FALSE(admission_protocol->source_map_available);
+    EXPECT_FALSE(admission_protocol->standard_library_required);
+    EXPECT_FALSE(admission_protocol->runtime_required);
+    EXPECT_FALSE(admission_protocol->external_process_required);
+    EXPECT_FALSE(admission_protocol->produced_user_generated_code);
+    EXPECT_TRUE(admission_protocol->protocol_visible);
+    EXPECT_TRUE(admission_protocol->query_reusable);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol* const
+        checkpoint_protocol = builtin_derive_checkpoint_rollback_protocol_for_part(result, generated);
+    ASSERT_NE(checkpoint_protocol, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*checkpoint_protocol));
+    EXPECT_EQ(checkpoint_protocol->module.value, generated.module.value);
+    EXPECT_EQ(checkpoint_protocol->source_part_index, generated.source_part_index);
+    EXPECT_EQ(checkpoint_protocol->attached_part, generated.source_part);
+    EXPECT_EQ(checkpoint_protocol->generated_part, generated.generated_part);
+    EXPECT_EQ(checkpoint_protocol->admission_protocol_identity,
+        admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(checkpoint_protocol->rollback_gate_identity, rollback_gate->rollback_gate_identity);
+    EXPECT_GT(checkpoint_protocol->checkpoint_protocol_identity.byte_count, 0U);
+    EXPECT_EQ(checkpoint_protocol->checkpoint_policy,
+        "builtin_derive_parser_checkpoint_rollback_protocol_v1");
+    EXPECT_EQ(checkpoint_protocol->checkpoint_query_name,
+        "m23b-builtin-derive-checkpoint-rollback:0:0");
+    expect_contains(checkpoint_protocol->blocked_reason, "parser-blocked in M23b");
+    EXPECT_EQ(checkpoint_protocol->checkpoint_count, 3U);
+    EXPECT_EQ(checkpoint_protocol->rollback_plan_count, 3U);
+    EXPECT_EQ(checkpoint_protocol->token_record_count, admission_protocol->token_record_count);
+    EXPECT_EQ(checkpoint_protocol->diagnostic_anchor_count,
+        admission_protocol->blocked_diagnostic_count);
+    EXPECT_TRUE(checkpoint_protocol->parser_state_checkpoint_available);
+    EXPECT_TRUE(checkpoint_protocol->token_cursor_checkpoint_available);
+    EXPECT_TRUE(checkpoint_protocol->generated_part_checkpoint_available);
+    EXPECT_TRUE(checkpoint_protocol->diagnostic_replay_available);
+    EXPECT_TRUE(checkpoint_protocol->rollback_protocol_complete);
+    EXPECT_FALSE(checkpoint_protocol->rollback_execution_enabled);
+    EXPECT_FALSE(checkpoint_protocol->parser_consumption_enabled);
+    EXPECT_FALSE(checkpoint_protocol->generated_part_parsed);
+    EXPECT_FALSE(checkpoint_protocol->generated_part_merged);
+    EXPECT_FALSE(checkpoint_protocol->emit_expanded_available);
+    EXPECT_FALSE(checkpoint_protocol->debug_trace_available);
+    EXPECT_FALSE(checkpoint_protocol->source_map_available);
+    EXPECT_FALSE(checkpoint_protocol->standard_library_required);
+    EXPECT_FALSE(checkpoint_protocol->runtime_required);
+    EXPECT_FALSE(checkpoint_protocol->external_process_required);
+    EXPECT_FALSE(checkpoint_protocol->produced_user_generated_code);
+    EXPECT_TRUE(checkpoint_protocol->protocol_visible);
+    EXPECT_TRUE(checkpoint_protocol->query_reusable);
+
+    const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure* const
+        verification_closure = builtin_derive_preconsumption_verification_closure_for_part(result, generated);
+    ASSERT_NE(verification_closure, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*verification_closure));
+    EXPECT_EQ(verification_closure->module.value, generated.module.value);
+    EXPECT_EQ(verification_closure->source_part_index, generated.source_part_index);
+    EXPECT_EQ(verification_closure->attached_part, generated.source_part);
+    EXPECT_EQ(verification_closure->generated_part, generated.generated_part);
+    EXPECT_EQ(verification_closure->admission_protocol_identity,
+        admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(verification_closure->checkpoint_protocol_identity,
+        checkpoint_protocol->checkpoint_protocol_identity);
+    EXPECT_EQ(verification_closure->debug_dump_contract_identity,
+        debug_contract->debug_dump_contract_identity);
+    EXPECT_GT(verification_closure->verification_closure_identity.byte_count, 0U);
+    EXPECT_EQ(verification_closure->verification_policy,
+        "builtin_derive_parser_preconsumption_verification_closure_v1");
+    EXPECT_EQ(verification_closure->verification_query_name,
+        "m23c-builtin-derive-preconsumption-verification:0:0");
+    expect_contains(verification_closure->blocked_reason, "blocked in M23c");
+    EXPECT_EQ(verification_closure->admission_protocol_count, 1U);
+    EXPECT_EQ(verification_closure->checkpoint_protocol_count, 1U);
+    EXPECT_EQ(verification_closure->hardening_matrix_count, 1U);
+    EXPECT_EQ(verification_closure->debug_dump_contract_count, 1U);
+    EXPECT_EQ(verification_closure->rollback_gate_count, 1U);
+    EXPECT_TRUE(verification_closure->admission_protocol_available);
+    EXPECT_TRUE(verification_closure->checkpoint_protocol_available);
+    EXPECT_TRUE(verification_closure->release_hardening_available);
+    EXPECT_TRUE(verification_closure->debug_dump_contract_available);
+    EXPECT_TRUE(verification_closure->rollback_gate_available);
+    EXPECT_TRUE(verification_closure->verification_closure_complete);
+    EXPECT_FALSE(verification_closure->parser_consumption_enabled);
+    EXPECT_FALSE(verification_closure->generated_part_parsed);
+    EXPECT_FALSE(verification_closure->generated_part_merged);
+    EXPECT_FALSE(verification_closure->sema_visible);
+    EXPECT_FALSE(verification_closure->emit_expanded_available);
+    EXPECT_FALSE(verification_closure->debug_trace_available);
+    EXPECT_FALSE(verification_closure->source_map_available);
+    EXPECT_FALSE(verification_closure->standard_library_required);
+    EXPECT_FALSE(verification_closure->runtime_required);
+    EXPECT_FALSE(verification_closure->external_process_required);
+    EXPECT_FALSE(verification_closure->produced_user_generated_code);
+    EXPECT_TRUE(verification_closure->closure_visible);
+    EXPECT_TRUE(verification_closure->query_reusable);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -1543,7 +1732,8 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M22f Builtin Derive Rollback Diagnostic Design Gate");
+    expect_contains(summary,
+        "early_item_expansion name=M23c Builtin Derive Parser Pre-Consumption Verification Closure");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -1647,6 +1837,21 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "builtin_derive_rollback_diagnostic_query_reusable=1");
     expect_contains(summary, "builtin_derive_rollback_diagnostic_design_complete=1");
     expect_contains(summary, "builtin_derive_rollback_diagnostic_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_parser_consumption_admission_protocols=1");
+    expect_contains(summary, "builtin_derive_parser_consumption_admission_visible=1");
+    expect_contains(summary, "builtin_derive_parser_consumption_admission_query_reusable=1");
+    expect_contains(summary, "builtin_derive_parser_consumption_admission_complete=1");
+    expect_contains(summary, "builtin_derive_parser_consumption_admission_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_checkpoint_rollback_protocols=1");
+    expect_contains(summary, "builtin_derive_checkpoint_rollback_visible=1");
+    expect_contains(summary, "builtin_derive_checkpoint_rollback_query_reusable=1");
+    expect_contains(summary, "builtin_derive_checkpoint_rollback_complete=1");
+    expect_contains(summary, "builtin_derive_checkpoint_rollback_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_preconsumption_verification_closures=1");
+    expect_contains(summary, "builtin_derive_preconsumption_verification_visible=1");
+    expect_contains(summary, "builtin_derive_preconsumption_verification_query_reusable=1");
+    expect_contains(summary, "builtin_derive_preconsumption_verification_complete=1");
+    expect_contains(summary, "builtin_derive_preconsumption_verification_parser_consumable=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -1869,6 +2074,33 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "rollback_execution_enabled=no");
     expect_contains(dump, "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f");
     expect_contains(dump, "rollback_gate_identity=");
+    expect_contains(dump, "builtin_derive_parser_consumption_admission_protocol #0");
+    expect_contains(dump, "policy=builtin_derive_parser_consumption_admission_protocol_v1");
+    expect_contains(dump, "query=m23a-builtin-derive-parser-consumption-admission:0:0");
+    expect_contains(dump, "token_buffers=2");
+    expect_contains(dump, "derive_candidates=1");
+    expect_contains(dump, "empty_candidates=1");
+    expect_contains(dump, "parser_admitted=no");
+    expect_contains(dump,
+        "builtin derive parser consumption admission protocol remains no-parser-consumption in M23a");
+    expect_contains(dump, "admission_protocol_identity=");
+    expect_contains(dump, "builtin_derive_checkpoint_rollback_protocol #0");
+    expect_contains(dump, "policy=builtin_derive_parser_checkpoint_rollback_protocol_v1");
+    expect_contains(dump, "query=m23b-builtin-derive-checkpoint-rollback:0:0");
+    expect_contains(dump, "checkpoints=3");
+    expect_contains(dump, "rollback_plans=3");
+    expect_contains(dump, "diagnostic_replay_available=yes");
+    expect_contains(dump,
+        "builtin derive checkpoint rollback protocol remains design-only and parser-blocked in M23b");
+    expect_contains(dump, "checkpoint_protocol_identity=");
+    expect_contains(dump, "builtin_derive_preconsumption_verification_closure #0");
+    expect_contains(dump, "policy=builtin_derive_parser_preconsumption_verification_closure_v1");
+    expect_contains(dump, "query=m23c-builtin-derive-preconsumption-verification:0:0");
+    expect_contains(dump, "verification_closure_complete=yes");
+    expect_contains(dump, "sema_visible=no");
+    expect_contains(dump,
+        "builtin derive pre-consumption verification closure keeps parser consumption blocked in M23c");
+    expect_contains(dump, "verification_closure_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -2051,6 +2283,48 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     EXPECT_TRUE(rollback_gate.release_rollback_plan_complete);
     EXPECT_FALSE(rollback_gate.rollback_execution_enabled);
 
+    const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol =
+        result.builtin_derive_parser_consumption_admission_protocols.front();
+    EXPECT_EQ(admission_protocol.admission_query_name,
+        "m23a-builtin-derive-parser-consumption-admission:0:0");
+    EXPECT_EQ(admission_protocol.token_buffer_count, 1U);
+    EXPECT_EQ(admission_protocol.token_record_count, result.generated_token_records.size());
+    EXPECT_EQ(admission_protocol.derive_candidate_count, 1U);
+    EXPECT_EQ(admission_protocol.empty_candidate_count, 0U);
+    EXPECT_EQ(admission_protocol.blocked_diagnostic_count, 1U);
+    EXPECT_FALSE(admission_protocol.parser_consumption_enabled);
+    EXPECT_FALSE(admission_protocol.parser_admitted);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol&
+        checkpoint_protocol = result.builtin_derive_checkpoint_rollback_protocols.front();
+    EXPECT_EQ(checkpoint_protocol.checkpoint_query_name,
+        "m23b-builtin-derive-checkpoint-rollback:0:0");
+    EXPECT_EQ(checkpoint_protocol.admission_protocol_identity,
+        admission_protocol.admission_protocol_identity);
+    EXPECT_EQ(checkpoint_protocol.checkpoint_count, 3U);
+    EXPECT_EQ(checkpoint_protocol.rollback_plan_count, 3U);
+    EXPECT_EQ(checkpoint_protocol.token_record_count, admission_protocol.token_record_count);
+    EXPECT_EQ(checkpoint_protocol.diagnostic_anchor_count,
+        admission_protocol.blocked_diagnostic_count);
+    EXPECT_FALSE(checkpoint_protocol.rollback_execution_enabled);
+    EXPECT_FALSE(checkpoint_protocol.parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure =
+        result.builtin_derive_preconsumption_verification_closures.front();
+    EXPECT_EQ(verification_closure.verification_query_name,
+        "m23c-builtin-derive-preconsumption-verification:0:0");
+    EXPECT_EQ(verification_closure.admission_protocol_identity,
+        admission_protocol.admission_protocol_identity);
+    EXPECT_EQ(verification_closure.checkpoint_protocol_identity,
+        checkpoint_protocol.checkpoint_protocol_identity);
+    EXPECT_EQ(verification_closure.admission_protocol_count, 1U);
+    EXPECT_EQ(verification_closure.checkpoint_protocol_count, 1U);
+    EXPECT_EQ(verification_closure.hardening_matrix_count, 1U);
+    EXPECT_EQ(verification_closure.debug_dump_contract_count, 1U);
+    EXPECT_EQ(verification_closure.rollback_gate_count, 1U);
+    EXPECT_FALSE(verification_closure.parser_consumption_enabled);
+    EXPECT_FALSE(verification_closure.sema_visible);
+
     EXPECT_EQ(result.summary.builtin_derive_expansion_capability_candidate_count, 4U);
     EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 4U);
     EXPECT_EQ(result.summary.builtin_derive_semantic_eq_capability_count, 2U);
@@ -2059,6 +2333,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     EXPECT_EQ(result.summary.builtin_derive_release_hardening_matrix_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_gate_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_protocol_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_protocol_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_closure_count, 1U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -2068,6 +2345,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     expect_contains(dump, "builtin derive parser consumption release remains blocked in M22c");
     expect_contains(dump, "builtin derive release hardening matrix keeps parser consumption blocked in M22d");
     expect_contains(dump, "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f");
+    expect_contains(dump, "query=m23a-builtin-derive-parser-consumption-admission:0:0");
+    expect_contains(dump, "query=m23b-builtin-derive-checkpoint-rollback:0:0");
+    expect_contains(dump, "query=m23c-builtin-derive-preconsumption-verification:0:0");
 }
 
 TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
@@ -2101,6 +2381,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     ASSERT_EQ(result.builtin_derive_release_hardening_matrices.size(), 2U);
     ASSERT_EQ(result.builtin_derive_debug_dump_contracts.size(), 2U);
     ASSERT_EQ(result.builtin_derive_rollback_diagnostic_gates.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_parser_consumption_admission_protocols.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_checkpoint_rollback_protocols.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_preconsumption_verification_closures.size(), 2U);
 
     EXPECT_EQ(result.generated_parts[0].source_part_index, 0U);
     EXPECT_EQ(result.generated_parts[0].source_part, part_keys[0][0]);
@@ -2204,6 +2487,97 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     EXPECT_EQ(secondary_rollback->empty_diagnostic_count, 1U);
     EXPECT_NE(primary_rollback->rollback_gate_identity, secondary_rollback->rollback_gate_identity);
 
+    const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol* const primary_admission_protocol =
+        builtin_derive_parser_consumption_admission_protocol_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_admission_protocol, nullptr);
+    EXPECT_EQ(primary_admission_protocol->admission_query_name,
+        "m23a-builtin-derive-parser-consumption-admission:0:0");
+    EXPECT_EQ(primary_admission_protocol->parser_consumption_contract_identity,
+        result.parser_consumption_contract_gates[0].contract_identity);
+    EXPECT_EQ(primary_admission_protocol->release_gate_identity, primary_release->release_gate_identity);
+    EXPECT_EQ(primary_admission_protocol->rollback_gate_identity, primary_rollback->rollback_gate_identity);
+    EXPECT_EQ(primary_admission_protocol->token_buffer_count, 1U);
+    EXPECT_EQ(primary_admission_protocol->derive_candidate_count, 1U);
+    EXPECT_EQ(primary_admission_protocol->empty_candidate_count, 0U);
+    EXPECT_EQ(primary_admission_protocol->blocked_diagnostic_count, 1U);
+    EXPECT_FALSE(primary_admission_protocol->parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionAdmissionProtocol* const secondary_admission_protocol =
+        builtin_derive_parser_consumption_admission_protocol_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_admission_protocol, nullptr);
+    EXPECT_EQ(secondary_admission_protocol->admission_query_name,
+        "m23a-builtin-derive-parser-consumption-admission:0:1");
+    EXPECT_EQ(secondary_admission_protocol->parser_consumption_contract_identity,
+        result.parser_consumption_contract_gates[1].contract_identity);
+    EXPECT_EQ(secondary_admission_protocol->release_gate_identity,
+        secondary_release->release_gate_identity);
+    EXPECT_EQ(secondary_admission_protocol->rollback_gate_identity,
+        secondary_rollback->rollback_gate_identity);
+    EXPECT_EQ(secondary_admission_protocol->token_buffer_count, 1U);
+    EXPECT_EQ(secondary_admission_protocol->derive_candidate_count, 0U);
+    EXPECT_EQ(secondary_admission_protocol->empty_candidate_count, 1U);
+    EXPECT_EQ(secondary_admission_protocol->blocked_diagnostic_count, 1U);
+    EXPECT_FALSE(secondary_admission_protocol->parser_consumption_enabled);
+    EXPECT_NE(primary_admission_protocol->admission_protocol_identity,
+        secondary_admission_protocol->admission_protocol_identity);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol* const
+        primary_checkpoint = builtin_derive_checkpoint_rollback_protocol_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_checkpoint, nullptr);
+    EXPECT_EQ(primary_checkpoint->checkpoint_query_name,
+        "m23b-builtin-derive-checkpoint-rollback:0:0");
+    EXPECT_EQ(primary_checkpoint->admission_protocol_identity,
+        primary_admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(primary_checkpoint->checkpoint_count, 3U);
+    EXPECT_EQ(primary_checkpoint->rollback_plan_count, 3U);
+    EXPECT_EQ(primary_checkpoint->diagnostic_anchor_count, 1U);
+
+    const frontend::macro::BuiltinDeriveParserConsumptionCheckpointRollbackProtocol* const
+        secondary_checkpoint =
+            builtin_derive_checkpoint_rollback_protocol_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_checkpoint, nullptr);
+    EXPECT_EQ(secondary_checkpoint->checkpoint_query_name,
+        "m23b-builtin-derive-checkpoint-rollback:0:1");
+    EXPECT_EQ(secondary_checkpoint->admission_protocol_identity,
+        secondary_admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(secondary_checkpoint->checkpoint_count, 3U);
+    EXPECT_EQ(secondary_checkpoint->rollback_plan_count, 3U);
+    EXPECT_EQ(secondary_checkpoint->diagnostic_anchor_count, 1U);
+    EXPECT_NE(primary_checkpoint->checkpoint_protocol_identity,
+        secondary_checkpoint->checkpoint_protocol_identity);
+
+    const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure* const
+        primary_verification =
+            builtin_derive_preconsumption_verification_closure_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_verification, nullptr);
+    EXPECT_EQ(primary_verification->verification_query_name,
+        "m23c-builtin-derive-preconsumption-verification:0:0");
+    EXPECT_EQ(primary_verification->admission_protocol_identity,
+        primary_admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(primary_verification->checkpoint_protocol_identity,
+        primary_checkpoint->checkpoint_protocol_identity);
+    EXPECT_EQ(primary_verification->debug_dump_contract_identity,
+        primary_debug->debug_dump_contract_identity);
+    EXPECT_FALSE(primary_verification->parser_consumption_enabled);
+    EXPECT_FALSE(primary_verification->sema_visible);
+
+    const frontend::macro::BuiltinDeriveParserPreConsumptionVerificationClosure* const
+        secondary_verification =
+            builtin_derive_preconsumption_verification_closure_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_verification, nullptr);
+    EXPECT_EQ(secondary_verification->verification_query_name,
+        "m23c-builtin-derive-preconsumption-verification:0:1");
+    EXPECT_EQ(secondary_verification->admission_protocol_identity,
+        secondary_admission_protocol->admission_protocol_identity);
+    EXPECT_EQ(secondary_verification->checkpoint_protocol_identity,
+        secondary_checkpoint->checkpoint_protocol_identity);
+    EXPECT_EQ(secondary_verification->debug_dump_contract_identity,
+        secondary_debug->debug_dump_contract_identity);
+    EXPECT_FALSE(secondary_verification->parser_consumption_enabled);
+    EXPECT_FALSE(secondary_verification->sema_visible);
+    EXPECT_NE(primary_verification->verification_closure_identity,
+        secondary_verification->verification_closure_identity);
+
     EXPECT_EQ(result.summary.builtin_derive_expansion_admission_gate_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_derive_admission_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_non_derive_blocked_count, 1U);
@@ -2214,6 +2588,15 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     EXPECT_EQ(result.summary.builtin_derive_release_hardening_matrix_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_gate_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_protocol_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_parser_consumption_admission_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_protocol_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_checkpoint_rollback_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_closure_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_complete_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_preconsumption_verification_parser_consumable_count, 0U);
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
     expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:0");
@@ -2222,6 +2605,12 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     expect_contains(dump, "query=m22d-builtin-derive-release-hardening:0:1");
     expect_contains(dump, "cross_part_admissions=1");
     expect_contains(dump, "query=m22f-builtin-derive-rollback-diagnostic:0:1");
+    expect_contains(dump, "query=m23a-builtin-derive-parser-consumption-admission:0:0");
+    expect_contains(dump, "query=m23a-builtin-derive-parser-consumption-admission:0:1");
+    expect_contains(dump, "query=m23b-builtin-derive-checkpoint-rollback:0:0");
+    expect_contains(dump, "query=m23b-builtin-derive-checkpoint-rollback:0:1");
+    expect_contains(dump, "query=m23c-builtin-derive-preconsumption-verification:0:0");
+    expect_contains(dump, "query=m23c-builtin-derive-preconsumption-verification:0:1");
     expect_contains(dump, "source_part=1");
     expect_contains(dump, "part=1");
 }
@@ -4431,6 +4820,258 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM22ReleaseHardeni
     refresh_expansion_result(rollback_design);
     EXPECT_NE(rollback_design.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(rollback_design));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsBuiltinDeriveM23ParserConsumptionAdmissionDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.builtin_derive_parser_consumption_admission_protocols.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_checkpoint_rollback_protocols.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_preconsumption_verification_closures.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_admission = baseline;
+    missing_admission.builtin_derive_parser_consumption_admission_protocols.clear();
+    refresh_expansion_result(missing_admission);
+    EXPECT_EQ(missing_admission.summary.builtin_derive_parser_consumption_admission_protocol_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_admission));
+
+    frontend::macro::EarlyItemExpansionResult wrong_admission_identity = baseline;
+    wrong_admission_identity.builtin_derive_parser_consumption_admission_protocols.front()
+        .admission_protocol_identity = query::stable_fingerprint("wrong m23a admission protocol identity");
+    refresh_expansion_result(wrong_admission_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_admission_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_admission_query = baseline;
+    wrong_admission_query.builtin_derive_parser_consumption_admission_protocols.front()
+        .admission_query_name = "m23a-builtin-derive-parser-consumption-admission:wrong";
+    refresh_expansion_result(wrong_admission_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_admission_query));
+
+    frontend::macro::EarlyItemExpansionResult admission_parser_admitted = baseline;
+    admission_parser_admitted.builtin_derive_parser_consumption_admission_protocols.front()
+        .parser_admitted = true;
+    refresh_expansion_result(admission_parser_admitted);
+    EXPECT_EQ(admission_parser_admitted.summary.builtin_derive_parser_consumption_admission_parser_consumable_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_parser_admitted));
+
+    frontend::macro::EarlyItemExpansionResult admission_parser_enabled = baseline;
+    admission_parser_enabled.builtin_derive_parser_consumption_admission_protocols.front()
+        .parser_consumption_enabled = true;
+    refresh_expansion_result(admission_parser_enabled);
+    EXPECT_EQ(admission_parser_enabled.summary.builtin_derive_parser_consumption_admission_parser_consumable_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult admission_standard_library = baseline;
+    admission_standard_library.builtin_derive_parser_consumption_admission_protocols.front()
+        .standard_library_required = true;
+    refresh_expansion_result(admission_standard_library);
+    EXPECT_EQ(admission_standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_standard_library));
+
+    frontend::macro::EarlyItemExpansionResult admission_runtime = baseline;
+    admission_runtime.builtin_derive_parser_consumption_admission_protocols.front().runtime_required = true;
+    refresh_expansion_result(admission_runtime);
+    EXPECT_EQ(admission_runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_runtime));
+
+    frontend::macro::EarlyItemExpansionResult admission_external = baseline;
+    admission_external.builtin_derive_parser_consumption_admission_protocols.front()
+        .external_process_required = true;
+    refresh_expansion_result(admission_external);
+    EXPECT_EQ(admission_external.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_external));
+
+    frontend::macro::EarlyItemExpansionResult admission_user_code = baseline;
+    admission_user_code.builtin_derive_parser_consumption_admission_protocols.front()
+        .produced_user_generated_code = true;
+    refresh_expansion_result(admission_user_code);
+    EXPECT_EQ(admission_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_user_code));
+
+    frontend::macro::EarlyItemExpansionResult missing_checkpoint = baseline;
+    missing_checkpoint.builtin_derive_checkpoint_rollback_protocols.clear();
+    refresh_expansion_result(missing_checkpoint);
+    EXPECT_EQ(missing_checkpoint.summary.builtin_derive_checkpoint_rollback_protocol_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_checkpoint));
+
+    frontend::macro::EarlyItemExpansionResult wrong_checkpoint_identity = baseline;
+    wrong_checkpoint_identity.builtin_derive_checkpoint_rollback_protocols.front()
+        .checkpoint_protocol_identity = query::stable_fingerprint("wrong m23b checkpoint protocol identity");
+    refresh_expansion_result(wrong_checkpoint_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_checkpoint_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_checkpoint_query = baseline;
+    wrong_checkpoint_query.builtin_derive_checkpoint_rollback_protocols.front()
+        .checkpoint_query_name = "m23b-builtin-derive-checkpoint-rollback:wrong";
+    refresh_expansion_result(wrong_checkpoint_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_checkpoint_query));
+
+    frontend::macro::EarlyItemExpansionResult wrong_checkpoint_count = baseline;
+    wrong_checkpoint_count.builtin_derive_checkpoint_rollback_protocols.front().checkpoint_count = 2U;
+    refresh_expansion_result(wrong_checkpoint_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_checkpoint_count));
+
+    frontend::macro::EarlyItemExpansionResult checkpoint_replay_missing = baseline;
+    checkpoint_replay_missing.builtin_derive_checkpoint_rollback_protocols.front()
+        .diagnostic_replay_available = false;
+    refresh_expansion_result(checkpoint_replay_missing);
+    EXPECT_FALSE(frontend::macro::is_valid(checkpoint_replay_missing));
+
+    frontend::macro::EarlyItemExpansionResult checkpoint_rollback_enabled = baseline;
+    checkpoint_rollback_enabled.builtin_derive_checkpoint_rollback_protocols.front()
+        .rollback_execution_enabled = true;
+    refresh_expansion_result(checkpoint_rollback_enabled);
+    EXPECT_EQ(checkpoint_rollback_enabled.summary.builtin_derive_checkpoint_rollback_parser_consumable_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(checkpoint_rollback_enabled));
+
+    frontend::macro::EarlyItemExpansionResult checkpoint_parser_enabled = baseline;
+    checkpoint_parser_enabled.builtin_derive_checkpoint_rollback_protocols.front()
+        .parser_consumption_enabled = true;
+    refresh_expansion_result(checkpoint_parser_enabled);
+    EXPECT_EQ(checkpoint_parser_enabled.summary.builtin_derive_checkpoint_rollback_parser_consumable_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(checkpoint_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult missing_closure = baseline;
+    missing_closure.builtin_derive_preconsumption_verification_closures.clear();
+    refresh_expansion_result(missing_closure);
+    EXPECT_EQ(missing_closure.summary.builtin_derive_preconsumption_verification_closure_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_closure));
+
+    frontend::macro::EarlyItemExpansionResult wrong_closure_identity = baseline;
+    wrong_closure_identity.builtin_derive_preconsumption_verification_closures.front()
+        .verification_closure_identity = query::stable_fingerprint("wrong m23c verification closure identity");
+    refresh_expansion_result(wrong_closure_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_closure_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_closure_query = baseline;
+    wrong_closure_query.builtin_derive_preconsumption_verification_closures.front()
+        .verification_query_name = "m23c-builtin-derive-preconsumption-verification:wrong";
+    refresh_expansion_result(wrong_closure_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_closure_query));
+
+    frontend::macro::EarlyItemExpansionResult closure_incomplete = baseline;
+    closure_incomplete.builtin_derive_preconsumption_verification_closures.front()
+        .verification_closure_complete = false;
+    refresh_expansion_result(closure_incomplete);
+    EXPECT_EQ(closure_incomplete.summary.builtin_derive_preconsumption_verification_complete_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_incomplete));
+
+    frontend::macro::EarlyItemExpansionResult closure_parser_enabled = baseline;
+    closure_parser_enabled.builtin_derive_preconsumption_verification_closures.front()
+        .parser_consumption_enabled = true;
+    refresh_expansion_result(closure_parser_enabled);
+    EXPECT_EQ(closure_parser_enabled.summary.builtin_derive_preconsumption_verification_parser_consumable_count,
+        1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult closure_sema_visible = baseline;
+    closure_sema_visible.builtin_derive_preconsumption_verification_closures.front().sema_visible = true;
+    refresh_expansion_result(closure_sema_visible);
+    EXPECT_EQ(closure_sema_visible.summary.sema_visible_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_sema_visible));
+
+    frontend::macro::EarlyItemExpansionResult closure_part_parsed = baseline;
+    closure_part_parsed.builtin_derive_preconsumption_verification_closures.front().generated_part_parsed =
+        true;
+    refresh_expansion_result(closure_part_parsed);
+    EXPECT_EQ(closure_part_parsed.summary.parsed_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_part_parsed));
+
+    frontend::macro::EarlyItemExpansionResult closure_standard_library = baseline;
+    closure_standard_library.builtin_derive_preconsumption_verification_closures.front()
+        .standard_library_required = true;
+    refresh_expansion_result(closure_standard_library);
+    EXPECT_EQ(closure_standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_standard_library));
+
+    frontend::macro::EarlyItemExpansionResult closure_runtime = baseline;
+    closure_runtime.builtin_derive_preconsumption_verification_closures.front().runtime_required = true;
+    refresh_expansion_result(closure_runtime);
+    EXPECT_EQ(closure_runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_runtime));
+
+    frontend::macro::EarlyItemExpansionResult closure_external = baseline;
+    closure_external.builtin_derive_preconsumption_verification_closures.front()
+        .external_process_required = true;
+    refresh_expansion_result(closure_external);
+    EXPECT_EQ(closure_external.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_external));
+
+    frontend::macro::EarlyItemExpansionResult closure_user_code = baseline;
+    closure_user_code.builtin_derive_preconsumption_verification_closures.front()
+        .produced_user_generated_code = true;
+    refresh_expansion_result(closure_user_code);
+    EXPECT_EQ(closure_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM23ParserConsumptionAdmissionFacts)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.builtin_derive_parser_consumption_admission_protocols.empty());
+    ASSERT_FALSE(baseline.builtin_derive_checkpoint_rollback_protocols.empty());
+    ASSERT_FALSE(baseline.builtin_derive_preconsumption_verification_closures.empty());
+
+    frontend::macro::EarlyItemExpansionResult admission_identity = baseline;
+    admission_identity.builtin_derive_parser_consumption_admission_protocols.front()
+        .admission_protocol_identity =
+        query::stable_fingerprint("different m23a admission protocol identity");
+    refresh_expansion_result(admission_identity);
+    EXPECT_NE(admission_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_identity));
+
+    frontend::macro::EarlyItemExpansionResult admission_counts = baseline;
+    admission_counts.builtin_derive_parser_consumption_admission_protocols.front().derive_candidate_count =
+        0U;
+    refresh_expansion_result(admission_counts);
+    EXPECT_NE(admission_counts.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(admission_counts));
+
+    frontend::macro::EarlyItemExpansionResult checkpoint_identity = baseline;
+    checkpoint_identity.builtin_derive_checkpoint_rollback_protocols.front()
+        .checkpoint_protocol_identity =
+        query::stable_fingerprint("different m23b checkpoint rollback identity");
+    refresh_expansion_result(checkpoint_identity);
+    EXPECT_NE(checkpoint_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(checkpoint_identity));
+
+    frontend::macro::EarlyItemExpansionResult checkpoint_count = baseline;
+    checkpoint_count.builtin_derive_checkpoint_rollback_protocols.front().rollback_plan_count = 2U;
+    refresh_expansion_result(checkpoint_count);
+    EXPECT_NE(checkpoint_count.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(checkpoint_count));
+
+    frontend::macro::EarlyItemExpansionResult closure_identity = baseline;
+    closure_identity.builtin_derive_preconsumption_verification_closures.front()
+        .verification_closure_identity =
+        query::stable_fingerprint("different m23c verification closure identity");
+    refresh_expansion_result(closure_identity);
+    EXPECT_NE(closure_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_identity));
+
+    frontend::macro::EarlyItemExpansionResult closure_query = baseline;
+    closure_query.builtin_derive_preconsumption_verification_closures.front()
+        .verification_query_name = "m23c-builtin-derive-preconsumption-verification:different";
+    refresh_expansion_result(closure_query);
+    EXPECT_NE(closure_query.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_query));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21/M22 宏系统主线已开启，M22f builtin derive rollback diagnostic design gate 已收口
+## 当前实现入口：M21-M23 宏系统主线已开启，M23c builtin derive pre-consumption verification closure 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -141,10 +141,28 @@ totals，并把当前 result name 推进到 `M22f Builtin Derive Rollback Diagno
 macro，不打开 external procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser
 consumption，不实现标准库或 runtime helper。
 
-下一步建议进入 M23 builtin derive parser consumption admission design：继续保持 no-stdlib / no-runtime /
-no-user-defined-macro / no-parser-consumption，先把“如何从 M22f design gate 进入受控 parser consumption”的
-admit/rollback/checkpoint 协议、失败回滚诊断设计和负例矩阵落成 facts；不要直接进入用户自定义 macro 或 external
-procedural macro。
+M23a-M23c 已完成 builtin derive parser consumption admission / checkpoint / pre-consumption verification 准备：
+M23a 新增 `BuiltinDeriveParserConsumptionAdmissionProtocol` 和
+`builtin_derive_parser_consumption_admission_protocols`，固定
+`builtin_derive_parser_consumption_admission_protocol_v1`、
+`m23a-builtin-derive-parser-consumption-admission:<module>:<part>`、M21n/M22c/M22f identity 链接和 part-local token
+buffer / token record / derive candidate / empty candidate / blocked diagnostic counts；M23b 新增
+`BuiltinDeriveParserConsumptionCheckpointRollbackProtocol` 和 `builtin_derive_checkpoint_rollback_protocols`，固定
+`builtin_derive_parser_checkpoint_rollback_protocol_v1`、
+`m23b-builtin-derive-checkpoint-rollback:<module>:<part>`、`checkpoint_count=3`、`rollback_plan_count=3`、diagnostic
+replay prerequisite 和 rollback execution blocker；M23c 新增
+`BuiltinDeriveParserPreConsumptionVerificationClosure` 和
+`builtin_derive_preconsumption_verification_closures`，固定
+`builtin_derive_parser_preconsumption_verification_closure_v1`、
+`m23c-builtin-derive-preconsumption-verification:<module>:<part>`、M23a/M23b/M22d/M22e/M22f 可见性闭环，并把当前
+result name 推进到 `M23c Builtin Derive Parser Pre-Consumption Verification Closure`。M23c 仍不执行用户自定义
+macro，不打开 external procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser
+consumption，不实现标准库或 runtime helper。
+
+下一步建议进入 M24 controlled builtin derive parser consumption dry-run：继续保持 no-parser-consumption /
+no-stdlib / no-runtime / no-user-defined-macro / no-external-procedural-macro，并先做 compiler-owned generated
+token buffer 的 dry-run parser adapter、失败回滚诊断设计 / rollback diagnostic replay 和 negative matrix。M24 不应
+直接进入用户自定义 macro、external procedural macro、标准库或 runtime helper。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

@@ -1,9 +1,43 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M22f Builtin Derive Rollback Diagnostic Design Gate
+阶段：M23c Builtin Derive Parser Pre-Consumption Verification Closure
 
 ## 总体状态
+
+2026-06-12：M23c Builtin Derive Parser Pre-Consumption Verification Closure 已完成。本阶段仍不实现标准库、
+runtime helper、external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene
+resolution、真实 expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module
+part parse / merge、declared generated names lookup、generated item visibility / export、parser-consumable generated
+token buffer、parser consumption execution 或 macro-generated user code lowering；它把 M22f rollback diagnostic design
+gate 之后的 parser consumption admission protocol、checkpoint rollback protocol 和 pre-consumption verification
+closure 固定成可验证 facts。
+
+新增 `BuiltinDeriveParserConsumptionAdmissionProtocol`、
+`BuiltinDeriveParserConsumptionCheckpointRollbackProtocol` 和
+`BuiltinDeriveParserPreConsumptionVerificationClosure`，并给 `EarlyItemExpansionResult` 增加
+`builtin_derive_parser_consumption_admission_protocols`、`builtin_derive_checkpoint_rollback_protocols` 和
+`builtin_derive_preconsumption_verification_closures`。M23a admission protocol 绑定 M21n `contract_identity`、M22c
+`release_gate_identity` 和 M22f `rollback_gate_identity`，固定
+`builtin_derive_parser_consumption_admission_protocol_v1`、
+`m23a-builtin-derive-parser-consumption-admission:<module>:<part>`、part-local token buffer / token record /
+derive candidate / empty candidate / blocked diagnostic counts 和 no-parser-consumption blocker。M23b checkpoint
+rollback protocol 绑定 M23a `admission_protocol_identity` 和 M22f `rollback_gate_identity`，固定
+`builtin_derive_parser_checkpoint_rollback_protocol_v1`、
+`m23b-builtin-derive-checkpoint-rollback:<module>:<part>`、`checkpoint_count=3`、`rollback_plan_count=3`、
+token record / diagnostic anchor counts、parser state checkpoint、token cursor checkpoint、generated part checkpoint
+和 diagnostic replay prerequisite。M23c verification closure 绑定 M23a `admission_protocol_identity`、M23b
+`checkpoint_protocol_identity` 和 M22e `debug_dump_contract_identity`，固定
+`builtin_derive_parser_preconsumption_verification_closure_v1`、
+`m23c-builtin-derive-preconsumption-verification:<module>:<part>`、admission/checkpoint/hardening/debug-dump/rollback
+五类 prerequisite count，并把 `EarlyItemExpansionResult::name` 推进为
+`M23c Builtin Derive Parser Pre-Consumption Verification Closure`。summary / dump / fingerprint / validation 会拒绝
+M23 identity 或 query 漂移、M23 count 漂移、上游 M21/M22/M23 identity 串线、parser admission / parser consumption /
+rollback execution 被打开、generated part parsed / merged / sema-visible 被打开、standard library/runtime/external
+process requirement 被打开、emit/debug/source-map/user-code flag 被打开。新增说明见
+[Aurex M23a Builtin Derive Parser Consumption Admission Protocol](m23a-builtin-derive-parser-consumption-admission-protocol.md)、
+[Aurex M23b Builtin Derive Checkpoint Rollback Protocol](m23b-builtin-derive-checkpoint-rollback-protocol.md) 和
+[Aurex M23c Builtin Derive Parser Pre-Consumption Verification Closure](m23c-builtin-derive-preconsumption-verification-closure.md)。
 
 2026-06-12：M22f Builtin Derive Rollback Diagnostic Design Gate 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

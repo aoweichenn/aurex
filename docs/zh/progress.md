@@ -1,9 +1,22 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21d No-op Early Item Macro Expansion Boundary
+阶段：M21e Generated Module Part Parse/Merge Stub Contract
 
 ## 总体状态
+
+2026-06-12：M21e Generated Module Part Parse/Merge Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、generated module part parse / merge 或 macro-generated user code lowering；它把 M21d 的
+no-op early expansion boundary 扩展为 generated module part parse / merge stub contract。
+
+新增 `GeneratedModulePartParseMergeStub`、`GeneratedModulePartLifecycleState`、lifecycle name / validation helper，
+并给 `EarlyItemExpansionResult` 增加 `generated_part_stubs`。driver 仍只运行同一个 `macro.expand_items`
+profile stage；每个 generated placeholder 现在都有 deterministic `generated_buffer_identity`、
+`parse_config_fingerprint`、`merge_ordering_key`、expansion origin、buffer name 和 `merge_blocked` lifecycle stub。
+summary / dump / fingerprint / validation 会拒绝 stub 与 placeholder 不一致、空 fingerprint、错误 buffer identity、
+错误 parse config、错误 merge ordering、已 parsed、已 merged、sema-visible 或 produced user-generated code 的漂移。
+新增说明见 [Aurex M21e Generated Module Part Parse/Merge Stub Contract](m21e-generated-module-part-parse-merge-stub-contract.md)。
 
 2026-06-12：M21d No-op Early Item Macro Expansion Boundary 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

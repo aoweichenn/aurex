@@ -18,6 +18,13 @@ enum class EarlyItemExpansionDisposition : base::u8 {
     blocked_unimplemented_attribute,
 };
 
+enum class GeneratedModulePartLifecycleState : base::u8 {
+    planned = 1,
+    materialized_buffer_stub,
+    parse_blocked,
+    merge_blocked,
+};
+
 struct EarlyItemMacroInput {
     syntax::ItemId item;
     syntax::ModuleId module;
@@ -49,6 +56,27 @@ struct GeneratedModulePartPlaceholder {
     bool produced_user_generated_code = false;
 };
 
+struct GeneratedModulePartParseMergeStub {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    base::u32 generated_stable_index = 0;
+    query::ModulePartKey source_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 generated_buffer_identity;
+    query::StableFingerprint128 parse_config_fingerprint;
+    query::StableFingerprint128 merge_ordering_key;
+    query::StableFingerprint128 expansion_origin;
+    std::string generated_buffer_name;
+    std::string blocker_reason;
+    GeneratedModulePartLifecycleState lifecycle_state =
+        GeneratedModulePartLifecycleState::merge_blocked;
+    bool materialized_buffer = true;
+    bool parsed = false;
+    bool merged = false;
+    bool sema_visible = false;
+    bool produced_user_generated_code = false;
+};
+
 struct ExpansionSourceMapPlaceholder {
     syntax::ItemId item;
     syntax::ModuleId module;
@@ -66,6 +94,11 @@ struct EarlyItemExpansionSummary {
     base::u64 builtin_derive_passthrough_count = 0;
     base::u64 blocked_attribute_count = 0;
     base::u64 generated_part_placeholder_count = 0;
+    base::u64 generated_part_stub_count = 0;
+    base::u64 materialized_buffer_stub_count = 0;
+    base::u64 parse_blocked_count = 0;
+    base::u64 merge_blocked_count = 0;
+    base::u64 sema_visible_generated_part_count = 0;
     base::u64 source_map_placeholder_count = 0;
     base::u64 parsed_generated_part_count = 0;
     base::u64 merged_generated_part_count = 0;
@@ -80,6 +113,7 @@ struct EarlyItemExpansionResult {
     query::MacroExpansionPlan plan;
     std::vector<EarlyItemMacroInput> inputs;
     std::vector<GeneratedModulePartPlaceholder> generated_parts;
+    std::vector<GeneratedModulePartParseMergeStub> generated_part_stubs;
     std::vector<ExpansionSourceMapPlaceholder> source_maps;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
@@ -87,9 +121,13 @@ struct EarlyItemExpansionResult {
 
 [[nodiscard]] std::string_view early_item_expansion_disposition_name(
     EarlyItemExpansionDisposition disposition) noexcept;
+[[nodiscard]] std::string_view generated_module_part_lifecycle_state_name(
+    GeneratedModulePartLifecycleState state) noexcept;
 [[nodiscard]] bool is_valid(EarlyItemExpansionDisposition disposition) noexcept;
+[[nodiscard]] bool is_valid(GeneratedModulePartLifecycleState state) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemMacroInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedModulePartPlaceholder& placeholder) noexcept;
+[[nodiscard]] bool is_valid(const GeneratedModulePartParseMergeStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const ExpansionSourceMapPlaceholder& placeholder) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;

@@ -1,5 +1,46 @@
 # 版本文档
 
+## M21e Generated Module Part Parse/Merge Stub Contract
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21d 的 generated placeholder 扩展为
+generated module part parse / merge stub contract。该阶段仍不执行宏、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::GeneratedModulePartParseMergeStub`。
+- 新增 `frontend::macro::GeneratedModulePartLifecycleState`。
+- 新增 `generated_module_part_lifecycle_state_name()`。
+- 新增 `is_valid(GeneratedModulePartLifecycleState)`。
+- 新增 `is_valid(const GeneratedModulePartParseMergeStub&)`。
+- `EarlyItemExpansionResult` 新增 `generated_part_stubs`。
+- `EarlyItemExpansionSummary` 新增 generated part stub、materialized buffer、parse blocked、merge blocked 和
+  sema visible generated part 计数。
+- 每个 generated placeholder 都有一个 deterministic parse / merge stub。
+- stub 固定 `generated_buffer_identity`。
+- stub 固定 `parse_config_fingerprint`。
+- stub 固定 `merge_ordering_key`。
+- stub 固定 expansion origin 和 generated buffer name。
+- stub 当前唯一合法 lifecycle 是 `merge_blocked`。
+- validation 要求 stub 与 placeholder 一一对应。
+- validation 拒绝 stub parsed、merged、sema-visible 或 produced user-generated code。
+- dump 会输出 `parse_merge_stub`、lifecycle、buffer identity、parse config 和 merge ordering。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- 真实 expansion source map。
+- `--emit-expanded` 或 macro trace CLI。
+
 ## M21d No-op Early Item Macro Expansion Boundary
 
 当前版本把 M21c 的 early item expansion plan 接入真实 frontend pipeline。该阶段仍不执行宏、不生成用户代码，

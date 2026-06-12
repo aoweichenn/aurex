@@ -8,16 +8,15 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21D_EXPANSION_NAME =
-    "M21d No-op Early Item Macro Expansion Boundary";
-constexpr std::string_view FRONTEND_MACRO_M21D_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21d.noop_early_item_expansion.v1";
+constexpr std::string_view FRONTEND_MACRO_M21E_EXPANSION_NAME =
+    "M21e Generated Module Part Parse/Merge Stub Contract";
+constexpr std::string_view FRONTEND_MACRO_M21E_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m21e.generated_part_parse_merge_stub_contract.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
     "frontend.macro.m21d.early_item_query_key.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_GENERATED_PART_NAME_PREFIX = "#macro-generated:";
-constexpr std::string_view FRONTEND_MACRO_M21D_GENERATED_VIRTUAL_BUFFER_PREFIX = "m21d-noop-generated:";
 constexpr std::string_view FRONTEND_MACRO_M21D_ITEM_MODULES_MISMATCH =
     "early item macro expansion requires one module owner per item";
 constexpr std::string_view FRONTEND_MACRO_M21D_ITEM_PARTS_MISMATCH =
@@ -29,6 +28,18 @@ constexpr std::string_view FRONTEND_MACRO_M21D_MISSING_MODULE_PART_KEY =
 constexpr std::string_view FRONTEND_MACRO_M21D_GENERATED_PART_PLACEHOLDER_MARKER =
     "frontend.macro.m21d.generated_part_placeholder.v1";
 constexpr base::u32 FRONTEND_MACRO_M21D_GENERATED_PART_INDEX_OFFSET = 100'000U;
+constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_STUB_MARKER =
+    "frontend.macro.m21e.generated_part_parse_merge_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21E_GENERATED_BUFFER_IDENTITY_MARKER =
+    "frontend.macro.m21e.generated_part_buffer_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_CONFIG_MARKER =
+    "frontend.macro.m21e.generated_part_parse_config.v1";
+constexpr std::string_view FRONTEND_MACRO_M21E_MERGE_ORDERING_MARKER =
+    "frontend.macro.m21e.generated_part_merge_ordering.v1";
+constexpr std::string_view FRONTEND_MACRO_M21E_GENERATED_BUFFER_PREFIX =
+    "m21e-noop-generated-buffer:";
+constexpr std::string_view FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER =
+    "generated module part parse and merge are blocked in M21e";
 
 [[nodiscard]] base::Error internal_error(const std::string_view message)
 {
@@ -38,6 +49,11 @@ constexpr base::u32 FRONTEND_MACRO_M21D_GENERATED_PART_INDEX_OFFSET = 100'000U;
 [[nodiscard]] bool source_range_is_well_formed(const base::SourceRange& range) noexcept
 {
     return range.well_formed();
+}
+
+[[nodiscard]] bool is_nonzero_fingerprint(const query::StableFingerprint128 fingerprint) noexcept
+{
+    return fingerprint != query::StableFingerprint128{};
 }
 
 [[nodiscard]] bool item_id_in_range(const syntax::AstModule& ast, const syntax::ItemId item) noexcept
@@ -63,11 +79,74 @@ constexpr base::u32 FRONTEND_MACRO_M21D_GENERATED_PART_INDEX_OFFSET = 100'000U;
 [[nodiscard]] std::string module_part_generated_virtual_buffer(
     const syntax::ModuleId module, const base::u32 part_index)
 {
-    std::string buffer(FRONTEND_MACRO_M21D_GENERATED_VIRTUAL_BUFFER_PREFIX);
+    std::string buffer(FRONTEND_MACRO_M21E_GENERATED_BUFFER_PREFIX);
     buffer += std::to_string(module.value);
     buffer.push_back(':');
     buffer += std::to_string(part_index);
     return buffer;
+}
+
+[[nodiscard]] query::StableFingerprint128 generated_buffer_identity(
+    const GeneratedModulePartPlaceholder& placeholder, const std::string_view generated_buffer_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21E_GENERATED_BUFFER_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_u32(placeholder.generated_stable_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_string(generated_buffer_name);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 parse_config_fingerprint(
+    const GeneratedModulePartPlaceholder& placeholder) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21E_PARSE_CONFIG_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(query::parser_config_key()));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 merge_ordering_key(
+    const GeneratedModulePartPlaceholder& placeholder) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21E_MERGE_ORDERING_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_u32(placeholder.generated_stable_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    return builder.finish();
+}
+
+[[nodiscard]] GeneratedModulePartParseMergeStub make_parse_merge_stub(
+    const GeneratedModulePartPlaceholder& placeholder)
+{
+    const std::string generated_buffer_name =
+        module_part_generated_virtual_buffer(placeholder.module, placeholder.generated_stable_index);
+    return GeneratedModulePartParseMergeStub{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.generated_stable_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        generated_buffer_identity(placeholder, generated_buffer_name),
+        parse_config_fingerprint(placeholder),
+        merge_ordering_key(placeholder),
+        placeholder.output_fingerprint,
+        generated_buffer_name,
+        std::string(FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER),
+        GeneratedModulePartLifecycleState::merge_blocked,
+        true,
+        false,
+        false,
+        false,
+        false,
+    };
 }
 
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
@@ -165,6 +244,28 @@ void mix_generated_part(query::StableHashBuilder& builder, const GeneratedModule
     builder.mix_bool(part.produced_user_generated_code);
 }
 
+void mix_parse_merge_stub(query::StableHashBuilder& builder, const GeneratedModulePartParseMergeStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21E_PARSE_MERGE_STUB_MARKER);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.source_part_index);
+    builder.mix_u32(stub.generated_stable_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.generated_part));
+    builder.mix_fingerprint(stub.generated_buffer_identity);
+    builder.mix_fingerprint(stub.parse_config_fingerprint);
+    builder.mix_fingerprint(stub.merge_ordering_key);
+    builder.mix_fingerprint(stub.expansion_origin);
+    builder.mix_string(stub.generated_buffer_name);
+    builder.mix_string(stub.blocker_reason);
+    builder.mix_u8(static_cast<base::u8>(stub.lifecycle_state));
+    builder.mix_bool(stub.materialized_buffer);
+    builder.mix_bool(stub.parsed);
+    builder.mix_bool(stub.merged);
+    builder.mix_bool(stub.sema_visible);
+    builder.mix_bool(stub.produced_user_generated_code);
+}
+
 void mix_source_map(query::StableHashBuilder& builder, const ExpansionSourceMapPlaceholder& source_map) noexcept
 {
     builder.mix_u32(source_map.item.value);
@@ -188,6 +289,11 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.builtin_derive_passthrough_count);
     builder.mix_u64(summary.blocked_attribute_count);
     builder.mix_u64(summary.generated_part_placeholder_count);
+    builder.mix_u64(summary.generated_part_stub_count);
+    builder.mix_u64(summary.materialized_buffer_stub_count);
+    builder.mix_u64(summary.parse_blocked_count);
+    builder.mix_u64(summary.merge_blocked_count);
+    builder.mix_u64(summary.sema_visible_generated_part_count);
     builder.mix_u64(summary.source_map_placeholder_count);
     builder.mix_u64(summary.parsed_generated_part_count);
     builder.mix_u64(summary.merged_generated_part_count);
@@ -205,6 +311,11 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.builtin_derive_passthrough_count == rhs.builtin_derive_passthrough_count
         && lhs.blocked_attribute_count == rhs.blocked_attribute_count
         && lhs.generated_part_placeholder_count == rhs.generated_part_placeholder_count
+        && lhs.generated_part_stub_count == rhs.generated_part_stub_count
+        && lhs.materialized_buffer_stub_count == rhs.materialized_buffer_stub_count
+        && lhs.parse_blocked_count == rhs.parse_blocked_count
+        && lhs.merge_blocked_count == rhs.merge_blocked_count
+        && lhs.sema_visible_generated_part_count == rhs.sema_visible_generated_part_count
         && lhs.source_map_placeholder_count == rhs.source_map_placeholder_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
         && lhs.merged_generated_part_count == rhs.merged_generated_part_count
@@ -223,6 +334,40 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         [module, source_part_index](const GeneratedModulePartPlaceholder& part) {
             return part.module.value == module.value && part.source_part_index == source_part_index;
         });
+}
+
+[[nodiscard]] bool stub_matches_placeholder(
+    const GeneratedModulePartParseMergeStub& stub,
+    const GeneratedModulePartPlaceholder& placeholder) noexcept
+{
+    const std::string expected_buffer_name =
+        module_part_generated_virtual_buffer(placeholder.module, placeholder.generated_stable_index);
+    return stub.module.value == placeholder.module.value
+        && stub.source_part_index == placeholder.source_part_index
+        && stub.generated_stable_index == placeholder.generated_stable_index
+        && stub.source_part == placeholder.source_part
+        && stub.generated_part == placeholder.generated_part
+        && stub.generated_buffer_name == expected_buffer_name
+        && stub.blocker_reason == FRONTEND_MACRO_M21E_PARSE_MERGE_BLOCKER
+        && stub.generated_buffer_identity == generated_buffer_identity(placeholder, expected_buffer_name)
+        && stub.parse_config_fingerprint == parse_config_fingerprint(placeholder)
+        && stub.merge_ordering_key == merge_ordering_key(placeholder)
+        && stub.expansion_origin == placeholder.output_fingerprint;
+}
+
+[[nodiscard]] bool generated_part_stubs_match_placeholders(
+    const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
+    const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
+{
+    if (generated_parts.size() != generated_part_stubs.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < generated_parts.size(); ++index) {
+        if (!stub_matches_placeholder(generated_part_stubs[index], generated_parts[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] GeneratedModulePartPlaceholder make_generated_part_placeholder(
@@ -328,11 +473,39 @@ std::string_view early_item_expansion_disposition_name(
     return "invalid";
 }
 
+std::string_view generated_module_part_lifecycle_state_name(
+    const GeneratedModulePartLifecycleState state) noexcept
+{
+    switch (state) {
+        case GeneratedModulePartLifecycleState::planned:
+            return "planned";
+        case GeneratedModulePartLifecycleState::materialized_buffer_stub:
+            return "materialized_buffer_stub";
+        case GeneratedModulePartLifecycleState::parse_blocked:
+            return "parse_blocked";
+        case GeneratedModulePartLifecycleState::merge_blocked:
+            return "merge_blocked";
+    }
+    return "invalid";
+}
+
 bool is_valid(const EarlyItemExpansionDisposition disposition) noexcept
 {
     switch (disposition) {
         case EarlyItemExpansionDisposition::builtin_derive_passthrough:
         case EarlyItemExpansionDisposition::blocked_unimplemented_attribute:
+            return true;
+    }
+    return false;
+}
+
+bool is_valid(const GeneratedModulePartLifecycleState state) noexcept
+{
+    switch (state) {
+        case GeneratedModulePartLifecycleState::planned:
+        case GeneratedModulePartLifecycleState::materialized_buffer_stub:
+        case GeneratedModulePartLifecycleState::parse_blocked:
+        case GeneratedModulePartLifecycleState::merge_blocked:
             return true;
     }
     return false;
@@ -366,6 +539,28 @@ bool is_valid(const GeneratedModulePartPlaceholder& placeholder) noexcept
         && !placeholder.produced_user_generated_code;
 }
 
+bool is_valid(const GeneratedModulePartParseMergeStub& stub) noexcept
+{
+    return syntax::is_valid(stub.module)
+        && query::is_valid(stub.source_part)
+        && query::is_valid(stub.generated_part)
+        && stub.generated_part.kind == query::ModulePartKind::generated
+        && stub.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(stub.generated_buffer_identity)
+        && is_nonzero_fingerprint(stub.parse_config_fingerprint)
+        && is_nonzero_fingerprint(stub.merge_ordering_key)
+        && is_nonzero_fingerprint(stub.expansion_origin)
+        && !stub.generated_buffer_name.empty()
+        && !stub.blocker_reason.empty()
+        && is_valid(stub.lifecycle_state)
+        && stub.lifecycle_state == GeneratedModulePartLifecycleState::merge_blocked
+        && stub.materialized_buffer
+        && !stub.parsed
+        && !stub.merged
+        && !stub.sema_visible
+        && !stub.produced_user_generated_code;
+}
+
 bool is_valid(const ExpansionSourceMapPlaceholder& placeholder) noexcept
 {
     return syntax::is_valid(placeholder.item)
@@ -384,7 +579,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21D_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M21E_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -393,6 +588,11 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const GeneratedModulePartPlaceholder& placeholder) {
                    return is_valid(placeholder);
                })
+        && std::all_of(result.generated_part_stubs.begin(), result.generated_part_stubs.end(),
+               [](const GeneratedModulePartParseMergeStub& stub) {
+                   return is_valid(stub);
+               })
+        && generated_part_stubs_match_placeholders(result.generated_parts, result.generated_part_stubs)
         && std::all_of(result.source_maps.begin(), result.source_maps.end(),
                [](const ExpansionSourceMapPlaceholder& placeholder) {
                    return is_valid(placeholder);
@@ -429,6 +629,31 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.generated_part_stub_count = static_cast<base::u64>(result.generated_part_stubs.size());
+    for (const GeneratedModulePartParseMergeStub& stub : result.generated_part_stubs) {
+        if (stub.materialized_buffer) {
+            ++summary.materialized_buffer_stub_count;
+        }
+        if (stub.lifecycle_state == GeneratedModulePartLifecycleState::parse_blocked
+            || stub.lifecycle_state == GeneratedModulePartLifecycleState::merge_blocked) {
+            ++summary.parse_blocked_count;
+        }
+        if (stub.lifecycle_state == GeneratedModulePartLifecycleState::merge_blocked) {
+            ++summary.merge_blocked_count;
+        }
+        if (stub.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (stub.parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (stub.merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (stub.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     summary.source_map_placeholder_count = static_cast<base::u64>(result.source_maps.size());
     return summary;
 }
@@ -437,7 +662,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21D_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M21E_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -447,6 +672,10 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.generated_parts.size()));
     for (const GeneratedModulePartPlaceholder& part : result.generated_parts) {
         mix_generated_part(builder, part);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.generated_part_stubs.size()));
+    for (const GeneratedModulePartParseMergeStub& stub : result.generated_part_stubs) {
+        mix_parse_merge_stub(builder, stub);
     }
     builder.mix_u64(static_cast<base::u64>(result.source_maps.size()));
     for (const ExpansionSourceMapPlaceholder& source_map : result.source_maps) {
@@ -466,6 +695,11 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << " builtin_derive_passthrough=" << summary.builtin_derive_passthrough_count
            << " blocked_attributes=" << summary.blocked_attribute_count
            << " generated_part_placeholders=" << summary.generated_part_placeholder_count
+           << " generated_part_stubs=" << summary.generated_part_stub_count
+           << " materialized_buffer_stubs=" << summary.materialized_buffer_stub_count
+           << " parse_blocked=" << summary.parse_blocked_count
+           << " merge_blocked=" << summary.merge_blocked_count
+           << " sema_visible_generated_parts=" << summary.sema_visible_generated_part_count
            << " source_map_placeholders=" << summary.source_map_placeholder_count
            << " user_generated_code=" << summary.user_generated_code_count
            << " standard_library_required=" << summary.standard_library_required_count
@@ -502,6 +736,23 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " merged=" << (part.merged ? "yes" : "no")
                << " user_generated_code=" << (part.produced_user_generated_code ? "yes" : "no") << '\n';
     }
+    for (base::usize index = 0; index < result.generated_part_stubs.size(); ++index) {
+        const GeneratedModulePartParseMergeStub& stub = result.generated_part_stubs[index];
+        stream << "  parse_merge_stub #" << index
+               << " module=" << stub.module.value
+               << " source_part=" << stub.source_part_index
+               << " stable_index=" << stub.generated_stable_index
+               << " buffer=" << stub.generated_buffer_name
+               << " lifecycle=" << generated_module_part_lifecycle_state_name(stub.lifecycle_state)
+               << " materialized_buffer=" << (stub.materialized_buffer ? "yes" : "no")
+               << " parsed=" << (stub.parsed ? "yes" : "no")
+               << " merged=" << (stub.merged ? "yes" : "no")
+               << " sema_visible=" << (stub.sema_visible ? "yes" : "no")
+               << " blocker=" << stub.blocker_reason
+               << " buffer_identity=" << query::debug_string(stub.generated_buffer_identity)
+               << " parse_config=" << query::debug_string(stub.parse_config_fingerprint)
+               << " merge_ordering=" << query::debug_string(stub.merge_ordering_key) << '\n';
+    }
     for (base::usize index = 0; index < result.source_maps.size(); ++index) {
         const ExpansionSourceMapPlaceholder& source_map = result.source_maps[index];
         stream << "  source_map #" << index
@@ -531,9 +782,11 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21D_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M21E_EXPANSION_NAME);
     result.plan = plan;
     result.inputs.reserve(ast.items.size());
+    result.generated_parts.reserve(ast.items.size());
+    result.generated_part_stubs.reserve(ast.items.size());
     result.source_maps.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
@@ -550,7 +803,10 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
         const syntax::ModuleId module = ast.item_modules[item_index];
         const base::u32 part_index = ast.item_part_indices[item_index];
         if (!generated_part_exists_for(result.generated_parts, module, part_index)) {
-            result.generated_parts.push_back(make_generated_part_placeholder(attached_part, module, part_index));
+            GeneratedModulePartPlaceholder placeholder =
+                make_generated_part_placeholder(attached_part, module, part_index);
+            result.generated_part_stubs.push_back(make_parse_merge_stub(placeholder));
+            result.generated_parts.push_back(std::move(placeholder));
         }
 
         for (base::usize attribute_index = 0; attribute_index < item.attributes.size(); ++attribute_index) {

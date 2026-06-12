@@ -337,7 +337,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21d No-op Early Item Macro Expansion Boundary**");
+        "docs/zh/README.md", "文档基线：**M21e Generated Module Part Parse/Merge Stub Contract**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -369,8 +369,16 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "Aurex M21b AttributeDecl / Token Tree Surface");
     expect_document_contains("docs/zh/README.md", "Aurex M21c Early Item Macro Expansion Plan");
     expect_document_contains("docs/zh/README.md", "Aurex M21d No-op Early Item Macro Expansion Boundary");
-    expect_document_contains("docs/zh/progress.md", "阶段：M21d No-op Early Item Macro Expansion Boundary");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_document_contains("docs/zh/progress.md",
+        "阶段：M21e Generated Module Part Parse/Merge Stub Contract");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
+    expect_document_contains("docs/zh/progress.md", "GeneratedModulePartParseMergeStub");
+    expect_document_contains("docs/zh/progress.md", "GeneratedModulePartLifecycleState");
+    expect_document_contains("docs/zh/progress.md", "generated_buffer_identity");
+    expect_document_contains("docs/zh/progress.md", "parse_config_fingerprint");
+    expect_document_contains("docs/zh/progress.md", "merge_ordering_key");
     expect_document_contains("docs/zh/progress.md", "expand_early_item_macros_noop()");
     expect_document_contains("docs/zh/progress.md", "macro.expand_items");
     expect_document_contains("docs/zh/progress.md", "MacroExpansionPlan");
@@ -382,6 +390,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_document_contains("docs/zh/version.md", "GeneratedModulePartParseMergeStub");
+    expect_document_contains("docs/zh/version.md", "GeneratedModulePartLifecycleState");
+    expect_document_contains("docs/zh/version.md", "generated_buffer_identity");
+    expect_document_contains("docs/zh/version.md", "parse_config_fingerprint");
+    expect_document_contains("docs/zh/version.md", "merge_ordering_key");
     expect_document_contains("docs/zh/version.md", "## M21d No-op Early Item Macro Expansion Boundary");
     expect_document_contains("docs/zh/version.md", "EarlyItemExpansionResult");
     expect_document_contains("docs/zh/version.md", "macro.expand_items");
@@ -415,6 +430,28 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m21d-noop-early-item-expansion-boundary.md", "SourceRole::generated");
     expect_document_contains("docs/zh/m21d-noop-early-item-expansion-boundary.md", "ModulePartKind::generated");
     expect_document_contains("docs/zh/m21d-noop-early-item-expansion-boundary.md", "不生成用户代码");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "Aurex M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "阶段：M21e Generated Module Part Parse/Merge Stub Contract");
+    expect_document_contains(
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md", "GeneratedModulePartParseMergeStub");
+    expect_document_contains(
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md", "GeneratedModulePartLifecycleState");
+    expect_document_contains(
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md", "generated_buffer_identity");
+    expect_document_contains(
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md", "parse_config_fingerprint");
+    expect_document_contains(
+        "docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md", "merge_ordering_key");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "macro.expand_items");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "SourceRole::generated");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "ModulePartKind::generated");
+    expect_document_contains("docs/zh/m21e-generated-module-part-parse-merge-stub-contract.md",
+        "仍不生成用户代码");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

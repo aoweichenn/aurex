@@ -174,6 +174,34 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.declared_generated_names.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::TokenMaterializationAdmissionStub* token_admission_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.token_materialization_admissions.begin(),
+        result.token_materialization_admissions.end(),
+        [&input](const frontend::macro::TokenMaterializationAdmissionStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.token_materialization_admissions.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::GeneratedTokenBufferStub* token_buffer_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.generated_token_buffers.begin(),
+        result.generated_token_buffers.end(),
+        [&input](const frontend::macro::GeneratedTokenBufferStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.generated_token_buffers.end() ? nullptr : &*found;
+}
+
 void refresh_expansion_result(frontend::macro::EarlyItemExpansionResult& result)
 {
     result.summary = frontend::macro::summarize_early_item_expansion_counts(result);
@@ -246,7 +274,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21g Generated Item Declared Names Stub Contract");
+    EXPECT_EQ(result.name, "M21h Token Materialization Admission Stub Contract");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -274,6 +302,15 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.declared_generated_name_stub_count, 2U);
     EXPECT_EQ(result.summary.lookup_visible_declared_name_count, 0U);
     EXPECT_EQ(result.summary.export_visible_declared_name_count, 0U);
+    EXPECT_EQ(result.summary.token_materialization_admission_stub_count, 2U);
+    EXPECT_EQ(result.summary.compiler_owned_admission_count, 2U);
+    EXPECT_EQ(result.summary.admitted_token_materialization_count, 2U);
+    EXPECT_EQ(result.summary.materialized_token_admission_count, 0U);
+    EXPECT_EQ(result.summary.generated_token_buffer_stub_count, 2U);
+    EXPECT_EQ(result.summary.empty_generated_token_buffer_count, 2U);
+    EXPECT_EQ(result.summary.materialized_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.generated_source_text_count, 0U);
+    EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
     EXPECT_EQ(result.summary.merged_generated_part_count, 0U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
@@ -443,8 +480,71 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(builder_declared_name->sema_visible);
     EXPECT_FALSE(builder_declared_name->produced_user_generated_code);
 
+    ASSERT_EQ(result.token_materialization_admissions.size(), 2U);
+    const frontend::macro::TokenMaterializationAdmissionStub* const builder_admission =
+        token_admission_for_input(result, *builder);
+    ASSERT_NE(builder_admission, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_admission));
+    EXPECT_EQ(builder_admission->part_index, builder->part_index);
+    EXPECT_EQ(builder_admission->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_admission->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_admission->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_admission->expansion_origin, builder->query_key_fingerprint);
+    EXPECT_EQ(builder_admission->declaration_identity, builder_declaration->declaration_identity);
+    EXPECT_EQ(builder_admission->generated_item_key, builder_declaration->generated_item_key);
+    EXPECT_EQ(builder_admission->declared_name_set, builder_hygiene->declared_name_set);
+    EXPECT_EQ(builder_admission->declared_name_identity, builder_declared_name->declared_name_identity);
+    EXPECT_EQ(builder_admission->hygiene_mark, builder_hygiene->generated_fresh_mark);
+    EXPECT_EQ(builder_admission->source_map_identity, builder_trace->generated_source_map_identity);
+    EXPECT_EQ(builder_admission->trace_identity, builder_trace->trace_identity);
+    EXPECT_GT(builder_admission->token_plan_identity.byte_count, 0U);
+    EXPECT_GT(builder_admission->token_buffer_identity.byte_count, 0U);
+    EXPECT_NE(builder_admission->token_plan_identity, builder_admission->token_buffer_identity);
+    EXPECT_EQ(builder_admission->admission_policy,
+        "compiler_owned_attached_item_token_materialization_admission_v1");
+    expect_contains(builder_admission->token_stream_name, "m21h-token-stream:0:0:0:0:builder");
+    expect_contains(builder_admission->blocker_reason, "blocked in M21h");
+    EXPECT_TRUE(builder_admission->compiler_owned);
+    EXPECT_TRUE(builder_admission->admitted);
+    EXPECT_FALSE(builder_admission->materialized_tokens);
+    EXPECT_FALSE(builder_admission->generated_source_text);
+    EXPECT_FALSE(builder_admission->parse_ready);
+    EXPECT_FALSE(builder_admission->external_process_required);
+    EXPECT_FALSE(builder_admission->standard_library_required);
+    EXPECT_FALSE(builder_admission->runtime_required);
+    EXPECT_FALSE(builder_admission->produced_user_generated_code);
+
+    const frontend::macro::TokenMaterializationAdmissionStub* const derive_admission =
+        token_admission_for_input(result, *derive);
+    ASSERT_NE(derive_admission, nullptr);
+    EXPECT_NE(derive_admission->token_stream_name, builder_admission->token_stream_name);
+    expect_contains(derive_admission->token_stream_name, "m21h-token-stream:0:0:0:1:derive");
+
+    ASSERT_EQ(result.generated_token_buffers.size(), 2U);
+    const frontend::macro::GeneratedTokenBufferStub* const builder_buffer =
+        token_buffer_for_input(result, *builder);
+    ASSERT_NE(builder_buffer, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_buffer));
+    EXPECT_EQ(builder_buffer->part_index, builder->part_index);
+    EXPECT_EQ(builder_buffer->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_buffer->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_buffer->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_buffer->token_plan_identity, builder_admission->token_plan_identity);
+    EXPECT_EQ(builder_buffer->token_buffer_identity, builder_admission->token_buffer_identity);
+    EXPECT_EQ(builder_buffer->source_map_identity, builder_trace->generated_source_map_identity);
+    EXPECT_EQ(builder_buffer->hygiene_mark, builder_hygiene->generated_fresh_mark);
+    EXPECT_EQ(builder_buffer->token_stream_name, builder_admission->token_stream_name);
+    EXPECT_EQ(builder_buffer->token_buffer_kind, "compiler_owned_empty_token_stream");
+    expect_contains(builder_buffer->blocker_reason, "parser-blocked in M21h");
+    EXPECT_EQ(builder_buffer->token_count, 0U);
+    EXPECT_TRUE(builder_buffer->empty);
+    EXPECT_FALSE(builder_buffer->materialized_tokens);
+    EXPECT_FALSE(builder_buffer->generated_source_text);
+    EXPECT_FALSE(builder_buffer->parser_consumable);
+    EXPECT_FALSE(builder_buffer->produced_user_generated_code);
+
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21g Generated Item Declared Names Stub Contract");
+    expect_contains(summary, "early_item_expansion name=M21h Token Materialization Admission Stub Contract");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -464,6 +564,15 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "declared_generated_names=2");
     expect_contains(summary, "lookup_visible_declared_names=0");
     expect_contains(summary, "export_visible_declared_names=0");
+    expect_contains(summary, "token_materialization_admissions=2");
+    expect_contains(summary, "compiler_owned_admissions=2");
+    expect_contains(summary, "admitted_token_materializations=2");
+    expect_contains(summary, "materialized_token_admissions=0");
+    expect_contains(summary, "generated_token_buffers=2");
+    expect_contains(summary, "empty_generated_token_buffers=2");
+    expect_contains(summary, "materialized_token_buffers=0");
+    expect_contains(summary, "generated_source_text=0");
+    expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -513,6 +622,26 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "declared generated name lookup is blocked in M21g");
     expect_contains(dump, "declared_name_identity=");
     expect_contains(dump, "hygiene_mark=");
+    expect_contains(dump, "token_materialization_admission_stub #0");
+    expect_contains(dump, "policy=compiler_owned_attached_item_token_materialization_admission_v1");
+    expect_contains(dump, "token_stream=m21h-token-stream:0:0:0:0:builder");
+    expect_contains(dump, "compiler_owned=yes");
+    expect_contains(dump, "admitted=yes");
+    expect_contains(dump, "generated_source_text=no");
+    expect_contains(dump, "parse_ready=no");
+    expect_contains(dump, "external_process_required=no");
+    expect_contains(dump, "standard_library_required=no");
+    expect_contains(dump, "runtime_required=no");
+    expect_contains(dump, "compiler-owned macro token materialization is blocked in M21h");
+    expect_contains(dump, "source_map_identity=");
+    expect_contains(dump, "token_plan_identity=");
+    expect_contains(dump, "token_buffer_identity=");
+    expect_contains(dump, "generated_token_buffer_stub #0");
+    expect_contains(dump, "kind=compiler_owned_empty_token_stream");
+    expect_contains(dump, "token_count=0");
+    expect_contains(dump, "empty=yes");
+    expect_contains(dump, "parser_consumable=no");
+    expect_contains(dump, "generated token buffer remains empty and parser-blocked in M21h");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -554,6 +683,8 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
     ASSERT_EQ(result.inputs.size(), 2U);
     ASSERT_EQ(result.generated_item_declarations.size(), 2U);
     ASSERT_EQ(result.declared_generated_names.size(), 2U);
+    ASSERT_EQ(result.token_materialization_admissions.size(), 2U);
+    ASSERT_EQ(result.generated_token_buffers.size(), 2U);
 
     EXPECT_NE(result.inputs[0].item.value, result.inputs[1].item.value);
     EXPECT_EQ(result.inputs[0].attribute_index, 0U);
@@ -568,6 +699,16 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
         result.generated_item_declarations[0].generated_item_name);
     EXPECT_EQ(result.declared_generated_names[1].declared_name,
         result.generated_item_declarations[1].generated_item_name);
+    EXPECT_NE(result.token_materialization_admissions[0].token_stream_name,
+        result.token_materialization_admissions[1].token_stream_name);
+    expect_contains(result.token_materialization_admissions[0].token_stream_name,
+        "m21h-token-stream:0:0:0:0:builder");
+    expect_contains(result.token_materialization_admissions[1].token_stream_name,
+        "m21h-token-stream:0:0:1:0:builder");
+    EXPECT_EQ(result.generated_token_buffers[0].token_stream_name,
+        result.token_materialization_admissions[0].token_stream_name);
+    EXPECT_EQ(result.generated_token_buffers[1].token_stream_name,
+        result.token_materialization_admissions[1].token_stream_name);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -1082,6 +1223,272 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksGeneratedItemAndDeclaredNameCo
     refresh_expansion_result(hygiene_mark);
     EXPECT_NE(hygiene_mark.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(hygiene_mark));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsTokenMaterializationAdmissionDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.token_materialization_admissions.empty());
+    ASSERT_FALSE(baseline.generated_token_buffers.empty());
+
+    frontend::macro::EarlyItemExpansionResult missing_admission = baseline;
+    missing_admission.token_materialization_admissions.clear();
+    refresh_expansion_result(missing_admission);
+    EXPECT_EQ(missing_admission.summary.token_materialization_admission_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_admission));
+
+    frontend::macro::EarlyItemExpansionResult missing_buffer = baseline;
+    missing_buffer.generated_token_buffers.clear();
+    refresh_expansion_result(missing_buffer);
+    EXPECT_EQ(missing_buffer.summary.generated_token_buffer_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_buffer));
+
+    frontend::macro::EarlyItemExpansionResult empty_token_plan = baseline;
+    empty_token_plan.token_materialization_admissions.front().token_plan_identity = {};
+    refresh_expansion_result(empty_token_plan);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_token_plan));
+
+    frontend::macro::EarlyItemExpansionResult empty_token_buffer_identity = baseline;
+    empty_token_buffer_identity.token_materialization_admissions.front().token_buffer_identity = {};
+    refresh_expansion_result(empty_token_buffer_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_token_buffer_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_declaration_identity = baseline;
+    wrong_declaration_identity.token_materialization_admissions.front().declaration_identity =
+        query::stable_fingerprint("wrong admission declaration identity");
+    refresh_expansion_result(wrong_declaration_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_declaration_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_item_key = baseline;
+    wrong_generated_item_key.token_materialization_admissions.front().generated_item_key =
+        query::stable_fingerprint("wrong admission generated item key");
+    refresh_expansion_result(wrong_generated_item_key);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_item_key));
+
+    frontend::macro::EarlyItemExpansionResult wrong_declared_name_identity = baseline;
+    wrong_declared_name_identity.token_materialization_admissions.front().declared_name_identity =
+        query::stable_fingerprint("wrong admission declared name identity");
+    refresh_expansion_result(wrong_declared_name_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_declared_name_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene_mark = baseline;
+    wrong_hygiene_mark.token_materialization_admissions.front().hygiene_mark =
+        query::stable_fingerprint("wrong admission hygiene mark");
+    refresh_expansion_result(wrong_hygiene_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene_mark));
+
+    frontend::macro::EarlyItemExpansionResult wrong_source_map = baseline;
+    wrong_source_map.token_materialization_admissions.front().source_map_identity =
+        query::stable_fingerprint("wrong admission source map");
+    refresh_expansion_result(wrong_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_source_map));
+
+    frontend::macro::EarlyItemExpansionResult wrong_trace_identity = baseline;
+    wrong_trace_identity.token_materialization_admissions.front().trace_identity =
+        query::stable_fingerprint("wrong admission trace identity");
+    refresh_expansion_result(wrong_trace_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_trace_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_policy = baseline;
+    wrong_policy.token_materialization_admissions.front().admission_policy = "wrong_admission_policy";
+    refresh_expansion_result(wrong_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_stream_name = baseline;
+    wrong_stream_name.token_materialization_admissions.front().token_stream_name =
+        "m21h-token-stream:wrong";
+    refresh_expansion_result(wrong_stream_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_stream_name));
+
+    frontend::macro::EarlyItemExpansionResult wrong_blocker = baseline;
+    wrong_blocker.token_materialization_admissions.front().blocker_reason = "wrong blocker";
+    refresh_expansion_result(wrong_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_blocker));
+
+    frontend::macro::EarlyItemExpansionResult not_compiler_owned = baseline;
+    not_compiler_owned.token_materialization_admissions.front().compiler_owned = false;
+    refresh_expansion_result(not_compiler_owned);
+    EXPECT_EQ(not_compiler_owned.summary.compiler_owned_admission_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(not_compiler_owned));
+
+    frontend::macro::EarlyItemExpansionResult not_admitted = baseline;
+    not_admitted.token_materialization_admissions.front().admitted = false;
+    refresh_expansion_result(not_admitted);
+    EXPECT_EQ(not_admitted.summary.admitted_token_materialization_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(not_admitted));
+
+    frontend::macro::EarlyItemExpansionResult materialized_admission = baseline;
+    materialized_admission.token_materialization_admissions.front().materialized_tokens = true;
+    refresh_expansion_result(materialized_admission);
+    EXPECT_EQ(materialized_admission.summary.materialized_token_admission_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(materialized_admission));
+
+    frontend::macro::EarlyItemExpansionResult generated_text = baseline;
+    generated_text.token_materialization_admissions.front().generated_source_text = true;
+    refresh_expansion_result(generated_text);
+    EXPECT_EQ(generated_text.summary.generated_source_text_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_text));
+
+    frontend::macro::EarlyItemExpansionResult parse_ready = baseline;
+    parse_ready.token_materialization_admissions.front().parse_ready = true;
+    refresh_expansion_result(parse_ready);
+    EXPECT_EQ(parse_ready.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parse_ready));
+
+    frontend::macro::EarlyItemExpansionResult external_process = baseline;
+    external_process.token_materialization_admissions.front().external_process_required = true;
+    refresh_expansion_result(external_process);
+    EXPECT_EQ(external_process.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(external_process));
+
+    frontend::macro::EarlyItemExpansionResult standard_library = baseline;
+    standard_library.token_materialization_admissions.front().standard_library_required = true;
+    refresh_expansion_result(standard_library);
+    EXPECT_EQ(standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(standard_library));
+
+    frontend::macro::EarlyItemExpansionResult runtime = baseline;
+    runtime.token_materialization_admissions.front().runtime_required = true;
+    refresh_expansion_result(runtime);
+    EXPECT_EQ(runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(runtime));
+
+    frontend::macro::EarlyItemExpansionResult user_code = baseline;
+    user_code.token_materialization_admissions.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code);
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedTokenBufferDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.generated_token_buffers.empty());
+
+    frontend::macro::EarlyItemExpansionResult empty_token_plan = baseline;
+    empty_token_plan.generated_token_buffers.front().token_plan_identity = {};
+    refresh_expansion_result(empty_token_plan);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_token_plan));
+
+    frontend::macro::EarlyItemExpansionResult empty_token_buffer_identity = baseline;
+    empty_token_buffer_identity.generated_token_buffers.front().token_buffer_identity = {};
+    refresh_expansion_result(empty_token_buffer_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_token_buffer_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_source_map = baseline;
+    wrong_source_map.generated_token_buffers.front().source_map_identity =
+        query::stable_fingerprint("wrong token buffer source map");
+    refresh_expansion_result(wrong_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_source_map));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene_mark = baseline;
+    wrong_hygiene_mark.generated_token_buffers.front().hygiene_mark =
+        query::stable_fingerprint("wrong token buffer hygiene mark");
+    refresh_expansion_result(wrong_hygiene_mark);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene_mark));
+
+    frontend::macro::EarlyItemExpansionResult wrong_stream_name = baseline;
+    wrong_stream_name.generated_token_buffers.front().token_stream_name =
+        "m21h-token-stream:wrong";
+    refresh_expansion_result(wrong_stream_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_stream_name));
+
+    frontend::macro::EarlyItemExpansionResult wrong_kind = baseline;
+    wrong_kind.generated_token_buffers.front().token_buffer_kind = "wrong_token_buffer_kind";
+    refresh_expansion_result(wrong_kind);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_kind));
+
+    frontend::macro::EarlyItemExpansionResult wrong_blocker = baseline;
+    wrong_blocker.generated_token_buffers.front().blocker_reason = "wrong blocker";
+    refresh_expansion_result(wrong_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_blocker));
+
+    frontend::macro::EarlyItemExpansionResult non_empty_token_count = baseline;
+    non_empty_token_count.generated_token_buffers.front().token_count = 1U;
+    refresh_expansion_result(non_empty_token_count);
+    EXPECT_FALSE(frontend::macro::is_valid(non_empty_token_count));
+
+    frontend::macro::EarlyItemExpansionResult non_empty_buffer = baseline;
+    non_empty_buffer.generated_token_buffers.front().empty = false;
+    refresh_expansion_result(non_empty_buffer);
+    EXPECT_EQ(non_empty_buffer.summary.empty_generated_token_buffer_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(non_empty_buffer));
+
+    frontend::macro::EarlyItemExpansionResult materialized_tokens = baseline;
+    materialized_tokens.generated_token_buffers.front().materialized_tokens = true;
+    refresh_expansion_result(materialized_tokens);
+    EXPECT_EQ(materialized_tokens.summary.materialized_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(materialized_tokens));
+
+    frontend::macro::EarlyItemExpansionResult generated_text = baseline;
+    generated_text.generated_token_buffers.front().generated_source_text = true;
+    refresh_expansion_result(generated_text);
+    EXPECT_EQ(generated_text.summary.generated_source_text_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_text));
+
+    frontend::macro::EarlyItemExpansionResult parser_consumable = baseline;
+    parser_consumable.generated_token_buffers.front().parser_consumable = true;
+    refresh_expansion_result(parser_consumable);
+    EXPECT_EQ(parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult user_code = baseline;
+    user_code.generated_token_buffers.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code);
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksTokenMaterializationAdmissionContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.token_materialization_admissions.empty());
+    ASSERT_FALSE(baseline.generated_token_buffers.empty());
+
+    frontend::macro::EarlyItemExpansionResult token_plan = baseline;
+    token_plan.token_materialization_admissions.front().token_plan_identity =
+        query::stable_fingerprint("different token plan identity");
+    refresh_expansion_result(token_plan);
+    EXPECT_NE(token_plan.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(token_plan));
+
+    frontend::macro::EarlyItemExpansionResult token_buffer_identity = baseline;
+    token_buffer_identity.token_materialization_admissions.front().token_buffer_identity =
+        query::stable_fingerprint("different token buffer identity");
+    refresh_expansion_result(token_buffer_identity);
+    EXPECT_NE(token_buffer_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(token_buffer_identity));
+
+    frontend::macro::EarlyItemExpansionResult buffer_stream = baseline;
+    buffer_stream.generated_token_buffers.front().token_stream_name =
+        "m21h-token-stream:different";
+    refresh_expansion_result(buffer_stream);
+    EXPECT_NE(buffer_stream.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(buffer_stream));
+
+    frontend::macro::EarlyItemExpansionResult buffer_kind = baseline;
+    buffer_kind.generated_token_buffers.front().token_buffer_kind = "different_buffer_kind";
+    refresh_expansion_result(buffer_kind);
+    EXPECT_NE(buffer_kind.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(buffer_kind));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

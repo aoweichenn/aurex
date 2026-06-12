@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M21g Generated Item Declared Names Stub Contract**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M21h Token Materialization Admission Stub Contract**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -64,8 +64,12 @@ equality dispatch。M17 已完成 dyn ownership runtime preparation：`DynOwners
 
 M21g 已新增 `GeneratedItemDeclarationStub` 和 `DeclaredGeneratedNameStub`，把 generated item declaration、
 declared generated name、`attached_item_codegen_declared_names_v1`、`macro_declared_name_fact` 和 M21e/M21f
-generated part / hygiene facts 的绑定落成结构化 no-op contract。typed expression macro 和 external procedural
-macro 继续后移，标准库、runtime helper、文本替换宏和真实用户宏展开仍不实现。
+generated part / hygiene facts 的绑定落成结构化 no-op contract。M21h 已新增
+`TokenMaterializationAdmissionStub` 和 `GeneratedTokenBufferStub`，把
+`compiler_owned_attached_item_token_materialization_admission_v1`、`compiler_owned_empty_token_stream`、
+`macro_token_materialization_fact` 和 `macro_generated_token_buffer_fact` 的 no-op stub contract 接到同一
+`macro.expand_items` 边界。typed expression macro 和 external procedural macro 继续后移，标准库、runtime
+helper、文本替换宏、真实 token materialization 和真实用户宏展开仍不实现。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -131,6 +135,7 @@ macro 继续后移，标准库、runtime helper、文本替换宏和真实用户
 - [Aurex M21e Generated Module Part Parse/Merge Stub Contract](m21e-generated-module-part-parse-merge-stub-contract.md)
 - [Aurex M21f Hygiene Source Map Debug Trace Stub Contract](m21f-hygiene-source-map-debug-trace-stub-contract.md)
 - [Aurex M21g Generated Item Declared Names Stub Contract](m21g-generated-item-declared-names-stub-contract.md)
+- [Aurex M21h Token Materialization Admission Stub Contract](m21h-token-materialization-admission-stub-contract.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

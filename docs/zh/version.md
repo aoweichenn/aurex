@@ -1,5 +1,56 @@
 # 版本文档
 
+## M21h Token Materialization Admission Stub Contract
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21g 的 generated item / declared generated
+name stub contract 扩展为 compiler-owned token materialization admission / empty generated token buffer stub
+contract。该阶段仍不执行宏、不生成 tokens、不生成 source text、不生成用户代码，也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::TokenMaterializationAdmissionStub`。
+- 新增 `frontend::macro::GeneratedTokenBufferStub`。
+- 新增 `is_valid(const TokenMaterializationAdmissionStub&)`。
+- 新增 `is_valid(const GeneratedTokenBufferStub&)`。
+- `EarlyItemExpansionResult` 新增 `token_materialization_admissions`。
+- `EarlyItemExpansionResult` 新增 `generated_token_buffers`。
+- `EarlyItemExpansionSummary` 新增 token materialization admission、compiler-owned admission、admitted token
+  materialization、materialized token admission、generated token buffer、empty token buffer、materialized token
+  buffer、generated source text 和 parse-ready token buffer 计数。
+- 每个 macro input 都有一个 deterministic token materialization admission stub。
+- 每个 macro input 都有一个 deterministic generated token buffer stub。
+- admission 固定 `token_plan_identity`。
+- admission 固定 `token_buffer_identity`。
+- admission 固定 `admission_policy = compiler_owned_attached_item_token_materialization_admission_v1`。
+- token buffer 固定 `token_buffer_kind = compiler_owned_empty_token_stream`。
+- admission 绑定 M21g `declaration_identity`、`generated_item_key` 和 `declared_name_identity`。
+- admission / buffer 绑定 M21f `source_map_identity`、`trace_identity` 和 `hygiene_mark`。
+- validation 要求 admission / buffer 与 input 一一对应。
+- validation 拒绝 materialized tokens、generated source text、parse-ready / parser-consumable token buffer。
+- validation 拒绝 standard library required、runtime required、external process required 或 produced user code。
+- dump 会输出 `token_materialization_admission_stub`、`generated_token_buffer_stub`、token stream name、token plan
+  identity、token buffer identity、source-map identity、trace identity、hygiene mark 和 blocker。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- generated module part real token materialization。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21g Generated Item Declared Names Stub Contract
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21f 的 hygiene/source-map/debug-trace

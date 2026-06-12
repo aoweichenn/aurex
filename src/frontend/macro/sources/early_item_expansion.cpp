@@ -8,10 +8,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21G_EXPANSION_NAME =
-    "M21g Generated Item Declared Names Stub Contract";
-constexpr std::string_view FRONTEND_MACRO_M21G_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21g.generated_item_declared_names_stub_contract.v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_EXPANSION_NAME =
+    "M21h Token Materialization Admission Stub Contract";
+constexpr std::string_view FRONTEND_MACRO_M21H_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m21h.token_materialization_admission_stub_contract.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -83,6 +83,24 @@ constexpr std::string_view FRONTEND_MACRO_M21G_GENERATED_NAME_PREFIX =
     "__aurex_macro_declared:";
 constexpr std::string_view FRONTEND_MACRO_M21G_MISSING_GENERATED_PART =
     "early item macro expansion missing generated module part placeholder";
+constexpr std::string_view FRONTEND_MACRO_M21H_ADMISSION_STUB_MARKER =
+    "frontend.macro.m21h.token_materialization_admission_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_BUFFER_STUB_MARKER =
+    "frontend.macro.m21h.generated_token_buffer_stub.v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_PLAN_IDENTITY_MARKER =
+    "frontend.macro.m21h.token_plan_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_BUFFER_IDENTITY_MARKER =
+    "frontend.macro.m21h.token_buffer_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_ADMISSION_POLICY =
+    "compiler_owned_attached_item_token_materialization_admission_v1";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND =
+    "compiler_owned_empty_token_stream";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_STREAM_PREFIX =
+    "m21h-token-stream:";
+constexpr std::string_view FRONTEND_MACRO_M21H_ADMISSION_BLOCKER =
+    "compiler-owned macro token materialization is blocked in M21h";
+constexpr std::string_view FRONTEND_MACRO_M21H_TOKEN_BUFFER_BLOCKER =
+    "generated token buffer remains empty and parser-blocked in M21h";
 
 [[nodiscard]] base::Error internal_error(const std::string_view message)
 {
@@ -147,6 +165,21 @@ constexpr std::string_view FRONTEND_MACRO_M21G_MISSING_GENERATED_PART =
 [[nodiscard]] std::string generated_item_name_for_input(const EarlyItemMacroInput& input)
 {
     std::string name(FRONTEND_MACRO_M21G_GENERATED_NAME_PREFIX);
+    name += std::to_string(input.module.value);
+    name.push_back(':');
+    name += std::to_string(input.part_index);
+    name.push_back(':');
+    name += std::to_string(input.item.value);
+    name.push_back(':');
+    name += std::to_string(input.attribute_index);
+    name.push_back(':');
+    name += input.attribute_name;
+    return name;
+}
+
+[[nodiscard]] std::string token_stream_name_for_input(const EarlyItemMacroInput& input)
+{
+    std::string name(FRONTEND_MACRO_M21H_TOKEN_STREAM_PREFIX);
     name += std::to_string(input.module.value);
     name.push_back(':');
     name += std::to_string(input.part_index);
@@ -230,6 +263,52 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     builder.mix_fingerprint(placeholder.output_fingerprint);
     builder.mix_fingerprint(declared_name_set);
     builder.mix_string(generated_item_name);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 token_plan_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const GeneratedItemDeclarationStub& declaration,
+    const DeclaredGeneratedNameStub& declared_name,
+    const std::string_view token_stream_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21H_TOKEN_PLAN_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(placeholder.output_fingerprint);
+    builder.mix_fingerprint(declaration.declaration_identity);
+    builder.mix_fingerprint(declaration.generated_item_key);
+    builder.mix_fingerprint(hygiene.declared_name_set);
+    builder.mix_fingerprint(declared_name.declared_name_identity);
+    builder.mix_fingerprint(declared_name.hygiene_mark);
+    builder.mix_fingerprint(trace.trace_identity);
+    builder.mix_fingerprint(trace.generated_source_map_identity);
+    builder.mix_string(token_stream_name);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 token_buffer_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const query::StableFingerprint128 token_plan,
+    const std::string_view token_stream_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21H_TOKEN_BUFFER_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(placeholder.output_fingerprint);
+    builder.mix_fingerprint(token_plan);
+    builder.mix_fingerprint(hygiene.generated_fresh_mark);
+    builder.mix_fingerprint(trace.generated_source_map_identity);
+    builder.mix_string(FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND);
+    builder.mix_string(token_stream_name);
     return builder.finish();
 }
 
@@ -368,6 +447,79 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
         declaration.generated_item_name,
         std::string(FRONTEND_MACRO_M21G_DECLARED_NAME_NAMESPACE),
         std::string(FRONTEND_MACRO_M21G_DECLARED_NAME_BLOCKER),
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] TokenMaterializationAdmissionStub make_token_materialization_admission_stub(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const GeneratedItemDeclarationStub& declaration,
+    const DeclaredGeneratedNameStub& declared_name)
+{
+    const std::string token_stream_name = token_stream_name_for_input(input);
+    const query::StableFingerprint128 token_plan = token_plan_identity(
+        input, placeholder, hygiene, trace, declaration, declared_name, token_stream_name);
+    return TokenMaterializationAdmissionStub{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        input.attached_part,
+        placeholder.generated_part,
+        input.query_key_fingerprint,
+        declaration.declaration_identity,
+        declaration.generated_item_key,
+        hygiene.declared_name_set,
+        declared_name.declared_name_identity,
+        declared_name.hygiene_mark,
+        trace.generated_source_map_identity,
+        trace.trace_identity,
+        token_plan,
+        token_buffer_identity(input, placeholder, hygiene, trace, token_plan, token_stream_name),
+        std::string(FRONTEND_MACRO_M21H_ADMISSION_POLICY),
+        token_stream_name,
+        std::string(FRONTEND_MACRO_M21H_ADMISSION_BLOCKER),
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] GeneratedTokenBufferStub make_generated_token_buffer_stub(
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const TokenMaterializationAdmissionStub& admission)
+{
+    return GeneratedTokenBufferStub{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        input.attached_part,
+        placeholder.generated_part,
+        admission.token_plan_identity,
+        admission.token_buffer_identity,
+        trace.generated_source_map_identity,
+        hygiene.generated_fresh_mark,
+        admission.token_stream_name,
+        std::string(FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND),
+        std::string(FRONTEND_MACRO_M21H_TOKEN_BUFFER_BLOCKER),
+        0,
+        true,
         false,
         false,
         false,
@@ -600,6 +752,65 @@ void mix_declared_generated_name_stub(
     builder.mix_bool(stub.produced_user_generated_code);
 }
 
+void mix_token_materialization_admission_stub(
+    query::StableHashBuilder& builder, const TokenMaterializationAdmissionStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21H_ADMISSION_STUB_MARKER);
+    builder.mix_u32(stub.item.value);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.part_index);
+    builder.mix_u32(stub.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.generated_part));
+    builder.mix_fingerprint(stub.expansion_origin);
+    builder.mix_fingerprint(stub.declaration_identity);
+    builder.mix_fingerprint(stub.generated_item_key);
+    builder.mix_fingerprint(stub.declared_name_set);
+    builder.mix_fingerprint(stub.declared_name_identity);
+    builder.mix_fingerprint(stub.hygiene_mark);
+    builder.mix_fingerprint(stub.source_map_identity);
+    builder.mix_fingerprint(stub.trace_identity);
+    builder.mix_fingerprint(stub.token_plan_identity);
+    builder.mix_fingerprint(stub.token_buffer_identity);
+    builder.mix_string(stub.admission_policy);
+    builder.mix_string(stub.token_stream_name);
+    builder.mix_string(stub.blocker_reason);
+    builder.mix_bool(stub.compiler_owned);
+    builder.mix_bool(stub.admitted);
+    builder.mix_bool(stub.materialized_tokens);
+    builder.mix_bool(stub.generated_source_text);
+    builder.mix_bool(stub.parse_ready);
+    builder.mix_bool(stub.external_process_required);
+    builder.mix_bool(stub.standard_library_required);
+    builder.mix_bool(stub.runtime_required);
+    builder.mix_bool(stub.produced_user_generated_code);
+}
+
+void mix_generated_token_buffer_stub(
+    query::StableHashBuilder& builder, const GeneratedTokenBufferStub& stub) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21H_TOKEN_BUFFER_STUB_MARKER);
+    builder.mix_u32(stub.item.value);
+    builder.mix_u32(stub.module.value);
+    builder.mix_u32(stub.part_index);
+    builder.mix_u32(stub.attribute_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(stub.generated_part));
+    builder.mix_fingerprint(stub.token_plan_identity);
+    builder.mix_fingerprint(stub.token_buffer_identity);
+    builder.mix_fingerprint(stub.source_map_identity);
+    builder.mix_fingerprint(stub.hygiene_mark);
+    builder.mix_string(stub.token_stream_name);
+    builder.mix_string(stub.token_buffer_kind);
+    builder.mix_string(stub.blocker_reason);
+    builder.mix_u64(stub.token_count);
+    builder.mix_bool(stub.empty);
+    builder.mix_bool(stub.materialized_tokens);
+    builder.mix_bool(stub.generated_source_text);
+    builder.mix_bool(stub.parser_consumable);
+    builder.mix_bool(stub.produced_user_generated_code);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -627,6 +838,15 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.declared_generated_name_stub_count);
     builder.mix_u64(summary.lookup_visible_declared_name_count);
     builder.mix_u64(summary.export_visible_declared_name_count);
+    builder.mix_u64(summary.token_materialization_admission_stub_count);
+    builder.mix_u64(summary.compiler_owned_admission_count);
+    builder.mix_u64(summary.admitted_token_materialization_count);
+    builder.mix_u64(summary.materialized_token_admission_count);
+    builder.mix_u64(summary.generated_token_buffer_stub_count);
+    builder.mix_u64(summary.empty_generated_token_buffer_count);
+    builder.mix_u64(summary.materialized_token_buffer_count);
+    builder.mix_u64(summary.generated_source_text_count);
+    builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
     builder.mix_u64(summary.merged_generated_part_count);
     builder.mix_u64(summary.user_generated_code_count);
@@ -663,6 +883,15 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.declared_generated_name_stub_count == rhs.declared_generated_name_stub_count
         && lhs.lookup_visible_declared_name_count == rhs.lookup_visible_declared_name_count
         && lhs.export_visible_declared_name_count == rhs.export_visible_declared_name_count
+        && lhs.token_materialization_admission_stub_count == rhs.token_materialization_admission_stub_count
+        && lhs.compiler_owned_admission_count == rhs.compiler_owned_admission_count
+        && lhs.admitted_token_materialization_count == rhs.admitted_token_materialization_count
+        && lhs.materialized_token_admission_count == rhs.materialized_token_admission_count
+        && lhs.generated_token_buffer_stub_count == rhs.generated_token_buffer_stub_count
+        && lhs.empty_generated_token_buffer_count == rhs.empty_generated_token_buffer_count
+        && lhs.materialized_token_buffer_count == rhs.materialized_token_buffer_count
+        && lhs.generated_source_text_count == rhs.generated_source_text_count
+        && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
         && lhs.merged_generated_part_count == rhs.merged_generated_part_count
         && lhs.user_generated_code_count == rhs.user_generated_code_count
@@ -815,6 +1044,64 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && name.blocker_reason == FRONTEND_MACRO_M21G_DECLARED_NAME_BLOCKER;
 }
 
+[[nodiscard]] bool token_materialization_admission_matches_input(
+    const TokenMaterializationAdmissionStub& admission,
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const GeneratedItemDeclarationStub& declaration,
+    const DeclaredGeneratedNameStub& declared_name) noexcept
+{
+    const std::string expected_stream_name = token_stream_name_for_input(input);
+    const query::StableFingerprint128 expected_token_plan = token_plan_identity(
+        input, placeholder, hygiene, trace, declaration, declared_name, expected_stream_name);
+    return admission.item.value == input.item.value
+        && admission.module.value == input.module.value
+        && admission.part_index == input.part_index
+        && admission.attribute_index == input.attribute_index
+        && admission.attached_part == input.attached_part
+        && admission.generated_part == placeholder.generated_part
+        && admission.expansion_origin == input.query_key_fingerprint
+        && admission.declaration_identity == declaration.declaration_identity
+        && admission.generated_item_key == declaration.generated_item_key
+        && admission.declared_name_set == hygiene.declared_name_set
+        && admission.declared_name_identity == declared_name.declared_name_identity
+        && admission.hygiene_mark == declared_name.hygiene_mark
+        && admission.hygiene_mark == hygiene.generated_fresh_mark
+        && admission.source_map_identity == trace.generated_source_map_identity
+        && admission.trace_identity == trace.trace_identity
+        && admission.token_plan_identity == expected_token_plan
+        && admission.token_buffer_identity == token_buffer_identity(
+               input, placeholder, hygiene, trace, expected_token_plan, expected_stream_name)
+        && admission.admission_policy == FRONTEND_MACRO_M21H_ADMISSION_POLICY
+        && admission.token_stream_name == expected_stream_name
+        && admission.blocker_reason == FRONTEND_MACRO_M21H_ADMISSION_BLOCKER;
+}
+
+[[nodiscard]] bool generated_token_buffer_matches_input(
+    const GeneratedTokenBufferStub& buffer,
+    const EarlyItemMacroInput& input,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const ExpansionHygieneStub& hygiene,
+    const ExpansionTraceStub& trace,
+    const TokenMaterializationAdmissionStub& admission) noexcept
+{
+    return buffer.item.value == input.item.value
+        && buffer.module.value == input.module.value
+        && buffer.part_index == input.part_index
+        && buffer.attribute_index == input.attribute_index
+        && buffer.attached_part == input.attached_part
+        && buffer.generated_part == placeholder.generated_part
+        && buffer.token_plan_identity == admission.token_plan_identity
+        && buffer.token_buffer_identity == admission.token_buffer_identity
+        && buffer.source_map_identity == trace.generated_source_map_identity
+        && buffer.hygiene_mark == hygiene.generated_fresh_mark
+        && buffer.token_stream_name == admission.token_stream_name
+        && buffer.token_buffer_kind == FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND
+        && buffer.blocker_reason == FRONTEND_MACRO_M21H_TOKEN_BUFFER_BLOCKER;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -836,7 +1123,9 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         || result.inputs.size() != result.hygiene_stubs.size()
         || result.inputs.size() != result.trace_stubs.size()
         || result.inputs.size() != result.generated_item_declarations.size()
-        || result.inputs.size() != result.declared_generated_names.size()) {
+        || result.inputs.size() != result.declared_generated_names.size()
+        || result.inputs.size() != result.token_materialization_admissions.size()
+        || result.inputs.size() != result.generated_token_buffers.size()) {
         return false;
     }
     for (base::usize index = 0; index < result.inputs.size(); ++index) {
@@ -852,7 +1141,13 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             || !generated_item_declaration_matches_input(result.generated_item_declarations[index],
                 input, *placeholder, result.hygiene_stubs[index])
             || !declared_generated_name_matches_input(result.declared_generated_names[index],
-                input, *placeholder, result.hygiene_stubs[index], result.generated_item_declarations[index])) {
+                input, *placeholder, result.hygiene_stubs[index], result.generated_item_declarations[index])
+            || !token_materialization_admission_matches_input(result.token_materialization_admissions[index],
+                input, *placeholder, result.hygiene_stubs[index], result.trace_stubs[index],
+                result.generated_item_declarations[index], result.declared_generated_names[index])
+            || !generated_token_buffer_matches_input(result.generated_token_buffers[index],
+                input, *placeholder, result.hygiene_stubs[index], result.trace_stubs[index],
+                result.token_materialization_admissions[index])) {
             return false;
         }
     }
@@ -1140,6 +1435,63 @@ bool is_valid(const DeclaredGeneratedNameStub& stub) noexcept
         && !stub.produced_user_generated_code;
 }
 
+bool is_valid(const TokenMaterializationAdmissionStub& stub) noexcept
+{
+    return syntax::is_valid(stub.item)
+        && syntax::is_valid(stub.module)
+        && query::is_valid(stub.attached_part)
+        && query::is_valid(stub.generated_part)
+        && stub.generated_part.kind == query::ModulePartKind::generated
+        && stub.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(stub.expansion_origin)
+        && is_nonzero_fingerprint(stub.declaration_identity)
+        && is_nonzero_fingerprint(stub.generated_item_key)
+        && is_nonzero_fingerprint(stub.declared_name_set)
+        && is_nonzero_fingerprint(stub.declared_name_identity)
+        && is_nonzero_fingerprint(stub.hygiene_mark)
+        && is_nonzero_fingerprint(stub.source_map_identity)
+        && is_nonzero_fingerprint(stub.trace_identity)
+        && is_nonzero_fingerprint(stub.token_plan_identity)
+        && is_nonzero_fingerprint(stub.token_buffer_identity)
+        && stub.token_plan_identity != stub.token_buffer_identity
+        && stub.admission_policy == FRONTEND_MACRO_M21H_ADMISSION_POLICY
+        && !stub.token_stream_name.empty()
+        && stub.blocker_reason == FRONTEND_MACRO_M21H_ADMISSION_BLOCKER
+        && stub.compiler_owned
+        && stub.admitted
+        && !stub.materialized_tokens
+        && !stub.generated_source_text
+        && !stub.parse_ready
+        && !stub.external_process_required
+        && !stub.standard_library_required
+        && !stub.runtime_required
+        && !stub.produced_user_generated_code;
+}
+
+bool is_valid(const GeneratedTokenBufferStub& stub) noexcept
+{
+    return syntax::is_valid(stub.item)
+        && syntax::is_valid(stub.module)
+        && query::is_valid(stub.attached_part)
+        && query::is_valid(stub.generated_part)
+        && stub.generated_part.kind == query::ModulePartKind::generated
+        && stub.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(stub.token_plan_identity)
+        && is_nonzero_fingerprint(stub.token_buffer_identity)
+        && is_nonzero_fingerprint(stub.source_map_identity)
+        && is_nonzero_fingerprint(stub.hygiene_mark)
+        && stub.token_plan_identity != stub.token_buffer_identity
+        && !stub.token_stream_name.empty()
+        && stub.token_buffer_kind == FRONTEND_MACRO_M21H_TOKEN_BUFFER_KIND
+        && stub.blocker_reason == FRONTEND_MACRO_M21H_TOKEN_BUFFER_BLOCKER
+        && stub.token_count == 0
+        && stub.empty
+        && !stub.materialized_tokens
+        && !stub.generated_source_text
+        && !stub.parser_consumable
+        && !stub.produced_user_generated_code;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -1147,7 +1499,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21G_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M21H_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -1179,6 +1531,15 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                })
         && std::all_of(result.declared_generated_names.begin(), result.declared_generated_names.end(),
                [](const DeclaredGeneratedNameStub& stub) {
+                   return is_valid(stub);
+               })
+        && std::all_of(result.token_materialization_admissions.begin(),
+               result.token_materialization_admissions.end(),
+               [](const TokenMaterializationAdmissionStub& stub) {
+                   return is_valid(stub);
+               })
+        && std::all_of(result.generated_token_buffers.begin(), result.generated_token_buffers.end(),
+               [](const GeneratedTokenBufferStub& stub) {
                    return is_valid(stub);
                })
         && per_input_stubs_match_inputs(result)
@@ -1302,6 +1663,56 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.token_materialization_admission_stub_count =
+        static_cast<base::u64>(result.token_materialization_admissions.size());
+    for (const TokenMaterializationAdmissionStub& stub : result.token_materialization_admissions) {
+        if (stub.compiler_owned) {
+            ++summary.compiler_owned_admission_count;
+        }
+        if (stub.admitted) {
+            ++summary.admitted_token_materialization_count;
+        }
+        if (stub.materialized_tokens) {
+            ++summary.materialized_token_admission_count;
+        }
+        if (stub.generated_source_text) {
+            ++summary.generated_source_text_count;
+        }
+        if (stub.parse_ready) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (stub.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (stub.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (stub.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (stub.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.generated_token_buffer_stub_count =
+        static_cast<base::u64>(result.generated_token_buffers.size());
+    for (const GeneratedTokenBufferStub& stub : result.generated_token_buffers) {
+        if (stub.empty) {
+            ++summary.empty_generated_token_buffer_count;
+        }
+        if (stub.materialized_tokens) {
+            ++summary.materialized_token_buffer_count;
+        }
+        if (stub.generated_source_text) {
+            ++summary.generated_source_text_count;
+        }
+        if (stub.parser_consumable) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (stub.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -1309,7 +1720,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21G_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M21H_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -1343,6 +1754,14 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.declared_generated_names.size()));
     for (const DeclaredGeneratedNameStub& stub : result.declared_generated_names) {
         mix_declared_generated_name_stub(builder, stub);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.token_materialization_admissions.size()));
+    for (const TokenMaterializationAdmissionStub& stub : result.token_materialization_admissions) {
+        mix_token_materialization_admission_stub(builder, stub);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.generated_token_buffers.size()));
+    for (const GeneratedTokenBufferStub& stub : result.generated_token_buffers) {
+        mix_generated_token_buffer_stub(builder, stub);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -1378,6 +1797,19 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << " declared_generated_names=" << summary.declared_generated_name_stub_count
            << " lookup_visible_declared_names=" << summary.lookup_visible_declared_name_count
            << " export_visible_declared_names=" << summary.export_visible_declared_name_count
+           << " token_materialization_admissions="
+           << summary.token_materialization_admission_stub_count
+           << " compiler_owned_admissions=" << summary.compiler_owned_admission_count
+           << " admitted_token_materializations="
+           << summary.admitted_token_materialization_count
+           << " materialized_token_admissions="
+           << summary.materialized_token_admission_count
+           << " generated_token_buffers=" << summary.generated_token_buffer_stub_count
+           << " empty_generated_token_buffers="
+           << summary.empty_generated_token_buffer_count
+           << " materialized_token_buffers=" << summary.materialized_token_buffer_count
+           << " generated_source_text=" << summary.generated_source_text_count
+           << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
            << " standard_library_required=" << summary.standard_library_required_count
            << " runtime_required=" << summary.runtime_required_count
@@ -1514,6 +1946,57 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " declared_name_identity=" << query::debug_string(stub.declared_name_identity)
                << " hygiene_mark=" << query::debug_string(stub.hygiene_mark) << '\n';
     }
+    for (base::usize index = 0; index < result.token_materialization_admissions.size(); ++index) {
+        const TokenMaterializationAdmissionStub& stub = result.token_materialization_admissions[index];
+        stream << "  token_materialization_admission_stub #" << index
+               << " item=" << stub.item.value
+               << " module=" << stub.module.value
+               << " part=" << stub.part_index
+               << " attribute_index=" << stub.attribute_index
+               << " policy=" << stub.admission_policy
+               << " token_stream=" << stub.token_stream_name
+               << " compiler_owned=" << (stub.compiler_owned ? "yes" : "no")
+               << " admitted=" << (stub.admitted ? "yes" : "no")
+               << " materialized_tokens=" << (stub.materialized_tokens ? "yes" : "no")
+               << " generated_source_text=" << (stub.generated_source_text ? "yes" : "no")
+               << " parse_ready=" << (stub.parse_ready ? "yes" : "no")
+               << " external_process_required=" << (stub.external_process_required ? "yes" : "no")
+               << " standard_library_required=" << (stub.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (stub.runtime_required ? "yes" : "no")
+               << " user_generated_code=" << (stub.produced_user_generated_code ? "yes" : "no")
+               << " blocker=" << stub.blocker_reason
+               << " origin=" << query::debug_string(stub.expansion_origin)
+               << " declaration_identity=" << query::debug_string(stub.declaration_identity)
+               << " generated_item_key=" << query::debug_string(stub.generated_item_key)
+               << " declared_name_set=" << query::debug_string(stub.declared_name_set)
+               << " declared_name_identity=" << query::debug_string(stub.declared_name_identity)
+               << " hygiene_mark=" << query::debug_string(stub.hygiene_mark)
+               << " source_map_identity=" << query::debug_string(stub.source_map_identity)
+               << " trace_identity=" << query::debug_string(stub.trace_identity)
+               << " token_plan_identity=" << query::debug_string(stub.token_plan_identity)
+               << " token_buffer_identity=" << query::debug_string(stub.token_buffer_identity) << '\n';
+    }
+    for (base::usize index = 0; index < result.generated_token_buffers.size(); ++index) {
+        const GeneratedTokenBufferStub& stub = result.generated_token_buffers[index];
+        stream << "  generated_token_buffer_stub #" << index
+               << " item=" << stub.item.value
+               << " module=" << stub.module.value
+               << " part=" << stub.part_index
+               << " attribute_index=" << stub.attribute_index
+               << " token_stream=" << stub.token_stream_name
+               << " kind=" << stub.token_buffer_kind
+               << " token_count=" << stub.token_count
+               << " empty=" << (stub.empty ? "yes" : "no")
+               << " materialized_tokens=" << (stub.materialized_tokens ? "yes" : "no")
+               << " generated_source_text=" << (stub.generated_source_text ? "yes" : "no")
+               << " parser_consumable=" << (stub.parser_consumable ? "yes" : "no")
+               << " user_generated_code=" << (stub.produced_user_generated_code ? "yes" : "no")
+               << " blocker=" << stub.blocker_reason
+               << " token_plan_identity=" << query::debug_string(stub.token_plan_identity)
+               << " token_buffer_identity=" << query::debug_string(stub.token_buffer_identity)
+               << " source_map_identity=" << query::debug_string(stub.source_map_identity)
+               << " hygiene_mark=" << query::debug_string(stub.hygiene_mark) << '\n';
+    }
     return stream.str();
 }
 
@@ -1534,7 +2017,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21G_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M21H_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     result.inputs.reserve(attribute_count);
@@ -1545,6 +2028,8 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.trace_stubs.reserve(attribute_count);
     result.generated_item_declarations.reserve(attribute_count);
     result.declared_generated_names.reserve(attribute_count);
+    result.token_materialization_admissions.reserve(attribute_count);
+    result.generated_token_buffers.reserve(attribute_count);
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -1577,15 +2062,22 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             EarlyItemMacroInput input = make_macro_input(ast, item_id,
                 base::checked_u32(attribute_index, "early item macro attribute index"), attribute, attached_part);
             ExpansionHygieneStub hygiene = make_hygiene_stub(input);
+            ExpansionTraceStub trace = make_trace_stub(input);
             GeneratedItemDeclarationStub declaration =
                 make_generated_item_declaration_stub(input, *generated_part, hygiene);
             DeclaredGeneratedNameStub declared_name =
                 make_declared_generated_name_stub(input, *generated_part, hygiene, declaration);
+            TokenMaterializationAdmissionStub admission = make_token_materialization_admission_stub(
+                input, *generated_part, hygiene, trace, declaration, declared_name);
+            GeneratedTokenBufferStub token_buffer = make_generated_token_buffer_stub(
+                input, *generated_part, hygiene, trace, admission);
             result.source_maps.push_back(make_source_map_placeholder(input));
             result.hygiene_stubs.push_back(std::move(hygiene));
-            result.trace_stubs.push_back(make_trace_stub(input));
+            result.trace_stubs.push_back(std::move(trace));
             result.generated_item_declarations.push_back(std::move(declaration));
             result.declared_generated_names.push_back(std::move(declared_name));
+            result.token_materialization_admissions.push_back(std::move(admission));
+            result.generated_token_buffers.push_back(std::move(token_buffer));
             result.inputs.push_back(std::move(input));
         }
     }

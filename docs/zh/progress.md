@@ -1,9 +1,27 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21g Generated Item Declared Names Stub Contract
+阶段：M21h Token Materialization Admission Stub Contract
 
 ## 总体状态
+
+2026-06-12：M21h Token Materialization Admission Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated module part real token materialization、
+generated source text、generated module part parse / merge、declared generated names lookup、generated item visibility /
+export 或 macro-generated user code lowering；它把 M21a 设计 gate 要求的 token materialization admission 和
+generated token buffer 边界落成 `macro.expand_items` 边界上的结构化 stub contract。
+
+新增 `TokenMaterializationAdmissionStub` 和 `GeneratedTokenBufferStub`，并给 `EarlyItemExpansionResult` 增加
+`token_materialization_admissions` 和 `generated_token_buffers`。每个 parsed item attribute 现在都有 deterministic
+compiler-owned token materialization admission、empty generated token buffer、`token_plan_identity`、
+`token_buffer_identity`、`source_map_identity`、`trace_identity`、`hygiene_mark` 和 token stream name。policy 固定为
+`compiler_owned_attached_item_token_materialization_admission_v1`，buffer kind 固定为
+`compiler_owned_empty_token_stream`。summary / dump / fingerprint / validation 会拒绝 materialized tokens、
+generated source text、parse-ready / parser-consumable buffer、standard library/runtime/external process requirement、
+produced user code，或任何 stub 与 input / generated part placeholder / hygiene / trace / generated item /
+declared generated name 不能一一重算的漂移。新增说明见
+[Aurex M21h Token Materialization Admission Stub Contract](m21h-token-materialization-admission-stub-contract.md)。
 
 2026-06-12：M21g Generated Item Declared Names Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

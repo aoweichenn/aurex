@@ -166,6 +166,59 @@ struct DeclaredGeneratedNameStub {
     bool produced_user_generated_code = false;
 };
 
+struct TokenMaterializationAdmissionStub {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 expansion_origin;
+    query::StableFingerprint128 declaration_identity;
+    query::StableFingerprint128 generated_item_key;
+    query::StableFingerprint128 declared_name_set;
+    query::StableFingerprint128 declared_name_identity;
+    query::StableFingerprint128 hygiene_mark;
+    query::StableFingerprint128 source_map_identity;
+    query::StableFingerprint128 trace_identity;
+    query::StableFingerprint128 token_plan_identity;
+    query::StableFingerprint128 token_buffer_identity;
+    std::string admission_policy;
+    std::string token_stream_name;
+    std::string blocker_reason;
+    bool compiler_owned = true;
+    bool admitted = true;
+    bool materialized_tokens = false;
+    bool generated_source_text = false;
+    bool parse_ready = false;
+    bool external_process_required = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool produced_user_generated_code = false;
+};
+
+struct GeneratedTokenBufferStub {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 token_plan_identity;
+    query::StableFingerprint128 token_buffer_identity;
+    query::StableFingerprint128 source_map_identity;
+    query::StableFingerprint128 hygiene_mark;
+    std::string token_stream_name;
+    std::string token_buffer_kind;
+    std::string blocker_reason;
+    base::u64 token_count = 0;
+    bool empty = true;
+    bool materialized_tokens = false;
+    bool generated_source_text = false;
+    bool parser_consumable = false;
+    bool produced_user_generated_code = false;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -192,6 +245,15 @@ struct EarlyItemExpansionSummary {
     base::u64 declared_generated_name_stub_count = 0;
     base::u64 lookup_visible_declared_name_count = 0;
     base::u64 export_visible_declared_name_count = 0;
+    base::u64 token_materialization_admission_stub_count = 0;
+    base::u64 compiler_owned_admission_count = 0;
+    base::u64 admitted_token_materialization_count = 0;
+    base::u64 materialized_token_admission_count = 0;
+    base::u64 generated_token_buffer_stub_count = 0;
+    base::u64 empty_generated_token_buffer_count = 0;
+    base::u64 materialized_token_buffer_count = 0;
+    base::u64 generated_source_text_count = 0;
+    base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
     base::u64 merged_generated_part_count = 0;
     base::u64 user_generated_code_count = 0;
@@ -211,6 +273,8 @@ struct EarlyItemExpansionResult {
     std::vector<ExpansionTraceStub> trace_stubs;
     std::vector<GeneratedItemDeclarationStub> generated_item_declarations;
     std::vector<DeclaredGeneratedNameStub> declared_generated_names;
+    std::vector<TokenMaterializationAdmissionStub> token_materialization_admissions;
+    std::vector<GeneratedTokenBufferStub> generated_token_buffers;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -229,6 +293,8 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const ExpansionTraceStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedItemDeclarationStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const DeclaredGeneratedNameStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const TokenMaterializationAdmissionStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const GeneratedTokenBufferStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

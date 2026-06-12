@@ -1,5 +1,94 @@
 # 版本文档
 
+## M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure
+
+当前版本在 M25c builtin derive diagnostic shadow no-AST-mutation closure 之后，完成 M26a/M26b/M26c 三段
+check-only parser dry-run admission / recovery shadow / rollback verifier closure。`EarlyItemExpansionResult` 的
+result name 固定为 `M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure`。本阶段仍不执行 dry-run、
+不准入真实 dry-run execution、不执行 recovery、不发出 shadow diagnostic、不执行 rollback、不提交 session、
+不推进 parser cursor、不执行用户宏、不生成 source text、不让 parser 消费 generated token buffer、不 parse / merge
+generated module part、不修改 AST、不生成 sema-visible macro output、不生成用户代码，也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveParserDryRunAdmissionGate`。
+- 新增 `frontend::macro::BuiltinDeriveErrorRecoveryShadowDiagnosticGate`。
+- 新增 `frontend::macro::BuiltinDeriveCursorRollbackAstMutationVerifierClosure`。
+- 新增 `is_valid(const BuiltinDeriveParserDryRunAdmissionGate&)`。
+- 新增 `is_valid(const BuiltinDeriveErrorRecoveryShadowDiagnosticGate&)`。
+- 新增 `is_valid(const BuiltinDeriveCursorRollbackAstMutationVerifierClosure&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_parser_dry_run_admission_gates`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_error_recovery_shadow_diagnostic_gates`。
+- `EarlyItemExpansionResult` 新增
+  `builtin_derive_cursor_rollback_ast_mutation_verifier_closures`。
+- `EarlyItemExpansionSummary` 新增 builtin derive parser dry-run admission gate、error recovery shadow diagnostic
+  gate 和 cursor rollback AST mutation verifier closure 计数。
+- M26a parser dry-run admission gate 固定
+  `builtin_derive_parser_dry_run_admission_gate_v1`。
+- M26a parser dry-run admission gate query name 固定
+  `m26a-builtin-derive-parser-dry-run-admission:<module>:<part>`。
+- M26a parser dry-run admission gate 绑定 M25a `dry_run_session_identity`、M25b
+  `cursor_snapshot_identity`、M25c `diagnostic_shadow_closure_identity`、M21e
+  `generated_buffer_identity` 和 `parse_config_fingerprint`。
+- M26a parser dry-run admission gate 记录 dry-run session、cursor snapshot proof、diagnostic shadow closure、
+  admission prerequisite、token buffer candidate、token record、dry-run execution admitted 和 parser consumable
+  counts，其中 `admission_prerequisite_count=5`、`dry_run_execution_admitted_count=0`、
+  `parser_consumable_case_count=0`。
+- M26b error recovery shadow diagnostic gate 固定
+  `builtin_derive_error_recovery_shadow_diagnostic_gate_v1`。
+- M26b error recovery shadow diagnostic gate query name 固定
+  `m26b-builtin-derive-error-recovery-shadow-diagnostic:<module>:<part>`。
+- M26b error recovery shadow diagnostic gate 绑定 M26a `admission_gate_identity`、M25c
+  `diagnostic_shadow_closure_identity`、M24b `replay_protocol_identity` 和 M21l `report_identity`。
+- M26b error recovery shadow diagnostic gate 记录 diagnostic shadow、report entry、planned recovery、executed
+  recovery 和 emitted diagnostic counts，其中 `executed_recovery_count=0`、`emitted_diagnostic_count=0`。
+- M26c cursor rollback AST mutation verifier closure 固定
+  `builtin_derive_cursor_rollback_ast_mutation_verifier_closure_v1`。
+- M26c cursor rollback AST mutation verifier closure query name 固定
+  `m26c-builtin-derive-cursor-rollback-ast-verifier:<module>:<part>`。
+- M26c cursor rollback AST mutation verifier closure 绑定 M26a `admission_gate_identity`、M26b
+  `recovery_shadow_identity`、M25b `cursor_snapshot_identity`、M25a `dry_run_session_identity` 和 M25c
+  `diagnostic_shadow_closure_identity`。
+- M26c cursor rollback AST mutation verifier closure 固定 cursor snapshot、rollback proof、recovery shadow、
+  AST baseline snapshot、AST mutation、cursor commit、session commit 和 parser consumable counts，其中
+  `ast_baseline_snapshot_count=1`、`ast_mutation_count=0`、`cursor_commit_count=0`、
+  `session_commit_count=0`、`parser_consumable_case_count=0`。
+- validation 拒绝 M26 identity / query / count 漂移、上游 M21/M24/M25/M26 identity 串线、dry-run execution
+  admission / execution 被打开、recovery execution / diagnostic emission 被打开、rollback execution / session
+  commit / parser cursor advance / parser admission / parser consumption 被打开、generated part parse / merge /
+  sema-visible 被打开、AST mutation、standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_parser_dry_run_admission_gate`、
+  `builtin_derive_error_recovery_shadow_diagnostic_gate` 和
+  `builtin_derive_cursor_rollback_ast_mutation_verifier_closure`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- 用户自定义 macro。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser dry-run execution。
+- dry-run admission execution。
+- error recovery execution。
+- diagnostic shadow emission。
+- rollback execution。
+- parser cursor advance。
+- session commit。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M25c Builtin Derive Diagnostic Shadow No-AST-Mutation Closure
 
 当前版本在 M24c builtin derive dry-run negative matrix closure 之后，完成 M25a/M25b/M25c 三段 check-only

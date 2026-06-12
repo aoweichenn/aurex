@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M23c Builtin Derive Parser Pre-Consumption Verification Closure**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M24c Builtin Derive Dry-Run Negative Matrix Closure**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -150,6 +150,23 @@ result name 推进为 `M23c Builtin Derive Parser Pre-Consumption Verification C
 consumption、generated source text、generated module part parse/merge、AST mutation、sema-visible generated part、
 emit-expanded、debug/source-map projection、标准库、runtime helper、external procedural macro、用户自定义 macro 和
 macro-generated user code 全部关闭。
+M24a 已新增 `BuiltinDeriveControlledParserDryRunAdapter` 和
+`builtin_derive_controlled_dry_run_adapters`，固定
+`builtin_derive_controlled_parser_dry_run_adapter_v1`、
+`m24a-builtin-derive-controlled-parser-dry-run:<module>:<part>`、M23c/M23a/M23b identity 链接、token record /
+diagnostic anchor counts、`prerequisite_count=5` 和 execution-blocked dry-run adapter；M24b 已新增
+`BuiltinDeriveDryRunRollbackDiagnosticReplay` 和 `builtin_derive_dry_run_rollback_replays`，固定
+`builtin_derive_dry_run_rollback_diagnostic_replay_v1`、
+`m24b-builtin-derive-dry-run-rollback-replay:<module>:<part>`、M24a/M23b/M22f identity 链接、planned replay /
+executed replay counts 和 replay execution blocker；M24c 已新增 `BuiltinDeriveDryRunNegativeMatrixClosure` 和
+`builtin_derive_dry_run_negative_matrices`，固定
+`builtin_derive_dry_run_negative_matrix_closure_v1`、
+`m24c-builtin-derive-dry-run-negative-matrix:<module>:<part>`、M24a/M24b/M23c 可见性闭环、
+`negative_case_count=8`、`parser_consumable_case_count=0`，并把 result name 推进为
+`M24c Builtin Derive Dry-Run Negative Matrix Closure`。M24a-M24c 仍保持 dry-run execution、parser consumption、
+generated source text、generated module part parse/merge、AST mutation、sema-visible generated part、
+emit-expanded、debug/source-map projection、标准库、runtime helper、external procedural macro、用户自定义 macro 和
+macro-generated user code 全部关闭。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -232,6 +249,9 @@ macro-generated user code 全部关闭。
 - [Aurex M23a Builtin Derive Parser Consumption Admission Protocol](m23a-builtin-derive-parser-consumption-admission-protocol.md)
 - [Aurex M23b Builtin Derive Checkpoint Rollback Protocol](m23b-builtin-derive-checkpoint-rollback-protocol.md)
 - [Aurex M23c Builtin Derive Parser Pre-Consumption Verification Closure](m23c-builtin-derive-preconsumption-verification-closure.md)
+- [Aurex M24a Builtin Derive Controlled Parser Dry-Run Adapter](m24a-builtin-derive-controlled-parser-dry-run-adapter.md)
+- [Aurex M24b Builtin Derive Dry-Run Rollback Diagnostic Replay](m24b-builtin-derive-dry-run-rollback-diagnostic-replay.md)
+- [Aurex M24c Builtin Derive Dry-Run Negative Matrix Closure](m24c-builtin-derive-dry-run-negative-matrix-closure.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

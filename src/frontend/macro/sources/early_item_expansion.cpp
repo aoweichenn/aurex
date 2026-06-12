@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M23C_EXPANSION_NAME =
-    "M23c Builtin Derive Parser Pre-Consumption Verification Closure";
-constexpr std::string_view FRONTEND_MACRO_M23C_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m23c.builtin_derive_preconsumption_verification_closure.v1";
+constexpr std::string_view FRONTEND_MACRO_M24C_EXPANSION_NAME =
+    "M24c Builtin Derive Dry-Run Negative Matrix Closure";
+constexpr std::string_view FRONTEND_MACRO_M24C_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m24c.builtin_derive_dry_run_negative_matrix_closure.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -312,6 +312,38 @@ constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_QUERY_NAME_PREFIX =
     "m23c-builtin-derive-preconsumption-verification:";
 constexpr std::string_view FRONTEND_MACRO_M23C_VERIFICATION_BLOCKER =
     "builtin derive pre-consumption verification closure keeps parser consumption blocked in M23c";
+constexpr std::string_view FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_MARKER =
+    "frontend.macro.m24a.builtin_derive_controlled_parser_dry_run_adapter.v1";
+constexpr std::string_view FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_IDENTITY_MARKER =
+    "frontend.macro.m24a.builtin_derive_controlled_parser_dry_run_adapter_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_POLICY =
+    "builtin_derive_controlled_parser_dry_run_adapter_v1";
+constexpr std::string_view FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_QUERY_NAME_PREFIX =
+    "m24a-builtin-derive-controlled-parser-dry-run:";
+constexpr std::string_view FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_BLOCKER =
+    "builtin derive controlled parser dry-run adapter remains execution-blocked in M24a";
+constexpr base::u64 FRONTEND_MACRO_M24A_DRY_RUN_PREREQUISITE_COUNT = 5U;
+constexpr std::string_view FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_MARKER =
+    "frontend.macro.m24b.builtin_derive_dry_run_rollback_diagnostic_replay.v1";
+constexpr std::string_view FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_IDENTITY_MARKER =
+    "frontend.macro.m24b.builtin_derive_dry_run_rollback_diagnostic_replay_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_POLICY =
+    "builtin_derive_dry_run_rollback_diagnostic_replay_v1";
+constexpr std::string_view FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_QUERY_NAME_PREFIX =
+    "m24b-builtin-derive-dry-run-rollback-replay:";
+constexpr std::string_view FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_BLOCKER =
+    "builtin derive dry-run rollback diagnostic replay remains execution-blocked in M24b";
+constexpr std::string_view FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_MARKER =
+    "frontend.macro.m24c.builtin_derive_dry_run_negative_matrix_closure.v1";
+constexpr std::string_view FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_IDENTITY_MARKER =
+    "frontend.macro.m24c.builtin_derive_dry_run_negative_matrix_closure_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_POLICY =
+    "builtin_derive_dry_run_negative_matrix_closure_v1";
+constexpr std::string_view FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_QUERY_NAME_PREFIX =
+    "m24c-builtin-derive-dry-run-negative-matrix:";
+constexpr std::string_view FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_BLOCKER =
+    "builtin derive dry-run negative matrix keeps parser consumption blocked in M24c";
+constexpr base::u64 FRONTEND_MACRO_M24C_NEGATIVE_CASE_COUNT = 8U;
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_STRUCT = "struct";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_ENUM = "enum";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_OTHER = "other";
@@ -707,6 +739,36 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     const syntax::ModuleId module, const base::u32 source_part_index)
 {
     std::string name(FRONTEND_MACRO_M23C_VERIFICATION_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_controlled_dry_run_adapter_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_dry_run_rollback_replay_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_dry_run_negative_matrix_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_QUERY_NAME_PREFIX);
     name += std::to_string(module.value);
     name.push_back(':');
     name += std::to_string(source_part_index);
@@ -3417,6 +3479,261 @@ make_builtin_derive_preconsumption_verification_closure(
     };
 }
 
+[[nodiscard]] query::StableFingerprint128 builtin_derive_controlled_dry_run_adapter_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const std::string_view query_name,
+    const base::u64 token_record_count,
+    const base::u64 diagnostic_anchor_count,
+    const base::u64 prerequisite_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(verification_closure.verification_closure_identity);
+    builder.mix_fingerprint(admission_protocol.admission_protocol_identity);
+    builder.mix_fingerprint(checkpoint_protocol.checkpoint_protocol_identity);
+    builder.mix_string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_BLOCKER);
+    builder.mix_u64(token_record_count);
+    builder.mix_u64(diagnostic_anchor_count);
+    builder.mix_u64(prerequisite_count);
+    builder.mix_bool(true);  // verification_closure_available
+    builder.mix_bool(true);  // admission_protocol_available
+    builder.mix_bool(true);  // checkpoint_protocol_available
+    builder.mix_bool(true);  // compiler_owned_tokens_available
+    builder.mix_bool(true);  // diagnostic_replay_available
+    builder.mix_bool(true);  // dry_run_adapter_complete
+    builder.mix_bool(false); // dry_run_executed
+    builder.mix_bool(false); // parser_consumption_enabled
+    builder.mix_bool(false); // parser_admitted
+    builder.mix_bool(false); // generated_part_parsed
+    builder.mix_bool(false); // generated_part_merged
+    builder.mix_bool(false); // sema_visible
+    builder.mix_bool(false); // emit_expanded_available
+    builder.mix_bool(false); // debug_trace_available
+    builder.mix_bool(false); // source_map_available
+    builder.mix_bool(false); // standard_library_required
+    builder.mix_bool(false); // runtime_required
+    builder.mix_bool(false); // external_process_required
+    builder.mix_bool(false); // produced_user_generated_code
+    builder.mix_bool(true);  // adapter_visible
+    builder.mix_bool(true);  // query_reusable
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveControlledParserDryRunAdapter
+make_builtin_derive_controlled_dry_run_adapter(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol)
+{
+    const base::u64 token_record_count = checkpoint_protocol.token_record_count;
+    const base::u64 diagnostic_anchor_count = checkpoint_protocol.diagnostic_anchor_count;
+    const base::u64 prerequisite_count = FRONTEND_MACRO_M24A_DRY_RUN_PREREQUISITE_COUNT;
+    const std::string query_name =
+        builtin_derive_controlled_dry_run_adapter_query_name(placeholder.module,
+            placeholder.source_part_index);
+    BuiltinDeriveControlledParserDryRunAdapter adapter;
+    adapter.module = placeholder.module;
+    adapter.source_part_index = placeholder.source_part_index;
+    adapter.attached_part = placeholder.source_part;
+    adapter.generated_part = placeholder.generated_part;
+    adapter.verification_closure_identity = verification_closure.verification_closure_identity;
+    adapter.admission_protocol_identity = admission_protocol.admission_protocol_identity;
+    adapter.checkpoint_protocol_identity = checkpoint_protocol.checkpoint_protocol_identity;
+    adapter.dry_run_adapter_identity = builtin_derive_controlled_dry_run_adapter_identity(
+        placeholder, verification_closure, admission_protocol, checkpoint_protocol, query_name,
+        token_record_count, diagnostic_anchor_count, prerequisite_count);
+    adapter.adapter_policy = std::string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_POLICY);
+    adapter.adapter_query_name = query_name;
+    adapter.blocked_reason = std::string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_BLOCKER);
+    adapter.token_record_count = token_record_count;
+    adapter.diagnostic_anchor_count = diagnostic_anchor_count;
+    adapter.prerequisite_count = prerequisite_count;
+    return adapter;
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_dry_run_rollback_replay_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate,
+    const std::string_view query_name,
+    const base::u64 diagnostic_anchor_count,
+    const base::u64 report_entry_count,
+    const base::u64 planned_replay_count,
+    const base::u64 executed_replay_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(adapter.dry_run_adapter_identity);
+    builder.mix_fingerprint(checkpoint_protocol.checkpoint_protocol_identity);
+    builder.mix_fingerprint(rollback_gate.rollback_gate_identity);
+    builder.mix_string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_BLOCKER);
+    builder.mix_u64(diagnostic_anchor_count);
+    builder.mix_u64(report_entry_count);
+    builder.mix_u64(planned_replay_count);
+    builder.mix_u64(executed_replay_count);
+    builder.mix_bool(true);  // dry_run_adapter_available
+    builder.mix_bool(true);  // checkpoint_protocol_available
+    builder.mix_bool(true);  // rollback_gate_available
+    builder.mix_bool(true);  // diagnostic_replay_plan_available
+    builder.mix_bool(true);  // replay_protocol_complete
+    builder.mix_bool(false); // replay_execution_enabled
+    builder.mix_bool(false); // dry_run_executed
+    builder.mix_bool(false); // parser_consumption_enabled
+    builder.mix_bool(false); // generated_part_parsed
+    builder.mix_bool(false); // generated_part_merged
+    builder.mix_bool(false); // sema_visible
+    builder.mix_bool(false); // emit_expanded_available
+    builder.mix_bool(false); // debug_trace_available
+    builder.mix_bool(false); // source_map_available
+    builder.mix_bool(false); // standard_library_required
+    builder.mix_bool(false); // runtime_required
+    builder.mix_bool(false); // external_process_required
+    builder.mix_bool(false); // produced_user_generated_code
+    builder.mix_bool(true);  // replay_visible
+    builder.mix_bool(true);  // query_reusable
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveDryRunRollbackDiagnosticReplay
+make_builtin_derive_dry_run_rollback_replay(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate)
+{
+    const base::u64 diagnostic_anchor_count = adapter.diagnostic_anchor_count;
+    const base::u64 report_entry_count = rollback_gate.diagnostic_report_entry_count;
+    const base::u64 planned_replay_count = diagnostic_anchor_count;
+    const base::u64 executed_replay_count = 0U;
+    const std::string query_name =
+        builtin_derive_dry_run_rollback_replay_query_name(placeholder.module,
+            placeholder.source_part_index);
+    BuiltinDeriveDryRunRollbackDiagnosticReplay replay;
+    replay.module = placeholder.module;
+    replay.source_part_index = placeholder.source_part_index;
+    replay.attached_part = placeholder.source_part;
+    replay.generated_part = placeholder.generated_part;
+    replay.dry_run_adapter_identity = adapter.dry_run_adapter_identity;
+    replay.checkpoint_protocol_identity = checkpoint_protocol.checkpoint_protocol_identity;
+    replay.rollback_gate_identity = rollback_gate.rollback_gate_identity;
+    replay.replay_protocol_identity = builtin_derive_dry_run_rollback_replay_identity(
+        placeholder, adapter, checkpoint_protocol, rollback_gate, query_name, diagnostic_anchor_count,
+        report_entry_count, planned_replay_count, executed_replay_count);
+    replay.replay_policy = std::string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_POLICY);
+    replay.replay_query_name = query_name;
+    replay.blocked_reason = std::string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_BLOCKER);
+    replay.diagnostic_anchor_count = diagnostic_anchor_count;
+    replay.report_entry_count = report_entry_count;
+    replay.planned_replay_count = planned_replay_count;
+    replay.executed_replay_count = executed_replay_count;
+    return replay;
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_dry_run_negative_matrix_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure,
+    const std::string_view query_name,
+    const base::u64 dry_run_adapter_count,
+    const base::u64 rollback_replay_count,
+    const base::u64 verification_closure_count,
+    const base::u64 negative_case_count,
+    const base::u64 parser_consumable_case_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(adapter.dry_run_adapter_identity);
+    builder.mix_fingerprint(replay.replay_protocol_identity);
+    builder.mix_fingerprint(verification_closure.verification_closure_identity);
+    builder.mix_string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_BLOCKER);
+    builder.mix_u64(dry_run_adapter_count);
+    builder.mix_u64(rollback_replay_count);
+    builder.mix_u64(verification_closure_count);
+    builder.mix_u64(negative_case_count);
+    builder.mix_u64(parser_consumable_case_count);
+    builder.mix_bool(true);  // dry_run_adapter_available
+    builder.mix_bool(true);  // rollback_replay_available
+    builder.mix_bool(true);  // verification_closure_available
+    builder.mix_bool(true);  // negative_matrix_complete
+    builder.mix_bool(false); // dry_run_executed
+    builder.mix_bool(false); // parser_consumption_enabled
+    builder.mix_bool(false); // parser_admitted
+    builder.mix_bool(false); // generated_part_parsed
+    builder.mix_bool(false); // generated_part_merged
+    builder.mix_bool(false); // sema_visible
+    builder.mix_bool(false); // emit_expanded_available
+    builder.mix_bool(false); // debug_trace_available
+    builder.mix_bool(false); // source_map_available
+    builder.mix_bool(false); // standard_library_required
+    builder.mix_bool(false); // runtime_required
+    builder.mix_bool(false); // external_process_required
+    builder.mix_bool(false); // produced_user_generated_code
+    builder.mix_bool(true);  // matrix_visible
+    builder.mix_bool(true);  // query_reusable
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveDryRunNegativeMatrixClosure make_builtin_derive_dry_run_negative_matrix(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure)
+{
+    const base::u64 dry_run_adapter_count = adapter.adapter_visible ? 1U : 0U;
+    const base::u64 rollback_replay_count = replay.replay_visible ? 1U : 0U;
+    const base::u64 verification_closure_count = verification_closure.closure_visible ? 1U : 0U;
+    const base::u64 negative_case_count = FRONTEND_MACRO_M24C_NEGATIVE_CASE_COUNT;
+    const base::u64 parser_consumable_case_count = 0U;
+    const std::string query_name =
+        builtin_derive_dry_run_negative_matrix_query_name(placeholder.module,
+            placeholder.source_part_index);
+    BuiltinDeriveDryRunNegativeMatrixClosure matrix;
+    matrix.module = placeholder.module;
+    matrix.source_part_index = placeholder.source_part_index;
+    matrix.attached_part = placeholder.source_part;
+    matrix.generated_part = placeholder.generated_part;
+    matrix.dry_run_adapter_identity = adapter.dry_run_adapter_identity;
+    matrix.rollback_replay_identity = replay.replay_protocol_identity;
+    matrix.verification_closure_identity = verification_closure.verification_closure_identity;
+    matrix.negative_matrix_identity = builtin_derive_dry_run_negative_matrix_identity(
+        placeholder, adapter, replay, verification_closure, query_name, dry_run_adapter_count,
+        rollback_replay_count, verification_closure_count, negative_case_count,
+        parser_consumable_case_count);
+    matrix.matrix_policy = std::string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_POLICY);
+    matrix.matrix_query_name = query_name;
+    matrix.blocked_reason = std::string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_BLOCKER);
+    matrix.dry_run_adapter_count = dry_run_adapter_count;
+    matrix.rollback_replay_count = rollback_replay_count;
+    matrix.verification_closure_count = verification_closure_count;
+    matrix.negative_case_count = negative_case_count;
+    matrix.parser_consumable_case_count = parser_consumable_case_count;
+    return matrix;
+}
+
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
     const query::ModulePartKey source_part, const syntax::ModuleId module, const base::u32 part_index)
 {
@@ -4370,6 +4687,132 @@ void mix_builtin_derive_preconsumption_verification_closure(
     builder.mix_bool(closure.query_reusable);
 }
 
+void mix_builtin_derive_controlled_dry_run_adapter(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_MARKER);
+    builder.mix_u32(adapter.module.value);
+    builder.mix_u32(adapter.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(adapter.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(adapter.generated_part));
+    builder.mix_fingerprint(adapter.verification_closure_identity);
+    builder.mix_fingerprint(adapter.admission_protocol_identity);
+    builder.mix_fingerprint(adapter.checkpoint_protocol_identity);
+    builder.mix_fingerprint(adapter.dry_run_adapter_identity);
+    builder.mix_string(adapter.adapter_policy);
+    builder.mix_string(adapter.adapter_query_name);
+    builder.mix_string(adapter.blocked_reason);
+    builder.mix_u64(adapter.token_record_count);
+    builder.mix_u64(adapter.diagnostic_anchor_count);
+    builder.mix_u64(adapter.prerequisite_count);
+    builder.mix_bool(adapter.verification_closure_available);
+    builder.mix_bool(adapter.admission_protocol_available);
+    builder.mix_bool(adapter.checkpoint_protocol_available);
+    builder.mix_bool(adapter.compiler_owned_tokens_available);
+    builder.mix_bool(adapter.diagnostic_replay_available);
+    builder.mix_bool(adapter.dry_run_adapter_complete);
+    builder.mix_bool(adapter.dry_run_executed);
+    builder.mix_bool(adapter.parser_consumption_enabled);
+    builder.mix_bool(adapter.parser_admitted);
+    builder.mix_bool(adapter.generated_part_parsed);
+    builder.mix_bool(adapter.generated_part_merged);
+    builder.mix_bool(adapter.sema_visible);
+    builder.mix_bool(adapter.emit_expanded_available);
+    builder.mix_bool(adapter.debug_trace_available);
+    builder.mix_bool(adapter.source_map_available);
+    builder.mix_bool(adapter.standard_library_required);
+    builder.mix_bool(adapter.runtime_required);
+    builder.mix_bool(adapter.external_process_required);
+    builder.mix_bool(adapter.produced_user_generated_code);
+    builder.mix_bool(adapter.adapter_visible);
+    builder.mix_bool(adapter.query_reusable);
+}
+
+void mix_builtin_derive_dry_run_rollback_replay(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_MARKER);
+    builder.mix_u32(replay.module.value);
+    builder.mix_u32(replay.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(replay.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(replay.generated_part));
+    builder.mix_fingerprint(replay.dry_run_adapter_identity);
+    builder.mix_fingerprint(replay.checkpoint_protocol_identity);
+    builder.mix_fingerprint(replay.rollback_gate_identity);
+    builder.mix_fingerprint(replay.replay_protocol_identity);
+    builder.mix_string(replay.replay_policy);
+    builder.mix_string(replay.replay_query_name);
+    builder.mix_string(replay.blocked_reason);
+    builder.mix_u64(replay.diagnostic_anchor_count);
+    builder.mix_u64(replay.report_entry_count);
+    builder.mix_u64(replay.planned_replay_count);
+    builder.mix_u64(replay.executed_replay_count);
+    builder.mix_bool(replay.dry_run_adapter_available);
+    builder.mix_bool(replay.checkpoint_protocol_available);
+    builder.mix_bool(replay.rollback_gate_available);
+    builder.mix_bool(replay.diagnostic_replay_plan_available);
+    builder.mix_bool(replay.replay_protocol_complete);
+    builder.mix_bool(replay.replay_execution_enabled);
+    builder.mix_bool(replay.dry_run_executed);
+    builder.mix_bool(replay.parser_consumption_enabled);
+    builder.mix_bool(replay.generated_part_parsed);
+    builder.mix_bool(replay.generated_part_merged);
+    builder.mix_bool(replay.sema_visible);
+    builder.mix_bool(replay.emit_expanded_available);
+    builder.mix_bool(replay.debug_trace_available);
+    builder.mix_bool(replay.source_map_available);
+    builder.mix_bool(replay.standard_library_required);
+    builder.mix_bool(replay.runtime_required);
+    builder.mix_bool(replay.external_process_required);
+    builder.mix_bool(replay.produced_user_generated_code);
+    builder.mix_bool(replay.replay_visible);
+    builder.mix_bool(replay.query_reusable);
+}
+
+void mix_builtin_derive_dry_run_negative_matrix(
+    query::StableHashBuilder& builder,
+    const BuiltinDeriveDryRunNegativeMatrixClosure& matrix) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_MARKER);
+    builder.mix_u32(matrix.module.value);
+    builder.mix_u32(matrix.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(matrix.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(matrix.generated_part));
+    builder.mix_fingerprint(matrix.dry_run_adapter_identity);
+    builder.mix_fingerprint(matrix.rollback_replay_identity);
+    builder.mix_fingerprint(matrix.verification_closure_identity);
+    builder.mix_fingerprint(matrix.negative_matrix_identity);
+    builder.mix_string(matrix.matrix_policy);
+    builder.mix_string(matrix.matrix_query_name);
+    builder.mix_string(matrix.blocked_reason);
+    builder.mix_u64(matrix.dry_run_adapter_count);
+    builder.mix_u64(matrix.rollback_replay_count);
+    builder.mix_u64(matrix.verification_closure_count);
+    builder.mix_u64(matrix.negative_case_count);
+    builder.mix_u64(matrix.parser_consumable_case_count);
+    builder.mix_bool(matrix.dry_run_adapter_available);
+    builder.mix_bool(matrix.rollback_replay_available);
+    builder.mix_bool(matrix.verification_closure_available);
+    builder.mix_bool(matrix.negative_matrix_complete);
+    builder.mix_bool(matrix.dry_run_executed);
+    builder.mix_bool(matrix.parser_consumption_enabled);
+    builder.mix_bool(matrix.parser_admitted);
+    builder.mix_bool(matrix.generated_part_parsed);
+    builder.mix_bool(matrix.generated_part_merged);
+    builder.mix_bool(matrix.sema_visible);
+    builder.mix_bool(matrix.emit_expanded_available);
+    builder.mix_bool(matrix.debug_trace_available);
+    builder.mix_bool(matrix.source_map_available);
+    builder.mix_bool(matrix.standard_library_required);
+    builder.mix_bool(matrix.runtime_required);
+    builder.mix_bool(matrix.external_process_required);
+    builder.mix_bool(matrix.produced_user_generated_code);
+    builder.mix_bool(matrix.matrix_visible);
+    builder.mix_bool(matrix.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -4496,6 +4939,21 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.builtin_derive_preconsumption_verification_query_reusable_count);
     builder.mix_u64(summary.builtin_derive_preconsumption_verification_complete_count);
     builder.mix_u64(summary.builtin_derive_preconsumption_verification_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_controlled_dry_run_adapter_count);
+    builder.mix_u64(summary.builtin_derive_controlled_dry_run_adapter_visible_count);
+    builder.mix_u64(summary.builtin_derive_controlled_dry_run_adapter_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_controlled_dry_run_adapter_complete_count);
+    builder.mix_u64(summary.builtin_derive_controlled_dry_run_adapter_executed_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_rollback_replay_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_rollback_replay_visible_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_rollback_replay_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_rollback_replay_complete_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_rollback_replay_executed_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_negative_matrix_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_negative_matrix_visible_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_negative_matrix_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_negative_matrix_complete_count);
+    builder.mix_u64(summary.builtin_derive_dry_run_negative_matrix_parser_consumable_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -4693,6 +5151,36 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             == rhs.builtin_derive_preconsumption_verification_complete_count
         && lhs.builtin_derive_preconsumption_verification_parser_consumable_count
             == rhs.builtin_derive_preconsumption_verification_parser_consumable_count
+        && lhs.builtin_derive_controlled_dry_run_adapter_count
+            == rhs.builtin_derive_controlled_dry_run_adapter_count
+        && lhs.builtin_derive_controlled_dry_run_adapter_visible_count
+            == rhs.builtin_derive_controlled_dry_run_adapter_visible_count
+        && lhs.builtin_derive_controlled_dry_run_adapter_query_reusable_count
+            == rhs.builtin_derive_controlled_dry_run_adapter_query_reusable_count
+        && lhs.builtin_derive_controlled_dry_run_adapter_complete_count
+            == rhs.builtin_derive_controlled_dry_run_adapter_complete_count
+        && lhs.builtin_derive_controlled_dry_run_adapter_executed_count
+            == rhs.builtin_derive_controlled_dry_run_adapter_executed_count
+        && lhs.builtin_derive_dry_run_rollback_replay_count
+            == rhs.builtin_derive_dry_run_rollback_replay_count
+        && lhs.builtin_derive_dry_run_rollback_replay_visible_count
+            == rhs.builtin_derive_dry_run_rollback_replay_visible_count
+        && lhs.builtin_derive_dry_run_rollback_replay_query_reusable_count
+            == rhs.builtin_derive_dry_run_rollback_replay_query_reusable_count
+        && lhs.builtin_derive_dry_run_rollback_replay_complete_count
+            == rhs.builtin_derive_dry_run_rollback_replay_complete_count
+        && lhs.builtin_derive_dry_run_rollback_replay_executed_count
+            == rhs.builtin_derive_dry_run_rollback_replay_executed_count
+        && lhs.builtin_derive_dry_run_negative_matrix_count
+            == rhs.builtin_derive_dry_run_negative_matrix_count
+        && lhs.builtin_derive_dry_run_negative_matrix_visible_count
+            == rhs.builtin_derive_dry_run_negative_matrix_visible_count
+        && lhs.builtin_derive_dry_run_negative_matrix_query_reusable_count
+            == rhs.builtin_derive_dry_run_negative_matrix_query_reusable_count
+        && lhs.builtin_derive_dry_run_negative_matrix_complete_count
+            == rhs.builtin_derive_dry_run_negative_matrix_complete_count
+        && lhs.builtin_derive_dry_run_negative_matrix_parser_consumable_count
+            == rhs.builtin_derive_dry_run_negative_matrix_parser_consumable_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -6233,6 +6721,239 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     return true;
 }
 
+[[nodiscard]] bool builtin_derive_controlled_dry_run_adapter_matches_group(
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure,
+    const BuiltinDeriveParserConsumptionAdmissionProtocol& admission_protocol,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol) noexcept
+{
+    const base::u64 token_record_count = checkpoint_protocol.token_record_count;
+    const base::u64 diagnostic_anchor_count = checkpoint_protocol.diagnostic_anchor_count;
+    const base::u64 prerequisite_count = FRONTEND_MACRO_M24A_DRY_RUN_PREREQUISITE_COUNT;
+    const std::string expected_query_name =
+        builtin_derive_controlled_dry_run_adapter_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return adapter.module.value == placeholder.module.value
+        && adapter.source_part_index == placeholder.source_part_index
+        && adapter.attached_part == placeholder.source_part
+        && adapter.generated_part == placeholder.generated_part
+        && adapter.verification_closure_identity == verification_closure.verification_closure_identity
+        && adapter.admission_protocol_identity == admission_protocol.admission_protocol_identity
+        && adapter.checkpoint_protocol_identity == checkpoint_protocol.checkpoint_protocol_identity
+        && adapter.dry_run_adapter_identity
+            == builtin_derive_controlled_dry_run_adapter_identity(placeholder, verification_closure,
+                admission_protocol, checkpoint_protocol, expected_query_name, token_record_count,
+                diagnostic_anchor_count, prerequisite_count)
+        && adapter.adapter_policy == FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_POLICY
+        && adapter.adapter_query_name == expected_query_name
+        && adapter.blocked_reason == FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_BLOCKER
+        && adapter.token_record_count == token_record_count
+        && adapter.diagnostic_anchor_count == diagnostic_anchor_count
+        && adapter.prerequisite_count == prerequisite_count
+        && adapter.verification_closure_available
+        && adapter.admission_protocol_available
+        && adapter.checkpoint_protocol_available
+        && adapter.compiler_owned_tokens_available
+        && adapter.diagnostic_replay_available
+        && adapter.dry_run_adapter_complete
+        && !adapter.dry_run_executed
+        && !adapter.parser_consumption_enabled
+        && !adapter.parser_admitted
+        && !adapter.generated_part_parsed
+        && !adapter.generated_part_merged
+        && !adapter.sema_visible
+        && !adapter.emit_expanded_available
+        && !adapter.debug_trace_available
+        && !adapter.source_map_available
+        && !adapter.standard_library_required
+        && !adapter.runtime_required
+        && !adapter.external_process_required
+        && !adapter.produced_user_generated_code
+        && adapter.adapter_visible
+        && adapter.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_controlled_dry_run_adapters_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_controlled_dry_run_adapters.size() != result.generated_parts.size()
+        || result.builtin_derive_preconsumption_verification_closures.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_consumption_admission_protocols.size()
+            != result.generated_parts.size()
+        || result.builtin_derive_checkpoint_rollback_protocols.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_controlled_dry_run_adapters.size();
+         ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_controlled_dry_run_adapter_matches_group(
+                result.builtin_derive_controlled_dry_run_adapters[index],
+                placeholder,
+                result.builtin_derive_preconsumption_verification_closures[index],
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_dry_run_rollback_replay_matches_group(
+    const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& checkpoint_protocol,
+    const BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate) noexcept
+{
+    const base::u64 diagnostic_anchor_count = adapter.diagnostic_anchor_count;
+    const base::u64 report_entry_count = rollback_gate.diagnostic_report_entry_count;
+    const base::u64 planned_replay_count = diagnostic_anchor_count;
+    const base::u64 executed_replay_count = 0U;
+    const std::string expected_query_name =
+        builtin_derive_dry_run_rollback_replay_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return replay.module.value == placeholder.module.value
+        && replay.source_part_index == placeholder.source_part_index
+        && replay.attached_part == placeholder.source_part
+        && replay.generated_part == placeholder.generated_part
+        && replay.dry_run_adapter_identity == adapter.dry_run_adapter_identity
+        && replay.checkpoint_protocol_identity == checkpoint_protocol.checkpoint_protocol_identity
+        && replay.rollback_gate_identity == rollback_gate.rollback_gate_identity
+        && replay.replay_protocol_identity == builtin_derive_dry_run_rollback_replay_identity(
+               placeholder, adapter, checkpoint_protocol, rollback_gate, expected_query_name,
+               diagnostic_anchor_count, report_entry_count, planned_replay_count, executed_replay_count)
+        && replay.replay_policy == FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_POLICY
+        && replay.replay_query_name == expected_query_name
+        && replay.blocked_reason == FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_BLOCKER
+        && replay.diagnostic_anchor_count == diagnostic_anchor_count
+        && replay.report_entry_count == report_entry_count
+        && replay.planned_replay_count == planned_replay_count
+        && replay.executed_replay_count == executed_replay_count
+        && replay.dry_run_adapter_available
+        && replay.checkpoint_protocol_available
+        && replay.rollback_gate_available
+        && replay.diagnostic_replay_plan_available
+        && replay.replay_protocol_complete
+        && !replay.replay_execution_enabled
+        && !replay.dry_run_executed
+        && !replay.parser_consumption_enabled
+        && !replay.generated_part_parsed
+        && !replay.generated_part_merged
+        && !replay.sema_visible
+        && !replay.emit_expanded_available
+        && !replay.debug_trace_available
+        && !replay.source_map_available
+        && !replay.standard_library_required
+        && !replay.runtime_required
+        && !replay.external_process_required
+        && !replay.produced_user_generated_code
+        && replay.replay_visible
+        && replay.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_dry_run_rollback_replays_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_dry_run_rollback_replays.size() != result.generated_parts.size()
+        || result.builtin_derive_controlled_dry_run_adapters.size() != result.generated_parts.size()
+        || result.builtin_derive_checkpoint_rollback_protocols.size() != result.generated_parts.size()
+        || result.builtin_derive_rollback_diagnostic_gates.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_dry_run_rollback_replays.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_dry_run_rollback_replay_matches_group(
+                result.builtin_derive_dry_run_rollback_replays[index],
+                placeholder,
+                result.builtin_derive_controlled_dry_run_adapters[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index],
+                result.builtin_derive_rollback_diagnostic_gates[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_dry_run_negative_matrix_matches_group(
+    const BuiltinDeriveDryRunNegativeMatrixClosure& matrix,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveControlledParserDryRunAdapter& adapter,
+    const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay,
+    const BuiltinDeriveParserPreConsumptionVerificationClosure& verification_closure) noexcept
+{
+    const base::u64 dry_run_adapter_count = adapter.adapter_visible ? 1U : 0U;
+    const base::u64 rollback_replay_count = replay.replay_visible ? 1U : 0U;
+    const base::u64 verification_closure_count = verification_closure.closure_visible ? 1U : 0U;
+    const base::u64 negative_case_count = FRONTEND_MACRO_M24C_NEGATIVE_CASE_COUNT;
+    const base::u64 parser_consumable_case_count = 0U;
+    const std::string expected_query_name =
+        builtin_derive_dry_run_negative_matrix_query_name(placeholder.module,
+            placeholder.source_part_index);
+    return matrix.module.value == placeholder.module.value
+        && matrix.source_part_index == placeholder.source_part_index
+        && matrix.attached_part == placeholder.source_part
+        && matrix.generated_part == placeholder.generated_part
+        && matrix.dry_run_adapter_identity == adapter.dry_run_adapter_identity
+        && matrix.rollback_replay_identity == replay.replay_protocol_identity
+        && matrix.verification_closure_identity == verification_closure.verification_closure_identity
+        && matrix.negative_matrix_identity == builtin_derive_dry_run_negative_matrix_identity(
+               placeholder, adapter, replay, verification_closure, expected_query_name,
+               dry_run_adapter_count, rollback_replay_count, verification_closure_count,
+               negative_case_count, parser_consumable_case_count)
+        && matrix.matrix_policy == FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_POLICY
+        && matrix.matrix_query_name == expected_query_name
+        && matrix.blocked_reason == FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_BLOCKER
+        && matrix.dry_run_adapter_count == dry_run_adapter_count
+        && matrix.rollback_replay_count == rollback_replay_count
+        && matrix.verification_closure_count == verification_closure_count
+        && matrix.negative_case_count == negative_case_count
+        && matrix.parser_consumable_case_count == parser_consumable_case_count
+        && matrix.dry_run_adapter_available
+        && matrix.rollback_replay_available
+        && matrix.verification_closure_available
+        && matrix.negative_matrix_complete
+        && !matrix.dry_run_executed
+        && !matrix.parser_consumption_enabled
+        && !matrix.parser_admitted
+        && !matrix.generated_part_parsed
+        && !matrix.generated_part_merged
+        && !matrix.sema_visible
+        && !matrix.emit_expanded_available
+        && !matrix.debug_trace_available
+        && !matrix.source_map_available
+        && !matrix.standard_library_required
+        && !matrix.runtime_required
+        && !matrix.external_process_required
+        && !matrix.produced_user_generated_code
+        && matrix.matrix_visible
+        && matrix.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_dry_run_negative_matrices_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_dry_run_negative_matrices.size() != result.generated_parts.size()
+        || result.builtin_derive_controlled_dry_run_adapters.size() != result.generated_parts.size()
+        || result.builtin_derive_dry_run_rollback_replays.size() != result.generated_parts.size()
+        || result.builtin_derive_preconsumption_verification_closures.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_dry_run_negative_matrices.size();
+         ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_dry_run_negative_matrix_matches_group(
+                result.builtin_derive_dry_run_negative_matrices[index],
+                placeholder,
+                result.builtin_derive_controlled_dry_run_adapters[index],
+                result.builtin_derive_dry_run_rollback_replays[index],
+                result.builtin_derive_preconsumption_verification_closures[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -7260,6 +7981,134 @@ bool is_valid(const BuiltinDeriveParserPreConsumptionVerificationClosure& closur
         && closure.query_reusable;
 }
 
+bool is_valid(const BuiltinDeriveControlledParserDryRunAdapter& adapter) noexcept
+{
+    return syntax::is_valid(adapter.module)
+        && query::is_valid(adapter.attached_part)
+        && query::is_valid(adapter.generated_part)
+        && adapter.generated_part.kind == query::ModulePartKind::generated
+        && adapter.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(adapter.verification_closure_identity)
+        && is_nonzero_fingerprint(adapter.admission_protocol_identity)
+        && is_nonzero_fingerprint(adapter.checkpoint_protocol_identity)
+        && is_nonzero_fingerprint(adapter.dry_run_adapter_identity)
+        && adapter.dry_run_adapter_identity != adapter.verification_closure_identity
+        && adapter.dry_run_adapter_identity != adapter.admission_protocol_identity
+        && adapter.dry_run_adapter_identity != adapter.checkpoint_protocol_identity
+        && adapter.adapter_policy == FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_POLICY
+        && !adapter.adapter_query_name.empty()
+        && adapter.blocked_reason == FRONTEND_MACRO_M24A_DRY_RUN_ADAPTER_BLOCKER
+        && adapter.diagnostic_anchor_count > 0U
+        && adapter.prerequisite_count == FRONTEND_MACRO_M24A_DRY_RUN_PREREQUISITE_COUNT
+        && adapter.verification_closure_available
+        && adapter.admission_protocol_available
+        && adapter.checkpoint_protocol_available
+        && adapter.compiler_owned_tokens_available
+        && adapter.diagnostic_replay_available
+        && adapter.dry_run_adapter_complete
+        && !adapter.dry_run_executed
+        && !adapter.parser_consumption_enabled
+        && !adapter.parser_admitted
+        && !adapter.generated_part_parsed
+        && !adapter.generated_part_merged
+        && !adapter.sema_visible
+        && !adapter.emit_expanded_available
+        && !adapter.debug_trace_available
+        && !adapter.source_map_available
+        && !adapter.standard_library_required
+        && !adapter.runtime_required
+        && !adapter.external_process_required
+        && !adapter.produced_user_generated_code
+        && adapter.adapter_visible
+        && adapter.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay) noexcept
+{
+    return syntax::is_valid(replay.module)
+        && query::is_valid(replay.attached_part)
+        && query::is_valid(replay.generated_part)
+        && replay.generated_part.kind == query::ModulePartKind::generated
+        && replay.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(replay.dry_run_adapter_identity)
+        && is_nonzero_fingerprint(replay.checkpoint_protocol_identity)
+        && is_nonzero_fingerprint(replay.rollback_gate_identity)
+        && is_nonzero_fingerprint(replay.replay_protocol_identity)
+        && replay.replay_protocol_identity != replay.dry_run_adapter_identity
+        && replay.replay_protocol_identity != replay.checkpoint_protocol_identity
+        && replay.replay_protocol_identity != replay.rollback_gate_identity
+        && replay.replay_policy == FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_POLICY
+        && !replay.replay_query_name.empty()
+        && replay.blocked_reason == FRONTEND_MACRO_M24B_ROLLBACK_REPLAY_BLOCKER
+        && replay.diagnostic_anchor_count > 0U
+        && replay.report_entry_count == replay.diagnostic_anchor_count
+        && replay.planned_replay_count == replay.diagnostic_anchor_count
+        && replay.executed_replay_count == 0U
+        && replay.dry_run_adapter_available
+        && replay.checkpoint_protocol_available
+        && replay.rollback_gate_available
+        && replay.diagnostic_replay_plan_available
+        && replay.replay_protocol_complete
+        && !replay.replay_execution_enabled
+        && !replay.dry_run_executed
+        && !replay.parser_consumption_enabled
+        && !replay.generated_part_parsed
+        && !replay.generated_part_merged
+        && !replay.sema_visible
+        && !replay.emit_expanded_available
+        && !replay.debug_trace_available
+        && !replay.source_map_available
+        && !replay.standard_library_required
+        && !replay.runtime_required
+        && !replay.external_process_required
+        && !replay.produced_user_generated_code
+        && replay.replay_visible
+        && replay.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveDryRunNegativeMatrixClosure& matrix) noexcept
+{
+    return syntax::is_valid(matrix.module)
+        && query::is_valid(matrix.attached_part)
+        && query::is_valid(matrix.generated_part)
+        && matrix.generated_part.kind == query::ModulePartKind::generated
+        && matrix.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(matrix.dry_run_adapter_identity)
+        && is_nonzero_fingerprint(matrix.rollback_replay_identity)
+        && is_nonzero_fingerprint(matrix.verification_closure_identity)
+        && is_nonzero_fingerprint(matrix.negative_matrix_identity)
+        && matrix.negative_matrix_identity != matrix.dry_run_adapter_identity
+        && matrix.negative_matrix_identity != matrix.rollback_replay_identity
+        && matrix.negative_matrix_identity != matrix.verification_closure_identity
+        && matrix.matrix_policy == FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_POLICY
+        && !matrix.matrix_query_name.empty()
+        && matrix.blocked_reason == FRONTEND_MACRO_M24C_NEGATIVE_MATRIX_BLOCKER
+        && matrix.dry_run_adapter_count == 1U
+        && matrix.rollback_replay_count == 1U
+        && matrix.verification_closure_count == 1U
+        && matrix.negative_case_count == FRONTEND_MACRO_M24C_NEGATIVE_CASE_COUNT
+        && matrix.parser_consumable_case_count == 0U
+        && matrix.dry_run_adapter_available
+        && matrix.rollback_replay_available
+        && matrix.verification_closure_available
+        && matrix.negative_matrix_complete
+        && !matrix.dry_run_executed
+        && !matrix.parser_consumption_enabled
+        && !matrix.parser_admitted
+        && !matrix.generated_part_parsed
+        && !matrix.generated_part_merged
+        && !matrix.sema_visible
+        && !matrix.emit_expanded_available
+        && !matrix.debug_trace_available
+        && !matrix.source_map_available
+        && !matrix.standard_library_required
+        && !matrix.runtime_required
+        && !matrix.external_process_required
+        && !matrix.produced_user_generated_code
+        && matrix.matrix_visible
+        && matrix.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -7267,7 +8116,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M23C_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M24C_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -7392,6 +8241,21 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) {
                    return is_valid(closure);
                })
+        && std::all_of(result.builtin_derive_controlled_dry_run_adapters.begin(),
+               result.builtin_derive_controlled_dry_run_adapters.end(),
+               [](const BuiltinDeriveControlledParserDryRunAdapter& adapter) {
+                   return is_valid(adapter);
+               })
+        && std::all_of(result.builtin_derive_dry_run_rollback_replays.begin(),
+               result.builtin_derive_dry_run_rollback_replays.end(),
+               [](const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay) {
+                   return is_valid(replay);
+               })
+        && std::all_of(result.builtin_derive_dry_run_negative_matrices.begin(),
+               result.builtin_derive_dry_run_negative_matrices.end(),
+               [](const BuiltinDeriveDryRunNegativeMatrixClosure& matrix) {
+                   return is_valid(matrix);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -7408,6 +8272,9 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && builtin_derive_parser_consumption_admission_protocols_match_groups(result)
         && builtin_derive_checkpoint_rollback_protocols_match_groups(result)
         && builtin_derive_preconsumption_verification_closures_match_groups(result)
+        && builtin_derive_controlled_dry_run_adapters_match_groups(result)
+        && builtin_derive_dry_run_rollback_replays_match_groups(result)
+        && builtin_derive_dry_run_negative_matrices_match_groups(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -8233,6 +9100,175 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.builtin_derive_controlled_dry_run_adapter_count =
+        static_cast<base::u64>(result.builtin_derive_controlled_dry_run_adapters.size());
+    for (const BuiltinDeriveControlledParserDryRunAdapter& adapter :
+        result.builtin_derive_controlled_dry_run_adapters) {
+        if (adapter.adapter_visible) {
+            ++summary.builtin_derive_controlled_dry_run_adapter_visible_count;
+        }
+        if (adapter.query_reusable) {
+            ++summary.builtin_derive_controlled_dry_run_adapter_query_reusable_count;
+        }
+        if (adapter.verification_closure_available
+            && adapter.admission_protocol_available
+            && adapter.checkpoint_protocol_available
+            && adapter.compiler_owned_tokens_available
+            && adapter.diagnostic_replay_available
+            && adapter.dry_run_adapter_complete) {
+            ++summary.builtin_derive_controlled_dry_run_adapter_complete_count;
+        }
+        if (adapter.dry_run_executed) {
+            ++summary.builtin_derive_controlled_dry_run_adapter_executed_count;
+        }
+        if (adapter.parser_consumption_enabled || adapter.parser_admitted) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (adapter.parser_admitted) {
+            ++summary.parser_admitted_token_buffer_count;
+        }
+        if (adapter.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (adapter.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (adapter.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (adapter.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (adapter.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (adapter.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (adapter.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (adapter.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (adapter.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (adapter.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_dry_run_rollback_replay_count =
+        static_cast<base::u64>(result.builtin_derive_dry_run_rollback_replays.size());
+    for (const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay :
+        result.builtin_derive_dry_run_rollback_replays) {
+        if (replay.replay_visible) {
+            ++summary.builtin_derive_dry_run_rollback_replay_visible_count;
+        }
+        if (replay.query_reusable) {
+            ++summary.builtin_derive_dry_run_rollback_replay_query_reusable_count;
+        }
+        if (replay.dry_run_adapter_available
+            && replay.checkpoint_protocol_available
+            && replay.rollback_gate_available
+            && replay.diagnostic_replay_plan_available
+            && replay.replay_protocol_complete) {
+            ++summary.builtin_derive_dry_run_rollback_replay_complete_count;
+        }
+        if (replay.replay_execution_enabled || replay.dry_run_executed
+            || replay.executed_replay_count > 0U) {
+            ++summary.builtin_derive_dry_run_rollback_replay_executed_count;
+        }
+        if (replay.parser_consumption_enabled) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (replay.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (replay.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (replay.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (replay.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (replay.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (replay.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (replay.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (replay.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (replay.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (replay.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_dry_run_negative_matrix_count =
+        static_cast<base::u64>(result.builtin_derive_dry_run_negative_matrices.size());
+    for (const BuiltinDeriveDryRunNegativeMatrixClosure& matrix :
+        result.builtin_derive_dry_run_negative_matrices) {
+        if (matrix.matrix_visible) {
+            ++summary.builtin_derive_dry_run_negative_matrix_visible_count;
+        }
+        if (matrix.query_reusable) {
+            ++summary.builtin_derive_dry_run_negative_matrix_query_reusable_count;
+        }
+        if (matrix.dry_run_adapter_available
+            && matrix.rollback_replay_available
+            && matrix.verification_closure_available
+            && matrix.negative_matrix_complete) {
+            ++summary.builtin_derive_dry_run_negative_matrix_complete_count;
+        }
+        if (matrix.parser_consumable_case_count > 0U
+            || matrix.parser_consumption_enabled
+            || matrix.parser_admitted) {
+            ++summary.builtin_derive_dry_run_negative_matrix_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (matrix.parser_admitted) {
+            ++summary.parser_admitted_token_buffer_count;
+        }
+        if (matrix.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (matrix.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (matrix.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (matrix.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (matrix.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (matrix.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (matrix.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (matrix.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (matrix.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (matrix.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -8240,7 +9276,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M23C_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M24C_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -8364,6 +9400,24 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     for (const BuiltinDeriveParserPreConsumptionVerificationClosure& closure :
         result.builtin_derive_preconsumption_verification_closures) {
         mix_builtin_derive_preconsumption_verification_closure(builder, closure);
+    }
+    builder.mix_u64(
+        static_cast<base::u64>(result.builtin_derive_controlled_dry_run_adapters.size()));
+    for (const BuiltinDeriveControlledParserDryRunAdapter& adapter :
+        result.builtin_derive_controlled_dry_run_adapters) {
+        mix_builtin_derive_controlled_dry_run_adapter(builder, adapter);
+    }
+    builder.mix_u64(
+        static_cast<base::u64>(result.builtin_derive_dry_run_rollback_replays.size()));
+    for (const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay :
+        result.builtin_derive_dry_run_rollback_replays) {
+        mix_builtin_derive_dry_run_rollback_replay(builder, replay);
+    }
+    builder.mix_u64(
+        static_cast<base::u64>(result.builtin_derive_dry_run_negative_matrices.size()));
+    for (const BuiltinDeriveDryRunNegativeMatrixClosure& matrix :
+        result.builtin_derive_dry_run_negative_matrices) {
+        mix_builtin_derive_dry_run_negative_matrix(builder, matrix);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -8585,6 +9639,36 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.builtin_derive_preconsumption_verification_complete_count
            << " builtin_derive_preconsumption_verification_parser_consumable="
            << summary.builtin_derive_preconsumption_verification_parser_consumable_count
+           << " builtin_derive_controlled_dry_run_adapters="
+           << summary.builtin_derive_controlled_dry_run_adapter_count
+           << " builtin_derive_controlled_dry_run_adapter_visible="
+           << summary.builtin_derive_controlled_dry_run_adapter_visible_count
+           << " builtin_derive_controlled_dry_run_adapter_query_reusable="
+           << summary.builtin_derive_controlled_dry_run_adapter_query_reusable_count
+           << " builtin_derive_controlled_dry_run_adapter_complete="
+           << summary.builtin_derive_controlled_dry_run_adapter_complete_count
+           << " builtin_derive_controlled_dry_run_adapter_executed="
+           << summary.builtin_derive_controlled_dry_run_adapter_executed_count
+           << " builtin_derive_dry_run_rollback_replays="
+           << summary.builtin_derive_dry_run_rollback_replay_count
+           << " builtin_derive_dry_run_rollback_replay_visible="
+           << summary.builtin_derive_dry_run_rollback_replay_visible_count
+           << " builtin_derive_dry_run_rollback_replay_query_reusable="
+           << summary.builtin_derive_dry_run_rollback_replay_query_reusable_count
+           << " builtin_derive_dry_run_rollback_replay_complete="
+           << summary.builtin_derive_dry_run_rollback_replay_complete_count
+           << " builtin_derive_dry_run_rollback_replay_executed="
+           << summary.builtin_derive_dry_run_rollback_replay_executed_count
+           << " builtin_derive_dry_run_negative_matrices="
+           << summary.builtin_derive_dry_run_negative_matrix_count
+           << " builtin_derive_dry_run_negative_matrix_visible="
+           << summary.builtin_derive_dry_run_negative_matrix_visible_count
+           << " builtin_derive_dry_run_negative_matrix_query_reusable="
+           << summary.builtin_derive_dry_run_negative_matrix_query_reusable_count
+           << " builtin_derive_dry_run_negative_matrix_complete="
+           << summary.builtin_derive_dry_run_negative_matrix_complete_count
+           << " builtin_derive_dry_run_negative_matrix_parser_consumable="
+           << summary.builtin_derive_dry_run_negative_matrix_parser_consumable_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -9577,6 +10661,181 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(closure.verification_closure_identity)
                << '\n';
     }
+    for (base::usize index = 0; index < result.builtin_derive_controlled_dry_run_adapters.size();
+         ++index) {
+        const BuiltinDeriveControlledParserDryRunAdapter& adapter =
+            result.builtin_derive_controlled_dry_run_adapters[index];
+        stream << "  builtin_derive_controlled_dry_run_adapter #" << index
+               << " module=" << adapter.module.value
+               << " source_part=" << adapter.source_part_index
+               << " policy=" << adapter.adapter_policy
+               << " query=" << adapter.adapter_query_name
+               << " token_records=" << adapter.token_record_count
+               << " diagnostic_anchors=" << adapter.diagnostic_anchor_count
+               << " prerequisites=" << adapter.prerequisite_count
+               << " verification_closure_available="
+               << (adapter.verification_closure_available ? "yes" : "no")
+               << " admission_protocol_available="
+               << (adapter.admission_protocol_available ? "yes" : "no")
+               << " checkpoint_protocol_available="
+               << (adapter.checkpoint_protocol_available ? "yes" : "no")
+               << " compiler_owned_tokens_available="
+               << (adapter.compiler_owned_tokens_available ? "yes" : "no")
+               << " diagnostic_replay_available="
+               << (adapter.diagnostic_replay_available ? "yes" : "no")
+               << " dry_run_adapter_complete="
+               << (adapter.dry_run_adapter_complete ? "yes" : "no")
+               << " dry_run_executed=" << (adapter.dry_run_executed ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (adapter.parser_consumption_enabled ? "yes" : "no")
+               << " parser_admitted=" << (adapter.parser_admitted ? "yes" : "no")
+               << " generated_part_parsed="
+               << (adapter.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (adapter.generated_part_merged ? "yes" : "no")
+               << " sema_visible=" << (adapter.sema_visible ? "yes" : "no")
+               << " emit_expanded_available="
+               << (adapter.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (adapter.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (adapter.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (adapter.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (adapter.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (adapter.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (adapter.produced_user_generated_code ? "yes" : "no")
+               << " adapter_visible=" << (adapter.adapter_visible ? "yes" : "no")
+               << " query_reusable=" << (adapter.query_reusable ? "yes" : "no")
+               << " blocker=" << adapter.blocked_reason
+               << " verification_closure_identity="
+               << query::debug_string(adapter.verification_closure_identity)
+               << " admission_protocol_identity="
+               << query::debug_string(adapter.admission_protocol_identity)
+               << " checkpoint_protocol_identity="
+               << query::debug_string(adapter.checkpoint_protocol_identity)
+               << " dry_run_adapter_identity="
+               << query::debug_string(adapter.dry_run_adapter_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_dry_run_rollback_replays.size();
+         ++index) {
+        const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay =
+            result.builtin_derive_dry_run_rollback_replays[index];
+        stream << "  builtin_derive_dry_run_rollback_replay #" << index
+               << " module=" << replay.module.value
+               << " source_part=" << replay.source_part_index
+               << " policy=" << replay.replay_policy
+               << " query=" << replay.replay_query_name
+               << " diagnostic_anchors=" << replay.diagnostic_anchor_count
+               << " report_entries=" << replay.report_entry_count
+               << " planned_replays=" << replay.planned_replay_count
+               << " executed_replays=" << replay.executed_replay_count
+               << " dry_run_adapter_available="
+               << (replay.dry_run_adapter_available ? "yes" : "no")
+               << " checkpoint_protocol_available="
+               << (replay.checkpoint_protocol_available ? "yes" : "no")
+               << " rollback_gate_available="
+               << (replay.rollback_gate_available ? "yes" : "no")
+               << " diagnostic_replay_plan_available="
+               << (replay.diagnostic_replay_plan_available ? "yes" : "no")
+               << " replay_protocol_complete="
+               << (replay.replay_protocol_complete ? "yes" : "no")
+               << " replay_execution_enabled="
+               << (replay.replay_execution_enabled ? "yes" : "no")
+               << " dry_run_executed=" << (replay.dry_run_executed ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (replay.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (replay.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (replay.generated_part_merged ? "yes" : "no")
+               << " sema_visible=" << (replay.sema_visible ? "yes" : "no")
+               << " emit_expanded_available="
+               << (replay.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (replay.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (replay.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (replay.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (replay.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (replay.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (replay.produced_user_generated_code ? "yes" : "no")
+               << " replay_visible=" << (replay.replay_visible ? "yes" : "no")
+               << " query_reusable=" << (replay.query_reusable ? "yes" : "no")
+               << " blocker=" << replay.blocked_reason
+               << " dry_run_adapter_identity="
+               << query::debug_string(replay.dry_run_adapter_identity)
+               << " checkpoint_protocol_identity="
+               << query::debug_string(replay.checkpoint_protocol_identity)
+               << " rollback_gate_identity="
+               << query::debug_string(replay.rollback_gate_identity)
+               << " replay_protocol_identity="
+               << query::debug_string(replay.replay_protocol_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_dry_run_negative_matrices.size();
+         ++index) {
+        const BuiltinDeriveDryRunNegativeMatrixClosure& matrix =
+            result.builtin_derive_dry_run_negative_matrices[index];
+        stream << "  builtin_derive_dry_run_negative_matrix #" << index
+               << " module=" << matrix.module.value
+               << " source_part=" << matrix.source_part_index
+               << " policy=" << matrix.matrix_policy
+               << " query=" << matrix.matrix_query_name
+               << " dry_run_adapters=" << matrix.dry_run_adapter_count
+               << " rollback_replays=" << matrix.rollback_replay_count
+               << " verification_closures=" << matrix.verification_closure_count
+               << " negative_cases=" << matrix.negative_case_count
+               << " parser_consumable_cases=" << matrix.parser_consumable_case_count
+               << " dry_run_adapter_available="
+               << (matrix.dry_run_adapter_available ? "yes" : "no")
+               << " rollback_replay_available="
+               << (matrix.rollback_replay_available ? "yes" : "no")
+               << " verification_closure_available="
+               << (matrix.verification_closure_available ? "yes" : "no")
+               << " negative_matrix_complete="
+               << (matrix.negative_matrix_complete ? "yes" : "no")
+               << " dry_run_executed=" << (matrix.dry_run_executed ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (matrix.parser_consumption_enabled ? "yes" : "no")
+               << " parser_admitted=" << (matrix.parser_admitted ? "yes" : "no")
+               << " generated_part_parsed="
+               << (matrix.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (matrix.generated_part_merged ? "yes" : "no")
+               << " sema_visible=" << (matrix.sema_visible ? "yes" : "no")
+               << " emit_expanded_available="
+               << (matrix.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (matrix.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (matrix.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (matrix.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (matrix.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (matrix.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (matrix.produced_user_generated_code ? "yes" : "no")
+               << " matrix_visible=" << (matrix.matrix_visible ? "yes" : "no")
+               << " query_reusable=" << (matrix.query_reusable ? "yes" : "no")
+               << " blocker=" << matrix.blocked_reason
+               << " dry_run_adapter_identity="
+               << query::debug_string(matrix.dry_run_adapter_identity)
+               << " rollback_replay_identity="
+               << query::debug_string(matrix.rollback_replay_identity)
+               << " verification_closure_identity="
+               << query::debug_string(matrix.verification_closure_identity)
+               << " negative_matrix_identity="
+               << query::debug_string(matrix.negative_matrix_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -9597,7 +10856,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M23C_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M24C_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     std::vector<base::usize> input_item_indices;
@@ -9631,6 +10890,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.builtin_derive_parser_consumption_admission_protocols.reserve(ast.items.size());
     result.builtin_derive_checkpoint_rollback_protocols.reserve(ast.items.size());
     result.builtin_derive_preconsumption_verification_closures.reserve(ast.items.size());
+    result.builtin_derive_controlled_dry_run_adapters.reserve(ast.items.size());
+    result.builtin_derive_dry_run_rollback_replays.reserve(ast.items.size());
+    result.builtin_derive_dry_run_negative_matrices.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -9814,6 +11076,21 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
                 result.builtin_derive_release_hardening_matrices[index],
                 result.builtin_derive_debug_dump_contracts[index],
                 result.builtin_derive_rollback_diagnostic_gates[index]));
+        result.builtin_derive_controlled_dry_run_adapters.push_back(
+            make_builtin_derive_controlled_dry_run_adapter(result.generated_parts[index],
+                result.builtin_derive_preconsumption_verification_closures[index],
+                result.builtin_derive_parser_consumption_admission_protocols[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index]));
+        result.builtin_derive_dry_run_rollback_replays.push_back(
+            make_builtin_derive_dry_run_rollback_replay(result.generated_parts[index],
+                result.builtin_derive_controlled_dry_run_adapters[index],
+                result.builtin_derive_checkpoint_rollback_protocols[index],
+                result.builtin_derive_rollback_diagnostic_gates[index]));
+        result.builtin_derive_dry_run_negative_matrices.push_back(
+            make_builtin_derive_dry_run_negative_matrix(result.generated_parts[index],
+                result.builtin_derive_controlled_dry_run_adapters[index],
+                result.builtin_derive_dry_run_rollback_replays[index],
+                result.builtin_derive_preconsumption_verification_closures[index]));
     }
 
     result.summary = summarize_early_item_expansion_counts(result);

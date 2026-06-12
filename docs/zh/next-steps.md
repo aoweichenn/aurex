@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21-M23 宏系统主线已开启，M23c builtin derive pre-consumption verification closure 已收口
+## 当前实现入口：M21-M24 宏系统主线已开启，M24c builtin derive dry-run negative matrix closure 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -159,10 +159,28 @@ result name 推进到 `M23c Builtin Derive Parser Pre-Consumption Verification C
 macro，不打开 external procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser
 consumption，不实现标准库或 runtime helper。
 
-下一步建议进入 M24 controlled builtin derive parser consumption dry-run：继续保持 no-parser-consumption /
-no-stdlib / no-runtime / no-user-defined-macro / no-external-procedural-macro，并先做 compiler-owned generated
-token buffer 的 dry-run parser adapter、失败回滚诊断设计 / rollback diagnostic replay 和 negative matrix。M24 不应
-直接进入用户自定义 macro、external procedural macro、标准库或 runtime helper。
+M24a-M24c 已完成 controlled builtin derive parser dry-run facts 准备：M24a 新增
+`BuiltinDeriveControlledParserDryRunAdapter` 和 `builtin_derive_controlled_dry_run_adapters`，固定
+`builtin_derive_controlled_parser_dry_run_adapter_v1`、
+`m24a-builtin-derive-controlled-parser-dry-run:<module>:<part>`、M23c/M23a/M23b identity 链接、token record /
+diagnostic anchor counts、`prerequisite_count=5` 和 dry-run execution blocker；M24b 新增
+`BuiltinDeriveDryRunRollbackDiagnosticReplay` 和 `builtin_derive_dry_run_rollback_replays`，固定
+`builtin_derive_dry_run_rollback_diagnostic_replay_v1`、
+`m24b-builtin-derive-dry-run-rollback-replay:<module>:<part>`、M24a/M23b/M22f identity 链接、planned replay /
+executed replay counts 和 rollback diagnostic replay execution blocker；M24c 新增
+`BuiltinDeriveDryRunNegativeMatrixClosure` 和 `builtin_derive_dry_run_negative_matrices`，固定
+`builtin_derive_dry_run_negative_matrix_closure_v1`、
+`m24c-builtin-derive-dry-run-negative-matrix:<module>:<part>`、M24a/M24b/M23c 可见性闭环、
+`negative_case_count=8`、`parser_consumable_case_count=0`，并把当前 result name 推进到
+`M24c Builtin Derive Dry-Run Negative Matrix Closure`。M24c 仍不执行 real parser dry-run、不执行用户自定义 macro、
+不打开 external procedural macro、不生成 source text、不 parse / merge generated module part、不打开 parser
+consumption，不实现标准库或 runtime helper。
+
+下一步建议进入 M25 controlled builtin derive parser dry-run sandbox / check-only：继续保持 no-parser-consumption /
+no-stdlib / no-runtime / no-user-defined-macro / no-external-procedural-macro，并只允许 compiler-owned token stream
+进入一个不可提交状态的 parser dry-run sandbox。M25 应先做 dry-run session boundary、token cursor snapshot、
+diagnostic replay shadow、parser state rollback proof、no-AST-mutation verifier 和 negative matrix，不应直接进入
+用户自定义 macro、external procedural macro、标准库或 runtime helper。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

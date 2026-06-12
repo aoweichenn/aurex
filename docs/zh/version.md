@@ -1,5 +1,72 @@
 # 版本文档
 
+## M24c Builtin Derive Dry-Run Negative Matrix Closure
+
+当前版本在 M23c builtin derive parser pre-consumption verification closure 之后，完成 M24a/M24b/M24c 三段
+controlled parser dry-run facts 收口。`EarlyItemExpansionResult` 的 result name 固定为
+`M24c Builtin Derive Dry-Run Negative Matrix Closure`。本阶段仍不执行 dry-run、不执行用户宏、不生成 source text、
+不让 parser 消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveControlledParserDryRunAdapter`。
+- 新增 `frontend::macro::BuiltinDeriveDryRunRollbackDiagnosticReplay`。
+- 新增 `frontend::macro::BuiltinDeriveDryRunNegativeMatrixClosure`。
+- 新增 `is_valid(const BuiltinDeriveControlledParserDryRunAdapter&)`。
+- 新增 `is_valid(const BuiltinDeriveDryRunRollbackDiagnosticReplay&)`。
+- 新增 `is_valid(const BuiltinDeriveDryRunNegativeMatrixClosure&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_controlled_dry_run_adapters`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_dry_run_rollback_replays`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_dry_run_negative_matrices`。
+- `EarlyItemExpansionSummary` 新增 builtin derive controlled dry-run adapter、dry-run rollback replay 和
+  dry-run negative matrix 计数。
+- M24a adapter 固定 `builtin_derive_controlled_parser_dry_run_adapter_v1`。
+- M24a adapter query name 固定
+  `m24a-builtin-derive-controlled-parser-dry-run:<module>:<part>`。
+- M24a adapter 绑定 M23c `verification_closure_identity`、M23a `admission_protocol_identity` 和 M23b
+  `checkpoint_protocol_identity`。
+- M24a adapter 记录 token record count、diagnostic anchor count 和 `prerequisite_count=5`。
+- M24b rollback replay 固定 `builtin_derive_dry_run_rollback_diagnostic_replay_v1`。
+- M24b rollback replay query name 固定
+  `m24b-builtin-derive-dry-run-rollback-replay:<module>:<part>`。
+- M24b rollback replay 绑定 M24a `dry_run_adapter_identity`、M23b `checkpoint_protocol_identity` 和 M22f
+  `rollback_gate_identity`。
+- M24b rollback replay 固定 diagnostic anchor、report entry、planned replay 和 executed replay counts。
+- M24c negative matrix 固定 `builtin_derive_dry_run_negative_matrix_closure_v1`。
+- M24c negative matrix query name 固定
+  `m24c-builtin-derive-dry-run-negative-matrix:<module>:<part>`。
+- M24c negative matrix 绑定 M24a `dry_run_adapter_identity`、M24b `replay_protocol_identity` 和 M23c
+  `verification_closure_identity`。
+- M24c negative matrix 固定 `negative_case_count=8` 和 `parser_consumable_case_count=0`。
+- validation 拒绝 M24 identity / query / count 漂移、上游 identity 串线、dry-run execution / replay execution /
+  parser admission / parser consumption 被打开、generated part parse / merge / sema-visible 被打开、standard
+  library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_controlled_dry_run_adapter`、
+  `builtin_derive_dry_run_rollback_replay` 和 `builtin_derive_dry_run_negative_matrix`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser dry-run execution。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+- rollback execution。
+
 ## M23c Builtin Derive Parser Pre-Consumption Verification Closure
 
 当前版本在 M22f builtin derive rollback diagnostic design gate 之后，完成 M23a/M23b/M23c 三段 parser

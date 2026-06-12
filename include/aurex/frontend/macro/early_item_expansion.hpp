@@ -805,6 +805,120 @@ struct BuiltinDeriveParserPreConsumptionVerificationClosure {
     bool query_reusable = true;
 };
 
+struct BuiltinDeriveControlledParserDryRunAdapter {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 verification_closure_identity;
+    query::StableFingerprint128 admission_protocol_identity;
+    query::StableFingerprint128 checkpoint_protocol_identity;
+    query::StableFingerprint128 dry_run_adapter_identity;
+    std::string adapter_policy;
+    std::string adapter_query_name;
+    std::string blocked_reason;
+    base::u64 token_record_count = 0;
+    base::u64 diagnostic_anchor_count = 0;
+    base::u64 prerequisite_count = 0;
+    bool verification_closure_available = true;
+    bool admission_protocol_available = true;
+    bool checkpoint_protocol_available = true;
+    bool compiler_owned_tokens_available = true;
+    bool diagnostic_replay_available = true;
+    bool dry_run_adapter_complete = true;
+    bool dry_run_executed = false;
+    bool parser_consumption_enabled = false;
+    bool parser_admitted = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool sema_visible = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool adapter_visible = true;
+    bool query_reusable = true;
+};
+
+struct BuiltinDeriveDryRunRollbackDiagnosticReplay {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 dry_run_adapter_identity;
+    query::StableFingerprint128 checkpoint_protocol_identity;
+    query::StableFingerprint128 rollback_gate_identity;
+    query::StableFingerprint128 replay_protocol_identity;
+    std::string replay_policy;
+    std::string replay_query_name;
+    std::string blocked_reason;
+    base::u64 diagnostic_anchor_count = 0;
+    base::u64 report_entry_count = 0;
+    base::u64 planned_replay_count = 0;
+    base::u64 executed_replay_count = 0;
+    bool dry_run_adapter_available = true;
+    bool checkpoint_protocol_available = true;
+    bool rollback_gate_available = true;
+    bool diagnostic_replay_plan_available = true;
+    bool replay_protocol_complete = true;
+    bool replay_execution_enabled = false;
+    bool dry_run_executed = false;
+    bool parser_consumption_enabled = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool sema_visible = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool replay_visible = true;
+    bool query_reusable = true;
+};
+
+struct BuiltinDeriveDryRunNegativeMatrixClosure {
+    syntax::ModuleId module;
+    base::u32 source_part_index = 0;
+    query::ModulePartKey attached_part;
+    query::ModulePartKey generated_part;
+    query::StableFingerprint128 dry_run_adapter_identity;
+    query::StableFingerprint128 rollback_replay_identity;
+    query::StableFingerprint128 verification_closure_identity;
+    query::StableFingerprint128 negative_matrix_identity;
+    std::string matrix_policy;
+    std::string matrix_query_name;
+    std::string blocked_reason;
+    base::u64 dry_run_adapter_count = 0;
+    base::u64 rollback_replay_count = 0;
+    base::u64 verification_closure_count = 0;
+    base::u64 negative_case_count = 0;
+    base::u64 parser_consumable_case_count = 0;
+    bool dry_run_adapter_available = true;
+    bool rollback_replay_available = true;
+    bool verification_closure_available = true;
+    bool negative_matrix_complete = true;
+    bool dry_run_executed = false;
+    bool parser_consumption_enabled = false;
+    bool parser_admitted = false;
+    bool generated_part_parsed = false;
+    bool generated_part_merged = false;
+    bool sema_visible = false;
+    bool emit_expanded_available = false;
+    bool debug_trace_available = false;
+    bool source_map_available = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool matrix_visible = true;
+    bool query_reusable = true;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -930,6 +1044,21 @@ struct EarlyItemExpansionSummary {
     base::u64 builtin_derive_preconsumption_verification_query_reusable_count = 0;
     base::u64 builtin_derive_preconsumption_verification_complete_count = 0;
     base::u64 builtin_derive_preconsumption_verification_parser_consumable_count = 0;
+    base::u64 builtin_derive_controlled_dry_run_adapter_count = 0;
+    base::u64 builtin_derive_controlled_dry_run_adapter_visible_count = 0;
+    base::u64 builtin_derive_controlled_dry_run_adapter_query_reusable_count = 0;
+    base::u64 builtin_derive_controlled_dry_run_adapter_complete_count = 0;
+    base::u64 builtin_derive_controlled_dry_run_adapter_executed_count = 0;
+    base::u64 builtin_derive_dry_run_rollback_replay_count = 0;
+    base::u64 builtin_derive_dry_run_rollback_replay_visible_count = 0;
+    base::u64 builtin_derive_dry_run_rollback_replay_query_reusable_count = 0;
+    base::u64 builtin_derive_dry_run_rollback_replay_complete_count = 0;
+    base::u64 builtin_derive_dry_run_rollback_replay_executed_count = 0;
+    base::u64 builtin_derive_dry_run_negative_matrix_count = 0;
+    base::u64 builtin_derive_dry_run_negative_matrix_visible_count = 0;
+    base::u64 builtin_derive_dry_run_negative_matrix_query_reusable_count = 0;
+    base::u64 builtin_derive_dry_run_negative_matrix_complete_count = 0;
+    base::u64 builtin_derive_dry_run_negative_matrix_parser_consumable_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -973,6 +1102,12 @@ struct EarlyItemExpansionResult {
         builtin_derive_checkpoint_rollback_protocols;
     std::vector<BuiltinDeriveParserPreConsumptionVerificationClosure>
         builtin_derive_preconsumption_verification_closures;
+    std::vector<BuiltinDeriveControlledParserDryRunAdapter>
+        builtin_derive_controlled_dry_run_adapters;
+    std::vector<BuiltinDeriveDryRunRollbackDiagnosticReplay>
+        builtin_derive_dry_run_rollback_replays;
+    std::vector<BuiltinDeriveDryRunNegativeMatrixClosure>
+        builtin_derive_dry_run_negative_matrices;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -1010,6 +1145,9 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const BuiltinDeriveParserConsumptionAdmissionProtocol& protocol) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveParserConsumptionCheckpointRollbackProtocol& protocol) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveParserPreConsumptionVerificationClosure& closure) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveControlledParserDryRunAdapter& adapter) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveDryRunRollbackDiagnosticReplay& replay) noexcept;
+[[nodiscard]] bool is_valid(const BuiltinDeriveDryRunNegativeMatrixClosure& matrix) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

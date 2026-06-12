@@ -76,6 +76,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m21g-generated-item-declared-names-stub-contract.md",
         "docs/zh/m21h-token-materialization-admission-stub-contract.md",
         "docs/zh/m21i-compiler-owned-generated-token-buffer-prototype.md",
+        "docs/zh/m21j-generated-token-parser-admission-gate.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -342,7 +343,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21i Compiler-Owned Generated Token Buffer Prototype**");
+        "docs/zh/README.md", "文档基线：**M21j Generated Token Parser Admission Gate**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -384,15 +385,23 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M21h Token Materialization Admission Stub Contract");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21i Compiler-Owned Generated Token Buffer Prototype");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21j Generated Token Parser Admission Gate");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21i Compiler-Owned Generated Token Buffer Prototype");
+        "阶段：M21j Generated Token Parser Admission Gate");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
+    expect_document_contains("docs/zh/progress.md", "GeneratedTokenParserAdmissionGateStub");
+    expect_document_contains("docs/zh/progress.md", "parser_admission_gates");
     expect_document_contains("docs/zh/progress.md", "TokenMaterializationAdmissionStub");
     expect_document_contains("docs/zh/progress.md", "GeneratedTokenBufferStub");
     expect_document_contains("docs/zh/progress.md", "GeneratedTokenRecord");
     expect_document_contains("docs/zh/progress.md", "token_plan_identity");
     expect_document_contains("docs/zh/progress.md", "token_buffer_identity");
     expect_document_contains("docs/zh/progress.md", "materialization_identity");
+    expect_document_contains("docs/zh/progress.md",
+        "compiler_owned_generated_token_parser_admission_gate_v1");
+    expect_document_contains("docs/zh/progress.md", "parser_admitted=false");
+    expect_document_contains("docs/zh/progress.md", "parse_config_fingerprint");
     expect_document_contains("docs/zh/progress.md",
         "compiler_owned_attached_item_token_materialization_admission_v1");
     expect_document_contains("docs/zh/progress.md", "compiler_owned_empty_token_stream");
@@ -435,6 +444,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21j Generated Token Parser Admission Gate");
+    expect_document_contains("docs/zh/version.md", "GeneratedTokenParserAdmissionGateStub");
+    expect_document_contains("docs/zh/version.md", "parse_gate_identity");
+    expect_document_contains("docs/zh/version.md",
+        "compiler_owned_generated_token_parser_admission_gate_v1");
+    expect_document_contains("docs/zh/version.md", "parser_admitted=false");
     expect_document_contains("docs/zh/version.md",
         "## M21i Compiler-Owned Generated Token Buffer Prototype");
     expect_document_contains("docs/zh/version.md", "TokenMaterializationAdmissionStub");
@@ -608,6 +624,30 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "macro.expand_items");
     expect_document_contains("docs/zh/m21i-compiler-owned-generated-token-buffer-prototype.md",
         "M21i 仍不生成用户代码");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "Aurex M21j Generated Token Parser Admission Gate");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "阶段：M21j Generated Token Parser Admission Gate");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "GeneratedTokenParserAdmissionGateStub");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "parser_admission_gates");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "compiler_owned_generated_token_parser_admission_gate_v1");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "parse_gate_identity");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "generated_buffer_identity");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "parse_config_fingerprint");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "token_records_available = true");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "parser_admitted = false");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "parser consumption of generated token buffers");
+    expect_document_contains("docs/zh/m21j-generated-token-parser-admission-gate.md",
+        "M21j 仍不生成用户代码");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

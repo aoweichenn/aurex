@@ -203,6 +203,20 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.generated_token_buffers.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::GeneratedTokenParserAdmissionGateStub* parser_admission_gate_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.parser_admission_gates.begin(),
+        result.parser_admission_gates.end(),
+        [&input](const frontend::macro::GeneratedTokenParserAdmissionGateStub& stub) {
+            return stub.item.value == input.item.value
+                && stub.module.value == input.module.value
+                && stub.attribute_index == input.attribute_index;
+        });
+    return found == result.parser_admission_gates.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -310,7 +324,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21i Compiler-Owned Generated Token Buffer Prototype");
+    EXPECT_EQ(result.name, "M21j Generated Token Parser Admission Gate");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -351,6 +365,11 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.compiler_owned_generated_token_record_count,
         config->attributes[1].token_tree.size() + EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT);
     EXPECT_EQ(result.summary.parser_visible_generated_token_count, 0U);
+    EXPECT_EQ(result.summary.parser_admission_gate_stub_count, 2U);
+    EXPECT_EQ(result.summary.compiler_owned_parser_admission_gate_count, 2U);
+    EXPECT_EQ(result.summary.token_record_available_gate_count, 1U);
+    EXPECT_EQ(result.summary.parser_blocked_token_buffer_count, 2U);
+    EXPECT_EQ(result.summary.parser_admitted_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -623,6 +642,67 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(derive_buffer->parser_consumable);
     EXPECT_FALSE(derive_buffer->produced_user_generated_code);
 
+    ASSERT_EQ(result.parser_admission_gates.size(), 2U);
+    const frontend::macro::GeneratedTokenParserAdmissionGateStub* const builder_gate =
+        parser_admission_gate_for_input(result, *builder);
+    ASSERT_NE(builder_gate, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_gate));
+    EXPECT_EQ(builder_gate->part_index, builder->part_index);
+    EXPECT_EQ(builder_gate->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_gate->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_gate->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_gate->token_plan_identity, builder_buffer->token_plan_identity);
+    EXPECT_EQ(builder_gate->token_buffer_identity, builder_buffer->token_buffer_identity);
+    EXPECT_EQ(builder_gate->materialization_identity, builder_buffer->materialization_identity);
+    EXPECT_EQ(builder_gate->source_map_identity, builder_buffer->source_map_identity);
+    EXPECT_EQ(builder_gate->hygiene_mark, builder_buffer->hygiene_mark);
+    EXPECT_EQ(builder_gate->generated_buffer_identity, result.generated_part_stubs.front().generated_buffer_identity);
+    EXPECT_EQ(builder_gate->parse_config_fingerprint, result.generated_part_stubs.front().parse_config_fingerprint);
+    EXPECT_GT(builder_gate->parse_gate_identity.byte_count, 0U);
+    EXPECT_EQ(builder_gate->token_stream_name, builder_buffer->token_stream_name);
+    EXPECT_EQ(builder_gate->parser_gate_policy,
+        "compiler_owned_generated_token_parser_admission_gate_v1");
+    expect_contains(builder_gate->blocker_reason,
+        "empty or non-derive generated token buffer parser admission remains blocked in M21j");
+    EXPECT_EQ(builder_gate->token_count, 0U);
+    EXPECT_TRUE(builder_gate->compiler_owned);
+    EXPECT_FALSE(builder_gate->token_buffer_materialized);
+    EXPECT_FALSE(builder_gate->token_records_available);
+    EXPECT_FALSE(builder_gate->parser_admitted);
+    EXPECT_FALSE(builder_gate->parse_ready);
+    EXPECT_FALSE(builder_gate->parser_consumable);
+    EXPECT_FALSE(builder_gate->generated_source_text);
+    EXPECT_FALSE(builder_gate->generated_part_parsed);
+    EXPECT_FALSE(builder_gate->generated_part_merged);
+    EXPECT_FALSE(builder_gate->sema_visible);
+    EXPECT_FALSE(builder_gate->produced_user_generated_code);
+
+    const frontend::macro::GeneratedTokenParserAdmissionGateStub* const derive_gate =
+        parser_admission_gate_for_input(result, *derive);
+    ASSERT_NE(derive_gate, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_gate));
+    EXPECT_EQ(derive_gate->token_plan_identity, derive_buffer->token_plan_identity);
+    EXPECT_EQ(derive_gate->token_buffer_identity, derive_buffer->token_buffer_identity);
+    EXPECT_EQ(derive_gate->materialization_identity, derive_buffer->materialization_identity);
+    EXPECT_EQ(derive_gate->source_map_identity, derive_buffer->source_map_identity);
+    EXPECT_EQ(derive_gate->hygiene_mark, derive_buffer->hygiene_mark);
+    EXPECT_EQ(derive_gate->token_stream_name, derive_buffer->token_stream_name);
+    expect_contains(derive_gate->blocker_reason,
+        "compiler-owned derive generated token buffer parser admission remains blocked in M21j");
+    EXPECT_EQ(derive_gate->token_count, derive_buffer->token_count);
+    EXPECT_TRUE(derive_gate->compiler_owned);
+    EXPECT_TRUE(derive_gate->token_buffer_materialized);
+    EXPECT_TRUE(derive_gate->token_records_available);
+    EXPECT_FALSE(derive_gate->parser_admitted);
+    EXPECT_FALSE(derive_gate->parse_ready);
+    EXPECT_FALSE(derive_gate->parser_consumable);
+    EXPECT_FALSE(derive_gate->generated_source_text);
+    EXPECT_FALSE(derive_gate->generated_part_parsed);
+    EXPECT_FALSE(derive_gate->generated_part_merged);
+    EXPECT_FALSE(derive_gate->sema_visible);
+    EXPECT_FALSE(derive_gate->produced_user_generated_code);
+    EXPECT_NE(builder_gate->parse_gate_identity, derive_gate->parse_gate_identity);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -657,7 +737,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21i Compiler-Owned Generated Token Buffer Prototype");
+    expect_contains(summary, "early_item_expansion name=M21j Generated Token Parser Admission Gate");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -688,6 +768,11 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "generated_token_records=7");
     expect_contains(summary, "compiler_owned_generated_token_records=7");
     expect_contains(summary, "parser_visible_generated_tokens=0");
+    expect_contains(summary, "parser_admission_gates=2");
+    expect_contains(summary, "compiler_owned_parser_admission_gates=2");
+    expect_contains(summary, "token_record_available_gates=1");
+    expect_contains(summary, "parser_blocked_token_buffers=2");
+    expect_contains(summary, "parser_admitted_token_buffers=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -770,6 +855,17 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "text=__aurex_builtin_derive_end");
     expect_contains(dump, "parser_visible=no");
     expect_contains(dump, "token_identity=");
+    expect_contains(dump, "generated_token_parser_admission_gate_stub #0");
+    expect_contains(dump, "policy=compiler_owned_generated_token_parser_admission_gate_v1");
+    expect_contains(dump, "token_buffer_materialized=no");
+    expect_contains(dump, "token_records_available=no");
+    expect_contains(dump, "parser_admitted=no");
+    expect_contains(dump, "generated_part_parsed=no");
+    expect_contains(dump, "generated_part_merged=no");
+    expect_contains(dump, "empty or non-derive generated token buffer parser admission remains blocked in M21j");
+    expect_contains(dump, "compiler-owned derive generated token buffer parser admission remains blocked in M21j");
+    expect_contains(dump, "generated_buffer_identity=");
+    expect_contains(dump, "parse_gate_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -813,6 +909,7 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
     ASSERT_EQ(result.declared_generated_names.size(), 2U);
     ASSERT_EQ(result.token_materialization_admissions.size(), 2U);
     ASSERT_EQ(result.generated_token_buffers.size(), 2U);
+    ASSERT_EQ(result.parser_admission_gates.size(), 2U);
 
     EXPECT_NE(result.inputs[0].item.value, result.inputs[1].item.value);
     EXPECT_EQ(result.inputs[0].attribute_index, 0U);
@@ -837,6 +934,12 @@ TEST(CoreUnit, EarlyItemExpansionGeneratedItemNamesIncludeItemIdentity)
         result.token_materialization_admissions[0].token_stream_name);
     EXPECT_EQ(result.generated_token_buffers[1].token_stream_name,
         result.token_materialization_admissions[1].token_stream_name);
+    EXPECT_EQ(result.parser_admission_gates[0].token_stream_name,
+        result.generated_token_buffers[0].token_stream_name);
+    EXPECT_EQ(result.parser_admission_gates[1].token_stream_name,
+        result.generated_token_buffers[1].token_stream_name);
+    EXPECT_NE(result.parser_admission_gates[0].parse_gate_identity,
+        result.parser_admission_gates[1].parse_gate_identity);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsNoopBoundaryDrift)
@@ -1717,6 +1820,159 @@ TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedTokenRecordDrift)
     EXPECT_NE(stale_record_fingerprint.fingerprint, baseline.fingerprint);
 }
 
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsParserAdmissionGateDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.parser_admission_gates.size(), 1U);
+    ASSERT_FALSE(baseline.generated_part_stubs.empty());
+
+    frontend::macro::EarlyItemExpansionResult missing_gate = baseline;
+    missing_gate.parser_admission_gates.clear();
+    refresh_expansion_result(missing_gate);
+    EXPECT_EQ(missing_gate.summary.parser_admission_gate_stub_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_gate));
+
+    frontend::macro::EarlyItemExpansionResult empty_parse_gate_identity = baseline;
+    empty_parse_gate_identity.parser_admission_gates.front().parse_gate_identity = {};
+    refresh_expansion_result(empty_parse_gate_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_parse_gate_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_parse_gate_identity = baseline;
+    wrong_parse_gate_identity.parser_admission_gates.front().parse_gate_identity =
+        query::stable_fingerprint("wrong parser gate identity");
+    refresh_expansion_result(wrong_parse_gate_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_parse_gate_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_generated_buffer_identity = baseline;
+    wrong_generated_buffer_identity.parser_admission_gates.front().generated_buffer_identity =
+        query::stable_fingerprint("wrong parser gate generated buffer identity");
+    refresh_expansion_result(wrong_generated_buffer_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_generated_buffer_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_parse_config = baseline;
+    wrong_parse_config.parser_admission_gates.front().parse_config_fingerprint =
+        query::stable_fingerprint("wrong parser gate parse config");
+    refresh_expansion_result(wrong_parse_config);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_parse_config));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_buffer = baseline;
+    wrong_token_buffer.parser_admission_gates.front().token_buffer_identity =
+        query::stable_fingerprint("wrong parser gate token buffer");
+    refresh_expansion_result(wrong_token_buffer);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_buffer));
+
+    frontend::macro::EarlyItemExpansionResult wrong_materialization = baseline;
+    wrong_materialization.parser_admission_gates.front().materialization_identity =
+        query::stable_fingerprint("wrong parser gate materialization");
+    refresh_expansion_result(wrong_materialization);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_materialization));
+
+    frontend::macro::EarlyItemExpansionResult wrong_source_map = baseline;
+    wrong_source_map.parser_admission_gates.front().source_map_identity =
+        query::stable_fingerprint("wrong parser gate source map");
+    refresh_expansion_result(wrong_source_map);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_source_map));
+
+    frontend::macro::EarlyItemExpansionResult wrong_hygiene = baseline;
+    wrong_hygiene.parser_admission_gates.front().hygiene_mark =
+        query::stable_fingerprint("wrong parser gate hygiene");
+    refresh_expansion_result(wrong_hygiene);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene));
+
+    frontend::macro::EarlyItemExpansionResult wrong_stream_name = baseline;
+    wrong_stream_name.parser_admission_gates.front().token_stream_name =
+        "m21h-token-stream:wrong-parser-gate";
+    refresh_expansion_result(wrong_stream_name);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_stream_name));
+
+    frontend::macro::EarlyItemExpansionResult wrong_policy = baseline;
+    wrong_policy.parser_admission_gates.front().parser_gate_policy = "wrong_parser_gate_policy";
+    refresh_expansion_result(wrong_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_blocker = baseline;
+    wrong_blocker.parser_admission_gates.front().blocker_reason = "wrong parser gate blocker";
+    refresh_expansion_result(wrong_blocker);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_blocker));
+
+    frontend::macro::EarlyItemExpansionResult not_compiler_owned = baseline;
+    not_compiler_owned.parser_admission_gates.front().compiler_owned = false;
+    refresh_expansion_result(not_compiler_owned);
+    EXPECT_EQ(not_compiler_owned.summary.compiler_owned_parser_admission_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(not_compiler_owned));
+
+    frontend::macro::EarlyItemExpansionResult missing_records_available = baseline;
+    missing_records_available.parser_admission_gates.front().token_records_available = false;
+    refresh_expansion_result(missing_records_available);
+    EXPECT_EQ(missing_records_available.summary.token_record_available_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_records_available));
+
+    frontend::macro::EarlyItemExpansionResult non_materialized = baseline;
+    non_materialized.parser_admission_gates.front().token_buffer_materialized = false;
+    refresh_expansion_result(non_materialized);
+    EXPECT_FALSE(frontend::macro::is_valid(non_materialized));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_count = baseline;
+    wrong_token_count.parser_admission_gates.front().token_count = 0U;
+    refresh_expansion_result(wrong_token_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_count));
+
+    frontend::macro::EarlyItemExpansionResult parser_admitted = baseline;
+    parser_admitted.parser_admission_gates.front().parser_admitted = true;
+    refresh_expansion_result(parser_admitted);
+    EXPECT_EQ(parser_admitted.summary.parser_blocked_token_buffer_count, 0U);
+    EXPECT_EQ(parser_admitted.summary.parser_admitted_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_admitted));
+
+    frontend::macro::EarlyItemExpansionResult parse_ready = baseline;
+    parse_ready.parser_admission_gates.front().parse_ready = true;
+    refresh_expansion_result(parse_ready);
+    EXPECT_EQ(parse_ready.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parse_ready));
+
+    frontend::macro::EarlyItemExpansionResult parser_consumable = baseline;
+    parser_consumable.parser_admission_gates.front().parser_consumable = true;
+    refresh_expansion_result(parser_consumable);
+    EXPECT_EQ(parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult generated_text = baseline;
+    generated_text.parser_admission_gates.front().generated_source_text = true;
+    refresh_expansion_result(generated_text);
+    EXPECT_EQ(generated_text.summary.generated_source_text_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_text));
+
+    frontend::macro::EarlyItemExpansionResult generated_part_parsed = baseline;
+    generated_part_parsed.parser_admission_gates.front().generated_part_parsed = true;
+    refresh_expansion_result(generated_part_parsed);
+    EXPECT_EQ(generated_part_parsed.summary.parsed_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_part_parsed));
+
+    frontend::macro::EarlyItemExpansionResult generated_part_merged = baseline;
+    generated_part_merged.parser_admission_gates.front().generated_part_merged = true;
+    refresh_expansion_result(generated_part_merged);
+    EXPECT_EQ(generated_part_merged.summary.merged_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(generated_part_merged));
+
+    frontend::macro::EarlyItemExpansionResult sema_visible = baseline;
+    sema_visible.parser_admission_gates.front().sema_visible = true;
+    refresh_expansion_result(sema_visible);
+    EXPECT_EQ(sema_visible.summary.sema_visible_generated_part_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(sema_visible));
+
+    frontend::macro::EarlyItemExpansionResult user_code = baseline;
+    user_code.parser_admission_gates.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code);
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksTokenMaterializationAdmissionContract)
 {
     constexpr std::string_view source =
@@ -1755,6 +2011,44 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksTokenMaterializationAdmissionC
     refresh_expansion_result(buffer_kind);
     EXPECT_NE(buffer_kind.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(buffer_kind));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionGateContract)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.parser_admission_gates.empty());
+
+    frontend::macro::EarlyItemExpansionResult parse_gate_identity = baseline;
+    parse_gate_identity.parser_admission_gates.front().parse_gate_identity =
+        query::stable_fingerprint("different parser gate identity");
+    refresh_expansion_result(parse_gate_identity);
+    EXPECT_NE(parse_gate_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(parse_gate_identity));
+
+    frontend::macro::EarlyItemExpansionResult parse_config = baseline;
+    parse_config.parser_admission_gates.front().parse_config_fingerprint =
+        query::stable_fingerprint("different parser gate parse config");
+    refresh_expansion_result(parse_config);
+    EXPECT_NE(parse_config.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(parse_config));
+
+    frontend::macro::EarlyItemExpansionResult policy = baseline;
+    policy.parser_admission_gates.front().parser_gate_policy = "different_parser_gate_policy";
+    refresh_expansion_result(policy);
+    EXPECT_NE(policy.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(policy));
+
+    frontend::macro::EarlyItemExpansionResult availability = baseline;
+    availability.parser_admission_gates.front().token_records_available = false;
+    refresh_expansion_result(availability);
+    EXPECT_NE(availability.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(availability));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

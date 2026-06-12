@@ -333,3 +333,6 @@ M21i 仍不实现：
 gate 和 generated module part parse admission gate 明确分开。M21j 应优先固定“什么条件下 generated token buffer
 才允许进入 parser”的结构化 guard、诊断和 dump，而不是直接打开 parser consumption。这样可以继续复用 M21e/M21f/M21g/M21h/M21i
 facts，并避免把 token prototype 误当成真实用户宏展开。
+
+该建议已由 [Aurex M21j Generated Token Parser Admission Gate](m21j-generated-token-parser-admission-gate.md)
+承接；M21i 文档保留为 token buffer prototype 的历史阶段说明。

@@ -1,9 +1,30 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21i Compiler-Owned Generated Token Buffer Prototype
+阶段：M21j Generated Token Parser Admission Gate
 
 ## 总体状态
+
+2026-06-12：M21j Generated Token Parser Admission Gate 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21i 已存在的 compiler-owned generated token buffer prototype
+和 token records 接到独立 parser admission gate。
+
+新增 `GeneratedTokenParserAdmissionGateStub`，并给 `EarlyItemExpansionResult` 增加 `parser_admission_gates`。
+每个 macro input 现在都有 deterministic parser admission gate，绑定 M21e `generated_buffer_identity`、
+`parse_config_fingerprint`、M21i `token_plan_identity`、`token_buffer_identity`、`materialization_identity`、
+`source_map_identity` 和 `hygiene_mark`。policy 固定为
+`compiler_owned_generated_token_parser_admission_gate_v1`。非 `derive` gate 记录
+`token_records_available=false`；`derive` gate 可以记录 `token_buffer_materialized=true` 和
+`token_records_available=true`，但仍固定 `parser_admitted=false`、`parse_ready=false`、
+`parser_consumable=false`、`generated_source_text=false`、`generated_part_parsed=false`、
+`generated_part_merged=false`、`sema_visible=false` 和 `produced_user_generated_code=false`。summary / dump /
+fingerprint / validation 会拒绝 parser-admitted token buffers、parse-ready / parser-consumable gates、generated
+part parsed / merged、sema-visible、produced user code，或任何 gate 与 input / generated part / parse config /
+token buffer / materialization / source-map / hygiene 不能一一重算的漂移。新增说明见
+[Aurex M21j Generated Token Parser Admission Gate](m21j-generated-token-parser-admission-gate.md)。
 
 2026-06-12：M21i Compiler-Owned Generated Token Buffer Prototype 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

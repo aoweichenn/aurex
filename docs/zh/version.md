@@ -1,5 +1,56 @@
 # 版本文档
 
+## M21j Generated Token Parser Admission Gate
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21i 的 compiler-owned generated token
+buffer prototype 扩展为独立 parser admission gate。该阶段仍不执行用户宏、不生成 source text、不让 parser
+消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或 runtime
+helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::GeneratedTokenParserAdmissionGateStub`。
+- 新增 `is_valid(const GeneratedTokenParserAdmissionGateStub&)`。
+- `EarlyItemExpansionResult` 新增 `parser_admission_gates`。
+- `EarlyItemExpansionSummary` 新增 parser admission gate、compiler-owned parser admission gate、token-record
+  available gate、parser-blocked token buffer 和 parser-admitted token buffer 计数。
+- 每个 macro input 都有一个 deterministic parser admission gate。
+- gate 固定 `parser_gate_policy = compiler_owned_generated_token_parser_admission_gate_v1`。
+- gate 固定 `parse_gate_identity`，并混入 input、generated part、M21e generated buffer identity、M21e parse
+  config、token plan、token buffer、materialization、source-map、hygiene、token stream、policy、blocker 和 token
+  count。
+- 非 `derive` input 的 gate 固定 `token_buffer_materialized=false`、`token_records_available=false`。
+- `derive` input 的 gate 可以记录 `token_buffer_materialized=true` 和 `token_records_available=true`。
+- 所有 gate 固定 `parser_admitted=false`、`parse_ready=false` 和 `parser_consumable=false`。
+- 所有 gate 固定 `generated_source_text=false`、`generated_part_parsed=false`、`generated_part_merged=false`、
+  `sema_visible=false` 和 `produced_user_generated_code=false`。
+- validation 要求 gate 与 input、generated part placeholder、M21e parse / merge stub、M21i token buffer、
+  source-map identity 和 hygiene mark 一一对应。
+- validation 拒绝 parser-admitted、parse-ready、parser-consumable、generated-source-text、parsed / merged
+  generated part、sema-visible 或 produced user code。
+- dump 会输出 `generated_token_parser_admission_gate_stub`、policy、token records availability、parser-admitted
+  state、parse config、generated buffer identity 和 parse gate identity。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21i Compiler-Owned Generated Token Buffer Prototype
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21h 的 compiler-owned token

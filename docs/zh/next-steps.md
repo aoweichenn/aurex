@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21i compiler-owned generated token buffer prototype 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21j generated token parser admission gate 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -59,10 +59,19 @@ input 现在有 `compiler_owned_builtin_derive_token_stream_prototype`、`materi
 buffer 被 parser 消费、不 parse / merge generated module part、不执行 external procedural macro、不实现 typed
 expression macro、不引入标准库，也不生成用户代码。
 
-下一步建议继续 M21j：在保持 parser-blocked / no user-code 的前提下，把 compiler-owned token buffer admission
-gate 和 generated module part parse admission gate 明确分开，固定“什么条件下 generated token buffer 才允许进入
-parser”的结构化 guard、diagnostic 和 dump。M21j 应继续消费 M21e/M21f/M21g/M21h/M21i facts，不应直接打开
-external procedural macro、标准库、runtime helper 或真实用户代码生成。
+M21j 已把 generated token buffer parser admission gate 固定到同一 `macro.expand_items` boundary：每个 macro
+input 都有 `GeneratedTokenParserAdmissionGateStub`，并绑定 M21e `generated_buffer_identity` /
+`parse_config_fingerprint`、M21i `token_plan_identity` / `token_buffer_identity` /
+`materialization_identity`、source-map identity、hygiene mark 和 token stream name。policy 固定为
+`compiler_owned_generated_token_parser_admission_gate_v1`。`derive` gate 可以记录
+`token_buffer_materialized=true` 和 `token_records_available=true`，但所有 gate 仍固定
+`parser_admitted=false`、`parse_ready=false`、`parser_consumable=false`、`generated_part_parsed=false`、
+`generated_part_merged=false`、`sema_visible=false` 和 `produced_user_generated_code=false`。
+
+下一步建议继续 M21k：仍保持 parser-blocked / no user-code，不直接打开 parser consumption，而是把 parser
+admission diagnostic / dump projection 做成稳定调试面。M21k 应区分 token buffer admission blocker 和 generated
+module part parse blocker，固定 source anchor、blocker category、gate identity 和 future `--emit-expanded`
+projection，同时继续不实现 external procedural macro、标准库、runtime helper 或真实用户代码生成。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

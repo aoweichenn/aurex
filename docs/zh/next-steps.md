@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21/M22 宏系统主线已开启，M22c builtin derive parser release gate 已收口
+## 当前实现入口：M21/M22 宏系统主线已开启，M22f builtin derive rollback diagnostic design gate 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -116,7 +116,7 @@ contract gate、blocked contract gate 和 parser-consumable contract gate counts
 procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser consumption，不实现
 标准库或 runtime helper。
 
-M22a-M22c 已完成 builtin derive parser release gate 准备：M22a 新增 `BuiltinDeriveExpansionAdmissionGate` 和
+M22a-M22f 已完成 builtin derive parser release gate / release hardening 准备：M22a 新增 `BuiltinDeriveExpansionAdmissionGate` 和
 `builtin_derive_expansion_admissions`，固定 `builtin_derive_expansion_admission_gate_v1`、`admission_identity`、
 `m22a-builtin-derive-admission:<module>:<part>:<item>:<attr>:<name>` query name、derive/non-derive admission kind
 和 capability candidate 计数；M22b 新增 `BuiltinDeriveSemanticExpansionPlan` 和
@@ -127,13 +127,24 @@ M22a-M22c 已完成 builtin derive parser release gate 准备：M22a 新增 `Bui
 M22a/M22b，绑定 M21n `contract_identity` 与 M21o `closure_identity`，固定
 `builtin_derive_parser_consumption_release_gate_v1`、`m22c-builtin-derive-parser-release:<module>:<part>`、
 rollback diagnostics/debug trace/source-map/hygiene prerequisites，并把当前 result name 推进到
-`M22c Builtin Derive Parser Consumption Release Gate`。M22c 仍不执行用户自定义 macro，不打开 external procedural
-macro，不生成 source text，不 parse / merge generated module part，不打开 parser consumption，不实现标准库或
-runtime helper。
+`M22c Builtin Derive Parser Consumption Release Gate`；M22d 新增 `BuiltinDeriveReleaseHardeningMatrix` 和
+`builtin_derive_release_hardening_matrices`，固定
+`builtin_derive_release_hardening_matrix_v1`、`m22d-builtin-derive-release-hardening:<module>:<part>`、part-local /
+cross-part totals 和 multi-item negative matrix；M22e 新增 `BuiltinDeriveDebugDumpStabilityContract` 和
+`builtin_derive_debug_dump_contracts`，固定
+`builtin_derive_debug_dump_stability_contract_v1`、`m22e-builtin-derive-debug-dump:<module>:<part>`、stable ordering、
+identity projection、summary projection 和 drift-debuggable contract；M22f 新增
+`BuiltinDeriveRollbackDiagnosticDesignGate` 和 `builtin_derive_rollback_diagnostic_gates`，固定
+`builtin_derive_rollback_diagnostic_design_gate_v1`、
+`m22f-builtin-derive-rollback-diagnostic:<module>:<part>`、M21n/M22c/M22d/M22e identity 链接和 diagnostic/report
+totals，并把当前 result name 推进到 `M22f Builtin Derive Rollback Diagnostic Design Gate`。M22f 仍不执行用户自定义
+macro，不打开 external procedural macro，不生成 source text，不 parse / merge generated module part，不打开 parser
+consumption，不实现标准库或 runtime helper。
 
-下一步建议进入 M22d/M23 之前的 release-hardening 小步：保持 no-stdlib / no-runtime / no-parser-consumption，先补
-builtin derive parser release gate 的跨 part / 多 item negative matrix、debug dump 稳定性和后续打开 parser
-consumption 所需的失败回滚诊断设计；不要直接进入用户自定义宏或 external procedural macro。
+下一步建议进入 M23 builtin derive parser consumption admission design：继续保持 no-stdlib / no-runtime /
+no-user-defined-macro / no-parser-consumption，先把“如何从 M22f design gate 进入受控 parser consumption”的
+admit/rollback/checkpoint 协议、失败回滚诊断设计和负例矩阵落成 facts；不要直接进入用户自定义 macro 或 external
+procedural macro。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

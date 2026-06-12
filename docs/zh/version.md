@@ -1,5 +1,73 @@
 # 版本文档
 
+## M22f Builtin Derive Rollback Diagnostic Design Gate
+
+当前版本在 M22c builtin derive parser release gate 之后，完成 M22d/M22e/M22f 三段 release-hardening
+收口。`EarlyItemExpansionResult` 的 result name 固定为
+`M22f Builtin Derive Rollback Diagnostic Design Gate`。本阶段仍不执行用户宏、不生成 source text、不让 parser
+消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::BuiltinDeriveReleaseHardeningMatrix`。
+- 新增 `frontend::macro::BuiltinDeriveDebugDumpStabilityContract`。
+- 新增 `frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate`。
+- 新增 `is_valid(const BuiltinDeriveReleaseHardeningMatrix&)`。
+- 新增 `is_valid(const BuiltinDeriveDebugDumpStabilityContract&)`。
+- 新增 `is_valid(const BuiltinDeriveRollbackDiagnosticDesignGate&)`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_release_hardening_matrices`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_debug_dump_contracts`。
+- `EarlyItemExpansionResult` 新增 `builtin_derive_rollback_diagnostic_gates`。
+- `EarlyItemExpansionSummary` 新增 builtin derive release hardening、debug dump contract 和 rollback diagnostic
+  design gate 计数。
+- M22d hardening matrix 固定 `builtin_derive_release_hardening_matrix_v1`。
+- M22d hardening query name 固定 `m22d-builtin-derive-release-hardening:<module>:<part>`。
+- M22d hardening matrix 绑定 M22c `release_gate_identity`、`admission_group_identity` 和
+  `semantic_plan_group_identity`。
+- M22d hardening matrix 记录 part-local admission / derive admission / semantic plan / release gate counts、
+  global admission / semantic plan / generated part totals 和 cross-part admission / semantic plan totals。
+- M22e debug dump contract 固定 `builtin_derive_debug_dump_stability_contract_v1`。
+- M22e debug dump query name 固定 `m22e-builtin-derive-debug-dump:<module>:<part>`。
+- M22e debug dump contract 绑定 M22c `release_gate_identity` 和 M22d `hardening_matrix_identity`。
+- M22e debug dump contract 固定 `dump_section_count=4`、stable ordering、identity projection、summary projection、
+  drift-debuggable 和 complete contract。
+- M22f rollback diagnostic design gate 固定 `builtin_derive_rollback_diagnostic_design_gate_v1`。
+- M22f rollback diagnostic query name 固定 `m22f-builtin-derive-rollback-diagnostic:<module>:<part>`。
+- M22f rollback diagnostic design gate 绑定 M21n `contract_identity`、M22c `release_gate_identity`、M22d
+  `hardening_matrix_identity` 和 M22e `debug_dump_contract_identity`。
+- M22f rollback diagnostic design gate 记录 diagnostic projection、diagnostic report entry、blocked diagnostic、
+  derive diagnostic、empty diagnostic 和 parser consumption contract counts。
+- M22f rollback diagnostic design gate 固定 source anchor、token-tree anchor、diagnostic grouping、debug dump
+  contract 和 release rollback plan prerequisites 为 available/complete。
+- validation 拒绝 M22d/M22e/M22f identity 漂移、part-local/cross-part totals 漂移、debug dump stability 漂移、
+  rollback diagnostic prerequisites 漂移、parser consumption / rollback execution 被打开、
+  standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `builtin_derive_release_hardening_matrix`、
+  `builtin_derive_debug_dump_stability_contract` 和
+  `builtin_derive_rollback_diagnostic_design_gate`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+- rollback execution。
+
 ## M22c Builtin Derive Parser Consumption Release Gate
 
 当前版本在 M21o 宏展开边界 closure 之后，完成 M22a/M22b/M22c 三段 builtin derive parser consumption

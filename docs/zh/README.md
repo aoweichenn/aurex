@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M22c Builtin Derive Parser Consumption Release Gate**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M22f Builtin Derive Rollback Diagnostic Design Gate**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -119,9 +119,19 @@ generated module part parse/merge、AST mutation、emit-expanded、debug/source-
 `builtin_derive_parser_release_gates`，按 generated part 汇总 admission/semantic plan，固定
 `builtin_derive_parser_consumption_release_gate_v1`、`m22c-builtin-derive-parser-release:<module>:<part>`、
 rollback diagnostics/debug trace/source-map/hygiene prerequisites，并把 result name 推进为
-`M22c Builtin Derive Parser Consumption Release Gate`。M22a-M22c 仍保持 parser consumption、generated source text、
-generated module part parse/merge、AST mutation、emit-expanded、debug/source-map projection、标准库、runtime helper、
-external procedural macro 和 macro-generated user code 全部关闭。
+`M22c Builtin Derive Parser Consumption Release Gate`。M22d 已新增
+`BuiltinDeriveReleaseHardeningMatrix` 和 `builtin_derive_release_hardening_matrices`，固定
+`builtin_derive_release_hardening_matrix_v1`、`m22d-builtin-derive-release-hardening:<module>:<part>`、part-local /
+cross-part admission/semantic-plan totals、multi-item negative matrix 和 release-blocked 状态；M22e 已新增
+`BuiltinDeriveDebugDumpStabilityContract` 和 `builtin_derive_debug_dump_contracts`，固定
+`builtin_derive_debug_dump_stability_contract_v1`、`m22e-builtin-derive-debug-dump:<module>:<part>`、dump section
+count、stable ordering、identity projection、summary projection 和 drift-debuggable contract；M22f 已新增
+`BuiltinDeriveRollbackDiagnosticDesignGate` 和 `builtin_derive_rollback_diagnostic_gates`，固定
+`builtin_derive_rollback_diagnostic_design_gate_v1`、`m22f-builtin-derive-rollback-diagnostic:<module>:<part>`、
+M21n/M22c/M22d/M22e identity 链接、diagnostic/report totals、source/token-tree anchor prerequisite 和 design-only
+rollback gate，并把 result name 推进为 `M22f Builtin Derive Rollback Diagnostic Design Gate`。M22a-M22f 仍保持
+parser consumption、generated source text、generated module part parse/merge、AST mutation、emit-expanded、
+debug/source-map projection、标准库、runtime helper、external procedural macro 和 macro-generated user code 全部关闭。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -198,6 +208,9 @@ external procedural macro 和 macro-generated user code 全部关闭。
 - [Aurex M22a Builtin Derive Expansion Admission Gate](m22a-builtin-derive-expansion-admission-gate.md)
 - [Aurex M22b Builtin Derive Semantic Expansion Plan](m22b-builtin-derive-semantic-expansion-plan.md)
 - [Aurex M22c Builtin Derive Parser Consumption Release Gate](m22c-builtin-derive-parser-consumption-release-gate.md)
+- [Aurex M22d Builtin Derive Release Hardening Matrix](m22d-builtin-derive-release-hardening-matrix.md)
+- [Aurex M22e Builtin Derive Debug Dump Stability Contract](m22e-builtin-derive-debug-dump-stability-contract.md)
+- [Aurex M22f Builtin Derive Rollback Diagnostic Design Gate](m22f-builtin-derive-rollback-diagnostic-design-gate.md)
 - [Aurex M7 Origin/Loan/Lifetime 设计三轮评审](../review/aurex_m7_design_three_round_review.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

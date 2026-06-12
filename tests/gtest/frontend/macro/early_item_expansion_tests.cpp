@@ -354,6 +354,48 @@ builtin_derive_parser_release_gate_for_part(
     return found == result.builtin_derive_parser_release_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::BuiltinDeriveReleaseHardeningMatrix*
+builtin_derive_release_hardening_matrix_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_release_hardening_matrices.begin(),
+        result.builtin_derive_release_hardening_matrices.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveReleaseHardeningMatrix& matrix) {
+            return matrix.module.value == generated_part.module.value
+                && matrix.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_release_hardening_matrices.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveDebugDumpStabilityContract*
+builtin_derive_debug_dump_contract_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_debug_dump_contracts.begin(),
+        result.builtin_derive_debug_dump_contracts.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveDebugDumpStabilityContract& contract) {
+            return contract.module.value == generated_part.module.value
+                && contract.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_debug_dump_contracts.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate*
+builtin_derive_rollback_diagnostic_gate_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.builtin_derive_rollback_diagnostic_gates.begin(),
+        result.builtin_derive_rollback_diagnostic_gates.end(),
+        [&generated_part](const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate& gate) {
+            return gate.module.value == generated_part.module.value
+                && gate.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.builtin_derive_rollback_diagnostic_gates.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -461,7 +503,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M22c Builtin Derive Parser Consumption Release Gate");
+    EXPECT_EQ(result.name, "M22f Builtin Derive Rollback Diagnostic Design Gate");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -560,6 +602,21 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.builtin_derive_parser_release_visible_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_parser_release_query_reusable_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_parser_release_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_matrix_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_negative_matrix_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_gate_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_visible_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_design_complete_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_parser_consumable_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -839,6 +896,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 2U);
     ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 2U);
     ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_release_hardening_matrices.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_debug_dump_contracts.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_rollback_diagnostic_gates.size(), 1U);
     ASSERT_EQ(result.parser_readiness_preflight_entries.size(), 2U);
     ASSERT_EQ(result.parser_consumption_contract_gates.size(), 1U);
     ASSERT_EQ(result.macro_boundary_closure_reports.size(), 1U);
@@ -1335,6 +1395,120 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_TRUE(release_gate->release_visible);
     EXPECT_TRUE(release_gate->query_reusable);
 
+    const frontend::macro::BuiltinDeriveReleaseHardeningMatrix* const hardening_matrix =
+        builtin_derive_release_hardening_matrix_for_part(result, generated);
+    ASSERT_NE(hardening_matrix, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*hardening_matrix));
+    EXPECT_EQ(hardening_matrix->module.value, generated.module.value);
+    EXPECT_EQ(hardening_matrix->source_part_index, generated.source_part_index);
+    EXPECT_EQ(hardening_matrix->attached_part, generated.source_part);
+    EXPECT_EQ(hardening_matrix->generated_part, generated.generated_part);
+    EXPECT_EQ(hardening_matrix->release_gate_identity, release_gate->release_gate_identity);
+    EXPECT_EQ(hardening_matrix->admission_group_identity, release_gate->admission_group_identity);
+    EXPECT_EQ(hardening_matrix->semantic_plan_group_identity, release_gate->semantic_plan_group_identity);
+    EXPECT_GT(hardening_matrix->hardening_matrix_identity.byte_count, 0U);
+    EXPECT_EQ(hardening_matrix->hardening_policy, "builtin_derive_release_hardening_matrix_v1");
+    EXPECT_EQ(hardening_matrix->hardening_query_name,
+        "m22d-builtin-derive-release-hardening:0:0");
+    expect_contains(hardening_matrix->blocked_reason,
+        "builtin derive release hardening matrix keeps parser consumption blocked in M22d");
+    EXPECT_EQ(hardening_matrix->part_local_admission_count, 2U);
+    EXPECT_EQ(hardening_matrix->part_local_derive_admission_count, 1U);
+    EXPECT_EQ(hardening_matrix->part_local_semantic_plan_count, 2U);
+    EXPECT_EQ(hardening_matrix->part_local_release_gate_count, 1U);
+    EXPECT_EQ(hardening_matrix->global_admission_count, 2U);
+    EXPECT_EQ(hardening_matrix->global_semantic_plan_count, 2U);
+    EXPECT_EQ(hardening_matrix->global_generated_part_count, 1U);
+    EXPECT_EQ(hardening_matrix->cross_part_admission_count, 0U);
+    EXPECT_EQ(hardening_matrix->cross_part_semantic_plan_count, 0U);
+    EXPECT_TRUE(hardening_matrix->part_locality_preserved);
+    EXPECT_TRUE(hardening_matrix->multi_item_matrix_available);
+    EXPECT_TRUE(hardening_matrix->negative_matrix_complete);
+    EXPECT_TRUE(hardening_matrix->release_remains_blocked);
+    EXPECT_FALSE(hardening_matrix->parser_consumption_enabled);
+    EXPECT_FALSE(hardening_matrix->generated_part_parsed);
+    EXPECT_FALSE(hardening_matrix->generated_part_merged);
+    EXPECT_FALSE(hardening_matrix->emit_expanded_available);
+    EXPECT_FALSE(hardening_matrix->debug_trace_available);
+    EXPECT_FALSE(hardening_matrix->source_map_available);
+    EXPECT_FALSE(hardening_matrix->standard_library_required);
+    EXPECT_FALSE(hardening_matrix->runtime_required);
+    EXPECT_FALSE(hardening_matrix->external_process_required);
+    EXPECT_FALSE(hardening_matrix->produced_user_generated_code);
+    EXPECT_TRUE(hardening_matrix->matrix_visible);
+    EXPECT_TRUE(hardening_matrix->query_reusable);
+
+    const frontend::macro::BuiltinDeriveDebugDumpStabilityContract* const debug_contract =
+        builtin_derive_debug_dump_contract_for_part(result, generated);
+    ASSERT_NE(debug_contract, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*debug_contract));
+    EXPECT_EQ(debug_contract->release_gate_identity, release_gate->release_gate_identity);
+    EXPECT_EQ(debug_contract->hardening_matrix_identity, hardening_matrix->hardening_matrix_identity);
+    EXPECT_GT(debug_contract->debug_dump_contract_identity.byte_count, 0U);
+    EXPECT_EQ(debug_contract->debug_dump_policy,
+        "builtin_derive_debug_dump_stability_contract_v1");
+    EXPECT_EQ(debug_contract->debug_dump_query_name,
+        "m22e-builtin-derive-debug-dump:0:0");
+    expect_contains(debug_contract->blocked_reason,
+        "builtin derive debug dump stability remains facts-only and parser-blocked in M22e");
+    EXPECT_EQ(debug_contract->dump_section_count, 4U);
+    EXPECT_TRUE(debug_contract->stable_ordering_available);
+    EXPECT_TRUE(debug_contract->identity_projection_available);
+    EXPECT_TRUE(debug_contract->summary_projection_available);
+    EXPECT_TRUE(debug_contract->drift_debuggable);
+    EXPECT_TRUE(debug_contract->debug_dump_contract_complete);
+    EXPECT_FALSE(debug_contract->emit_expanded_available);
+    EXPECT_FALSE(debug_contract->debug_trace_available);
+    EXPECT_FALSE(debug_contract->source_map_available);
+    EXPECT_FALSE(debug_contract->parser_consumption_enabled);
+    EXPECT_FALSE(debug_contract->standard_library_required);
+    EXPECT_FALSE(debug_contract->runtime_required);
+    EXPECT_FALSE(debug_contract->external_process_required);
+    EXPECT_FALSE(debug_contract->produced_user_generated_code);
+    EXPECT_TRUE(debug_contract->contract_visible);
+    EXPECT_TRUE(debug_contract->query_reusable);
+
+    const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate* const rollback_gate =
+        builtin_derive_rollback_diagnostic_gate_for_part(result, generated);
+    ASSERT_NE(rollback_gate, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*rollback_gate));
+    EXPECT_EQ(rollback_gate->parser_consumption_contract_identity, contract->contract_identity);
+    EXPECT_EQ(rollback_gate->release_gate_identity, release_gate->release_gate_identity);
+    EXPECT_EQ(rollback_gate->hardening_matrix_identity, hardening_matrix->hardening_matrix_identity);
+    EXPECT_EQ(rollback_gate->debug_dump_contract_identity, debug_contract->debug_dump_contract_identity);
+    EXPECT_GT(rollback_gate->rollback_gate_identity.byte_count, 0U);
+    EXPECT_EQ(rollback_gate->rollback_policy,
+        "builtin_derive_rollback_diagnostic_design_gate_v1");
+    EXPECT_EQ(rollback_gate->rollback_query_name,
+        "m22f-builtin-derive-rollback-diagnostic:0:0");
+    expect_contains(rollback_gate->blocked_reason,
+        "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f");
+    EXPECT_EQ(rollback_gate->diagnostic_projection_count, 2U);
+    EXPECT_EQ(rollback_gate->diagnostic_report_entry_count, 2U);
+    EXPECT_EQ(rollback_gate->blocked_diagnostic_count, 2U);
+    EXPECT_EQ(rollback_gate->derive_diagnostic_count, 1U);
+    EXPECT_EQ(rollback_gate->empty_diagnostic_count, 1U);
+    EXPECT_EQ(rollback_gate->parser_consumption_contract_count, 1U);
+    EXPECT_TRUE(rollback_gate->rollback_diagnostic_design_available);
+    EXPECT_TRUE(rollback_gate->diagnostic_grouping_available);
+    EXPECT_TRUE(rollback_gate->source_anchor_available);
+    EXPECT_TRUE(rollback_gate->token_tree_anchor_available);
+    EXPECT_TRUE(rollback_gate->debug_dump_contract_available);
+    EXPECT_TRUE(rollback_gate->release_rollback_plan_complete);
+    EXPECT_FALSE(rollback_gate->rollback_execution_enabled);
+    EXPECT_FALSE(rollback_gate->parser_consumption_enabled);
+    EXPECT_FALSE(rollback_gate->generated_part_parsed);
+    EXPECT_FALSE(rollback_gate->generated_part_merged);
+    EXPECT_FALSE(rollback_gate->emit_expanded_available);
+    EXPECT_FALSE(rollback_gate->debug_trace_available);
+    EXPECT_FALSE(rollback_gate->source_map_available);
+    EXPECT_FALSE(rollback_gate->standard_library_required);
+    EXPECT_FALSE(rollback_gate->runtime_required);
+    EXPECT_FALSE(rollback_gate->external_process_required);
+    EXPECT_FALSE(rollback_gate->produced_user_generated_code);
+    EXPECT_TRUE(rollback_gate->rollback_gate_visible);
+    EXPECT_TRUE(rollback_gate->query_reusable);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -1369,7 +1543,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M22c Builtin Derive Parser Consumption Release Gate");
+    expect_contains(summary, "early_item_expansion name=M22f Builtin Derive Rollback Diagnostic Design Gate");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -1458,6 +1632,21 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "builtin_derive_parser_release_visible=1");
     expect_contains(summary, "builtin_derive_parser_release_query_reusable=1");
     expect_contains(summary, "builtin_derive_parser_release_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_release_hardening_matrices=1");
+    expect_contains(summary, "builtin_derive_release_hardening_visible=1");
+    expect_contains(summary, "builtin_derive_release_hardening_query_reusable=1");
+    expect_contains(summary, "builtin_derive_release_hardening_negative_matrix_complete=1");
+    expect_contains(summary, "builtin_derive_release_hardening_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_debug_dump_contracts=1");
+    expect_contains(summary, "builtin_derive_debug_dump_visible=1");
+    expect_contains(summary, "builtin_derive_debug_dump_query_reusable=1");
+    expect_contains(summary, "builtin_derive_debug_dump_complete=1");
+    expect_contains(summary, "builtin_derive_debug_dump_parser_consumable=0");
+    expect_contains(summary, "builtin_derive_rollback_diagnostic_gates=1");
+    expect_contains(summary, "builtin_derive_rollback_diagnostic_visible=1");
+    expect_contains(summary, "builtin_derive_rollback_diagnostic_query_reusable=1");
+    expect_contains(summary, "builtin_derive_rollback_diagnostic_design_complete=1");
+    expect_contains(summary, "builtin_derive_rollback_diagnostic_parser_consumable=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -1651,6 +1840,35 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "rollback_diagnostics_available=yes");
     expect_contains(dump, "builtin derive parser consumption release remains blocked in M22c");
     expect_contains(dump, "release_gate_identity=");
+    expect_contains(dump, "builtin_derive_release_hardening_matrix #0");
+    expect_contains(dump, "policy=builtin_derive_release_hardening_matrix_v1");
+    expect_contains(dump, "query=m22d-builtin-derive-release-hardening:0:0");
+    expect_contains(dump, "part_local_admissions=2");
+    expect_contains(dump, "global_admissions=2");
+    expect_contains(dump, "cross_part_admissions=0");
+    expect_contains(dump, "negative_matrix_complete=yes");
+    expect_contains(dump, "release_remains_blocked=yes");
+    expect_contains(dump, "builtin derive release hardening matrix keeps parser consumption blocked in M22d");
+    expect_contains(dump, "hardening_matrix_identity=");
+    expect_contains(dump, "builtin_derive_debug_dump_stability_contract #0");
+    expect_contains(dump, "policy=builtin_derive_debug_dump_stability_contract_v1");
+    expect_contains(dump, "query=m22e-builtin-derive-debug-dump:0:0");
+    expect_contains(dump, "dump_sections=4");
+    expect_contains(dump, "stable_ordering_available=yes");
+    expect_contains(dump, "identity_projection_available=yes");
+    expect_contains(dump, "debug_dump_contract_complete=yes");
+    expect_contains(dump, "builtin derive debug dump stability remains facts-only and parser-blocked in M22e");
+    expect_contains(dump, "debug_dump_contract_identity=");
+    expect_contains(dump, "builtin_derive_rollback_diagnostic_design_gate #0");
+    expect_contains(dump, "policy=builtin_derive_rollback_diagnostic_design_gate_v1");
+    expect_contains(dump, "query=m22f-builtin-derive-rollback-diagnostic:0:0");
+    expect_contains(dump, "diagnostic_projections=2");
+    expect_contains(dump, "blocked_diagnostics=2");
+    expect_contains(dump, "derive_diagnostics=1");
+    expect_contains(dump, "empty_diagnostics=1");
+    expect_contains(dump, "rollback_execution_enabled=no");
+    expect_contains(dump, "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f");
+    expect_contains(dump, "rollback_gate_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -1767,6 +1985,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 1U);
     ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 1U);
     ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_release_hardening_matrices.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_debug_dump_contracts.size(), 1U);
+    ASSERT_EQ(result.builtin_derive_rollback_diagnostic_gates.size(), 1U);
 
     const frontend::macro::EarlyItemMacroInput& input = result.inputs.front();
     EXPECT_EQ(input.attribute_name, "derive");
@@ -1807,11 +2028,37 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     EXPECT_TRUE(release_gate.rollback_diagnostics_available);
     EXPECT_FALSE(release_gate.parser_consumption_enabled);
 
+    const frontend::macro::BuiltinDeriveReleaseHardeningMatrix& matrix =
+        result.builtin_derive_release_hardening_matrices.front();
+    EXPECT_EQ(matrix.part_local_admission_count, 1U);
+    EXPECT_EQ(matrix.part_local_derive_admission_count, 1U);
+    EXPECT_EQ(matrix.global_admission_count, 1U);
+    EXPECT_EQ(matrix.cross_part_admission_count, 0U);
+    EXPECT_TRUE(matrix.negative_matrix_complete);
+    EXPECT_FALSE(matrix.parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveDebugDumpStabilityContract& debug_contract =
+        result.builtin_derive_debug_dump_contracts.front();
+    EXPECT_EQ(debug_contract.dump_section_count, 4U);
+    EXPECT_TRUE(debug_contract.debug_dump_contract_complete);
+    EXPECT_FALSE(debug_contract.parser_consumption_enabled);
+
+    const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate& rollback_gate =
+        result.builtin_derive_rollback_diagnostic_gates.front();
+    EXPECT_EQ(rollback_gate.diagnostic_projection_count, 1U);
+    EXPECT_EQ(rollback_gate.derive_diagnostic_count, 1U);
+    EXPECT_EQ(rollback_gate.empty_diagnostic_count, 0U);
+    EXPECT_TRUE(rollback_gate.release_rollback_plan_complete);
+    EXPECT_FALSE(rollback_gate.rollback_execution_enabled);
+
     EXPECT_EQ(result.summary.builtin_derive_expansion_capability_candidate_count, 4U);
     EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 4U);
     EXPECT_EQ(result.summary.builtin_derive_semantic_eq_capability_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_semantic_hash_capability_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_parser_release_gate_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_matrix_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_count, 1U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_gate_count, 1U);
     EXPECT_EQ(result.summary.user_generated_code_count, 0U);
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
@@ -1819,6 +2066,8 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22CountsDuplicateEnumCapabilities
     expect_contains(dump, "target_kind=enum");
     expect_contains(dump, "capabilities=4");
     expect_contains(dump, "builtin derive parser consumption release remains blocked in M22c");
+    expect_contains(dump, "builtin derive release hardening matrix keeps parser consumption blocked in M22d");
+    expect_contains(dump, "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f");
 }
 
 TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
@@ -1849,6 +2098,9 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     ASSERT_EQ(result.builtin_derive_expansion_admissions.size(), 2U);
     ASSERT_EQ(result.builtin_derive_semantic_plans.size(), 2U);
     ASSERT_EQ(result.builtin_derive_parser_release_gates.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_release_hardening_matrices.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_debug_dump_contracts.size(), 2U);
+    ASSERT_EQ(result.builtin_derive_rollback_diagnostic_gates.size(), 2U);
 
     EXPECT_EQ(result.generated_parts[0].source_part_index, 0U);
     EXPECT_EQ(result.generated_parts[0].source_part, part_keys[0][0]);
@@ -1903,6 +2155,55 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
         secondary_release->semantic_plan_group_identity);
     EXPECT_NE(primary_release->release_gate_identity, secondary_release->release_gate_identity);
 
+    const frontend::macro::BuiltinDeriveReleaseHardeningMatrix* const primary_matrix =
+        builtin_derive_release_hardening_matrix_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_matrix, nullptr);
+    EXPECT_EQ(primary_matrix->hardening_query_name, "m22d-builtin-derive-release-hardening:0:0");
+    EXPECT_EQ(primary_matrix->part_local_admission_count, 1U);
+    EXPECT_EQ(primary_matrix->part_local_derive_admission_count, 1U);
+    EXPECT_EQ(primary_matrix->global_admission_count, 2U);
+    EXPECT_EQ(primary_matrix->cross_part_admission_count, 1U);
+    EXPECT_EQ(primary_matrix->global_generated_part_count, 2U);
+    EXPECT_TRUE(primary_matrix->part_locality_preserved);
+
+    const frontend::macro::BuiltinDeriveReleaseHardeningMatrix* const secondary_matrix =
+        builtin_derive_release_hardening_matrix_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_matrix, nullptr);
+    EXPECT_EQ(secondary_matrix->hardening_query_name, "m22d-builtin-derive-release-hardening:0:1");
+    EXPECT_EQ(secondary_matrix->part_local_admission_count, 1U);
+    EXPECT_EQ(secondary_matrix->part_local_derive_admission_count, 0U);
+    EXPECT_EQ(secondary_matrix->global_admission_count, 2U);
+    EXPECT_EQ(secondary_matrix->cross_part_admission_count, 1U);
+    EXPECT_NE(primary_matrix->hardening_matrix_identity, secondary_matrix->hardening_matrix_identity);
+
+    const frontend::macro::BuiltinDeriveDebugDumpStabilityContract* const primary_debug =
+        builtin_derive_debug_dump_contract_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_debug, nullptr);
+    EXPECT_EQ(primary_debug->debug_dump_query_name, "m22e-builtin-derive-debug-dump:0:0");
+
+    const frontend::macro::BuiltinDeriveDebugDumpStabilityContract* const secondary_debug =
+        builtin_derive_debug_dump_contract_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_debug, nullptr);
+    EXPECT_EQ(secondary_debug->debug_dump_query_name, "m22e-builtin-derive-debug-dump:0:1");
+    EXPECT_NE(primary_debug->debug_dump_contract_identity, secondary_debug->debug_dump_contract_identity);
+
+    const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate* const primary_rollback =
+        builtin_derive_rollback_diagnostic_gate_for_part(result, result.generated_parts[0]);
+    ASSERT_NE(primary_rollback, nullptr);
+    EXPECT_EQ(primary_rollback->rollback_query_name, "m22f-builtin-derive-rollback-diagnostic:0:0");
+    EXPECT_EQ(primary_rollback->diagnostic_projection_count, 1U);
+    EXPECT_EQ(primary_rollback->derive_diagnostic_count, 1U);
+    EXPECT_EQ(primary_rollback->empty_diagnostic_count, 0U);
+
+    const frontend::macro::BuiltinDeriveRollbackDiagnosticDesignGate* const secondary_rollback =
+        builtin_derive_rollback_diagnostic_gate_for_part(result, result.generated_parts[1]);
+    ASSERT_NE(secondary_rollback, nullptr);
+    EXPECT_EQ(secondary_rollback->rollback_query_name, "m22f-builtin-derive-rollback-diagnostic:0:1");
+    EXPECT_EQ(secondary_rollback->diagnostic_projection_count, 1U);
+    EXPECT_EQ(secondary_rollback->derive_diagnostic_count, 0U);
+    EXPECT_EQ(secondary_rollback->empty_diagnostic_count, 1U);
+    EXPECT_NE(primary_rollback->rollback_gate_identity, secondary_rollback->rollback_gate_identity);
+
     EXPECT_EQ(result.summary.builtin_derive_expansion_admission_gate_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_derive_admission_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_expansion_non_derive_blocked_count, 1U);
@@ -1910,10 +2211,17 @@ TEST(CoreUnit, EarlyItemExpansionBuiltinDeriveM22ReleaseGatesStayPartLocal)
     EXPECT_EQ(result.summary.builtin_derive_semantic_capability_count, 1U);
     EXPECT_EQ(result.summary.builtin_derive_parser_release_gate_count, 2U);
     EXPECT_EQ(result.summary.builtin_derive_parser_release_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.builtin_derive_release_hardening_matrix_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_debug_dump_contract_count, 2U);
+    EXPECT_EQ(result.summary.builtin_derive_rollback_diagnostic_gate_count, 2U);
 
     const std::string dump = frontend::macro::dump_early_item_expansion(result);
     expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:0");
     expect_contains(dump, "query=m22c-builtin-derive-parser-release:0:1");
+    expect_contains(dump, "query=m22d-builtin-derive-release-hardening:0:0");
+    expect_contains(dump, "query=m22d-builtin-derive-release-hardening:0:1");
+    expect_contains(dump, "cross_part_admissions=1");
+    expect_contains(dump, "query=m22f-builtin-derive-rollback-diagnostic:0:1");
     expect_contains(dump, "source_part=1");
     expect_contains(dump, "part=1");
 }
@@ -3918,6 +4226,211 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM22Facts)
     refresh_expansion_result(release_identity);
     EXPECT_NE(release_identity.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(release_identity));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsBuiltinDeriveM22ReleaseHardeningDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.builtin_derive_release_hardening_matrices.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_debug_dump_contracts.size(), 1U);
+    ASSERT_EQ(baseline.builtin_derive_rollback_diagnostic_gates.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_matrix = baseline;
+    missing_matrix.builtin_derive_release_hardening_matrices.clear();
+    refresh_expansion_result(missing_matrix);
+    EXPECT_EQ(missing_matrix.summary.builtin_derive_release_hardening_matrix_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_matrix));
+
+    frontend::macro::EarlyItemExpansionResult wrong_matrix_identity = baseline;
+    wrong_matrix_identity.builtin_derive_release_hardening_matrices.front().hardening_matrix_identity =
+        query::stable_fingerprint("wrong builtin derive release hardening matrix");
+    refresh_expansion_result(wrong_matrix_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_matrix_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_matrix_query = baseline;
+    wrong_matrix_query.builtin_derive_release_hardening_matrices.front().hardening_query_name =
+        "m22d-builtin-derive-release-hardening:wrong";
+    refresh_expansion_result(wrong_matrix_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_matrix_query));
+
+    frontend::macro::EarlyItemExpansionResult wrong_cross_part_count = baseline;
+    wrong_cross_part_count.builtin_derive_release_hardening_matrices.front().cross_part_admission_count = 1U;
+    refresh_expansion_result(wrong_cross_part_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_cross_part_count));
+
+    frontend::macro::EarlyItemExpansionResult matrix_not_complete = baseline;
+    matrix_not_complete.builtin_derive_release_hardening_matrices.front().negative_matrix_complete = false;
+    refresh_expansion_result(matrix_not_complete);
+    EXPECT_EQ(matrix_not_complete.summary.builtin_derive_release_hardening_negative_matrix_complete_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(matrix_not_complete));
+
+    frontend::macro::EarlyItemExpansionResult matrix_parser_enabled = baseline;
+    matrix_parser_enabled.builtin_derive_release_hardening_matrices.front().parser_consumption_enabled = true;
+    refresh_expansion_result(matrix_parser_enabled);
+    EXPECT_EQ(matrix_parser_enabled.summary.builtin_derive_release_hardening_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(matrix_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult matrix_standard_library = baseline;
+    matrix_standard_library.builtin_derive_release_hardening_matrices.front().standard_library_required = true;
+    refresh_expansion_result(matrix_standard_library);
+    EXPECT_EQ(matrix_standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(matrix_standard_library));
+
+    frontend::macro::EarlyItemExpansionResult missing_debug_contract = baseline;
+    missing_debug_contract.builtin_derive_debug_dump_contracts.clear();
+    refresh_expansion_result(missing_debug_contract);
+    EXPECT_EQ(missing_debug_contract.summary.builtin_derive_debug_dump_contract_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_debug_contract));
+
+    frontend::macro::EarlyItemExpansionResult wrong_debug_identity = baseline;
+    wrong_debug_identity.builtin_derive_debug_dump_contracts.front().debug_dump_contract_identity =
+        query::stable_fingerprint("wrong builtin derive debug dump contract");
+    refresh_expansion_result(wrong_debug_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_debug_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_debug_query = baseline;
+    wrong_debug_query.builtin_derive_debug_dump_contracts.front().debug_dump_query_name =
+        "m22e-builtin-derive-debug-dump:wrong";
+    refresh_expansion_result(wrong_debug_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_debug_query));
+
+    frontend::macro::EarlyItemExpansionResult debug_unstable_order = baseline;
+    debug_unstable_order.builtin_derive_debug_dump_contracts.front().stable_ordering_available = false;
+    refresh_expansion_result(debug_unstable_order);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_unstable_order));
+
+    frontend::macro::EarlyItemExpansionResult debug_incomplete = baseline;
+    debug_incomplete.builtin_derive_debug_dump_contracts.front().debug_dump_contract_complete = false;
+    refresh_expansion_result(debug_incomplete);
+    EXPECT_EQ(debug_incomplete.summary.builtin_derive_debug_dump_complete_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_incomplete));
+
+    frontend::macro::EarlyItemExpansionResult debug_parser_enabled = baseline;
+    debug_parser_enabled.builtin_derive_debug_dump_contracts.front().parser_consumption_enabled = true;
+    refresh_expansion_result(debug_parser_enabled);
+    EXPECT_EQ(debug_parser_enabled.summary.builtin_derive_debug_dump_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult debug_runtime = baseline;
+    debug_runtime.builtin_derive_debug_dump_contracts.front().runtime_required = true;
+    refresh_expansion_result(debug_runtime);
+    EXPECT_EQ(debug_runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_runtime));
+
+    frontend::macro::EarlyItemExpansionResult missing_rollback = baseline;
+    missing_rollback.builtin_derive_rollback_diagnostic_gates.clear();
+    refresh_expansion_result(missing_rollback);
+    EXPECT_EQ(missing_rollback.summary.builtin_derive_rollback_diagnostic_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_rollback));
+
+    frontend::macro::EarlyItemExpansionResult wrong_rollback_identity = baseline;
+    wrong_rollback_identity.builtin_derive_rollback_diagnostic_gates.front().rollback_gate_identity =
+        query::stable_fingerprint("wrong builtin derive rollback diagnostic gate");
+    refresh_expansion_result(wrong_rollback_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_rollback_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_rollback_query = baseline;
+    wrong_rollback_query.builtin_derive_rollback_diagnostic_gates.front().rollback_query_name =
+        "m22f-builtin-derive-rollback-diagnostic:wrong";
+    refresh_expansion_result(wrong_rollback_query);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_rollback_query));
+
+    frontend::macro::EarlyItemExpansionResult wrong_diagnostic_count = baseline;
+    wrong_diagnostic_count.builtin_derive_rollback_diagnostic_gates.front().derive_diagnostic_count = 0U;
+    refresh_expansion_result(wrong_diagnostic_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_diagnostic_count));
+
+    frontend::macro::EarlyItemExpansionResult rollback_prerequisite_missing = baseline;
+    rollback_prerequisite_missing.builtin_derive_rollback_diagnostic_gates.front()
+        .release_rollback_plan_complete = false;
+    refresh_expansion_result(rollback_prerequisite_missing);
+    EXPECT_EQ(rollback_prerequisite_missing.summary.builtin_derive_rollback_diagnostic_design_complete_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_prerequisite_missing));
+
+    frontend::macro::EarlyItemExpansionResult rollback_execution_enabled = baseline;
+    rollback_execution_enabled.builtin_derive_rollback_diagnostic_gates.front().rollback_execution_enabled = true;
+    refresh_expansion_result(rollback_execution_enabled);
+    EXPECT_EQ(rollback_execution_enabled.summary.builtin_derive_rollback_diagnostic_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_execution_enabled));
+
+    frontend::macro::EarlyItemExpansionResult rollback_parser_enabled = baseline;
+    rollback_parser_enabled.builtin_derive_rollback_diagnostic_gates.front().parser_consumption_enabled = true;
+    refresh_expansion_result(rollback_parser_enabled);
+    EXPECT_EQ(rollback_parser_enabled.summary.builtin_derive_rollback_diagnostic_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_parser_enabled));
+
+    frontend::macro::EarlyItemExpansionResult rollback_external = baseline;
+    rollback_external.builtin_derive_rollback_diagnostic_gates.front().external_process_required = true;
+    refresh_expansion_result(rollback_external);
+    EXPECT_EQ(rollback_external.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_external));
+
+    frontend::macro::EarlyItemExpansionResult rollback_user_code = baseline;
+    rollback_user_code.builtin_derive_rollback_diagnostic_gates.front().produced_user_generated_code = true;
+    refresh_expansion_result(rollback_user_code);
+    EXPECT_EQ(rollback_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksBuiltinDeriveM22ReleaseHardeningFacts)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq, Hash)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.builtin_derive_release_hardening_matrices.empty());
+    ASSERT_FALSE(baseline.builtin_derive_debug_dump_contracts.empty());
+    ASSERT_FALSE(baseline.builtin_derive_rollback_diagnostic_gates.empty());
+
+    frontend::macro::EarlyItemExpansionResult matrix_identity = baseline;
+    matrix_identity.builtin_derive_release_hardening_matrices.front().hardening_matrix_identity =
+        query::stable_fingerprint("different builtin derive release hardening matrix identity");
+    refresh_expansion_result(matrix_identity);
+    EXPECT_NE(matrix_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(matrix_identity));
+
+    frontend::macro::EarlyItemExpansionResult matrix_counts = baseline;
+    matrix_counts.builtin_derive_release_hardening_matrices.front().part_local_derive_admission_count = 0U;
+    refresh_expansion_result(matrix_counts);
+    EXPECT_NE(matrix_counts.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(matrix_counts));
+
+    frontend::macro::EarlyItemExpansionResult debug_identity = baseline;
+    debug_identity.builtin_derive_debug_dump_contracts.front().debug_dump_contract_identity =
+        query::stable_fingerprint("different builtin derive debug dump identity");
+    refresh_expansion_result(debug_identity);
+    EXPECT_NE(debug_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_identity));
+
+    frontend::macro::EarlyItemExpansionResult debug_complete = baseline;
+    debug_complete.builtin_derive_debug_dump_contracts.front().debug_dump_contract_complete = false;
+    refresh_expansion_result(debug_complete);
+    EXPECT_NE(debug_complete.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(debug_complete));
+
+    frontend::macro::EarlyItemExpansionResult rollback_identity = baseline;
+    rollback_identity.builtin_derive_rollback_diagnostic_gates.front().rollback_gate_identity =
+        query::stable_fingerprint("different builtin derive rollback diagnostic identity");
+    refresh_expansion_result(rollback_identity);
+    EXPECT_NE(rollback_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_identity));
+
+    frontend::macro::EarlyItemExpansionResult rollback_design = baseline;
+    rollback_design.builtin_derive_rollback_diagnostic_gates.front()
+        .diagnostic_grouping_available = false;
+    refresh_expansion_result(rollback_design);
+    EXPECT_NE(rollback_design.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(rollback_design));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

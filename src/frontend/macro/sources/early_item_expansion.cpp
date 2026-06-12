@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M22C_EXPANSION_NAME =
-    "M22c Builtin Derive Parser Consumption Release Gate";
-constexpr std::string_view FRONTEND_MACRO_M22C_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m22c.builtin_derive_parser_consumption_release_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M22F_EXPANSION_NAME =
+    "M22f Builtin Derive Rollback Diagnostic Design Gate";
+constexpr std::string_view FRONTEND_MACRO_M22F_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m22f.builtin_derive_rollback_diagnostic_design_gate.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -250,6 +250,37 @@ constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_QUERY_NAME_PREFIX =
     "m22c-builtin-derive-parser-release:";
 constexpr std::string_view FRONTEND_MACRO_M22C_RELEASE_BLOCKER =
     "builtin derive parser consumption release remains blocked in M22c";
+constexpr std::string_view FRONTEND_MACRO_M22D_HARDENING_MATRIX_MARKER =
+    "frontend.macro.m22d.builtin_derive_release_hardening_matrix.v1";
+constexpr std::string_view FRONTEND_MACRO_M22D_HARDENING_MATRIX_IDENTITY_MARKER =
+    "frontend.macro.m22d.builtin_derive_release_hardening_matrix_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22D_HARDENING_POLICY =
+    "builtin_derive_release_hardening_matrix_v1";
+constexpr std::string_view FRONTEND_MACRO_M22D_HARDENING_QUERY_NAME_PREFIX =
+    "m22d-builtin-derive-release-hardening:";
+constexpr std::string_view FRONTEND_MACRO_M22D_HARDENING_BLOCKER =
+    "builtin derive release hardening matrix keeps parser consumption blocked in M22d";
+constexpr std::string_view FRONTEND_MACRO_M22E_DEBUG_DUMP_CONTRACT_MARKER =
+    "frontend.macro.m22e.builtin_derive_debug_dump_stability_contract.v1";
+constexpr std::string_view FRONTEND_MACRO_M22E_DEBUG_DUMP_CONTRACT_IDENTITY_MARKER =
+    "frontend.macro.m22e.builtin_derive_debug_dump_stability_contract_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22E_DEBUG_DUMP_POLICY =
+    "builtin_derive_debug_dump_stability_contract_v1";
+constexpr std::string_view FRONTEND_MACRO_M22E_DEBUG_DUMP_QUERY_NAME_PREFIX =
+    "m22e-builtin-derive-debug-dump:";
+constexpr std::string_view FRONTEND_MACRO_M22E_DEBUG_DUMP_BLOCKER =
+    "builtin derive debug dump stability remains facts-only and parser-blocked in M22e";
+constexpr base::u64 FRONTEND_MACRO_M22E_DEBUG_DUMP_SECTION_COUNT = 4U;
+constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_GATE_MARKER =
+    "frontend.macro.m22f.builtin_derive_rollback_diagnostic_design_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_GATE_IDENTITY_MARKER =
+    "frontend.macro.m22f.builtin_derive_rollback_diagnostic_gate_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_POLICY =
+    "builtin_derive_rollback_diagnostic_design_gate_v1";
+constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_QUERY_NAME_PREFIX =
+    "m22f-builtin-derive-rollback-diagnostic:";
+constexpr std::string_view FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER =
+    "builtin derive rollback diagnostics remain design-only and parser-blocked in M22f";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_STRUCT = "struct";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_ENUM = "enum";
 constexpr std::string_view FRONTEND_MACRO_M22_TARGET_KIND_OTHER = "other";
@@ -585,6 +616,36 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     const syntax::ModuleId module, const base::u32 source_part_index)
 {
     std::string name(FRONTEND_MACRO_M22C_RELEASE_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_release_hardening_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M22D_HARDENING_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_debug_dump_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M22E_DEBUG_DUMP_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
+[[nodiscard]] std::string builtin_derive_rollback_diagnostic_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M22F_ROLLBACK_QUERY_NAME_PREFIX);
     name += std::to_string(module.value);
     name.push_back(':');
     name += std::to_string(source_part_index);
@@ -2515,6 +2576,426 @@ void append_generated_token_records_for_attribute(std::vector<GeneratedTokenReco
     };
 }
 
+[[nodiscard]] bool fact_belongs_to_part(
+    const syntax::ModuleId module,
+    const base::u32 source_part_index,
+    const syntax::ModuleId fact_module,
+    const base::u32 fact_part_index) noexcept
+{
+    return fact_module.value == module.value && fact_part_index == source_part_index;
+}
+
+[[nodiscard]] base::u64 count_part_local_admissions(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions) noexcept
+{
+    return static_cast<base::u64>(std::count_if(admissions.begin(), admissions.end(),
+        [&placeholder](const BuiltinDeriveExpansionAdmissionGate& admission) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                admission.module, admission.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_derive_admissions(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions) noexcept
+{
+    return static_cast<base::u64>(std::count_if(admissions.begin(), admissions.end(),
+        [&placeholder](const BuiltinDeriveExpansionAdmissionGate& admission) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       admission.module, admission.part_index)
+                && admission.builtin_derive_input;
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_semantic_plans(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans) noexcept
+{
+    return static_cast<base::u64>(std::count_if(plans.begin(), plans.end(),
+        [&placeholder](const BuiltinDeriveSemanticExpansionPlan& plan) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                plan.module, plan.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_parser_release_gates(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<BuiltinDeriveParserConsumptionReleaseGate>& gates) noexcept
+{
+    return static_cast<base::u64>(std::count_if(gates.begin(), gates.end(),
+        [&placeholder](const BuiltinDeriveParserConsumptionReleaseGate& gate) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                gate.module, gate.source_part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_diagnostics(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics) noexcept
+{
+    return static_cast<base::u64>(std::count_if(diagnostics.begin(), diagnostics.end(),
+        [&placeholder](const ParserAdmissionDiagnosticProjectionStub& diagnostic) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                diagnostic.module, diagnostic.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_report_entries(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<ParserAdmissionDiagnosticReportEntry>& entries) noexcept
+{
+    return static_cast<base::u64>(std::count_if(entries.begin(), entries.end(),
+        [&placeholder](const ParserAdmissionDiagnosticReportEntry& entry) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                entry.module, entry.part_index);
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_blocked_diagnostics(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics) noexcept
+{
+    return static_cast<base::u64>(std::count_if(diagnostics.begin(), diagnostics.end(),
+        [&placeholder](const ParserAdmissionDiagnosticProjectionStub& diagnostic) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       diagnostic.module, diagnostic.part_index)
+                && !diagnostic.parser_admitted;
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_derive_diagnostics(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics) noexcept
+{
+    return static_cast<base::u64>(std::count_if(diagnostics.begin(), diagnostics.end(),
+        [&placeholder](const ParserAdmissionDiagnosticProjectionStub& diagnostic) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       diagnostic.module, diagnostic.part_index)
+                && diagnostic.blocker_category == FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY;
+        }));
+}
+
+[[nodiscard]] base::u64 count_part_local_empty_diagnostics(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics) noexcept
+{
+    return static_cast<base::u64>(std::count_if(diagnostics.begin(), diagnostics.end(),
+        [&placeholder](const ParserAdmissionDiagnosticProjectionStub& diagnostic) {
+            return fact_belongs_to_part(placeholder.module, placeholder.source_part_index,
+                       diagnostic.module, diagnostic.part_index)
+                && diagnostic.blocker_category == FRONTEND_MACRO_M21K_EMPTY_BLOCKER_CATEGORY;
+        }));
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_release_hardening_matrix_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const std::string_view query_name,
+    const base::u64 part_local_admission_count,
+    const base::u64 part_local_derive_admission_count,
+    const base::u64 part_local_semantic_plan_count,
+    const base::u64 part_local_release_gate_count,
+    const base::u64 global_admission_count,
+    const base::u64 global_semantic_plan_count,
+    const base::u64 global_generated_part_count,
+    const base::u64 cross_part_admission_count,
+    const base::u64 cross_part_semantic_plan_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22D_HARDENING_MATRIX_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(release_gate.release_gate_identity);
+    builder.mix_fingerprint(release_gate.admission_group_identity);
+    builder.mix_fingerprint(release_gate.semantic_plan_group_identity);
+    builder.mix_string(FRONTEND_MACRO_M22D_HARDENING_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M22D_HARDENING_BLOCKER);
+    builder.mix_u64(part_local_admission_count);
+    builder.mix_u64(part_local_derive_admission_count);
+    builder.mix_u64(part_local_semantic_plan_count);
+    builder.mix_u64(part_local_release_gate_count);
+    builder.mix_u64(global_admission_count);
+    builder.mix_u64(global_semantic_plan_count);
+    builder.mix_u64(global_generated_part_count);
+    builder.mix_u64(cross_part_admission_count);
+    builder.mix_u64(cross_part_semantic_plan_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveReleaseHardeningMatrix make_builtin_derive_release_hardening_matrix(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans,
+    const std::vector<BuiltinDeriveParserConsumptionReleaseGate>& release_gates)
+{
+    const base::u64 part_local_admission_count = count_part_local_admissions(placeholder, admissions);
+    const base::u64 part_local_derive_admission_count =
+        count_part_local_derive_admissions(placeholder, admissions);
+    const base::u64 part_local_semantic_plan_count = count_part_local_semantic_plans(placeholder, plans);
+    const base::u64 part_local_release_gate_count = count_part_local_parser_release_gates(
+        placeholder, release_gates);
+    const base::u64 global_admission_count = static_cast<base::u64>(admissions.size());
+    const base::u64 global_semantic_plan_count = static_cast<base::u64>(plans.size());
+    const base::u64 global_generated_part_count = static_cast<base::u64>(generated_parts.size());
+    const base::u64 cross_part_admission_count = global_admission_count - part_local_admission_count;
+    const base::u64 cross_part_semantic_plan_count = global_semantic_plan_count - part_local_semantic_plan_count;
+    const std::string query_name =
+        builtin_derive_release_hardening_query_name(placeholder.module, placeholder.source_part_index);
+    return BuiltinDeriveReleaseHardeningMatrix{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        release_gate.release_gate_identity,
+        release_gate.admission_group_identity,
+        release_gate.semantic_plan_group_identity,
+        builtin_derive_release_hardening_matrix_identity(placeholder, release_gate, query_name,
+            part_local_admission_count, part_local_derive_admission_count,
+            part_local_semantic_plan_count, part_local_release_gate_count,
+            global_admission_count, global_semantic_plan_count, global_generated_part_count,
+            cross_part_admission_count, cross_part_semantic_plan_count),
+        std::string(FRONTEND_MACRO_M22D_HARDENING_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M22D_HARDENING_BLOCKER),
+        part_local_admission_count,
+        part_local_derive_admission_count,
+        part_local_semantic_plan_count,
+        part_local_release_gate_count,
+        global_admission_count,
+        global_semantic_plan_count,
+        global_generated_part_count,
+        cross_part_admission_count,
+        cross_part_semantic_plan_count,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_debug_dump_contract_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const std::string_view query_name) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22E_DEBUG_DUMP_CONTRACT_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(release_gate.release_gate_identity);
+    builder.mix_fingerprint(matrix.hardening_matrix_identity);
+    builder.mix_string(FRONTEND_MACRO_M22E_DEBUG_DUMP_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M22E_DEBUG_DUMP_BLOCKER);
+    builder.mix_u64(FRONTEND_MACRO_M22E_DEBUG_DUMP_SECTION_COUNT);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveDebugDumpStabilityContract make_builtin_derive_debug_dump_stability_contract(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix)
+{
+    const std::string query_name =
+        builtin_derive_debug_dump_query_name(placeholder.module, placeholder.source_part_index);
+    return BuiltinDeriveDebugDumpStabilityContract{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        release_gate.release_gate_identity,
+        matrix.hardening_matrix_identity,
+        builtin_derive_debug_dump_contract_identity(placeholder, release_gate, matrix, query_name),
+        std::string(FRONTEND_MACRO_M22E_DEBUG_DUMP_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M22E_DEBUG_DUMP_BLOCKER),
+        FRONTEND_MACRO_M22E_DEBUG_DUMP_SECTION_COUNT,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 builtin_derive_rollback_diagnostic_gate_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const std::string_view query_name,
+    const base::u64 diagnostic_projection_count,
+    const base::u64 diagnostic_report_entry_count,
+    const base::u64 blocked_diagnostic_count,
+    const base::u64 derive_diagnostic_count,
+    const base::u64 empty_diagnostic_count,
+    const base::u64 parser_consumption_contract_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M22F_ROLLBACK_GATE_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(parser_contract.contract_identity);
+    builder.mix_fingerprint(release_gate.release_gate_identity);
+    builder.mix_fingerprint(matrix.hardening_matrix_identity);
+    builder.mix_fingerprint(debug_contract.debug_dump_contract_identity);
+    builder.mix_string(FRONTEND_MACRO_M22F_ROLLBACK_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER);
+    builder.mix_u64(diagnostic_projection_count);
+    builder.mix_u64(diagnostic_report_entry_count);
+    builder.mix_u64(blocked_diagnostic_count);
+    builder.mix_u64(derive_diagnostic_count);
+    builder.mix_u64(empty_diagnostic_count);
+    builder.mix_u64(parser_consumption_contract_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    return builder.finish();
+}
+
+[[nodiscard]] BuiltinDeriveRollbackDiagnosticDesignGate make_builtin_derive_rollback_diagnostic_design_gate(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics,
+    const std::vector<ParserAdmissionDiagnosticReportEntry>& report_entries)
+{
+    const base::u64 diagnostic_projection_count = count_part_local_diagnostics(placeholder, diagnostics);
+    const base::u64 diagnostic_report_entry_count = count_part_local_report_entries(placeholder, report_entries);
+    const base::u64 blocked_diagnostic_count = count_part_local_blocked_diagnostics(placeholder, diagnostics);
+    const base::u64 derive_diagnostic_count = count_part_local_derive_diagnostics(placeholder, diagnostics);
+    const base::u64 empty_diagnostic_count = count_part_local_empty_diagnostics(placeholder, diagnostics);
+    const base::u64 parser_consumption_contract_count = parser_contract.contract_visible ? 1U : 0U;
+    const std::string query_name =
+        builtin_derive_rollback_diagnostic_query_name(placeholder.module, placeholder.source_part_index);
+    return BuiltinDeriveRollbackDiagnosticDesignGate{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        parser_contract.contract_identity,
+        release_gate.release_gate_identity,
+        matrix.hardening_matrix_identity,
+        debug_contract.debug_dump_contract_identity,
+        builtin_derive_rollback_diagnostic_gate_identity(placeholder, parser_contract, release_gate, matrix,
+            debug_contract, query_name, diagnostic_projection_count, diagnostic_report_entry_count,
+            blocked_diagnostic_count, derive_diagnostic_count, empty_diagnostic_count,
+            parser_consumption_contract_count),
+        std::string(FRONTEND_MACRO_M22F_ROLLBACK_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER),
+        diagnostic_projection_count,
+        diagnostic_report_entry_count,
+        blocked_diagnostic_count,
+        derive_diagnostic_count,
+        empty_diagnostic_count,
+        parser_consumption_contract_count,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+    };
+}
+
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
     const query::ModulePartKey source_part, const syntax::ModuleId module, const base::u32 part_index)
 {
@@ -3228,6 +3709,123 @@ void mix_builtin_derive_parser_consumption_release_gate(
     builder.mix_bool(gate.query_reusable);
 }
 
+void mix_builtin_derive_release_hardening_matrix(
+    query::StableHashBuilder& builder, const BuiltinDeriveReleaseHardeningMatrix& matrix) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22D_HARDENING_MATRIX_MARKER);
+    builder.mix_u32(matrix.module.value);
+    builder.mix_u32(matrix.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(matrix.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(matrix.generated_part));
+    builder.mix_fingerprint(matrix.release_gate_identity);
+    builder.mix_fingerprint(matrix.admission_group_identity);
+    builder.mix_fingerprint(matrix.semantic_plan_group_identity);
+    builder.mix_fingerprint(matrix.hardening_matrix_identity);
+    builder.mix_string(matrix.hardening_policy);
+    builder.mix_string(matrix.hardening_query_name);
+    builder.mix_string(matrix.blocked_reason);
+    builder.mix_u64(matrix.part_local_admission_count);
+    builder.mix_u64(matrix.part_local_derive_admission_count);
+    builder.mix_u64(matrix.part_local_semantic_plan_count);
+    builder.mix_u64(matrix.part_local_release_gate_count);
+    builder.mix_u64(matrix.global_admission_count);
+    builder.mix_u64(matrix.global_semantic_plan_count);
+    builder.mix_u64(matrix.global_generated_part_count);
+    builder.mix_u64(matrix.cross_part_admission_count);
+    builder.mix_u64(matrix.cross_part_semantic_plan_count);
+    builder.mix_bool(matrix.part_locality_preserved);
+    builder.mix_bool(matrix.multi_item_matrix_available);
+    builder.mix_bool(matrix.negative_matrix_complete);
+    builder.mix_bool(matrix.release_remains_blocked);
+    builder.mix_bool(matrix.parser_consumption_enabled);
+    builder.mix_bool(matrix.generated_part_parsed);
+    builder.mix_bool(matrix.generated_part_merged);
+    builder.mix_bool(matrix.emit_expanded_available);
+    builder.mix_bool(matrix.debug_trace_available);
+    builder.mix_bool(matrix.source_map_available);
+    builder.mix_bool(matrix.standard_library_required);
+    builder.mix_bool(matrix.runtime_required);
+    builder.mix_bool(matrix.external_process_required);
+    builder.mix_bool(matrix.produced_user_generated_code);
+    builder.mix_bool(matrix.matrix_visible);
+    builder.mix_bool(matrix.query_reusable);
+}
+
+void mix_builtin_derive_debug_dump_stability_contract(
+    query::StableHashBuilder& builder, const BuiltinDeriveDebugDumpStabilityContract& contract) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22E_DEBUG_DUMP_CONTRACT_MARKER);
+    builder.mix_u32(contract.module.value);
+    builder.mix_u32(contract.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(contract.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(contract.generated_part));
+    builder.mix_fingerprint(contract.release_gate_identity);
+    builder.mix_fingerprint(contract.hardening_matrix_identity);
+    builder.mix_fingerprint(contract.debug_dump_contract_identity);
+    builder.mix_string(contract.debug_dump_policy);
+    builder.mix_string(contract.debug_dump_query_name);
+    builder.mix_string(contract.blocked_reason);
+    builder.mix_u64(contract.dump_section_count);
+    builder.mix_bool(contract.stable_ordering_available);
+    builder.mix_bool(contract.identity_projection_available);
+    builder.mix_bool(contract.summary_projection_available);
+    builder.mix_bool(contract.drift_debuggable);
+    builder.mix_bool(contract.debug_dump_contract_complete);
+    builder.mix_bool(contract.emit_expanded_available);
+    builder.mix_bool(contract.debug_trace_available);
+    builder.mix_bool(contract.source_map_available);
+    builder.mix_bool(contract.parser_consumption_enabled);
+    builder.mix_bool(contract.standard_library_required);
+    builder.mix_bool(contract.runtime_required);
+    builder.mix_bool(contract.external_process_required);
+    builder.mix_bool(contract.produced_user_generated_code);
+    builder.mix_bool(contract.contract_visible);
+    builder.mix_bool(contract.query_reusable);
+}
+
+void mix_builtin_derive_rollback_diagnostic_design_gate(
+    query::StableHashBuilder& builder, const BuiltinDeriveRollbackDiagnosticDesignGate& gate) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M22F_ROLLBACK_GATE_MARKER);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.generated_part));
+    builder.mix_fingerprint(gate.parser_consumption_contract_identity);
+    builder.mix_fingerprint(gate.release_gate_identity);
+    builder.mix_fingerprint(gate.hardening_matrix_identity);
+    builder.mix_fingerprint(gate.debug_dump_contract_identity);
+    builder.mix_fingerprint(gate.rollback_gate_identity);
+    builder.mix_string(gate.rollback_policy);
+    builder.mix_string(gate.rollback_query_name);
+    builder.mix_string(gate.blocked_reason);
+    builder.mix_u64(gate.diagnostic_projection_count);
+    builder.mix_u64(gate.diagnostic_report_entry_count);
+    builder.mix_u64(gate.blocked_diagnostic_count);
+    builder.mix_u64(gate.derive_diagnostic_count);
+    builder.mix_u64(gate.empty_diagnostic_count);
+    builder.mix_u64(gate.parser_consumption_contract_count);
+    builder.mix_bool(gate.rollback_diagnostic_design_available);
+    builder.mix_bool(gate.diagnostic_grouping_available);
+    builder.mix_bool(gate.source_anchor_available);
+    builder.mix_bool(gate.token_tree_anchor_available);
+    builder.mix_bool(gate.debug_dump_contract_available);
+    builder.mix_bool(gate.release_rollback_plan_complete);
+    builder.mix_bool(gate.rollback_execution_enabled);
+    builder.mix_bool(gate.parser_consumption_enabled);
+    builder.mix_bool(gate.generated_part_parsed);
+    builder.mix_bool(gate.generated_part_merged);
+    builder.mix_bool(gate.emit_expanded_available);
+    builder.mix_bool(gate.debug_trace_available);
+    builder.mix_bool(gate.source_map_available);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.produced_user_generated_code);
+    builder.mix_bool(gate.rollback_gate_visible);
+    builder.mix_bool(gate.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -3324,6 +3922,21 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.builtin_derive_parser_release_visible_count);
     builder.mix_u64(summary.builtin_derive_parser_release_query_reusable_count);
     builder.mix_u64(summary.builtin_derive_parser_release_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_release_hardening_matrix_count);
+    builder.mix_u64(summary.builtin_derive_release_hardening_visible_count);
+    builder.mix_u64(summary.builtin_derive_release_hardening_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_release_hardening_negative_matrix_complete_count);
+    builder.mix_u64(summary.builtin_derive_release_hardening_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_debug_dump_contract_count);
+    builder.mix_u64(summary.builtin_derive_debug_dump_contract_visible_count);
+    builder.mix_u64(summary.builtin_derive_debug_dump_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_debug_dump_complete_count);
+    builder.mix_u64(summary.builtin_derive_debug_dump_parser_consumable_count);
+    builder.mix_u64(summary.builtin_derive_rollback_diagnostic_gate_count);
+    builder.mix_u64(summary.builtin_derive_rollback_diagnostic_visible_count);
+    builder.mix_u64(summary.builtin_derive_rollback_diagnostic_query_reusable_count);
+    builder.mix_u64(summary.builtin_derive_rollback_diagnostic_design_complete_count);
+    builder.mix_u64(summary.builtin_derive_rollback_diagnostic_parser_consumable_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -3461,6 +4074,36 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             == rhs.builtin_derive_parser_release_query_reusable_count
         && lhs.builtin_derive_parser_release_parser_consumable_count
             == rhs.builtin_derive_parser_release_parser_consumable_count
+        && lhs.builtin_derive_release_hardening_matrix_count
+            == rhs.builtin_derive_release_hardening_matrix_count
+        && lhs.builtin_derive_release_hardening_visible_count
+            == rhs.builtin_derive_release_hardening_visible_count
+        && lhs.builtin_derive_release_hardening_query_reusable_count
+            == rhs.builtin_derive_release_hardening_query_reusable_count
+        && lhs.builtin_derive_release_hardening_negative_matrix_complete_count
+            == rhs.builtin_derive_release_hardening_negative_matrix_complete_count
+        && lhs.builtin_derive_release_hardening_parser_consumable_count
+            == rhs.builtin_derive_release_hardening_parser_consumable_count
+        && lhs.builtin_derive_debug_dump_contract_count
+            == rhs.builtin_derive_debug_dump_contract_count
+        && lhs.builtin_derive_debug_dump_contract_visible_count
+            == rhs.builtin_derive_debug_dump_contract_visible_count
+        && lhs.builtin_derive_debug_dump_query_reusable_count
+            == rhs.builtin_derive_debug_dump_query_reusable_count
+        && lhs.builtin_derive_debug_dump_complete_count
+            == rhs.builtin_derive_debug_dump_complete_count
+        && lhs.builtin_derive_debug_dump_parser_consumable_count
+            == rhs.builtin_derive_debug_dump_parser_consumable_count
+        && lhs.builtin_derive_rollback_diagnostic_gate_count
+            == rhs.builtin_derive_rollback_diagnostic_gate_count
+        && lhs.builtin_derive_rollback_diagnostic_visible_count
+            == rhs.builtin_derive_rollback_diagnostic_visible_count
+        && lhs.builtin_derive_rollback_diagnostic_query_reusable_count
+            == rhs.builtin_derive_rollback_diagnostic_query_reusable_count
+        && lhs.builtin_derive_rollback_diagnostic_design_complete_count
+            == rhs.builtin_derive_rollback_diagnostic_design_complete_count
+        && lhs.builtin_derive_rollback_diagnostic_parser_consumable_count
+            == rhs.builtin_derive_rollback_diagnostic_parser_consumable_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -4524,6 +5167,238 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     return true;
 }
 
+[[nodiscard]] bool builtin_derive_release_hardening_matrix_matches_group(
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
+    const std::vector<BuiltinDeriveExpansionAdmissionGate>& admissions,
+    const std::vector<BuiltinDeriveSemanticExpansionPlan>& plans,
+    const std::vector<BuiltinDeriveParserConsumptionReleaseGate>& release_gates) noexcept
+{
+    const base::u64 part_local_admission_count = count_part_local_admissions(placeholder, admissions);
+    const base::u64 part_local_derive_admission_count =
+        count_part_local_derive_admissions(placeholder, admissions);
+    const base::u64 part_local_semantic_plan_count = count_part_local_semantic_plans(placeholder, plans);
+    const base::u64 part_local_release_gate_count =
+        count_part_local_parser_release_gates(placeholder, release_gates);
+    const base::u64 global_admission_count = static_cast<base::u64>(admissions.size());
+    const base::u64 global_semantic_plan_count = static_cast<base::u64>(plans.size());
+    const base::u64 global_generated_part_count = static_cast<base::u64>(generated_parts.size());
+    const base::u64 cross_part_admission_count = global_admission_count - part_local_admission_count;
+    const base::u64 cross_part_semantic_plan_count = global_semantic_plan_count - part_local_semantic_plan_count;
+    const std::string expected_query_name =
+        builtin_derive_release_hardening_query_name(placeholder.module, placeholder.source_part_index);
+    return matrix.module.value == placeholder.module.value
+        && matrix.source_part_index == placeholder.source_part_index
+        && matrix.attached_part == placeholder.source_part
+        && matrix.generated_part == placeholder.generated_part
+        && matrix.release_gate_identity == release_gate.release_gate_identity
+        && matrix.admission_group_identity == release_gate.admission_group_identity
+        && matrix.semantic_plan_group_identity == release_gate.semantic_plan_group_identity
+        && matrix.hardening_matrix_identity == builtin_derive_release_hardening_matrix_identity(
+               placeholder, release_gate, expected_query_name, part_local_admission_count,
+               part_local_derive_admission_count, part_local_semantic_plan_count,
+               part_local_release_gate_count, global_admission_count, global_semantic_plan_count,
+               global_generated_part_count, cross_part_admission_count, cross_part_semantic_plan_count)
+        && matrix.hardening_policy == FRONTEND_MACRO_M22D_HARDENING_POLICY
+        && matrix.hardening_query_name == expected_query_name
+        && matrix.blocked_reason == FRONTEND_MACRO_M22D_HARDENING_BLOCKER
+        && matrix.part_local_admission_count == part_local_admission_count
+        && matrix.part_local_derive_admission_count == part_local_derive_admission_count
+        && matrix.part_local_semantic_plan_count == part_local_semantic_plan_count
+        && matrix.part_local_release_gate_count == part_local_release_gate_count
+        && matrix.global_admission_count == global_admission_count
+        && matrix.global_semantic_plan_count == global_semantic_plan_count
+        && matrix.global_generated_part_count == global_generated_part_count
+        && matrix.cross_part_admission_count == cross_part_admission_count
+        && matrix.cross_part_semantic_plan_count == cross_part_semantic_plan_count
+        && matrix.part_locality_preserved
+        && matrix.multi_item_matrix_available
+        && matrix.negative_matrix_complete
+        && matrix.release_remains_blocked
+        && !matrix.parser_consumption_enabled
+        && !matrix.generated_part_parsed
+        && !matrix.generated_part_merged
+        && !matrix.emit_expanded_available
+        && !matrix.debug_trace_available
+        && !matrix.source_map_available
+        && !matrix.standard_library_required
+        && !matrix.runtime_required
+        && !matrix.external_process_required
+        && !matrix.produced_user_generated_code
+        && matrix.matrix_visible
+        && matrix.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_release_hardening_matrices_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_release_hardening_matrices.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_release_gates.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_release_hardening_matrices.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_release_hardening_matrix_matches_group(
+                result.builtin_derive_release_hardening_matrices[index],
+                placeholder,
+                result.builtin_derive_parser_release_gates[index],
+                result.generated_parts,
+                result.builtin_derive_expansion_admissions,
+                result.builtin_derive_semantic_plans,
+                result.builtin_derive_parser_release_gates)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_debug_dump_contract_matches_group(
+    const BuiltinDeriveDebugDumpStabilityContract& contract,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix) noexcept
+{
+    const std::string expected_query_name =
+        builtin_derive_debug_dump_query_name(placeholder.module, placeholder.source_part_index);
+    return contract.module.value == placeholder.module.value
+        && contract.source_part_index == placeholder.source_part_index
+        && contract.attached_part == placeholder.source_part
+        && contract.generated_part == placeholder.generated_part
+        && contract.release_gate_identity == release_gate.release_gate_identity
+        && contract.hardening_matrix_identity == matrix.hardening_matrix_identity
+        && contract.debug_dump_contract_identity == builtin_derive_debug_dump_contract_identity(
+               placeholder, release_gate, matrix, expected_query_name)
+        && contract.debug_dump_policy == FRONTEND_MACRO_M22E_DEBUG_DUMP_POLICY
+        && contract.debug_dump_query_name == expected_query_name
+        && contract.blocked_reason == FRONTEND_MACRO_M22E_DEBUG_DUMP_BLOCKER
+        && contract.dump_section_count == FRONTEND_MACRO_M22E_DEBUG_DUMP_SECTION_COUNT
+        && contract.stable_ordering_available
+        && contract.identity_projection_available
+        && contract.summary_projection_available
+        && contract.drift_debuggable
+        && contract.debug_dump_contract_complete
+        && !contract.emit_expanded_available
+        && !contract.debug_trace_available
+        && !contract.source_map_available
+        && !contract.parser_consumption_enabled
+        && !contract.standard_library_required
+        && !contract.runtime_required
+        && !contract.external_process_required
+        && !contract.produced_user_generated_code
+        && contract.contract_visible
+        && contract.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_debug_dump_contracts_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_debug_dump_contracts.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_release_gates.size() != result.generated_parts.size()
+        || result.builtin_derive_release_hardening_matrices.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_debug_dump_contracts.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_debug_dump_contract_matches_group(
+                result.builtin_derive_debug_dump_contracts[index],
+                placeholder,
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_release_hardening_matrices[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool builtin_derive_rollback_diagnostic_gate_matches_group(
+    const BuiltinDeriveRollbackDiagnosticDesignGate& gate,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedTokenParserConsumptionContractGate& parser_contract,
+    const BuiltinDeriveParserConsumptionReleaseGate& release_gate,
+    const BuiltinDeriveReleaseHardeningMatrix& matrix,
+    const BuiltinDeriveDebugDumpStabilityContract& debug_contract,
+    const std::vector<ParserAdmissionDiagnosticProjectionStub>& diagnostics,
+    const std::vector<ParserAdmissionDiagnosticReportEntry>& report_entries) noexcept
+{
+    const base::u64 diagnostic_projection_count = count_part_local_diagnostics(placeholder, diagnostics);
+    const base::u64 diagnostic_report_entry_count = count_part_local_report_entries(placeholder, report_entries);
+    const base::u64 blocked_diagnostic_count = count_part_local_blocked_diagnostics(placeholder, diagnostics);
+    const base::u64 derive_diagnostic_count = count_part_local_derive_diagnostics(placeholder, diagnostics);
+    const base::u64 empty_diagnostic_count = count_part_local_empty_diagnostics(placeholder, diagnostics);
+    const base::u64 parser_consumption_contract_count = parser_contract.contract_visible ? 1U : 0U;
+    const std::string expected_query_name =
+        builtin_derive_rollback_diagnostic_query_name(placeholder.module, placeholder.source_part_index);
+    return gate.module.value == placeholder.module.value
+        && gate.source_part_index == placeholder.source_part_index
+        && gate.attached_part == placeholder.source_part
+        && gate.generated_part == placeholder.generated_part
+        && gate.parser_consumption_contract_identity == parser_contract.contract_identity
+        && gate.release_gate_identity == release_gate.release_gate_identity
+        && gate.hardening_matrix_identity == matrix.hardening_matrix_identity
+        && gate.debug_dump_contract_identity == debug_contract.debug_dump_contract_identity
+        && gate.rollback_gate_identity == builtin_derive_rollback_diagnostic_gate_identity(
+               placeholder, parser_contract, release_gate, matrix, debug_contract, expected_query_name,
+               diagnostic_projection_count, diagnostic_report_entry_count, blocked_diagnostic_count,
+               derive_diagnostic_count, empty_diagnostic_count, parser_consumption_contract_count)
+        && gate.rollback_policy == FRONTEND_MACRO_M22F_ROLLBACK_POLICY
+        && gate.rollback_query_name == expected_query_name
+        && gate.blocked_reason == FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER
+        && gate.diagnostic_projection_count == diagnostic_projection_count
+        && gate.diagnostic_report_entry_count == diagnostic_report_entry_count
+        && gate.blocked_diagnostic_count == blocked_diagnostic_count
+        && gate.derive_diagnostic_count == derive_diagnostic_count
+        && gate.empty_diagnostic_count == empty_diagnostic_count
+        && gate.parser_consumption_contract_count == parser_consumption_contract_count
+        && gate.rollback_diagnostic_design_available
+        && gate.diagnostic_grouping_available
+        && gate.source_anchor_available
+        && gate.token_tree_anchor_available
+        && gate.debug_dump_contract_available
+        && gate.release_rollback_plan_complete
+        && !gate.rollback_execution_enabled
+        && !gate.parser_consumption_enabled
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.rollback_gate_visible
+        && gate.query_reusable;
+}
+
+[[nodiscard]] bool builtin_derive_rollback_diagnostic_gates_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.builtin_derive_rollback_diagnostic_gates.size() != result.generated_parts.size()
+        || result.parser_consumption_contract_gates.size() != result.generated_parts.size()
+        || result.builtin_derive_parser_release_gates.size() != result.generated_parts.size()
+        || result.builtin_derive_release_hardening_matrices.size() != result.generated_parts.size()
+        || result.builtin_derive_debug_dump_contracts.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.builtin_derive_rollback_diagnostic_gates.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        if (!builtin_derive_rollback_diagnostic_gate_matches_group(
+                result.builtin_derive_rollback_diagnostic_gates[index],
+                placeholder,
+                result.parser_consumption_contract_gates[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_release_hardening_matrices[index],
+                result.builtin_derive_debug_dump_contracts[index],
+                result.parser_admission_diagnostics,
+                result.parser_admission_report_entries)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
     const std::vector<GeneratedModulePartPlaceholder>& generated_parts,
     const std::vector<GeneratedModulePartParseMergeStub>& generated_part_stubs) noexcept
@@ -5309,6 +6184,126 @@ bool is_valid(const BuiltinDeriveParserConsumptionReleaseGate& gate) noexcept
         && gate.query_reusable;
 }
 
+bool is_valid(const BuiltinDeriveReleaseHardeningMatrix& matrix) noexcept
+{
+    return syntax::is_valid(matrix.module)
+        && query::is_valid(matrix.attached_part)
+        && query::is_valid(matrix.generated_part)
+        && matrix.generated_part.kind == query::ModulePartKind::generated
+        && matrix.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(matrix.release_gate_identity)
+        && is_nonzero_fingerprint(matrix.admission_group_identity)
+        && is_nonzero_fingerprint(matrix.semantic_plan_group_identity)
+        && is_nonzero_fingerprint(matrix.hardening_matrix_identity)
+        && matrix.hardening_matrix_identity != matrix.release_gate_identity
+        && matrix.hardening_matrix_identity != matrix.admission_group_identity
+        && matrix.hardening_policy == FRONTEND_MACRO_M22D_HARDENING_POLICY
+        && !matrix.hardening_query_name.empty()
+        && matrix.blocked_reason == FRONTEND_MACRO_M22D_HARDENING_BLOCKER
+        && matrix.part_local_derive_admission_count <= matrix.part_local_admission_count
+        && matrix.part_local_semantic_plan_count == matrix.part_local_admission_count
+        && matrix.part_local_release_gate_count == 1U
+        && matrix.global_admission_count >= matrix.part_local_admission_count
+        && matrix.global_semantic_plan_count >= matrix.part_local_semantic_plan_count
+        && matrix.global_admission_count == matrix.part_local_admission_count + matrix.cross_part_admission_count
+        && matrix.global_semantic_plan_count
+            == matrix.part_local_semantic_plan_count + matrix.cross_part_semantic_plan_count
+        && matrix.global_generated_part_count > 0U
+        && matrix.part_locality_preserved
+        && matrix.multi_item_matrix_available
+        && matrix.negative_matrix_complete
+        && matrix.release_remains_blocked
+        && !matrix.parser_consumption_enabled
+        && !matrix.generated_part_parsed
+        && !matrix.generated_part_merged
+        && !matrix.emit_expanded_available
+        && !matrix.debug_trace_available
+        && !matrix.source_map_available
+        && !matrix.standard_library_required
+        && !matrix.runtime_required
+        && !matrix.external_process_required
+        && !matrix.produced_user_generated_code
+        && matrix.matrix_visible
+        && matrix.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveDebugDumpStabilityContract& contract) noexcept
+{
+    return syntax::is_valid(contract.module)
+        && query::is_valid(contract.attached_part)
+        && query::is_valid(contract.generated_part)
+        && contract.generated_part.kind == query::ModulePartKind::generated
+        && contract.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(contract.release_gate_identity)
+        && is_nonzero_fingerprint(contract.hardening_matrix_identity)
+        && is_nonzero_fingerprint(contract.debug_dump_contract_identity)
+        && contract.debug_dump_contract_identity != contract.release_gate_identity
+        && contract.debug_dump_contract_identity != contract.hardening_matrix_identity
+        && contract.debug_dump_policy == FRONTEND_MACRO_M22E_DEBUG_DUMP_POLICY
+        && !contract.debug_dump_query_name.empty()
+        && contract.blocked_reason == FRONTEND_MACRO_M22E_DEBUG_DUMP_BLOCKER
+        && contract.dump_section_count == FRONTEND_MACRO_M22E_DEBUG_DUMP_SECTION_COUNT
+        && contract.stable_ordering_available
+        && contract.identity_projection_available
+        && contract.summary_projection_available
+        && contract.drift_debuggable
+        && contract.debug_dump_contract_complete
+        && !contract.emit_expanded_available
+        && !contract.debug_trace_available
+        && !contract.source_map_available
+        && !contract.parser_consumption_enabled
+        && !contract.standard_library_required
+        && !contract.runtime_required
+        && !contract.external_process_required
+        && !contract.produced_user_generated_code
+        && contract.contract_visible
+        && contract.query_reusable;
+}
+
+bool is_valid(const BuiltinDeriveRollbackDiagnosticDesignGate& gate) noexcept
+{
+    return syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && query::is_valid(gate.generated_part)
+        && gate.generated_part.kind == query::ModulePartKind::generated
+        && gate.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(gate.parser_consumption_contract_identity)
+        && is_nonzero_fingerprint(gate.release_gate_identity)
+        && is_nonzero_fingerprint(gate.hardening_matrix_identity)
+        && is_nonzero_fingerprint(gate.debug_dump_contract_identity)
+        && is_nonzero_fingerprint(gate.rollback_gate_identity)
+        && gate.rollback_gate_identity != gate.parser_consumption_contract_identity
+        && gate.rollback_gate_identity != gate.release_gate_identity
+        && gate.rollback_gate_identity != gate.hardening_matrix_identity
+        && gate.rollback_gate_identity != gate.debug_dump_contract_identity
+        && gate.rollback_policy == FRONTEND_MACRO_M22F_ROLLBACK_POLICY
+        && !gate.rollback_query_name.empty()
+        && gate.blocked_reason == FRONTEND_MACRO_M22F_ROLLBACK_BLOCKER
+        && gate.diagnostic_projection_count == gate.diagnostic_report_entry_count
+        && gate.diagnostic_projection_count == gate.blocked_diagnostic_count
+        && gate.diagnostic_projection_count == gate.derive_diagnostic_count + gate.empty_diagnostic_count
+        && gate.parser_consumption_contract_count == 1U
+        && gate.rollback_diagnostic_design_available
+        && gate.diagnostic_grouping_available
+        && gate.source_anchor_available
+        && gate.token_tree_anchor_available
+        && gate.debug_dump_contract_available
+        && gate.release_rollback_plan_complete
+        && !gate.rollback_execution_enabled
+        && !gate.parser_consumption_enabled
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.rollback_gate_visible
+        && gate.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -5316,7 +6311,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M22C_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M22F_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -5411,6 +6406,21 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const BuiltinDeriveParserConsumptionReleaseGate& gate) {
                    return is_valid(gate);
                })
+        && std::all_of(result.builtin_derive_release_hardening_matrices.begin(),
+               result.builtin_derive_release_hardening_matrices.end(),
+               [](const BuiltinDeriveReleaseHardeningMatrix& matrix) {
+                   return is_valid(matrix);
+               })
+        && std::all_of(result.builtin_derive_debug_dump_contracts.begin(),
+               result.builtin_derive_debug_dump_contracts.end(),
+               [](const BuiltinDeriveDebugDumpStabilityContract& contract) {
+                   return is_valid(contract);
+               })
+        && std::all_of(result.builtin_derive_rollback_diagnostic_gates.begin(),
+               result.builtin_derive_rollback_diagnostic_gates.end(),
+               [](const BuiltinDeriveRollbackDiagnosticDesignGate& gate) {
+                   return is_valid(gate);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -5421,6 +6431,9 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && builtin_derive_expansion_admissions_match_inputs(result)
         && builtin_derive_semantic_plans_match_inputs(result)
         && builtin_derive_parser_release_gates_match_groups(result)
+        && builtin_derive_release_hardening_matrices_match_groups(result)
+        && builtin_derive_debug_dump_contracts_match_groups(result)
+        && builtin_derive_rollback_diagnostic_gates_match_groups(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -5960,6 +6973,140 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.builtin_derive_release_hardening_matrix_count =
+        static_cast<base::u64>(result.builtin_derive_release_hardening_matrices.size());
+    for (const BuiltinDeriveReleaseHardeningMatrix& matrix :
+        result.builtin_derive_release_hardening_matrices) {
+        if (matrix.matrix_visible) {
+            ++summary.builtin_derive_release_hardening_visible_count;
+        }
+        if (matrix.query_reusable) {
+            ++summary.builtin_derive_release_hardening_query_reusable_count;
+        }
+        if (matrix.negative_matrix_complete) {
+            ++summary.builtin_derive_release_hardening_negative_matrix_complete_count;
+        }
+        if (!matrix.release_remains_blocked || matrix.parser_consumption_enabled) {
+            ++summary.builtin_derive_release_hardening_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (matrix.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (matrix.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (matrix.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (matrix.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (matrix.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (matrix.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (matrix.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (matrix.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (matrix.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_debug_dump_contract_count =
+        static_cast<base::u64>(result.builtin_derive_debug_dump_contracts.size());
+    for (const BuiltinDeriveDebugDumpStabilityContract& contract :
+        result.builtin_derive_debug_dump_contracts) {
+        if (contract.contract_visible) {
+            ++summary.builtin_derive_debug_dump_contract_visible_count;
+        }
+        if (contract.query_reusable) {
+            ++summary.builtin_derive_debug_dump_query_reusable_count;
+        }
+        if (contract.debug_dump_contract_complete) {
+            ++summary.builtin_derive_debug_dump_complete_count;
+        }
+        if (contract.parser_consumption_enabled) {
+            ++summary.builtin_derive_debug_dump_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (contract.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (contract.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (contract.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (contract.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (contract.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (contract.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (contract.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.builtin_derive_rollback_diagnostic_gate_count =
+        static_cast<base::u64>(result.builtin_derive_rollback_diagnostic_gates.size());
+    for (const BuiltinDeriveRollbackDiagnosticDesignGate& gate :
+        result.builtin_derive_rollback_diagnostic_gates) {
+        if (gate.rollback_gate_visible) {
+            ++summary.builtin_derive_rollback_diagnostic_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.builtin_derive_rollback_diagnostic_query_reusable_count;
+        }
+        if (gate.rollback_diagnostic_design_available
+            && gate.diagnostic_grouping_available
+            && gate.source_anchor_available
+            && gate.token_tree_anchor_available
+            && gate.debug_dump_contract_available
+            && gate.release_rollback_plan_complete) {
+            ++summary.builtin_derive_rollback_diagnostic_design_complete_count;
+        }
+        if (gate.rollback_execution_enabled || gate.parser_consumption_enabled) {
+            ++summary.builtin_derive_rollback_diagnostic_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (gate.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (gate.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (gate.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (gate.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -5967,7 +7114,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M22C_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M22F_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -6059,6 +7206,21 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     for (const BuiltinDeriveParserConsumptionReleaseGate& gate :
         result.builtin_derive_parser_release_gates) {
         mix_builtin_derive_parser_consumption_release_gate(builder, gate);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_release_hardening_matrices.size()));
+    for (const BuiltinDeriveReleaseHardeningMatrix& matrix :
+        result.builtin_derive_release_hardening_matrices) {
+        mix_builtin_derive_release_hardening_matrix(builder, matrix);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_debug_dump_contracts.size()));
+    for (const BuiltinDeriveDebugDumpStabilityContract& contract :
+        result.builtin_derive_debug_dump_contracts) {
+        mix_builtin_derive_debug_dump_stability_contract(builder, contract);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.builtin_derive_rollback_diagnostic_gates.size()));
+    for (const BuiltinDeriveRollbackDiagnosticDesignGate& gate :
+        result.builtin_derive_rollback_diagnostic_gates) {
+        mix_builtin_derive_rollback_diagnostic_design_gate(builder, gate);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -6220,6 +7382,36 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.builtin_derive_parser_release_query_reusable_count
            << " builtin_derive_parser_release_parser_consumable="
            << summary.builtin_derive_parser_release_parser_consumable_count
+           << " builtin_derive_release_hardening_matrices="
+           << summary.builtin_derive_release_hardening_matrix_count
+           << " builtin_derive_release_hardening_visible="
+           << summary.builtin_derive_release_hardening_visible_count
+           << " builtin_derive_release_hardening_query_reusable="
+           << summary.builtin_derive_release_hardening_query_reusable_count
+           << " builtin_derive_release_hardening_negative_matrix_complete="
+           << summary.builtin_derive_release_hardening_negative_matrix_complete_count
+           << " builtin_derive_release_hardening_parser_consumable="
+           << summary.builtin_derive_release_hardening_parser_consumable_count
+           << " builtin_derive_debug_dump_contracts="
+           << summary.builtin_derive_debug_dump_contract_count
+           << " builtin_derive_debug_dump_visible="
+           << summary.builtin_derive_debug_dump_contract_visible_count
+           << " builtin_derive_debug_dump_query_reusable="
+           << summary.builtin_derive_debug_dump_query_reusable_count
+           << " builtin_derive_debug_dump_complete="
+           << summary.builtin_derive_debug_dump_complete_count
+           << " builtin_derive_debug_dump_parser_consumable="
+           << summary.builtin_derive_debug_dump_parser_consumable_count
+           << " builtin_derive_rollback_diagnostic_gates="
+           << summary.builtin_derive_rollback_diagnostic_gate_count
+           << " builtin_derive_rollback_diagnostic_visible="
+           << summary.builtin_derive_rollback_diagnostic_visible_count
+           << " builtin_derive_rollback_diagnostic_query_reusable="
+           << summary.builtin_derive_rollback_diagnostic_query_reusable_count
+           << " builtin_derive_rollback_diagnostic_design_complete="
+           << summary.builtin_derive_rollback_diagnostic_design_complete_count
+           << " builtin_derive_rollback_diagnostic_parser_consumable="
+           << summary.builtin_derive_rollback_diagnostic_parser_consumable_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -6879,6 +8071,168 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(gate.release_gate_identity)
                << '\n';
     }
+    for (base::usize index = 0; index < result.builtin_derive_release_hardening_matrices.size(); ++index) {
+        const BuiltinDeriveReleaseHardeningMatrix& matrix =
+            result.builtin_derive_release_hardening_matrices[index];
+        stream << "  builtin_derive_release_hardening_matrix #" << index
+               << " module=" << matrix.module.value
+               << " source_part=" << matrix.source_part_index
+               << " policy=" << matrix.hardening_policy
+               << " query=" << matrix.hardening_query_name
+               << " part_local_admissions=" << matrix.part_local_admission_count
+               << " part_local_derive_admissions=" << matrix.part_local_derive_admission_count
+               << " part_local_semantic_plans=" << matrix.part_local_semantic_plan_count
+               << " part_local_release_gates=" << matrix.part_local_release_gate_count
+               << " global_admissions=" << matrix.global_admission_count
+               << " global_semantic_plans=" << matrix.global_semantic_plan_count
+               << " global_generated_parts=" << matrix.global_generated_part_count
+               << " cross_part_admissions=" << matrix.cross_part_admission_count
+               << " cross_part_semantic_plans=" << matrix.cross_part_semantic_plan_count
+               << " part_locality_preserved="
+               << (matrix.part_locality_preserved ? "yes" : "no")
+               << " multi_item_matrix_available="
+               << (matrix.multi_item_matrix_available ? "yes" : "no")
+               << " negative_matrix_complete="
+               << (matrix.negative_matrix_complete ? "yes" : "no")
+               << " release_remains_blocked="
+               << (matrix.release_remains_blocked ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (matrix.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (matrix.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (matrix.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (matrix.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (matrix.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (matrix.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (matrix.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (matrix.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (matrix.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (matrix.produced_user_generated_code ? "yes" : "no")
+               << " matrix_visible=" << (matrix.matrix_visible ? "yes" : "no")
+               << " query_reusable=" << (matrix.query_reusable ? "yes" : "no")
+               << " blocker=" << matrix.blocked_reason
+               << " release_gate_identity=" << query::debug_string(matrix.release_gate_identity)
+               << " admission_group_identity="
+               << query::debug_string(matrix.admission_group_identity)
+               << " semantic_plan_group_identity="
+               << query::debug_string(matrix.semantic_plan_group_identity)
+               << " hardening_matrix_identity="
+               << query::debug_string(matrix.hardening_matrix_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_debug_dump_contracts.size(); ++index) {
+        const BuiltinDeriveDebugDumpStabilityContract& contract =
+            result.builtin_derive_debug_dump_contracts[index];
+        stream << "  builtin_derive_debug_dump_stability_contract #" << index
+               << " module=" << contract.module.value
+               << " source_part=" << contract.source_part_index
+               << " policy=" << contract.debug_dump_policy
+               << " query=" << contract.debug_dump_query_name
+               << " dump_sections=" << contract.dump_section_count
+               << " stable_ordering_available="
+               << (contract.stable_ordering_available ? "yes" : "no")
+               << " identity_projection_available="
+               << (contract.identity_projection_available ? "yes" : "no")
+               << " summary_projection_available="
+               << (contract.summary_projection_available ? "yes" : "no")
+               << " drift_debuggable=" << (contract.drift_debuggable ? "yes" : "no")
+               << " debug_dump_contract_complete="
+               << (contract.debug_dump_contract_complete ? "yes" : "no")
+               << " emit_expanded_available="
+               << (contract.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (contract.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (contract.source_map_available ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (contract.parser_consumption_enabled ? "yes" : "no")
+               << " standard_library_required="
+               << (contract.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (contract.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (contract.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (contract.produced_user_generated_code ? "yes" : "no")
+               << " contract_visible=" << (contract.contract_visible ? "yes" : "no")
+               << " query_reusable=" << (contract.query_reusable ? "yes" : "no")
+               << " blocker=" << contract.blocked_reason
+               << " release_gate_identity="
+               << query::debug_string(contract.release_gate_identity)
+               << " hardening_matrix_identity="
+               << query::debug_string(contract.hardening_matrix_identity)
+               << " debug_dump_contract_identity="
+               << query::debug_string(contract.debug_dump_contract_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.builtin_derive_rollback_diagnostic_gates.size(); ++index) {
+        const BuiltinDeriveRollbackDiagnosticDesignGate& gate =
+            result.builtin_derive_rollback_diagnostic_gates[index];
+        stream << "  builtin_derive_rollback_diagnostic_design_gate #" << index
+               << " module=" << gate.module.value
+               << " source_part=" << gate.source_part_index
+               << " policy=" << gate.rollback_policy
+               << " query=" << gate.rollback_query_name
+               << " diagnostic_projections=" << gate.diagnostic_projection_count
+               << " diagnostic_report_entries=" << gate.diagnostic_report_entry_count
+               << " blocked_diagnostics=" << gate.blocked_diagnostic_count
+               << " derive_diagnostics=" << gate.derive_diagnostic_count
+               << " empty_diagnostics=" << gate.empty_diagnostic_count
+               << " parser_consumption_contracts=" << gate.parser_consumption_contract_count
+               << " rollback_diagnostic_design_available="
+               << (gate.rollback_diagnostic_design_available ? "yes" : "no")
+               << " diagnostic_grouping_available="
+               << (gate.diagnostic_grouping_available ? "yes" : "no")
+               << " source_anchor_available="
+               << (gate.source_anchor_available ? "yes" : "no")
+               << " token_tree_anchor_available="
+               << (gate.token_tree_anchor_available ? "yes" : "no")
+               << " debug_dump_contract_available="
+               << (gate.debug_dump_contract_available ? "yes" : "no")
+               << " release_rollback_plan_complete="
+               << (gate.release_rollback_plan_complete ? "yes" : "no")
+               << " rollback_execution_enabled="
+               << (gate.rollback_execution_enabled ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (gate.parser_consumption_enabled ? "yes" : "no")
+               << " generated_part_parsed="
+               << (gate.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (gate.generated_part_merged ? "yes" : "no")
+               << " emit_expanded_available="
+               << (gate.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (gate.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (gate.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (gate.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (gate.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (gate.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " rollback_gate_visible="
+               << (gate.rollback_gate_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " blocker=" << gate.blocked_reason
+               << " parser_consumption_contract_identity="
+               << query::debug_string(gate.parser_consumption_contract_identity)
+               << " release_gate_identity=" << query::debug_string(gate.release_gate_identity)
+               << " hardening_matrix_identity="
+               << query::debug_string(gate.hardening_matrix_identity)
+               << " debug_dump_contract_identity="
+               << query::debug_string(gate.debug_dump_contract_identity)
+               << " rollback_gate_identity="
+               << query::debug_string(gate.rollback_gate_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -6899,7 +8253,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M22C_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M22F_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     std::vector<base::usize> input_item_indices;
@@ -6927,6 +8281,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.builtin_derive_expansion_admissions.reserve(attribute_count);
     result.builtin_derive_semantic_plans.reserve(attribute_count);
     result.builtin_derive_parser_release_gates.reserve(ast.items.size());
+    result.builtin_derive_release_hardening_matrices.reserve(ast.items.size());
+    result.builtin_derive_debug_dump_contracts.reserve(ast.items.size());
+    result.builtin_derive_rollback_diagnostic_gates.reserve(ast.items.size());
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -7070,6 +8427,27 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
                 closure,
                 result.builtin_derive_expansion_admissions,
                 result.builtin_derive_semantic_plans));
+    }
+    for (base::usize index = 0; index < result.generated_parts.size(); ++index) {
+        result.builtin_derive_release_hardening_matrices.push_back(
+            make_builtin_derive_release_hardening_matrix(result.generated_parts[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.generated_parts,
+                result.builtin_derive_expansion_admissions,
+                result.builtin_derive_semantic_plans,
+                result.builtin_derive_parser_release_gates));
+        result.builtin_derive_debug_dump_contracts.push_back(
+            make_builtin_derive_debug_dump_stability_contract(result.generated_parts[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_release_hardening_matrices[index]));
+        result.builtin_derive_rollback_diagnostic_gates.push_back(
+            make_builtin_derive_rollback_diagnostic_design_gate(result.generated_parts[index],
+                result.parser_consumption_contract_gates[index],
+                result.builtin_derive_parser_release_gates[index],
+                result.builtin_derive_release_hardening_matrices[index],
+                result.builtin_derive_debug_dump_contracts[index],
+                result.parser_admission_diagnostics,
+                result.parser_admission_report_entries));
     }
 
     result.summary = summarize_early_item_expansion_counts(result);

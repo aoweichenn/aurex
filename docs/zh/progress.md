@@ -1,9 +1,39 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M22c Builtin Derive Parser Consumption Release Gate
+阶段：M22f Builtin Derive Rollback Diagnostic Design Gate
 
 ## 总体状态
+
+2026-06-12：M22f Builtin Derive Rollback Diagnostic Design Gate 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M22c release gate 之后的 release hardening、debug dump
+stability 和 rollback diagnostic design gate 固定成可验证事实。
+
+新增 `BuiltinDeriveReleaseHardeningMatrix`、`BuiltinDeriveDebugDumpStabilityContract` 和
+`BuiltinDeriveRollbackDiagnosticDesignGate`，并给 `EarlyItemExpansionResult` 增加
+`builtin_derive_release_hardening_matrices`、`builtin_derive_debug_dump_contracts` 和
+`builtin_derive_rollback_diagnostic_gates`。M22d hardening matrix 绑定 M22c `release_gate_identity`、
+`admission_group_identity` 和 `semantic_plan_group_identity`，固定
+`builtin_derive_release_hardening_matrix_v1`、`m22d-builtin-derive-release-hardening:<module>:<part>`、
+part-local admission / derive admission / semantic plan / release gate counts、global totals 和 cross-part totals。
+M22e debug dump contract 绑定 M22c `release_gate_identity` 与 M22d `hardening_matrix_identity`，固定
+`builtin_derive_debug_dump_stability_contract_v1`、`m22e-builtin-derive-debug-dump:<module>:<part>`、
+`dump_section_count=4`、stable ordering、identity projection、summary projection 和 drift-debuggable contract。
+M22f rollback diagnostic design gate 绑定 M21n `contract_identity`、M22c `release_gate_identity`、M22d
+`hardening_matrix_identity` 和 M22e `debug_dump_contract_identity`，固定
+`builtin_derive_rollback_diagnostic_design_gate_v1`、
+`m22f-builtin-derive-rollback-diagnostic:<module>:<part>`、diagnostic projection/report entry totals、derive/empty
+diagnostic totals、source anchor/token-tree anchor prerequisites 和 design-only rollback gate，并把
+`EarlyItemExpansionResult::name` 推进为 `M22f Builtin Derive Rollback Diagnostic Design Gate`。summary / dump /
+fingerprint / validation 会拒绝 hardening matrix identity 或 cross-part totals 漂移、debug dump stability contract
+漂移、rollback diagnostic prerequisites 漂移、parser consumption 或 rollback execution 被打开、
+standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+新增说明见 [Aurex M22d Builtin Derive Release Hardening Matrix](m22d-builtin-derive-release-hardening-matrix.md)、
+[Aurex M22e Builtin Derive Debug Dump Stability Contract](m22e-builtin-derive-debug-dump-stability-contract.md) 和
+[Aurex M22f Builtin Derive Rollback Diagnostic Design Gate](m22f-builtin-derive-rollback-diagnostic-design-gate.md)。
 
 2026-06-12：M22c Builtin Derive Parser Consumption Release Gate 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

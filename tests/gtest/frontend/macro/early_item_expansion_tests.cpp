@@ -22,6 +22,7 @@ constexpr base::SourceId EARLY_ITEM_EXPANSION_TEST_SOURCE_ID{31U};
 constexpr base::u8 EARLY_ITEM_EXPANSION_TEST_INVALID_DISPOSITION = 243U;
 constexpr base::u8 EARLY_ITEM_EXPANSION_TEST_INVALID_LIFECYCLE_STATE = 242U;
 constexpr base::u32 EARLY_ITEM_EXPANSION_TEST_GENERATED_PART_INDEX_OFFSET = 100'000U;
+constexpr base::u64 EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT = 2U;
 
 [[nodiscard]] syntax::AstModule parse_success(const std::string_view source)
 {
@@ -202,6 +203,41 @@ void assign_single_module_ownership(syntax::AstModule& module)
     return found == result.generated_token_buffers.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input)
+{
+    std::vector<const frontend::macro::GeneratedTokenRecord*> records;
+    for (const frontend::macro::GeneratedTokenRecord& record : result.generated_token_records) {
+        if (record.item.value == input.item.value
+            && record.module.value == input.module.value
+            && record.attribute_index == input.attribute_index) {
+            records.push_back(&record);
+        }
+    }
+    return records;
+}
+
+[[nodiscard]] base::usize first_record_index_for_attribute(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view attribute_name)
+{
+    for (base::usize index = 0; index < result.generated_token_records.size(); ++index) {
+        const frontend::macro::GeneratedTokenRecord& record = result.generated_token_records[index];
+        const auto input_found = std::find_if(result.inputs.begin(), result.inputs.end(),
+            [&record, attribute_name](const frontend::macro::EarlyItemMacroInput& input) {
+                return input.item.value == record.item.value
+                    && input.module.value == record.module.value
+                    && input.attribute_index == record.attribute_index
+                    && input.attribute_name == attribute_name;
+            });
+        if (input_found != result.inputs.end()) {
+            return index;
+        }
+    }
+    return result.generated_token_records.size();
+}
+
 void refresh_expansion_result(frontend::macro::EarlyItemExpansionResult& result)
 {
     result.summary = frontend::macro::summarize_early_item_expansion_counts(result);
@@ -274,7 +310,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21h Token Materialization Admission Stub Contract");
+    EXPECT_EQ(result.name, "M21i Compiler-Owned Generated Token Buffer Prototype");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -305,10 +341,16 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.token_materialization_admission_stub_count, 2U);
     EXPECT_EQ(result.summary.compiler_owned_admission_count, 2U);
     EXPECT_EQ(result.summary.admitted_token_materialization_count, 2U);
-    EXPECT_EQ(result.summary.materialized_token_admission_count, 0U);
+    EXPECT_EQ(result.summary.materialized_token_admission_count, 1U);
     EXPECT_EQ(result.summary.generated_token_buffer_stub_count, 2U);
-    EXPECT_EQ(result.summary.empty_generated_token_buffer_count, 2U);
-    EXPECT_EQ(result.summary.materialized_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.empty_generated_token_buffer_count, 1U);
+    EXPECT_EQ(result.summary.materialized_token_buffer_count, 1U);
+    EXPECT_EQ(result.summary.compiler_owned_token_buffer_count, 2U);
+    EXPECT_EQ(result.summary.generated_token_record_count,
+        config->attributes[1].token_tree.size() + EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT);
+    EXPECT_EQ(result.summary.compiler_owned_generated_token_record_count,
+        config->attributes[1].token_tree.size() + EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT);
+    EXPECT_EQ(result.summary.parser_visible_generated_token_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -503,7 +545,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(builder_admission->admission_policy,
         "compiler_owned_attached_item_token_materialization_admission_v1");
     expect_contains(builder_admission->token_stream_name, "m21h-token-stream:0:0:0:0:builder");
-    expect_contains(builder_admission->blocker_reason, "blocked in M21h");
+    expect_contains(builder_admission->blocker_reason, "non-derive item attribute token materialization remains blocked in M21i");
     EXPECT_TRUE(builder_admission->compiler_owned);
     EXPECT_TRUE(builder_admission->admitted);
     EXPECT_FALSE(builder_admission->materialized_tokens);
@@ -517,8 +559,19 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     const frontend::macro::TokenMaterializationAdmissionStub* const derive_admission =
         token_admission_for_input(result, *derive);
     ASSERT_NE(derive_admission, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_admission));
     EXPECT_NE(derive_admission->token_stream_name, builder_admission->token_stream_name);
     expect_contains(derive_admission->token_stream_name, "m21h-token-stream:0:0:0:1:derive");
+    expect_contains(derive_admission->blocker_reason, "derive token prototype remains parser-blocked in M21i");
+    EXPECT_TRUE(derive_admission->compiler_owned);
+    EXPECT_TRUE(derive_admission->admitted);
+    EXPECT_TRUE(derive_admission->materialized_tokens);
+    EXPECT_FALSE(derive_admission->generated_source_text);
+    EXPECT_FALSE(derive_admission->parse_ready);
+    EXPECT_FALSE(derive_admission->external_process_required);
+    EXPECT_FALSE(derive_admission->standard_library_required);
+    EXPECT_FALSE(derive_admission->runtime_required);
+    EXPECT_FALSE(derive_admission->produced_user_generated_code);
 
     ASSERT_EQ(result.generated_token_buffers.size(), 2U);
     const frontend::macro::GeneratedTokenBufferStub* const builder_buffer =
@@ -535,7 +588,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(builder_buffer->hygiene_mark, builder_hygiene->generated_fresh_mark);
     EXPECT_EQ(builder_buffer->token_stream_name, builder_admission->token_stream_name);
     EXPECT_EQ(builder_buffer->token_buffer_kind, "compiler_owned_empty_token_stream");
-    expect_contains(builder_buffer->blocker_reason, "parser-blocked in M21h");
+    EXPECT_EQ(builder_buffer->token_producer_policy, "compiler_owned_blocked_empty_token_producer_v1");
+    EXPECT_GT(builder_buffer->materialization_identity.byte_count, 0U);
+    expect_contains(builder_buffer->blocker_reason, "empty and parser-blocked in M21i");
     EXPECT_EQ(builder_buffer->token_count, 0U);
     EXPECT_TRUE(builder_buffer->empty);
     EXPECT_FALSE(builder_buffer->materialized_tokens);
@@ -543,8 +598,66 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(builder_buffer->parser_consumable);
     EXPECT_FALSE(builder_buffer->produced_user_generated_code);
 
+    const frontend::macro::GeneratedTokenBufferStub* const derive_buffer =
+        token_buffer_for_input(result, *derive);
+    ASSERT_NE(derive_buffer, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_buffer));
+    EXPECT_EQ(derive_buffer->part_index, derive->part_index);
+    EXPECT_EQ(derive_buffer->attribute_index, derive->attribute_index);
+    EXPECT_EQ(derive_buffer->attached_part, derive->attached_part);
+    EXPECT_EQ(derive_buffer->generated_part, generated.generated_part);
+    EXPECT_EQ(derive_buffer->token_plan_identity, derive_admission->token_plan_identity);
+    EXPECT_EQ(derive_buffer->token_buffer_identity, derive_admission->token_buffer_identity);
+    EXPECT_GT(derive_buffer->materialization_identity.byte_count, 0U);
+    EXPECT_EQ(derive_buffer->source_map_identity, result.trace_stubs[1].generated_source_map_identity);
+    EXPECT_EQ(derive_buffer->token_stream_name, derive_admission->token_stream_name);
+    EXPECT_EQ(derive_buffer->token_buffer_kind, "compiler_owned_builtin_derive_token_stream_prototype");
+    EXPECT_EQ(derive_buffer->token_producer_policy,
+        "compiler_owned_builtin_derive_token_producer_prototype_v1");
+    expect_contains(derive_buffer->blocker_reason, "generated token buffer remains parser-blocked in M21i");
+    EXPECT_EQ(derive_buffer->token_count,
+        derive->token_count + EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT);
+    EXPECT_FALSE(derive_buffer->empty);
+    EXPECT_TRUE(derive_buffer->materialized_tokens);
+    EXPECT_FALSE(derive_buffer->generated_source_text);
+    EXPECT_FALSE(derive_buffer->parser_consumable);
+    EXPECT_FALSE(derive_buffer->produced_user_generated_code);
+
+    const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
+        token_records_for_input(result, *builder);
+    EXPECT_TRUE(builder_records.empty());
+    const std::vector<const frontend::macro::GeneratedTokenRecord*> derive_records =
+        token_records_for_input(result, *derive);
+    ASSERT_EQ(derive_records.size(), derive_buffer->token_count);
+    const frontend::macro::GeneratedTokenRecord& begin_record = *derive_records.front();
+    EXPECT_TRUE(frontend::macro::is_valid(begin_record));
+    EXPECT_EQ(begin_record.token_buffer_identity, derive_buffer->token_buffer_identity);
+    EXPECT_EQ(begin_record.token_index, 0U);
+    EXPECT_EQ(begin_record.kind, syntax::TokenKind::identifier);
+    EXPECT_EQ(begin_record.text, "__aurex_builtin_derive_begin");
+    EXPECT_EQ(begin_record.token_role, "derive_codegen_begin");
+    EXPECT_FALSE(begin_record.parser_visible);
+    EXPECT_FALSE(begin_record.produced_user_generated_code);
+    ASSERT_GE(derive_records.size(), 3U);
+    const frontend::macro::GeneratedTokenRecord& first_source_record = *derive_records[1];
+    EXPECT_EQ(first_source_record.kind, config->attributes[1].token_tree[0].kind);
+    EXPECT_EQ(first_source_record.text, "__aurex_builtin_derive_source_token_1");
+    EXPECT_EQ(first_source_record.token_role, "derive_source_token_placeholder");
+    EXPECT_EQ(first_source_record.anchor_range.source.value,
+        config->attributes[1].token_tree[0].range.source.value);
+    EXPECT_EQ(first_source_record.anchor_range.begin, config->attributes[1].token_tree[0].range.begin);
+    EXPECT_EQ(first_source_record.anchor_range.end, config->attributes[1].token_tree[0].range.end);
+    const frontend::macro::GeneratedTokenRecord& end_record = *derive_records.back();
+    EXPECT_EQ(end_record.token_index, derive_buffer->token_count - 1U);
+    EXPECT_EQ(end_record.kind, syntax::TokenKind::identifier);
+    EXPECT_EQ(end_record.text, "__aurex_builtin_derive_end");
+    EXPECT_EQ(end_record.token_role, "derive_codegen_end");
+    EXPECT_EQ(end_record.token_buffer_identity, derive_buffer->token_buffer_identity);
+    EXPECT_NE(begin_record.token_identity, first_source_record.token_identity);
+    EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
+
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21h Token Materialization Admission Stub Contract");
+    expect_contains(summary, "early_item_expansion name=M21i Compiler-Owned Generated Token Buffer Prototype");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -567,10 +680,14 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "token_materialization_admissions=2");
     expect_contains(summary, "compiler_owned_admissions=2");
     expect_contains(summary, "admitted_token_materializations=2");
-    expect_contains(summary, "materialized_token_admissions=0");
+    expect_contains(summary, "materialized_token_admissions=1");
     expect_contains(summary, "generated_token_buffers=2");
-    expect_contains(summary, "empty_generated_token_buffers=2");
-    expect_contains(summary, "materialized_token_buffers=0");
+    expect_contains(summary, "empty_generated_token_buffers=1");
+    expect_contains(summary, "materialized_token_buffers=1");
+    expect_contains(summary, "compiler_owned_token_buffers=2");
+    expect_contains(summary, "generated_token_records=7");
+    expect_contains(summary, "compiler_owned_generated_token_records=7");
+    expect_contains(summary, "parser_visible_generated_tokens=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -632,16 +749,27 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "external_process_required=no");
     expect_contains(dump, "standard_library_required=no");
     expect_contains(dump, "runtime_required=no");
-    expect_contains(dump, "compiler-owned macro token materialization is blocked in M21h");
+    expect_contains(dump, "non-derive item attribute token materialization remains blocked in M21i");
     expect_contains(dump, "source_map_identity=");
     expect_contains(dump, "token_plan_identity=");
     expect_contains(dump, "token_buffer_identity=");
     expect_contains(dump, "generated_token_buffer_stub #0");
     expect_contains(dump, "kind=compiler_owned_empty_token_stream");
+    expect_contains(dump, "producer=compiler_owned_blocked_empty_token_producer_v1");
     expect_contains(dump, "token_count=0");
     expect_contains(dump, "empty=yes");
     expect_contains(dump, "parser_consumable=no");
-    expect_contains(dump, "generated token buffer remains empty and parser-blocked in M21h");
+    expect_contains(dump, "materialization_identity=");
+    expect_contains(dump, "generated token buffer remains empty and parser-blocked in M21i");
+    expect_contains(dump, "kind=compiler_owned_builtin_derive_token_stream_prototype");
+    expect_contains(dump, "producer=compiler_owned_builtin_derive_token_producer_prototype_v1");
+    expect_contains(dump, "generated_token_record #0");
+    expect_contains(dump, "text=__aurex_builtin_derive_begin");
+    expect_contains(dump, "role=derive_codegen_begin");
+    expect_contains(dump, "role=derive_source_token_placeholder");
+    expect_contains(dump, "text=__aurex_builtin_derive_end");
+    expect_contains(dump, "parser_visible=no");
+    expect_contains(dump, "token_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -1410,10 +1538,21 @@ TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedTokenBufferDrift)
     refresh_expansion_result(wrong_kind);
     EXPECT_FALSE(frontend::macro::is_valid(wrong_kind));
 
+    frontend::macro::EarlyItemExpansionResult wrong_producer_policy = baseline;
+    wrong_producer_policy.generated_token_buffers.front().token_producer_policy =
+        "wrong_token_producer_policy";
+    refresh_expansion_result(wrong_producer_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_producer_policy));
+
     frontend::macro::EarlyItemExpansionResult wrong_blocker = baseline;
     wrong_blocker.generated_token_buffers.front().blocker_reason = "wrong blocker";
     refresh_expansion_result(wrong_blocker);
     EXPECT_FALSE(frontend::macro::is_valid(wrong_blocker));
+
+    frontend::macro::EarlyItemExpansionResult empty_materialization_identity = baseline;
+    empty_materialization_identity.generated_token_buffers.front().materialization_identity = {};
+    refresh_expansion_result(empty_materialization_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_materialization_identity));
 
     frontend::macro::EarlyItemExpansionResult non_empty_token_count = baseline;
     non_empty_token_count.generated_token_buffers.front().token_count = 1U;
@@ -1449,6 +1588,133 @@ TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedTokenBufferDrift)
     refresh_expansion_result(user_code);
     EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
     EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsDeriveGeneratedTokenPrototypeDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.inputs.size(), 1U);
+    ASSERT_EQ(baseline.token_materialization_admissions.size(), 1U);
+    ASSERT_EQ(baseline.generated_token_buffers.size(), 1U);
+    ASSERT_FALSE(baseline.generated_token_records.empty());
+    EXPECT_TRUE(baseline.token_materialization_admissions.front().materialized_tokens);
+    EXPECT_TRUE(baseline.generated_token_buffers.front().materialized_tokens);
+    EXPECT_FALSE(baseline.generated_token_buffers.front().empty);
+    EXPECT_EQ(baseline.summary.generated_token_record_count,
+        baseline.inputs.front().token_count + EARLY_ITEM_EXPANSION_TEST_DERIVE_SENTINEL_TOKEN_COUNT);
+
+    frontend::macro::EarlyItemExpansionResult non_materialized_admission = baseline;
+    non_materialized_admission.token_materialization_admissions.front().materialized_tokens = false;
+    refresh_expansion_result(non_materialized_admission);
+    EXPECT_EQ(non_materialized_admission.summary.materialized_token_admission_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(non_materialized_admission));
+
+    frontend::macro::EarlyItemExpansionResult empty_derive_buffer = baseline;
+    empty_derive_buffer.generated_token_buffers.front().empty = true;
+    refresh_expansion_result(empty_derive_buffer);
+    EXPECT_EQ(empty_derive_buffer.summary.empty_generated_token_buffer_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(empty_derive_buffer));
+
+    frontend::macro::EarlyItemExpansionResult non_materialized_buffer = baseline;
+    non_materialized_buffer.generated_token_buffers.front().materialized_tokens = false;
+    refresh_expansion_result(non_materialized_buffer);
+    EXPECT_EQ(non_materialized_buffer.summary.materialized_token_buffer_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(non_materialized_buffer));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_count = baseline;
+    wrong_token_count.generated_token_buffers.front().token_count = 0U;
+    refresh_expansion_result(wrong_token_count);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_count));
+
+    frontend::macro::EarlyItemExpansionResult wrong_derive_policy = baseline;
+    wrong_derive_policy.generated_token_buffers.front().token_producer_policy =
+        "compiler_owned_blocked_empty_token_producer_v1";
+    refresh_expansion_result(wrong_derive_policy);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_derive_policy));
+
+    frontend::macro::EarlyItemExpansionResult wrong_materialization_identity = baseline;
+    wrong_materialization_identity.generated_token_buffers.front().materialization_identity =
+        query::stable_fingerprint("wrong derive materialization identity");
+    refresh_expansion_result(wrong_materialization_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_materialization_identity));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsGeneratedTokenRecordDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    const base::usize derive_record_index = first_record_index_for_attribute(baseline, "derive");
+    ASSERT_LT(derive_record_index, baseline.generated_token_records.size());
+
+    frontend::macro::EarlyItemExpansionResult missing_records = baseline;
+    missing_records.generated_token_records.clear();
+    refresh_expansion_result(missing_records);
+    EXPECT_EQ(missing_records.summary.generated_token_record_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_records));
+
+    frontend::macro::EarlyItemExpansionResult parser_visible = baseline;
+    parser_visible.generated_token_records[derive_record_index].parser_visible = true;
+    refresh_expansion_result(parser_visible);
+    EXPECT_EQ(parser_visible.summary.parser_visible_generated_token_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_visible));
+
+    frontend::macro::EarlyItemExpansionResult user_generated_code = baseline;
+    user_generated_code.generated_token_records[derive_record_index].produced_user_generated_code = true;
+    refresh_expansion_result(user_generated_code);
+    EXPECT_EQ(user_generated_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_generated_code));
+
+    frontend::macro::EarlyItemExpansionResult wrong_token_identity = baseline;
+    wrong_token_identity.generated_token_records[derive_record_index].token_identity =
+        query::stable_fingerprint("wrong generated token identity");
+    refresh_expansion_result(wrong_token_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_token_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_begin_text = baseline;
+    wrong_begin_text.generated_token_records[derive_record_index].text =
+        "__aurex_builtin_derive_wrong_begin";
+    refresh_expansion_result(wrong_begin_text);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_begin_text));
+
+    frontend::macro::EarlyItemExpansionResult wrong_begin_role = baseline;
+    wrong_begin_role.generated_token_records[derive_record_index].token_role =
+        "wrong_generated_token_role";
+    refresh_expansion_result(wrong_begin_role);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_begin_role));
+
+    frontend::macro::EarlyItemExpansionResult wrong_begin_kind = baseline;
+    wrong_begin_kind.generated_token_records[derive_record_index].kind = syntax::TokenKind::integer_literal;
+    refresh_expansion_result(wrong_begin_kind);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_begin_kind));
+
+    frontend::macro::EarlyItemExpansionResult invalid_record_kind = baseline;
+    invalid_record_kind.generated_token_records[derive_record_index].kind = syntax::TokenKind::invalid;
+    refresh_expansion_result(invalid_record_kind);
+    EXPECT_FALSE(frontend::macro::is_valid(invalid_record_kind));
+
+    frontend::macro::EarlyItemExpansionResult wrong_record_buffer = baseline;
+    wrong_record_buffer.generated_token_records[derive_record_index].token_buffer_identity =
+        query::stable_fingerprint("wrong generated token buffer identity");
+    refresh_expansion_result(wrong_record_buffer);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_record_buffer));
+
+    frontend::macro::EarlyItemExpansionResult stale_record_fingerprint = baseline;
+    stale_record_fingerprint.generated_token_records[derive_record_index].text =
+        "__aurex_builtin_derive_wrong_begin";
+    refresh_expansion_result(stale_record_fingerprint);
+    EXPECT_NE(stale_record_fingerprint.fingerprint, baseline.fingerprint);
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksTokenMaterializationAdmissionContract)

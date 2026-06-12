@@ -1,5 +1,59 @@
 # 版本文档
 
+## M21i Compiler-Owned Generated Token Buffer Prototype
+
+当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21h 的 compiler-owned token
+materialization admission / generated token buffer stub contract 扩展为内建 `derive` 输入的第一版
+compiler-owned generated token buffer prototype。该阶段仍不执行用户宏、不生成 source text、不让 parser 消费
+generated token buffer、不生成用户代码，也不引入标准库或 runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::GeneratedTokenRecord`。
+- 新增 `is_valid(const GeneratedTokenRecord&)`。
+- `EarlyItemExpansionResult` 新增 `generated_token_records`。
+- `GeneratedTokenBufferStub` 新增 `materialization_identity`。
+- `GeneratedTokenBufferStub` 新增 `token_producer_policy`。
+- `EarlyItemExpansionSummary` 新增 compiler-owned token buffer、generated token record、compiler-owned generated
+  token record 和 parser-visible generated token 计数。
+- `TokenMaterializationAdmissionStub` 继续固定
+  `admission_policy = compiler_owned_attached_item_token_materialization_admission_v1`。
+- 非 `derive` input 继续使用 `compiler_owned_empty_token_stream` 和
+  `compiler_owned_blocked_empty_token_producer_v1`，不产生 generated token records。
+- `derive` input 使用 `compiler_owned_builtin_derive_token_stream_prototype`。
+- `derive` input 使用 `compiler_owned_builtin_derive_token_producer_prototype_v1`。
+- `derive` input 的 generated token buffer 固定 `token_count = attribute.token_tree.size() + 2`。
+- `derive` input 的 generated token records 固定 begin sentinel、`derive_source_token_placeholder` source
+  placeholders 和 end sentinel。
+- generated token records 固定 `compiler_owned = true`、`parser_visible = false` 和
+  `produced_user_generated_code = false`。
+- validation 要求 admission / buffer / record 与 input、generated part、hygiene、trace、generated item declaration、
+  declared generated name 和 source ranges 一一对应。
+- validation 拒绝 generated source text、parse-ready / parser-consumable token buffer、parser-visible generated
+  tokens、standard library required、runtime required、external process required 或 produced user code。
+- dump 会输出 `generated_token_record`、token role、internal token text、token identity、token buffer identity、
+  materialization identity、source-map identity、hygiene mark 和 token producer policy。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
 ## M21h Token Materialization Admission Stub Contract
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21g 的 generated item / declared generated

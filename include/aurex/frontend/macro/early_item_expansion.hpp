@@ -206,16 +206,37 @@ struct GeneratedTokenBufferStub {
     query::ModulePartKey generated_part;
     query::StableFingerprint128 token_plan_identity;
     query::StableFingerprint128 token_buffer_identity;
+    query::StableFingerprint128 materialization_identity;
     query::StableFingerprint128 source_map_identity;
     query::StableFingerprint128 hygiene_mark;
     std::string token_stream_name;
     std::string token_buffer_kind;
+    std::string token_producer_policy;
     std::string blocker_reason;
     base::u64 token_count = 0;
     bool empty = true;
     bool materialized_tokens = false;
     bool generated_source_text = false;
     bool parser_consumable = false;
+    bool produced_user_generated_code = false;
+};
+
+struct GeneratedTokenRecord {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 attribute_index = 0;
+    base::u32 token_index = 0;
+    query::StableFingerprint128 token_buffer_identity;
+    query::StableFingerprint128 token_identity;
+    query::StableFingerprint128 source_map_identity;
+    query::StableFingerprint128 hygiene_mark;
+    syntax::TokenKind kind = syntax::TokenKind::invalid;
+    std::string text;
+    std::string token_role;
+    base::SourceRange anchor_range{};
+    bool compiler_owned = true;
+    bool parser_visible = false;
     bool produced_user_generated_code = false;
 };
 
@@ -252,6 +273,10 @@ struct EarlyItemExpansionSummary {
     base::u64 generated_token_buffer_stub_count = 0;
     base::u64 empty_generated_token_buffer_count = 0;
     base::u64 materialized_token_buffer_count = 0;
+    base::u64 compiler_owned_token_buffer_count = 0;
+    base::u64 generated_token_record_count = 0;
+    base::u64 compiler_owned_generated_token_record_count = 0;
+    base::u64 parser_visible_generated_token_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -275,6 +300,7 @@ struct EarlyItemExpansionResult {
     std::vector<DeclaredGeneratedNameStub> declared_generated_names;
     std::vector<TokenMaterializationAdmissionStub> token_materialization_admissions;
     std::vector<GeneratedTokenBufferStub> generated_token_buffers;
+    std::vector<GeneratedTokenRecord> generated_token_records;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -295,6 +321,7 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const DeclaredGeneratedNameStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const TokenMaterializationAdmissionStub& stub) noexcept;
 [[nodiscard]] bool is_valid(const GeneratedTokenBufferStub& stub) noexcept;
+[[nodiscard]] bool is_valid(const GeneratedTokenRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21h token materialization admission stub contract 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21i compiler-owned generated token buffer prototype 已收口
 
 M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
 `AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
@@ -50,11 +50,19 @@ M21h 已把 compiler-owned token materialization admission / empty generated tok
 仍不 materialize tokens、不生成 source text、不让 token buffer 被 parser 消费、不 parse / merge generated module
 part、不执行 external procedural macro、不实现 typed expression macro、不引入标准库，也不生成用户代码。
 
-下一步建议继续 M21i：在不打开 external procedural macro 的前提下实现 compiler-owned generated token buffer
-prototype 的第一条极小真实路径，优先选择内建 derive / attached item codegen 中完全由编译器拥有、无需标准库和
-runtime helper 的 token producer。该阶段必须消费 M21e/M21f/M21g/M21h 已固定的 parse/merge、hygiene、source-map、
-debug-trace、generated item、declared-name、token plan 和 token buffer facts；仍不建议直接打开 external procedural
-macro。
+M21i 已把 compiler-owned generated token buffer prototype 固定到同一 `macro.expand_items` boundary：`derive`
+input 现在有 `compiler_owned_builtin_derive_token_stream_prototype`、`materialization_identity`、
+`compiler_owned_builtin_derive_token_producer_prototype_v1` 和 `GeneratedTokenRecord` facts；record 使用
+`derive_source_token_placeholder` internal spelling，保持 `parser_visible=false` 和 `produced_user_generated_code=false`。
+非 `derive` item attribute 继续保持 `compiler_owned_empty_token_stream` 和
+`compiler_owned_blocked_empty_token_producer_v1`，不产生 records。M21i 仍不生成 source text、不让 generated token
+buffer 被 parser 消费、不 parse / merge generated module part、不执行 external procedural macro、不实现 typed
+expression macro、不引入标准库，也不生成用户代码。
+
+下一步建议继续 M21j：在保持 parser-blocked / no user-code 的前提下，把 compiler-owned token buffer admission
+gate 和 generated module part parse admission gate 明确分开，固定“什么条件下 generated token buffer 才允许进入
+parser”的结构化 guard、diagnostic 和 dump。M21j 应继续消费 M21e/M21f/M21g/M21h/M21i facts，不应直接打开
+external procedural macro、标准库、runtime helper 或真实用户代码生成。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

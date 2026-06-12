@@ -1,9 +1,29 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21h Token Materialization Admission Stub Contract
+阶段：M21i Compiler-Owned Generated Token Buffer Prototype
 
 ## 总体状态
+
+2026-06-12：M21i Compiler-Owned Generated Token Buffer Prototype 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21h 的 token materialization admission / generated token buffer
+stub contract 扩展为第一版 compiler-owned derive generated token record facts。
+
+新增 `GeneratedTokenRecord`，并给 `GeneratedTokenBufferStub` 增加 `materialization_identity` 和
+`token_producer_policy`。每个 `derive` macro input 现在都有 deterministic
+`compiler_owned_builtin_derive_token_stream_prototype` buffer、`compiler_owned_builtin_derive_token_producer_prototype_v1`
+producer policy、compiler-owned generated token records、`materialization_identity`、`source_map_identity` 和
+`hygiene_mark`。非 `derive` item attribute 继续保持 `compiler_owned_empty_token_stream` 和
+`compiler_owned_blocked_empty_token_producer_v1`，不产生 generated token records。derive records 使用
+`__aurex_builtin_derive_begin`、`derive_source_token_placeholder` 和 `__aurex_builtin_derive_end` internal spelling，
+只作为 compiler-owned provenance/debug facts；summary / dump / fingerprint / validation 会拒绝 parser-visible
+generated tokens、generated source text、parser-consumable buffer、standard library/runtime/external process
+requirement、produced user code，或任何 admission / buffer / record 与 input / generated part placeholder /
+hygiene / trace / generated item / declared generated name 不能一一重算的漂移。新增说明见
+[Aurex M21i Compiler-Owned Generated Token Buffer Prototype](m21i-compiler-owned-generated-token-buffer-prototype.md)。
 
 2026-06-12：M21h Token Materialization Admission Stub Contract 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

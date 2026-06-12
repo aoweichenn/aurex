@@ -1,5 +1,83 @@
 # 版本文档
 
+## M21o Macro Expansion Boundary Release Closure
+
+当前版本把 M21m generated token parser readiness preflight 和 M21n parser consumption contract gate 汇总成
+M21 宏展开边界 release closure。`EarlyItemExpansionResult` 的 result name 固定为
+`M21o Macro Expansion Boundary Release Closure`。本阶段仍不执行用户宏、不生成 source text、不让 parser
+消费 generated token buffer、不 parse / merge generated module part、不生成用户代码，也不引入标准库或
+runtime helper。
+
+新增或固定：
+
+- 新增 `frontend::macro::GeneratedTokenParserReadinessPreflightEntry`。
+- 新增 `frontend::macro::GeneratedTokenParserConsumptionContractGate`。
+- 新增 `frontend::macro::MacroExpansionBoundaryClosureReport`。
+- 新增 `is_valid(const GeneratedTokenParserReadinessPreflightEntry&)`。
+- 新增 `is_valid(const GeneratedTokenParserConsumptionContractGate&)`。
+- 新增 `is_valid(const MacroExpansionBoundaryClosureReport&)`。
+- `EarlyItemExpansionResult` 新增 `parser_readiness_preflight_entries`。
+- `EarlyItemExpansionResult` 新增 `parser_consumption_contract_gates`。
+- `EarlyItemExpansionResult` 新增 `macro_boundary_closure_reports`。
+- `EarlyItemExpansionSummary` 新增 parser readiness preflight、parser consumption contract 和 macro boundary
+  closure report 计数。
+- M21m preflight 固定 `generated_token_parser_consumption_readiness_preflight_v1`。
+- M21m preflight 固定 token stream shape：`derive_token_buffer_parser_input_candidate` 或
+  `empty_token_stream_parser_input_blocked`。
+- M21m preflight 会校验 token index continuity、delimiter balance、source-anchor coverage、parse config
+  compatibility、hygiene/source-map prerequisites 和 diagnostic projection availability。
+- M21n contract gate 固定 `generated_token_parser_consumption_contract_gate_v1`。
+- M21n contract query name 固定 `m21n-parser-consumption-contract:<module>:<part>`。
+- M21n contract gate 汇总 preflight entry totals、blocked totals、derive / empty totals、contiguous / delimiter /
+  source-anchor / parse-config / diagnostic totals。
+- M21o closure report 固定 `m21_macro_expansion_boundary_release_closure_v1`。
+- M21o closure query name 固定 `m21o-macro-boundary-closure`。
+- M21o closure report 汇总 macro input、generated part、parser admission report、preflight entry、contract gate、
+  blocked contract gate 和 parser-consumable contract gate counts。
+- validation 拒绝 preflight / contract / closure identity 漂移、totals 漂移、parser consumption 被打开、
+  standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+- dump 会输出 `parser_readiness_preflight_entry`、`parser_consumption_contract_gate` 和
+  `macro_boundary_closure_report`。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- AST mutation。
+- parser consumption of generated token buffers。
+- generated source text。
+- generated module part parse / merge。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- generated item visibility / export。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+
+## M21n Parser Consumption Contract Gate
+
+M21n 按 generated module part 汇总 M21m preflight entries，形成 parser consumption contract gate。它固定
+`GeneratedTokenParserConsumptionContractGate`、`parser_consumption_contract_gates`、`contract_identity`、
+`contract_grouping_identity`、`contract_anchor_identity`、`generated_token_parser_consumption_contract_gate_v1`
+和 `m21n-parser-consumption-contract:<module>:<part>`。M21n 仍固定 `parser_admitted=false`、
+`parse_ready=false`、`parser_consumable=false`、`generated_part_parsed=false`、`generated_part_merged=false`、
+`sema_visible=false`、`emit_expanded_available=false`、`debug_trace_available=false`、
+`source_map_available=false` 和 `produced_user_generated_code=false`。
+
+## M21m Generated Token Parser Consumption Readiness Preflight
+
+M21m 为每个 macro input 新增 `GeneratedTokenParserReadinessPreflightEntry` 和
+`parser_readiness_preflight_entries`。preflight entry 绑定 M21i token buffer、M21j parser admission gate、M21k
+diagnostic projection、M21l report entry 和 M21f source-map / hygiene / trace facts，并固定
+`generated_token_parser_consumption_readiness_preflight_v1`、`preflight_identity`、token stream shape、
+delimiter balance、source-anchor coverage 和 parser-blocked blocker。M21m 仍不让 generated token buffer
+进入 parser。
+
 ## M21l Parser Admission Diagnostic Report Projection
 
 当前版本继续沿用 `macro.expand_items` frontend pipeline boundary，把 M21k 的 per-input parser admission

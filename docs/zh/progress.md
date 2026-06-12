@@ -1,9 +1,36 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M21l Parser Admission Diagnostic Report Projection
+阶段：M21o Macro Expansion Boundary Release Closure
 
 ## 总体状态
+
+2026-06-12：M21o Macro Expansion Boundary Release Closure 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实
+expansion source map、debug trace CLI、`--emit-expanded`、generated source text、generated module part parse /
+merge、declared generated names lookup、generated item visibility / export、parser-consumable generated token
+buffer 或 macro-generated user code lowering；它把 M21m parser readiness preflight 和 M21n parser consumption
+contract gate 汇总成当前 M21 宏展开边界 release closure。
+
+新增 `GeneratedTokenParserReadinessPreflightEntry`、`GeneratedTokenParserConsumptionContractGate` 和
+`MacroExpansionBoundaryClosureReport`，并给 `EarlyItemExpansionResult` 增加
+`parser_readiness_preflight_entries`、`parser_consumption_contract_gates` 和
+`macro_boundary_closure_reports`。M21m preflight 绑定 M21i token buffer、M21j parser admission gate、M21k
+diagnostic projection、M21l report entry 和 M21f source-map / hygiene / trace facts，固定
+`generated_token_parser_consumption_readiness_preflight_v1`、`preflight_identity`、
+`derive_token_buffer_parser_input_candidate` / `empty_token_stream_parser_input_blocked`、delimiter balance、
+source-anchor coverage、parse config compatibility 和 parser-blocked blocker。M21n contract gate 按 generated
+module part 汇总 preflight entries，固定 `generated_token_parser_consumption_contract_gate_v1`、
+`contract_identity`、`contract_grouping_identity`、`contract_anchor_identity` 和
+`m21n-parser-consumption-contract:<module>:<part>`。M21o closure report 固定
+`m21_macro_expansion_boundary_release_closure_v1`、`m21o-macro-boundary-closure`、`closure_identity` 和
+`closure_grouping_identity`，并汇总 macro input、generated part、parser admission report、preflight entry、
+contract gate、blocked contract gate 和 parser-consumable contract gate counts。summary / dump / fingerprint /
+validation 会拒绝 preflight / contract / closure identity 漂移、totals 漂移、parser consumption 被打开、
+standard library/runtime/external process requirement 被打开、emit/debug/source-map/user-code flag 被打开。
+新增说明见 [Aurex M21m Generated Token Parser Consumption Readiness Preflight](m21m-generated-token-parser-readiness-preflight.md)、
+[Aurex M21n Parser Consumption Contract Gate](m21n-parser-consumption-contract-gate.md) 和
+[Aurex M21o Macro Expansion Boundary Release Closure](m21o-macro-expansion-boundary-release-closure.md)。
 
 2026-06-12：M21l Parser Admission Diagnostic Report Projection 已完成。本阶段仍不实现标准库、runtime helper、
 external procedural macro、typed expression macro、用户自定义 derive、文本替换宏、真实 hygiene resolution、真实

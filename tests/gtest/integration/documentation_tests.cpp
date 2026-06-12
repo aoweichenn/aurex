@@ -79,6 +79,9 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m21j-generated-token-parser-admission-gate.md",
         "docs/zh/m21k-parser-admission-diagnostic-projection-gate.md",
         "docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
+        "docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "docs/zh/m21n-parser-consumption-contract-gate.md",
+        "docs/zh/m21o-macro-expansion-boundary-release-closure.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -345,7 +348,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21l Parser Admission Diagnostic Report Projection**");
+        "docs/zh/README.md", "文档基线：**M21o Macro Expansion Boundary Release Closure**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -393,9 +396,38 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "Aurex M21k Parser Admission Diagnostic Projection Gate");
     expect_document_contains("docs/zh/README.md",
         "Aurex M21l Parser Admission Diagnostic Report Projection");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21m Generated Token Parser Consumption Readiness Preflight");
+    expect_document_contains("docs/zh/README.md", "Aurex M21n Parser Consumption Contract Gate");
+    expect_document_contains("docs/zh/README.md",
+        "Aurex M21o Macro Expansion Boundary Release Closure");
     expect_document_contains("docs/zh/progress.md",
-        "阶段：M21l Parser Admission Diagnostic Report Projection");
+        "阶段：M21o Macro Expansion Boundary Release Closure");
     expect_document_contains("docs/zh/progress.md", "EarlyItemExpansionResult");
+    expect_document_contains("docs/zh/progress.md", "GeneratedTokenParserReadinessPreflightEntry");
+    expect_document_contains("docs/zh/progress.md", "GeneratedTokenParserConsumptionContractGate");
+    expect_document_contains("docs/zh/progress.md", "MacroExpansionBoundaryClosureReport");
+    expect_document_contains("docs/zh/progress.md", "parser_readiness_preflight_entries");
+    expect_document_contains("docs/zh/progress.md", "parser_consumption_contract_gates");
+    expect_document_contains("docs/zh/progress.md", "macro_boundary_closure_reports");
+    expect_document_contains("docs/zh/progress.md",
+        "generated_token_parser_consumption_readiness_preflight_v1");
+    expect_document_contains("docs/zh/progress.md", "preflight_identity");
+    expect_document_contains("docs/zh/progress.md",
+        "derive_token_buffer_parser_input_candidate");
+    expect_document_contains("docs/zh/progress.md",
+        "empty_token_stream_parser_input_blocked");
+    expect_document_contains("docs/zh/progress.md",
+        "generated_token_parser_consumption_contract_gate_v1");
+    expect_document_contains("docs/zh/progress.md", "contract_identity");
+    expect_document_contains("docs/zh/progress.md", "contract_grouping_identity");
+    expect_document_contains("docs/zh/progress.md", "contract_anchor_identity");
+    expect_document_contains("docs/zh/progress.md", "m21n-parser-consumption-contract:<module>:<part>");
+    expect_document_contains("docs/zh/progress.md",
+        "m21_macro_expansion_boundary_release_closure_v1");
+    expect_document_contains("docs/zh/progress.md", "m21o-macro-boundary-closure");
+    expect_document_contains("docs/zh/progress.md", "closure_identity");
+    expect_document_contains("docs/zh/progress.md", "closure_grouping_identity");
     expect_document_contains("docs/zh/progress.md", "ParserAdmissionDiagnosticProjectionStub");
     expect_document_contains("docs/zh/progress.md", "parser_admission_diagnostics");
     expect_document_contains("docs/zh/progress.md", "ParserAdmissionDiagnosticReportEntry");
@@ -472,6 +504,28 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md",
+        "## M21o Macro Expansion Boundary Release Closure");
+    expect_document_contains("docs/zh/version.md",
+        "GeneratedTokenParserReadinessPreflightEntry");
+    expect_document_contains("docs/zh/version.md",
+        "GeneratedTokenParserConsumptionContractGate");
+    expect_document_contains("docs/zh/version.md", "MacroExpansionBoundaryClosureReport");
+    expect_document_contains("docs/zh/version.md", "parser_readiness_preflight_entries");
+    expect_document_contains("docs/zh/version.md", "parser_consumption_contract_gates");
+    expect_document_contains("docs/zh/version.md", "macro_boundary_closure_reports");
+    expect_document_contains("docs/zh/version.md",
+        "generated_token_parser_consumption_readiness_preflight_v1");
+    expect_document_contains("docs/zh/version.md",
+        "generated_token_parser_consumption_contract_gate_v1");
+    expect_document_contains("docs/zh/version.md", "m21n-parser-consumption-contract:<module>:<part>");
+    expect_document_contains("docs/zh/version.md",
+        "m21_macro_expansion_boundary_release_closure_v1");
+    expect_document_contains("docs/zh/version.md", "m21o-macro-boundary-closure");
+    expect_document_contains("docs/zh/version.md",
+        "## M21n Parser Consumption Contract Gate");
+    expect_document_contains("docs/zh/version.md",
+        "## M21m Generated Token Parser Consumption Readiness Preflight");
     expect_document_contains("docs/zh/version.md",
         "## M21l Parser Admission Diagnostic Report Projection");
     expect_document_contains("docs/zh/version.md", "ParserAdmissionDiagnosticReportEntry");
@@ -748,6 +802,68 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "source_anchor_ordered=true");
     expect_document_contains("docs/zh/m21l-parser-admission-diagnostic-report-projection.md",
         "M21l 仍不实现");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "Aurex M21m Generated Token Parser Consumption Readiness Preflight");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "阶段：M21m Generated Token Parser Consumption Readiness Preflight");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "GeneratedTokenParserReadinessPreflightEntry");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "parser_readiness_preflight_entries");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "generated_token_parser_consumption_readiness_preflight_v1");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "preflight_identity");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "derive_token_buffer_parser_input_candidate");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "empty_token_stream_parser_input_blocked");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "token_indices_contiguous");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "source_anchor_coverage_state = covered");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "parser consumption readiness preflight remains parser-blocked in M21m");
+    expect_document_contains("docs/zh/m21m-generated-token-parser-readiness-preflight.md",
+        "M21m 仍不实现");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "Aurex M21n Parser Consumption Contract Gate");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "阶段：M21n Parser Consumption Contract Gate");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "GeneratedTokenParserConsumptionContractGate");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "parser_consumption_contract_gates");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "generated_token_parser_consumption_contract_gate_v1");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "contract_identity");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "contract_grouping_identity");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "contract_anchor_identity");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "m21n-parser-consumption-contract:<module>:<part>");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "parser consumption contract remains parser-blocked in M21n");
+    expect_document_contains("docs/zh/m21n-parser-consumption-contract-gate.md",
+        "M21n 仍不实现");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "Aurex M21o Macro Expansion Boundary Release Closure");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "阶段：M21o Macro Expansion Boundary Release Closure");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "MacroExpansionBoundaryClosureReport");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "macro_boundary_closure_reports");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "m21_macro_expansion_boundary_release_closure_v1");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "m21o-macro-boundary-closure");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "M21 macro expansion boundary remains parser-blocked after M21o closure");
+    expect_document_contains("docs/zh/m21o-macro-expansion-boundary-release-closure.md",
+        "M21o 仍不实现");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(
@@ -865,6 +981,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M20b owned dyn IR shape prototype gate");
     expect_document_contains("docs/zh/next-steps.md", "M20c drop / allocator identity prerequisite gate");
     expect_document_contains("docs/zh/next-steps.md", "M20d Runtime Lowering ABI Design Closure 已完成");
+    expect_document_contains("docs/zh/next-steps.md",
+        "当前实现入口：M21 宏系统主线已开启，M21o macro expansion boundary release closure 已收口");
+    expect_document_contains("docs/zh/next-steps.md",
+        "下一步建议进入 M22：仍保持 no-stdlib / no-runtime");
+    expect_document_contains("docs/zh/next-steps.md", "builtin derive expansion admission design");
+    expect_document_contains("docs/zh/next-steps.md", "parser consumption admission 条件");
     expect_document_contains("docs/zh/next-steps.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/next-steps.md", "composition_supertrait_chains");
     expect_document_contains("docs/zh/language-feature-inventory.md",
@@ -897,6 +1019,17 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M20c 已新增 `OwnedDynDropAllocatorIdentityGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20d 已新增 `OwnedDynRuntimeLoweringAbiGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "阶段：M21o Macro Expansion Boundary Release Closure");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "M21m 新增");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`GeneratedTokenParserReadinessPreflightEntry`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M21n 新增 `GeneratedTokenParserConsumptionContractGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "M21o 新增");
+    expect_document_contains("docs/zh/language-feature-inventory.md", "`MacroExpansionBoundaryClosureReport`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`M21o Macro Expansion Boundary Release Closure`");
     expect_document_contains("docs/zh/language-manual.md", "M13a Advanced Dyn Remaining Policy Design Baseline");
     expect_document_contains(
         "docs/zh/language-manual.md",

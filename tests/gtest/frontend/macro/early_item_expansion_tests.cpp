@@ -260,6 +260,35 @@ parser_admission_report_for_part(
     return found == result.parser_admission_reports.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::GeneratedTokenParserReadinessPreflightEntry*
+parser_readiness_preflight_entry_for_input(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::EarlyItemMacroInput& input) noexcept
+{
+    const auto found = std::find_if(result.parser_readiness_preflight_entries.begin(),
+        result.parser_readiness_preflight_entries.end(),
+        [&input](const frontend::macro::GeneratedTokenParserReadinessPreflightEntry& entry) {
+            return entry.item.value == input.item.value
+                && entry.module.value == input.module.value
+                && entry.attribute_index == input.attribute_index;
+        });
+    return found == result.parser_readiness_preflight_entries.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::GeneratedTokenParserConsumptionContractGate*
+parser_consumption_contract_gate_for_part(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const frontend::macro::GeneratedModulePartPlaceholder& generated_part) noexcept
+{
+    const auto found = std::find_if(result.parser_consumption_contract_gates.begin(),
+        result.parser_consumption_contract_gates.end(),
+        [&generated_part](const frontend::macro::GeneratedTokenParserConsumptionContractGate& gate) {
+            return gate.module.value == generated_part.module.value
+                && gate.source_part_index == generated_part.source_part_index;
+        });
+    return found == result.parser_consumption_contract_gates.end() ? nullptr : &*found;
+}
+
 [[nodiscard]] std::vector<const frontend::macro::GeneratedTokenRecord*> token_records_for_input(
     const frontend::macro::EarlyItemExpansionResult& result,
     const frontend::macro::EarlyItemMacroInput& input)
@@ -367,7 +396,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_TRUE(expanded) << expanded.error().message;
     const frontend::macro::EarlyItemExpansionResult result = expanded.take_value();
 
-    EXPECT_EQ(result.name, "M21l Parser Admission Diagnostic Report Projection");
+    EXPECT_EQ(result.name, "M21o Macro Expansion Boundary Release Closure");
     EXPECT_TRUE(frontend::macro::is_valid(result));
     EXPECT_EQ(result.fingerprint, frontend::macro::early_item_expansion_fingerprint(result));
     EXPECT_EQ(result.summary.macro_input_count, 2U);
@@ -430,6 +459,25 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_EQ(result.summary.parser_admission_report_query_reusable_count, 1U);
     EXPECT_EQ(result.summary.parser_admission_report_unordered_anchor_count, 0U);
     EXPECT_EQ(result.summary.parser_admission_report_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_entry_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_blocked_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_derive_entry_count, 1U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_empty_entry_count, 1U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_contiguous_index_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_delimiter_balanced_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_source_anchor_covered_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_parse_config_compatible_count, 2U);
+    EXPECT_EQ(result.summary.parser_readiness_preflight_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.parser_consumption_contract_gate_count, 1U);
+    EXPECT_EQ(result.summary.parser_consumption_contract_blocked_gate_count, 1U);
+    EXPECT_EQ(result.summary.parser_consumption_contract_visible_count, 1U);
+    EXPECT_EQ(result.summary.parser_consumption_contract_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.parser_consumption_contract_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.macro_boundary_closure_report_count, 1U);
+    EXPECT_EQ(result.summary.macro_boundary_closure_visible_count, 1U);
+    EXPECT_EQ(result.summary.macro_boundary_closure_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.macro_boundary_closure_complete_count, 1U);
+    EXPECT_EQ(result.summary.macro_boundary_closure_parser_consumption_enabled_count, 0U);
     EXPECT_EQ(result.summary.generated_source_text_count, 0U);
     EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
     EXPECT_EQ(result.summary.parsed_generated_part_count, 0U);
@@ -706,6 +754,9 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     ASSERT_EQ(result.parser_admission_diagnostics.size(), 2U);
     ASSERT_EQ(result.parser_admission_report_entries.size(), 2U);
     ASSERT_EQ(result.parser_admission_reports.size(), 1U);
+    ASSERT_EQ(result.parser_readiness_preflight_entries.size(), 2U);
+    ASSERT_EQ(result.parser_consumption_contract_gates.size(), 1U);
+    ASSERT_EQ(result.macro_boundary_closure_reports.size(), 1U);
     const frontend::macro::GeneratedTokenParserAdmissionGateStub* const builder_gate =
         parser_admission_gate_for_input(result, *builder);
     ASSERT_NE(builder_gate, nullptr);
@@ -913,6 +964,134 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_FALSE(report->source_map_available);
     EXPECT_FALSE(report->produced_user_generated_code);
 
+    const frontend::macro::GeneratedTokenParserReadinessPreflightEntry* const builder_preflight =
+        parser_readiness_preflight_entry_for_input(result, *builder);
+    ASSERT_NE(builder_preflight, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*builder_preflight));
+    EXPECT_EQ(builder_preflight->part_index, builder->part_index);
+    EXPECT_EQ(builder_preflight->attribute_index, builder->attribute_index);
+    EXPECT_EQ(builder_preflight->attached_part, builder->attached_part);
+    EXPECT_EQ(builder_preflight->generated_part, generated.generated_part);
+    EXPECT_EQ(builder_preflight->token_buffer_identity, builder_buffer->token_buffer_identity);
+    EXPECT_EQ(builder_preflight->materialization_identity, builder_buffer->materialization_identity);
+    EXPECT_EQ(builder_preflight->generated_buffer_identity, builder_gate->generated_buffer_identity);
+    EXPECT_EQ(builder_preflight->parse_config_fingerprint, builder_gate->parse_config_fingerprint);
+    EXPECT_EQ(builder_preflight->parse_gate_identity, builder_gate->parse_gate_identity);
+    EXPECT_EQ(builder_preflight->diagnostic_identity, builder_diagnostic->diagnostic_identity);
+    EXPECT_EQ(builder_preflight->diagnostic_anchor_identity, builder_diagnostic->diagnostic_anchor_identity);
+    EXPECT_EQ(builder_preflight->report_entry_identity, builder_report_entry->report_entry_identity);
+    EXPECT_EQ(builder_preflight->source_map_identity, builder_buffer->source_map_identity);
+    EXPECT_EQ(builder_preflight->hygiene_mark, builder_buffer->hygiene_mark);
+    EXPECT_EQ(builder_preflight->trace_identity, builder_diagnostic->trace_identity);
+    EXPECT_GT(builder_preflight->preflight_identity.byte_count, 0U);
+    EXPECT_EQ(builder_preflight->token_stream_name, builder_buffer->token_stream_name);
+    EXPECT_EQ(builder_preflight->token_stream_shape, "empty_token_stream_parser_input_blocked");
+    EXPECT_EQ(builder_preflight->delimiter_balance_state, "balanced");
+    EXPECT_EQ(builder_preflight->source_anchor_coverage_state, "covered");
+    EXPECT_EQ(builder_preflight->readiness_policy,
+        "generated_token_parser_consumption_readiness_preflight_v1");
+    expect_contains(builder_preflight->blocker_reason,
+        "parser consumption readiness preflight remains parser-blocked in M21m");
+    EXPECT_EQ(builder_preflight->token_count, 0U);
+    EXPECT_FALSE(builder_preflight->token_records_available);
+    EXPECT_TRUE(builder_preflight->token_indices_contiguous);
+    EXPECT_TRUE(builder_preflight->delimiter_balanced);
+    EXPECT_TRUE(builder_preflight->source_anchors_covered);
+    EXPECT_TRUE(builder_preflight->parse_config_compatible);
+    EXPECT_TRUE(builder_preflight->hygiene_prerequisite_available);
+    EXPECT_TRUE(builder_preflight->source_map_prerequisite_available);
+    EXPECT_TRUE(builder_preflight->diagnostic_projection_available);
+    EXPECT_FALSE(builder_preflight->parser_admitted);
+    EXPECT_FALSE(builder_preflight->parse_ready);
+    EXPECT_FALSE(builder_preflight->parser_consumable);
+    EXPECT_FALSE(builder_preflight->generated_part_parsed);
+    EXPECT_FALSE(builder_preflight->generated_part_merged);
+    EXPECT_FALSE(builder_preflight->produced_user_generated_code);
+
+    const frontend::macro::GeneratedTokenParserReadinessPreflightEntry* const derive_preflight =
+        parser_readiness_preflight_entry_for_input(result, *derive);
+    ASSERT_NE(derive_preflight, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*derive_preflight));
+    EXPECT_EQ(derive_preflight->token_stream_shape, "derive_token_buffer_parser_input_candidate");
+    EXPECT_EQ(derive_preflight->token_count, derive_buffer->token_count);
+    EXPECT_TRUE(derive_preflight->token_records_available);
+    EXPECT_TRUE(derive_preflight->token_indices_contiguous);
+    EXPECT_TRUE(derive_preflight->delimiter_balanced);
+    EXPECT_TRUE(derive_preflight->source_anchors_covered);
+    EXPECT_FALSE(derive_preflight->parser_consumable);
+
+    const frontend::macro::GeneratedTokenParserConsumptionContractGate* const contract =
+        parser_consumption_contract_gate_for_part(result, generated);
+    ASSERT_NE(contract, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*contract));
+    EXPECT_EQ(contract->module.value, generated.module.value);
+    EXPECT_EQ(contract->source_part_index, generated.source_part_index);
+    EXPECT_EQ(contract->attached_part, generated.source_part);
+    EXPECT_EQ(contract->generated_part, generated.generated_part);
+    EXPECT_EQ(contract->generated_buffer_identity, stub.generated_buffer_identity);
+    EXPECT_EQ(contract->parse_config_fingerprint, stub.parse_config_fingerprint);
+    EXPECT_EQ(contract->report_identity, report->report_identity);
+    EXPECT_GT(contract->contract_identity.byte_count, 0U);
+    EXPECT_GT(contract->contract_grouping_identity.byte_count, 0U);
+    EXPECT_GT(contract->contract_anchor_identity.byte_count, 0U);
+    EXPECT_EQ(contract->contract_policy, "generated_token_parser_consumption_contract_gate_v1");
+    EXPECT_EQ(contract->contract_query_name, "m21n-parser-consumption-contract:0:0");
+    expect_contains(contract->blocked_reason,
+        "parser consumption contract remains parser-blocked in M21n");
+    EXPECT_EQ(contract->preflight_entry_count, 2U);
+    EXPECT_EQ(contract->blocked_entry_count, 2U);
+    EXPECT_EQ(contract->derive_entry_count, 1U);
+    EXPECT_EQ(contract->empty_entry_count, 1U);
+    EXPECT_EQ(contract->contiguous_index_entry_count, 2U);
+    EXPECT_EQ(contract->delimiter_balanced_entry_count, 2U);
+    EXPECT_EQ(contract->source_anchor_covered_entry_count, 2U);
+    EXPECT_EQ(contract->parse_config_compatible_entry_count, 2U);
+    EXPECT_EQ(contract->diagnostic_projection_entry_count, 2U);
+    EXPECT_TRUE(contract->query_reusable);
+    EXPECT_TRUE(contract->contract_visible);
+    EXPECT_TRUE(contract->all_entries_structurally_checked);
+    EXPECT_FALSE(contract->parser_admitted);
+    EXPECT_FALSE(contract->parse_ready);
+    EXPECT_FALSE(contract->parser_consumable);
+    EXPECT_FALSE(contract->generated_part_parsed);
+    EXPECT_FALSE(contract->generated_part_merged);
+    EXPECT_FALSE(contract->sema_visible);
+    EXPECT_FALSE(contract->emit_expanded_available);
+    EXPECT_FALSE(contract->debug_trace_available);
+    EXPECT_FALSE(contract->source_map_available);
+    EXPECT_FALSE(contract->produced_user_generated_code);
+
+    const frontend::macro::MacroExpansionBoundaryClosureReport& closure =
+        result.macro_boundary_closure_reports.front();
+    EXPECT_TRUE(frontend::macro::is_valid(closure));
+    EXPECT_GT(closure.closure_identity.byte_count, 0U);
+    EXPECT_GT(closure.closure_grouping_identity.byte_count, 0U);
+    EXPECT_NE(closure.closure_identity, closure.closure_grouping_identity);
+    EXPECT_EQ(closure.closure_policy, "m21_macro_expansion_boundary_release_closure_v1");
+    EXPECT_EQ(closure.closure_query_name, "m21o-macro-boundary-closure");
+    expect_contains(closure.blocked_reason,
+        "M21 macro expansion boundary remains parser-blocked after M21o closure");
+    EXPECT_EQ(closure.macro_input_count, 2U);
+    EXPECT_EQ(closure.generated_part_count, 1U);
+    EXPECT_EQ(closure.parser_admission_report_count, 1U);
+    EXPECT_EQ(closure.parser_readiness_preflight_entry_count, 2U);
+    EXPECT_EQ(closure.parser_consumption_contract_gate_count, 1U);
+    EXPECT_EQ(closure.blocked_contract_gate_count, 1U);
+    EXPECT_EQ(closure.parser_consumable_contract_gate_count, 0U);
+    EXPECT_TRUE(closure.m21m_preflight_available);
+    EXPECT_TRUE(closure.m21n_contract_available);
+    EXPECT_TRUE(closure.release_closure_complete);
+    EXPECT_TRUE(closure.query_reusable);
+    EXPECT_TRUE(closure.closure_visible);
+    EXPECT_FALSE(closure.parser_consumption_enabled);
+    EXPECT_FALSE(closure.emit_expanded_available);
+    EXPECT_FALSE(closure.debug_trace_available);
+    EXPECT_FALSE(closure.source_map_available);
+    EXPECT_FALSE(closure.standard_library_required);
+    EXPECT_FALSE(closure.runtime_required);
+    EXPECT_FALSE(closure.external_process_required);
+    EXPECT_FALSE(closure.produced_user_generated_code);
+
     const std::vector<const frontend::macro::GeneratedTokenRecord*> builder_records =
         token_records_for_input(result, *builder);
     EXPECT_TRUE(builder_records.empty());
@@ -947,7 +1126,7 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     EXPECT_NE(first_source_record.token_identity, end_record.token_identity);
 
     const std::string summary = frontend::macro::summarize_early_item_expansion(result);
-    expect_contains(summary, "early_item_expansion name=M21l Parser Admission Diagnostic Report Projection");
+    expect_contains(summary, "early_item_expansion name=M21o Macro Expansion Boundary Release Closure");
     expect_contains(summary, "attributes=2");
     expect_contains(summary, "blocked_attributes=1");
     expect_contains(summary, "generated_part_stubs=1");
@@ -1000,6 +1179,25 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(summary, "parser_admission_report_query_reusable=1");
     expect_contains(summary, "parser_admission_report_unordered_anchors=0");
     expect_contains(summary, "parser_admission_report_parser_consumable=0");
+    expect_contains(summary, "parser_readiness_preflight_entries=2");
+    expect_contains(summary, "parser_readiness_preflight_blocked=2");
+    expect_contains(summary, "derive_parser_readiness_preflight_entries=1");
+    expect_contains(summary, "empty_parser_readiness_preflight_entries=1");
+    expect_contains(summary, "parser_readiness_preflight_contiguous_indices=2");
+    expect_contains(summary, "parser_readiness_preflight_delimiter_balanced=2");
+    expect_contains(summary, "parser_readiness_preflight_source_anchor_covered=2");
+    expect_contains(summary, "parser_readiness_preflight_parse_config_compatible=2");
+    expect_contains(summary, "parser_readiness_preflight_parser_consumable=0");
+    expect_contains(summary, "parser_consumption_contract_gates=1");
+    expect_contains(summary, "parser_consumption_contract_blocked_gates=1");
+    expect_contains(summary, "parser_consumption_contract_visible=1");
+    expect_contains(summary, "parser_consumption_contract_query_reusable=1");
+    expect_contains(summary, "parser_consumption_contract_parser_consumable=0");
+    expect_contains(summary, "macro_boundary_closure_reports=1");
+    expect_contains(summary, "macro_boundary_closure_visible=1");
+    expect_contains(summary, "macro_boundary_closure_query_reusable=1");
+    expect_contains(summary, "macro_boundary_closure_complete=1");
+    expect_contains(summary, "macro_boundary_closure_parser_consumption_enabled=0");
     expect_contains(summary, "generated_source_text=0");
     expect_contains(summary, "parse_ready_token_buffers=0");
     expect_contains(summary, "user_generated_code=0");
@@ -1131,6 +1329,36 @@ TEST(CoreUnit, EarlyItemExpansionNoopCollectsAttributeInputsAndPlaceholders)
     expect_contains(dump, "report_identity=");
     expect_contains(dump, "report_anchor_identity=");
     expect_contains(dump, "report_grouping_identity=");
+    expect_contains(dump, "parser_readiness_preflight_entry #0");
+    expect_contains(dump, "shape=empty_token_stream_parser_input_blocked");
+    expect_contains(dump, "shape=derive_token_buffer_parser_input_candidate");
+    expect_contains(dump, "token_indices_contiguous=yes");
+    expect_contains(dump, "delimiter_balance=balanced");
+    expect_contains(dump, "source_anchor_coverage=covered");
+    expect_contains(dump, "parse_config_compatible=yes");
+    expect_contains(dump, "hygiene_prerequisite_available=yes");
+    expect_contains(dump, "source_map_prerequisite_available=yes");
+    expect_contains(dump, "diagnostic_projection_available=yes");
+    expect_contains(dump, "policy=generated_token_parser_consumption_readiness_preflight_v1");
+    expect_contains(dump, "parser consumption readiness preflight remains parser-blocked in M21m");
+    expect_contains(dump, "preflight_identity=");
+    expect_contains(dump, "parser_consumption_contract_gate #0");
+    expect_contains(dump, "policy=generated_token_parser_consumption_contract_gate_v1");
+    expect_contains(dump, "query=m21n-parser-consumption-contract:0:0");
+    expect_contains(dump, "preflight_entries=2");
+    expect_contains(dump, "all_entries_structurally_checked=yes");
+    expect_contains(dump, "parser consumption contract remains parser-blocked in M21n");
+    expect_contains(dump, "contract_identity=");
+    expect_contains(dump, "contract_grouping_identity=");
+    expect_contains(dump, "contract_anchor_identity=");
+    expect_contains(dump, "macro_boundary_closure_report #0");
+    expect_contains(dump, "policy=m21_macro_expansion_boundary_release_closure_v1");
+    expect_contains(dump, "query=m21o-macro-boundary-closure");
+    expect_contains(dump, "release_closure_complete=yes");
+    expect_contains(dump, "parser_consumption_enabled=no");
+    expect_contains(dump, "M21 macro expansion boundary remains parser-blocked after M21o closure");
+    expect_contains(dump, "closure_identity=");
+    expect_contains(dump, "closure_grouping_identity=");
 }
 
 TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAttributeTokenTree)
@@ -2828,6 +3056,230 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserAdmissionReportProjectio
     refresh_expansion_result(report_totals);
     EXPECT_NE(report_totals.fingerprint, baseline.fingerprint);
     EXPECT_FALSE(frontend::macro::is_valid(report_totals));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsParserReadinessAndContractDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[builder(flag)]\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.parser_readiness_preflight_entries.size(), 2U);
+    ASSERT_EQ(baseline.parser_consumption_contract_gates.size(), 1U);
+    ASSERT_EQ(baseline.macro_boundary_closure_reports.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_preflight = baseline;
+    missing_preflight.parser_readiness_preflight_entries.clear();
+    refresh_expansion_result(missing_preflight);
+    EXPECT_EQ(missing_preflight.summary.parser_readiness_preflight_entry_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_preflight));
+
+    frontend::macro::EarlyItemExpansionResult wrong_preflight_identity = baseline;
+    wrong_preflight_identity.parser_readiness_preflight_entries.front().preflight_identity =
+        query::stable_fingerprint("wrong parser readiness preflight identity");
+    refresh_expansion_result(wrong_preflight_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_preflight_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_preflight_shape = baseline;
+    wrong_preflight_shape.parser_readiness_preflight_entries.back().token_stream_shape =
+        "empty_token_stream_parser_input_blocked";
+    refresh_expansion_result(wrong_preflight_shape);
+    EXPECT_EQ(wrong_preflight_shape.summary.parser_readiness_preflight_derive_entry_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_preflight_shape));
+
+    frontend::macro::EarlyItemExpansionResult non_contiguous = baseline;
+    non_contiguous.parser_readiness_preflight_entries.back().token_indices_contiguous = false;
+    refresh_expansion_result(non_contiguous);
+    EXPECT_EQ(non_contiguous.summary.parser_readiness_preflight_contiguous_index_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(non_contiguous));
+
+    frontend::macro::EarlyItemExpansionResult unbalanced_delimiter = baseline;
+    unbalanced_delimiter.parser_readiness_preflight_entries.back().delimiter_balanced = false;
+    refresh_expansion_result(unbalanced_delimiter);
+    EXPECT_EQ(unbalanced_delimiter.summary.parser_readiness_preflight_delimiter_balanced_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(unbalanced_delimiter));
+
+    frontend::macro::EarlyItemExpansionResult uncovered_anchor = baseline;
+    uncovered_anchor.parser_readiness_preflight_entries.back().source_anchors_covered = false;
+    refresh_expansion_result(uncovered_anchor);
+    EXPECT_EQ(uncovered_anchor.summary.parser_readiness_preflight_source_anchor_covered_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(uncovered_anchor));
+
+    frontend::macro::EarlyItemExpansionResult incompatible_parse_config = baseline;
+    incompatible_parse_config.parser_readiness_preflight_entries.back().parse_config_compatible = false;
+    refresh_expansion_result(incompatible_parse_config);
+    EXPECT_EQ(incompatible_parse_config.summary.parser_readiness_preflight_parse_config_compatible_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(incompatible_parse_config));
+
+    frontend::macro::EarlyItemExpansionResult preflight_parser_consumable = baseline;
+    preflight_parser_consumable.parser_readiness_preflight_entries.back().parser_consumable = true;
+    refresh_expansion_result(preflight_parser_consumable);
+    EXPECT_EQ(preflight_parser_consumable.summary.parser_readiness_preflight_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(preflight_parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult missing_contract = baseline;
+    missing_contract.parser_consumption_contract_gates.clear();
+    refresh_expansion_result(missing_contract);
+    EXPECT_EQ(missing_contract.summary.parser_consumption_contract_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_contract));
+
+    frontend::macro::EarlyItemExpansionResult wrong_contract_identity = baseline;
+    wrong_contract_identity.parser_consumption_contract_gates.front().contract_identity =
+        query::stable_fingerprint("wrong parser consumption contract identity");
+    refresh_expansion_result(wrong_contract_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_contract_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_contract_counts = baseline;
+    wrong_contract_counts.parser_consumption_contract_gates.front().preflight_entry_count = 1U;
+    refresh_expansion_result(wrong_contract_counts);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_contract_counts));
+
+    frontend::macro::EarlyItemExpansionResult contract_not_visible = baseline;
+    contract_not_visible.parser_consumption_contract_gates.front().contract_visible = false;
+    refresh_expansion_result(contract_not_visible);
+    EXPECT_EQ(contract_not_visible.summary.parser_consumption_contract_visible_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_not_visible));
+
+    frontend::macro::EarlyItemExpansionResult contract_parser_consumable = baseline;
+    contract_parser_consumable.parser_consumption_contract_gates.front().parser_consumable = true;
+    refresh_expansion_result(contract_parser_consumable);
+    EXPECT_EQ(contract_parser_consumable.summary.parser_consumption_contract_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_parser_consumable));
+
+    frontend::macro::EarlyItemExpansionResult contract_emit_expanded = baseline;
+    contract_emit_expanded.parser_consumption_contract_gates.front().emit_expanded_available = true;
+    refresh_expansion_result(contract_emit_expanded);
+    EXPECT_EQ(contract_emit_expanded.summary.emit_expanded_projection_available_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_emit_expanded));
+
+    frontend::macro::EarlyItemExpansionResult contract_source_map = baseline;
+    contract_source_map.parser_consumption_contract_gates.front().source_map_available = true;
+    refresh_expansion_result(contract_source_map);
+    EXPECT_EQ(contract_source_map.summary.parser_admission_source_map_projection_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_source_map));
+
+    frontend::macro::EarlyItemExpansionResult contract_user_code = baseline;
+    contract_user_code.parser_consumption_contract_gates.front().produced_user_generated_code = true;
+    refresh_expansion_result(contract_user_code);
+    EXPECT_EQ(contract_user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsMacroBoundaryClosureDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.macro_boundary_closure_reports.size(), 1U);
+
+    frontend::macro::EarlyItemExpansionResult missing_closure = baseline;
+    missing_closure.macro_boundary_closure_reports.clear();
+    refresh_expansion_result(missing_closure);
+    EXPECT_EQ(missing_closure.summary.macro_boundary_closure_report_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_closure));
+
+    frontend::macro::EarlyItemExpansionResult wrong_identity = baseline;
+    wrong_identity.macro_boundary_closure_reports.front().closure_identity =
+        query::stable_fingerprint("wrong macro boundary closure identity");
+    refresh_expansion_result(wrong_identity);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_identity));
+
+    frontend::macro::EarlyItemExpansionResult wrong_counts = baseline;
+    wrong_counts.macro_boundary_closure_reports.front().parser_consumption_contract_gate_count = 0U;
+    refresh_expansion_result(wrong_counts);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_counts));
+
+    frontend::macro::EarlyItemExpansionResult not_complete = baseline;
+    not_complete.macro_boundary_closure_reports.front().release_closure_complete = false;
+    refresh_expansion_result(not_complete);
+    EXPECT_EQ(not_complete.summary.macro_boundary_closure_complete_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(not_complete));
+
+    frontend::macro::EarlyItemExpansionResult parser_consumption_enabled = baseline;
+    parser_consumption_enabled.macro_boundary_closure_reports.front().parser_consumption_enabled = true;
+    refresh_expansion_result(parser_consumption_enabled);
+    EXPECT_EQ(parser_consumption_enabled.summary.macro_boundary_closure_parser_consumption_enabled_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(parser_consumption_enabled));
+
+    frontend::macro::EarlyItemExpansionResult standard_library = baseline;
+    standard_library.macro_boundary_closure_reports.front().standard_library_required = true;
+    refresh_expansion_result(standard_library);
+    EXPECT_EQ(standard_library.summary.standard_library_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(standard_library));
+
+    frontend::macro::EarlyItemExpansionResult runtime = baseline;
+    runtime.macro_boundary_closure_reports.front().runtime_required = true;
+    refresh_expansion_result(runtime);
+    EXPECT_EQ(runtime.summary.runtime_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(runtime));
+
+    frontend::macro::EarlyItemExpansionResult external_process = baseline;
+    external_process.macro_boundary_closure_reports.front().external_process_required = true;
+    refresh_expansion_result(external_process);
+    EXPECT_EQ(external_process.summary.external_process_required_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(external_process));
+
+    frontend::macro::EarlyItemExpansionResult user_code = baseline;
+    user_code.macro_boundary_closure_reports.front().produced_user_generated_code = true;
+    refresh_expansion_result(user_code);
+    EXPECT_EQ(user_code.summary.user_generated_code_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(user_code));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksParserReadinessContractAndClosure)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_FALSE(baseline.parser_readiness_preflight_entries.empty());
+    ASSERT_FALSE(baseline.parser_consumption_contract_gates.empty());
+    ASSERT_FALSE(baseline.macro_boundary_closure_reports.empty());
+
+    frontend::macro::EarlyItemExpansionResult preflight_identity = baseline;
+    preflight_identity.parser_readiness_preflight_entries.front().preflight_identity =
+        query::stable_fingerprint("different parser readiness preflight identity");
+    refresh_expansion_result(preflight_identity);
+    EXPECT_NE(preflight_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(preflight_identity));
+
+    frontend::macro::EarlyItemExpansionResult preflight_shape = baseline;
+    preflight_shape.parser_readiness_preflight_entries.front().token_stream_shape =
+        "empty_token_stream_parser_input_blocked";
+    refresh_expansion_result(preflight_shape);
+    EXPECT_NE(preflight_shape.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(preflight_shape));
+
+    frontend::macro::EarlyItemExpansionResult contract_identity = baseline;
+    contract_identity.parser_consumption_contract_gates.front().contract_identity =
+        query::stable_fingerprint("different parser consumption contract identity");
+    refresh_expansion_result(contract_identity);
+    EXPECT_NE(contract_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_identity));
+
+    frontend::macro::EarlyItemExpansionResult contract_totals = baseline;
+    contract_totals.parser_consumption_contract_gates.front().delimiter_balanced_entry_count = 0U;
+    refresh_expansion_result(contract_totals);
+    EXPECT_NE(contract_totals.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(contract_totals));
+
+    frontend::macro::EarlyItemExpansionResult closure_identity = baseline;
+    closure_identity.macro_boundary_closure_reports.front().closure_identity =
+        query::stable_fingerprint("different macro boundary closure identity");
+    refresh_expansion_result(closure_identity);
+    EXPECT_NE(closure_identity.fingerprint, baseline.fingerprint);
+    EXPECT_FALSE(frontend::macro::is_valid(closure_identity));
 }
 
 TEST(CoreUnit, EarlyItemExpansionRejectsInvalidInputs)

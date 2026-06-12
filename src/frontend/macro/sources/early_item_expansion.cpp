@@ -9,10 +9,10 @@
 namespace aurex::frontend::macro {
 namespace {
 
-constexpr std::string_view FRONTEND_MACRO_M21L_EXPANSION_NAME =
-    "M21l Parser Admission Diagnostic Report Projection";
-constexpr std::string_view FRONTEND_MACRO_M21L_EXPANSION_FINGERPRINT_MARKER =
-    "frontend.macro.m21l.parser_admission_diagnostic_report_projection.v1";
+constexpr std::string_view FRONTEND_MACRO_M21O_EXPANSION_NAME =
+    "M21o Macro Expansion Boundary Release Closure";
+constexpr std::string_view FRONTEND_MACRO_M21O_EXPANSION_FINGERPRINT_MARKER =
+    "frontend.macro.m21o.macro_expansion_boundary_release_closure.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_TOKEN_TREE_FINGERPRINT_MARKER =
     "frontend.macro.m21d.attribute_token_tree.v1";
 constexpr std::string_view FRONTEND_MACRO_M21D_QUERY_KEY_FINGERPRINT_MARKER =
@@ -166,6 +166,46 @@ constexpr std::string_view FRONTEND_MACRO_M21L_QUERY_NAME_PREFIX =
     "m21l-parser-admission-report:";
 constexpr std::string_view FRONTEND_MACRO_M21L_REPORT_BLOCKER =
     "parser admission diagnostic report remains parser-blocked in M21l";
+constexpr std::string_view FRONTEND_MACRO_M21M_PREFLIGHT_ENTRY_MARKER =
+    "frontend.macro.m21m.parser_readiness_preflight_entry.v1";
+constexpr std::string_view FRONTEND_MACRO_M21M_PREFLIGHT_IDENTITY_MARKER =
+    "frontend.macro.m21m.parser_readiness_preflight_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21M_PREFLIGHT_POLICY =
+    "generated_token_parser_consumption_readiness_preflight_v1";
+constexpr std::string_view FRONTEND_MACRO_M21M_PREFLIGHT_BLOCKER =
+    "parser consumption readiness preflight remains parser-blocked in M21m";
+constexpr std::string_view FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE =
+    "derive_token_buffer_parser_input_candidate";
+constexpr std::string_view FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE =
+    "empty_token_stream_parser_input_blocked";
+constexpr std::string_view FRONTEND_MACRO_M21M_DELIMITER_BALANCED_STATE = "balanced";
+constexpr std::string_view FRONTEND_MACRO_M21M_SOURCE_ANCHOR_COVERED_STATE = "covered";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_GATE_MARKER =
+    "frontend.macro.m21n.parser_consumption_contract_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_IDENTITY_MARKER =
+    "frontend.macro.m21n.parser_consumption_contract_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_GROUPING_IDENTITY_MARKER =
+    "frontend.macro.m21n.parser_consumption_contract_grouping_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_ANCHOR_IDENTITY_MARKER =
+    "frontend.macro.m21n.parser_consumption_contract_anchor_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_POLICY =
+    "generated_token_parser_consumption_contract_gate_v1";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_QUERY_NAME_PREFIX =
+    "m21n-parser-consumption-contract:";
+constexpr std::string_view FRONTEND_MACRO_M21N_CONTRACT_BLOCKER =
+    "parser consumption contract remains parser-blocked in M21n";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_REPORT_MARKER =
+    "frontend.macro.m21o.macro_boundary_closure_report.v1";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_IDENTITY_MARKER =
+    "frontend.macro.m21o.macro_boundary_closure_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_GROUPING_IDENTITY_MARKER =
+    "frontend.macro.m21o.macro_boundary_closure_grouping_identity.v1";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_POLICY =
+    "m21_macro_expansion_boundary_release_closure_v1";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME =
+    "m21o-macro-boundary-closure";
+constexpr std::string_view FRONTEND_MACRO_M21O_CLOSURE_BLOCKER =
+    "M21 macro expansion boundary remains parser-blocked after M21o closure";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_BEGIN_TOKEN_TEXT =
     "__aurex_builtin_derive_begin";
 constexpr std::string_view FRONTEND_MACRO_M21I_DERIVE_END_TOKEN_TEXT =
@@ -466,6 +506,16 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
     return name;
 }
 
+[[nodiscard]] std::string parser_consumption_contract_query_name(
+    const syntax::ModuleId module, const base::u32 source_part_index)
+{
+    std::string name(FRONTEND_MACRO_M21N_CONTRACT_QUERY_NAME_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(source_part_index);
+    return name;
+}
+
 [[nodiscard]] bool token_buffer_kind_is_compiler_owned(const std::string_view token_buffer_kind) noexcept
 {
     return token_buffer_kind == FRONTEND_MACRO_M21I_DERIVE_TOKEN_BUFFER_KIND
@@ -539,6 +589,137 @@ void mix_macro_input_identity(query::StableHashBuilder& builder, const EarlyItem
         return entry.token_count == 0 && !entry.token_records_available;
     }
     return false;
+}
+
+[[nodiscard]] std::string_view parser_readiness_token_stream_shape_for_category(
+    const std::string_view blocker_category) noexcept
+{
+    return blocker_category == FRONTEND_MACRO_M21K_DERIVE_BLOCKER_CATEGORY
+        ? FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE
+        : FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE;
+}
+
+[[nodiscard]] bool parser_readiness_preflight_category_is_valid(
+    const GeneratedTokenParserReadinessPreflightEntry& entry) noexcept
+{
+    if (entry.token_stream_shape == FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE) {
+        return entry.token_count > 0 && entry.token_records_available;
+    }
+    if (entry.token_stream_shape == FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE) {
+        return entry.token_count == 0 && !entry.token_records_available;
+    }
+    return false;
+}
+
+[[nodiscard]] bool token_opens_parser_preflight_delimiter(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::l_paren
+        || kind == syntax::TokenKind::l_brace
+        || kind == syntax::TokenKind::l_bracket;
+}
+
+[[nodiscard]] bool token_closes_parser_preflight_delimiter(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::r_paren
+        || kind == syntax::TokenKind::r_brace
+        || kind == syntax::TokenKind::r_bracket;
+}
+
+[[nodiscard]] syntax::TokenKind matching_parser_preflight_delimiter(
+    const syntax::TokenKind kind) noexcept
+{
+    if (kind == syntax::TokenKind::l_paren) {
+        return syntax::TokenKind::r_paren;
+    }
+    if (kind == syntax::TokenKind::l_brace) {
+        return syntax::TokenKind::r_brace;
+    }
+    if (kind == syntax::TokenKind::l_bracket) {
+        return syntax::TokenKind::r_bracket;
+    }
+    return syntax::TokenKind::invalid;
+}
+
+[[nodiscard]] bool source_range_contains(
+    const base::SourceRange& container, const base::SourceRange& range) noexcept
+{
+    return source_range_is_well_formed(container)
+        && source_range_is_well_formed(range)
+        && container.source.value == range.source.value
+        && container.begin <= range.begin
+        && range.end <= container.end;
+}
+
+[[nodiscard]] bool source_anchor_covered_by_input(
+    const EarlyItemMacroInput& input, const base::SourceRange& range) noexcept
+{
+    return source_range_contains(input.attribute_range, range)
+        || source_range_contains(input.token_tree_range, range);
+}
+
+[[nodiscard]] bool generated_token_record_belongs_to_buffer(
+    const GeneratedTokenRecord& record, const GeneratedTokenBufferStub& buffer) noexcept
+{
+    return record.token_buffer_identity == buffer.token_buffer_identity;
+}
+
+[[nodiscard]] bool generated_token_indices_are_contiguous(
+    const GeneratedTokenBufferStub& buffer,
+    const std::vector<GeneratedTokenRecord>& records) noexcept
+{
+    base::u64 expected_index = 0;
+    for (const GeneratedTokenRecord& record : records) {
+        if (!generated_token_record_belongs_to_buffer(record, buffer)) {
+            continue;
+        }
+        if (record.token_index != expected_index) {
+            return false;
+        }
+        ++expected_index;
+    }
+    return expected_index == buffer.token_count;
+}
+
+[[nodiscard]] bool generated_token_delimiters_are_balanced(
+    const GeneratedTokenBufferStub& buffer,
+    const std::vector<GeneratedTokenRecord>& records)
+{
+    std::vector<syntax::TokenKind> expected_closing_tokens;
+    for (const GeneratedTokenRecord& record : records) {
+        if (!generated_token_record_belongs_to_buffer(record, buffer)) {
+            continue;
+        }
+        if (token_opens_parser_preflight_delimiter(record.kind)) {
+            expected_closing_tokens.push_back(matching_parser_preflight_delimiter(record.kind));
+            continue;
+        }
+        if (!token_closes_parser_preflight_delimiter(record.kind)) {
+            continue;
+        }
+        if (expected_closing_tokens.empty() || expected_closing_tokens.back() != record.kind) {
+            return false;
+        }
+        expected_closing_tokens.pop_back();
+    }
+    return expected_closing_tokens.empty();
+}
+
+[[nodiscard]] bool generated_token_source_anchors_are_covered(
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const std::vector<GeneratedTokenRecord>& records) noexcept
+{
+    base::u64 covered_records = 0;
+    for (const GeneratedTokenRecord& record : records) {
+        if (!generated_token_record_belongs_to_buffer(record, buffer)) {
+            continue;
+        }
+        if (!source_anchor_covered_by_input(input, record.anchor_range)) {
+            return false;
+        }
+        ++covered_records;
+    }
+    return covered_records == buffer.token_count;
 }
 
 [[nodiscard]] base::u64 generated_token_count_for_attribute(
@@ -1336,6 +1517,418 @@ void append_generated_token_records_for_attribute(std::vector<GeneratedTokenReco
     return report;
 }
 
+[[nodiscard]] query::StableFingerprint128 parser_readiness_preflight_identity(
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const ParserAdmissionDiagnosticReportEntry& report_entry,
+    const base::u32 preflight_index,
+    const std::string_view token_stream_shape,
+    const bool token_indices_contiguous,
+    const bool delimiter_balanced,
+    const bool source_anchors_covered) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21M_PREFLIGHT_IDENTITY_MARKER);
+    mix_macro_input_identity(builder, input);
+    builder.mix_u32(preflight_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(buffer.generated_part));
+    builder.mix_fingerprint(buffer.token_plan_identity);
+    builder.mix_fingerprint(buffer.token_buffer_identity);
+    builder.mix_fingerprint(buffer.materialization_identity);
+    builder.mix_fingerprint(gate.generated_buffer_identity);
+    builder.mix_fingerprint(gate.parse_config_fingerprint);
+    builder.mix_fingerprint(gate.parse_gate_identity);
+    builder.mix_fingerprint(diagnostic.diagnostic_identity);
+    builder.mix_fingerprint(diagnostic.diagnostic_anchor_identity);
+    builder.mix_fingerprint(report_entry.report_entry_identity);
+    builder.mix_fingerprint(buffer.source_map_identity);
+    builder.mix_fingerprint(buffer.hygiene_mark);
+    builder.mix_fingerprint(diagnostic.trace_identity);
+    builder.mix_string(buffer.token_stream_name);
+    builder.mix_string(token_stream_shape);
+    builder.mix_string(FRONTEND_MACRO_M21M_DELIMITER_BALANCED_STATE);
+    builder.mix_string(FRONTEND_MACRO_M21M_SOURCE_ANCHOR_COVERED_STATE);
+    builder.mix_string(FRONTEND_MACRO_M21M_PREFLIGHT_POLICY);
+    builder.mix_string(FRONTEND_MACRO_M21M_PREFLIGHT_BLOCKER);
+    builder.mix_u64(buffer.token_count);
+    builder.mix_bool(gate.token_records_available);
+    builder.mix_bool(token_indices_contiguous);
+    builder.mix_bool(delimiter_balanced);
+    builder.mix_bool(source_anchors_covered);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    return builder.finish();
+}
+
+[[nodiscard]] GeneratedTokenParserReadinessPreflightEntry make_parser_readiness_preflight_entry(
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const ParserAdmissionDiagnosticReportEntry& report_entry,
+    const std::vector<GeneratedTokenRecord>& records,
+    const base::u32 preflight_index)
+{
+    const std::string_view token_stream_shape =
+        parser_readiness_token_stream_shape_for_category(report_entry.blocker_category);
+    const bool token_indices_contiguous =
+        generated_token_indices_are_contiguous(buffer, records);
+    const bool delimiter_balanced =
+        generated_token_delimiters_are_balanced(buffer, records);
+    const bool source_anchors_covered =
+        generated_token_source_anchors_are_covered(input, buffer, records);
+    return GeneratedTokenParserReadinessPreflightEntry{
+        input.item,
+        input.module,
+        input.part_index,
+        input.attribute_index,
+        preflight_index,
+        input.attached_part,
+        buffer.generated_part,
+        buffer.token_plan_identity,
+        buffer.token_buffer_identity,
+        buffer.materialization_identity,
+        gate.generated_buffer_identity,
+        gate.parse_config_fingerprint,
+        gate.parse_gate_identity,
+        diagnostic.diagnostic_identity,
+        diagnostic.diagnostic_anchor_identity,
+        report_entry.report_entry_identity,
+        buffer.source_map_identity,
+        buffer.hygiene_mark,
+        diagnostic.trace_identity,
+        parser_readiness_preflight_identity(input, buffer, gate, diagnostic, report_entry,
+            preflight_index, token_stream_shape, token_indices_contiguous, delimiter_balanced,
+            source_anchors_covered),
+        buffer.token_stream_name,
+        std::string(token_stream_shape),
+        std::string(FRONTEND_MACRO_M21M_DELIMITER_BALANCED_STATE),
+        std::string(FRONTEND_MACRO_M21M_SOURCE_ANCHOR_COVERED_STATE),
+        std::string(FRONTEND_MACRO_M21M_PREFLIGHT_POLICY),
+        std::string(FRONTEND_MACRO_M21M_PREFLIGHT_BLOCKER),
+        buffer.token_count,
+        gate.token_records_available,
+        token_indices_contiguous,
+        delimiter_balanced,
+        source_anchors_covered,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
+[[nodiscard]] query::StableFingerprint128 parser_consumption_contract_grouping_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenParserReadinessPreflightEntry>& entries) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_GROUPING_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    base::u64 entry_count = 0;
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry : entries) {
+        if (entry.module.value != placeholder.module.value
+            || entry.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++entry_count;
+        builder.mix_fingerprint(entry.preflight_identity);
+        builder.mix_fingerprint(entry.parse_gate_identity);
+        builder.mix_fingerprint(entry.diagnostic_identity);
+        builder.mix_fingerprint(entry.report_entry_identity);
+        builder.mix_string(entry.token_stream_shape);
+    }
+    builder.mix_u64(entry_count);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 parser_consumption_contract_anchor_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const std::vector<GeneratedTokenParserReadinessPreflightEntry>& entries) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_ANCHOR_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry : entries) {
+        if (entry.module.value != placeholder.module.value
+            || entry.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        builder.mix_u32(entry.preflight_index);
+        builder.mix_fingerprint(entry.diagnostic_anchor_identity);
+        builder.mix_bool(entry.source_anchors_covered);
+    }
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 parser_consumption_contract_identity(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const ParserAdmissionDiagnosticReport& report,
+    const query::StableFingerprint128 grouping_identity,
+    const query::StableFingerprint128 anchor_identity,
+    const std::string_view query_name,
+    const std::vector<GeneratedTokenParserReadinessPreflightEntry>& entries) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_IDENTITY_MARKER);
+    builder.mix_u32(placeholder.module.value);
+    builder.mix_u32(placeholder.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.source_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(placeholder.generated_part));
+    builder.mix_fingerprint(parse_merge_stub.generated_buffer_identity);
+    builder.mix_fingerprint(parse_merge_stub.parse_config_fingerprint);
+    builder.mix_fingerprint(report.report_identity);
+    builder.mix_fingerprint(grouping_identity);
+    builder.mix_fingerprint(anchor_identity);
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_POLICY);
+    builder.mix_string(query_name);
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_BLOCKER);
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry : entries) {
+        if (entry.module.value != placeholder.module.value
+            || entry.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        builder.mix_fingerprint(entry.preflight_identity);
+        builder.mix_bool(entry.token_indices_contiguous);
+        builder.mix_bool(entry.delimiter_balanced);
+        builder.mix_bool(entry.source_anchors_covered);
+        builder.mix_bool(entry.parse_config_compatible);
+        builder.mix_bool(entry.diagnostic_projection_available);
+        builder.mix_bool(entry.parser_consumable);
+    }
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    return builder.finish();
+}
+
+[[nodiscard]] GeneratedTokenParserConsumptionContractGate make_parser_consumption_contract_gate(
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const ParserAdmissionDiagnosticReport& report,
+    const std::vector<GeneratedTokenParserReadinessPreflightEntry>& entries)
+{
+    const std::string query_name =
+        parser_consumption_contract_query_name(placeholder.module, placeholder.source_part_index);
+    const query::StableFingerprint128 grouping_identity =
+        parser_consumption_contract_grouping_identity(placeholder, entries);
+    const query::StableFingerprint128 anchor_identity =
+        parser_consumption_contract_anchor_identity(placeholder, entries);
+    GeneratedTokenParserConsumptionContractGate gate{
+        placeholder.module,
+        placeholder.source_part_index,
+        placeholder.source_part,
+        placeholder.generated_part,
+        parse_merge_stub.generated_buffer_identity,
+        parse_merge_stub.parse_config_fingerprint,
+        report.report_identity,
+        {},
+        grouping_identity,
+        anchor_identity,
+        std::string(FRONTEND_MACRO_M21N_CONTRACT_POLICY),
+        query_name,
+        std::string(FRONTEND_MACRO_M21N_CONTRACT_BLOCKER),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry : entries) {
+        if (entry.module.value != placeholder.module.value
+            || entry.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++gate.preflight_entry_count;
+        if (!entry.parser_admitted) {
+            ++gate.blocked_entry_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE) {
+            ++gate.derive_entry_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE) {
+            ++gate.empty_entry_count;
+        }
+        if (entry.token_indices_contiguous) {
+            ++gate.contiguous_index_entry_count;
+        }
+        if (entry.delimiter_balanced) {
+            ++gate.delimiter_balanced_entry_count;
+        }
+        if (entry.source_anchors_covered) {
+            ++gate.source_anchor_covered_entry_count;
+        }
+        if (entry.parse_config_compatible) {
+            ++gate.parse_config_compatible_entry_count;
+        }
+        if (entry.diagnostic_projection_available) {
+            ++gate.diagnostic_projection_entry_count;
+        }
+    }
+    gate.all_entries_structurally_checked =
+        gate.preflight_entry_count == gate.contiguous_index_entry_count
+        && gate.preflight_entry_count == gate.delimiter_balanced_entry_count
+        && gate.preflight_entry_count == gate.source_anchor_covered_entry_count
+        && gate.preflight_entry_count == gate.parse_config_compatible_entry_count
+        && gate.preflight_entry_count == gate.diagnostic_projection_entry_count;
+    gate.contract_identity = parser_consumption_contract_identity(placeholder, parse_merge_stub,
+        report, gate.contract_grouping_identity, gate.contract_anchor_identity, gate.contract_query_name,
+        entries);
+    return gate;
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_boundary_closure_grouping_identity(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_GROUPING_IDENTITY_MARKER);
+    builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
+    builder.mix_u64(static_cast<base::u64>(result.generated_parts.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_admission_reports.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_readiness_preflight_entries.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_consumption_contract_gates.size()));
+    for (const ParserAdmissionDiagnosticReport& report : result.parser_admission_reports) {
+        builder.mix_fingerprint(report.report_identity);
+    }
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry :
+        result.parser_readiness_preflight_entries) {
+        builder.mix_fingerprint(entry.preflight_identity);
+    }
+    for (const GeneratedTokenParserConsumptionContractGate& gate :
+        result.parser_consumption_contract_gates) {
+        builder.mix_fingerprint(gate.contract_identity);
+    }
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_boundary_closure_identity(
+    const EarlyItemExpansionResult& result,
+    const query::StableFingerprint128 grouping_identity,
+    const base::u64 blocked_contract_gate_count,
+    const base::u64 parser_consumable_contract_gate_count) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_IDENTITY_MARKER);
+    builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
+    builder.mix_fingerprint(grouping_identity);
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_POLICY);
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME);
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_BLOCKER);
+    builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
+    builder.mix_u64(static_cast<base::u64>(result.generated_parts.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_admission_reports.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_readiness_preflight_entries.size()));
+    builder.mix_u64(static_cast<base::u64>(result.parser_consumption_contract_gates.size()));
+    builder.mix_u64(blocked_contract_gate_count);
+    builder.mix_u64(parser_consumable_contract_gate_count);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    builder.mix_bool(false);
+    return builder.finish();
+}
+
+[[nodiscard]] MacroExpansionBoundaryClosureReport make_macro_boundary_closure_report(
+    const EarlyItemExpansionResult& result)
+{
+    base::u64 blocked_contract_gate_count = 0;
+    base::u64 parser_consumable_contract_gate_count = 0;
+    for (const GeneratedTokenParserConsumptionContractGate& gate :
+        result.parser_consumption_contract_gates) {
+        if (!gate.parser_admitted) {
+            ++blocked_contract_gate_count;
+        }
+        if (gate.parser_consumable) {
+            ++parser_consumable_contract_gate_count;
+        }
+    }
+    const query::StableFingerprint128 grouping_identity =
+        macro_boundary_closure_grouping_identity(result);
+    return MacroExpansionBoundaryClosureReport{
+        macro_boundary_closure_identity(result, grouping_identity, blocked_contract_gate_count,
+            parser_consumable_contract_gate_count),
+        grouping_identity,
+        std::string(FRONTEND_MACRO_M21O_CLOSURE_POLICY),
+        std::string(FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME),
+        std::string(FRONTEND_MACRO_M21O_CLOSURE_BLOCKER),
+        static_cast<base::u64>(result.inputs.size()),
+        static_cast<base::u64>(result.generated_parts.size()),
+        static_cast<base::u64>(result.parser_admission_reports.size()),
+        static_cast<base::u64>(result.parser_readiness_preflight_entries.size()),
+        static_cast<base::u64>(result.parser_consumption_contract_gates.size()),
+        blocked_contract_gate_count,
+        parser_consumable_contract_gate_count,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
+}
+
 [[nodiscard]] query::ModulePartKey generated_module_part_key(
     const query::ModulePartKey source_part, const syntax::ModuleId module, const base::u32 part_index)
 {
@@ -1814,6 +2407,125 @@ void mix_parser_admission_report(
     builder.mix_bool(report.produced_user_generated_code);
 }
 
+void mix_parser_readiness_preflight_entry(
+    query::StableHashBuilder& builder, const GeneratedTokenParserReadinessPreflightEntry& entry) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21M_PREFLIGHT_ENTRY_MARKER);
+    builder.mix_u32(entry.item.value);
+    builder.mix_u32(entry.module.value);
+    builder.mix_u32(entry.part_index);
+    builder.mix_u32(entry.attribute_index);
+    builder.mix_u32(entry.preflight_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(entry.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(entry.generated_part));
+    builder.mix_fingerprint(entry.token_plan_identity);
+    builder.mix_fingerprint(entry.token_buffer_identity);
+    builder.mix_fingerprint(entry.materialization_identity);
+    builder.mix_fingerprint(entry.generated_buffer_identity);
+    builder.mix_fingerprint(entry.parse_config_fingerprint);
+    builder.mix_fingerprint(entry.parse_gate_identity);
+    builder.mix_fingerprint(entry.diagnostic_identity);
+    builder.mix_fingerprint(entry.diagnostic_anchor_identity);
+    builder.mix_fingerprint(entry.report_entry_identity);
+    builder.mix_fingerprint(entry.source_map_identity);
+    builder.mix_fingerprint(entry.hygiene_mark);
+    builder.mix_fingerprint(entry.trace_identity);
+    builder.mix_fingerprint(entry.preflight_identity);
+    builder.mix_string(entry.token_stream_name);
+    builder.mix_string(entry.token_stream_shape);
+    builder.mix_string(entry.delimiter_balance_state);
+    builder.mix_string(entry.source_anchor_coverage_state);
+    builder.mix_string(entry.readiness_policy);
+    builder.mix_string(entry.blocker_reason);
+    builder.mix_u64(entry.token_count);
+    builder.mix_bool(entry.token_records_available);
+    builder.mix_bool(entry.token_indices_contiguous);
+    builder.mix_bool(entry.delimiter_balanced);
+    builder.mix_bool(entry.source_anchors_covered);
+    builder.mix_bool(entry.parse_config_compatible);
+    builder.mix_bool(entry.hygiene_prerequisite_available);
+    builder.mix_bool(entry.source_map_prerequisite_available);
+    builder.mix_bool(entry.diagnostic_projection_available);
+    builder.mix_bool(entry.parser_admitted);
+    builder.mix_bool(entry.parse_ready);
+    builder.mix_bool(entry.parser_consumable);
+    builder.mix_bool(entry.generated_part_parsed);
+    builder.mix_bool(entry.generated_part_merged);
+    builder.mix_bool(entry.produced_user_generated_code);
+}
+
+void mix_parser_consumption_contract_gate(
+    query::StableHashBuilder& builder, const GeneratedTokenParserConsumptionContractGate& gate) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21N_CONTRACT_GATE_MARKER);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.source_part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.generated_part));
+    builder.mix_fingerprint(gate.generated_buffer_identity);
+    builder.mix_fingerprint(gate.parse_config_fingerprint);
+    builder.mix_fingerprint(gate.report_identity);
+    builder.mix_fingerprint(gate.contract_identity);
+    builder.mix_fingerprint(gate.contract_grouping_identity);
+    builder.mix_fingerprint(gate.contract_anchor_identity);
+    builder.mix_string(gate.contract_policy);
+    builder.mix_string(gate.contract_query_name);
+    builder.mix_string(gate.blocked_reason);
+    builder.mix_u64(gate.preflight_entry_count);
+    builder.mix_u64(gate.blocked_entry_count);
+    builder.mix_u64(gate.derive_entry_count);
+    builder.mix_u64(gate.empty_entry_count);
+    builder.mix_u64(gate.contiguous_index_entry_count);
+    builder.mix_u64(gate.delimiter_balanced_entry_count);
+    builder.mix_u64(gate.source_anchor_covered_entry_count);
+    builder.mix_u64(gate.parse_config_compatible_entry_count);
+    builder.mix_u64(gate.diagnostic_projection_entry_count);
+    builder.mix_bool(gate.query_reusable);
+    builder.mix_bool(gate.contract_visible);
+    builder.mix_bool(gate.all_entries_structurally_checked);
+    builder.mix_bool(gate.parser_admitted);
+    builder.mix_bool(gate.parse_ready);
+    builder.mix_bool(gate.parser_consumable);
+    builder.mix_bool(gate.generated_part_parsed);
+    builder.mix_bool(gate.generated_part_merged);
+    builder.mix_bool(gate.sema_visible);
+    builder.mix_bool(gate.emit_expanded_available);
+    builder.mix_bool(gate.debug_trace_available);
+    builder.mix_bool(gate.source_map_available);
+    builder.mix_bool(gate.produced_user_generated_code);
+}
+
+void mix_macro_boundary_closure_report(
+    query::StableHashBuilder& builder, const MacroExpansionBoundaryClosureReport& report) noexcept
+{
+    builder.mix_string(FRONTEND_MACRO_M21O_CLOSURE_REPORT_MARKER);
+    builder.mix_fingerprint(report.closure_identity);
+    builder.mix_fingerprint(report.closure_grouping_identity);
+    builder.mix_string(report.closure_policy);
+    builder.mix_string(report.closure_query_name);
+    builder.mix_string(report.blocked_reason);
+    builder.mix_u64(report.macro_input_count);
+    builder.mix_u64(report.generated_part_count);
+    builder.mix_u64(report.parser_admission_report_count);
+    builder.mix_u64(report.parser_readiness_preflight_entry_count);
+    builder.mix_u64(report.parser_consumption_contract_gate_count);
+    builder.mix_u64(report.blocked_contract_gate_count);
+    builder.mix_u64(report.parser_consumable_contract_gate_count);
+    builder.mix_bool(report.m21m_preflight_available);
+    builder.mix_bool(report.m21n_contract_available);
+    builder.mix_bool(report.release_closure_complete);
+    builder.mix_bool(report.query_reusable);
+    builder.mix_bool(report.closure_visible);
+    builder.mix_bool(report.parser_consumption_enabled);
+    builder.mix_bool(report.emit_expanded_available);
+    builder.mix_bool(report.debug_trace_available);
+    builder.mix_bool(report.source_map_available);
+    builder.mix_bool(report.standard_library_required);
+    builder.mix_bool(report.runtime_required);
+    builder.mix_bool(report.external_process_required);
+    builder.mix_bool(report.produced_user_generated_code);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -1874,6 +2586,25 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.parser_admission_report_query_reusable_count);
     builder.mix_u64(summary.parser_admission_report_unordered_anchor_count);
     builder.mix_u64(summary.parser_admission_report_parser_consumable_count);
+    builder.mix_u64(summary.parser_readiness_preflight_entry_count);
+    builder.mix_u64(summary.parser_readiness_preflight_blocked_count);
+    builder.mix_u64(summary.parser_readiness_preflight_derive_entry_count);
+    builder.mix_u64(summary.parser_readiness_preflight_empty_entry_count);
+    builder.mix_u64(summary.parser_readiness_preflight_contiguous_index_count);
+    builder.mix_u64(summary.parser_readiness_preflight_delimiter_balanced_count);
+    builder.mix_u64(summary.parser_readiness_preflight_source_anchor_covered_count);
+    builder.mix_u64(summary.parser_readiness_preflight_parse_config_compatible_count);
+    builder.mix_u64(summary.parser_readiness_preflight_parser_consumable_count);
+    builder.mix_u64(summary.parser_consumption_contract_gate_count);
+    builder.mix_u64(summary.parser_consumption_contract_blocked_gate_count);
+    builder.mix_u64(summary.parser_consumption_contract_visible_count);
+    builder.mix_u64(summary.parser_consumption_contract_query_reusable_count);
+    builder.mix_u64(summary.parser_consumption_contract_parser_consumable_count);
+    builder.mix_u64(summary.macro_boundary_closure_report_count);
+    builder.mix_u64(summary.macro_boundary_closure_visible_count);
+    builder.mix_u64(summary.macro_boundary_closure_query_reusable_count);
+    builder.mix_u64(summary.macro_boundary_closure_complete_count);
+    builder.mix_u64(summary.macro_boundary_closure_parser_consumption_enabled_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -1947,6 +2678,37 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.parser_admission_report_unordered_anchor_count == rhs.parser_admission_report_unordered_anchor_count
         && lhs.parser_admission_report_parser_consumable_count
             == rhs.parser_admission_report_parser_consumable_count
+        && lhs.parser_readiness_preflight_entry_count == rhs.parser_readiness_preflight_entry_count
+        && lhs.parser_readiness_preflight_blocked_count == rhs.parser_readiness_preflight_blocked_count
+        && lhs.parser_readiness_preflight_derive_entry_count
+            == rhs.parser_readiness_preflight_derive_entry_count
+        && lhs.parser_readiness_preflight_empty_entry_count
+            == rhs.parser_readiness_preflight_empty_entry_count
+        && lhs.parser_readiness_preflight_contiguous_index_count
+            == rhs.parser_readiness_preflight_contiguous_index_count
+        && lhs.parser_readiness_preflight_delimiter_balanced_count
+            == rhs.parser_readiness_preflight_delimiter_balanced_count
+        && lhs.parser_readiness_preflight_source_anchor_covered_count
+            == rhs.parser_readiness_preflight_source_anchor_covered_count
+        && lhs.parser_readiness_preflight_parse_config_compatible_count
+            == rhs.parser_readiness_preflight_parse_config_compatible_count
+        && lhs.parser_readiness_preflight_parser_consumable_count
+            == rhs.parser_readiness_preflight_parser_consumable_count
+        && lhs.parser_consumption_contract_gate_count == rhs.parser_consumption_contract_gate_count
+        && lhs.parser_consumption_contract_blocked_gate_count
+            == rhs.parser_consumption_contract_blocked_gate_count
+        && lhs.parser_consumption_contract_visible_count == rhs.parser_consumption_contract_visible_count
+        && lhs.parser_consumption_contract_query_reusable_count
+            == rhs.parser_consumption_contract_query_reusable_count
+        && lhs.parser_consumption_contract_parser_consumable_count
+            == rhs.parser_consumption_contract_parser_consumable_count
+        && lhs.macro_boundary_closure_report_count == rhs.macro_boundary_closure_report_count
+        && lhs.macro_boundary_closure_visible_count == rhs.macro_boundary_closure_visible_count
+        && lhs.macro_boundary_closure_query_reusable_count
+            == rhs.macro_boundary_closure_query_reusable_count
+        && lhs.macro_boundary_closure_complete_count == rhs.macro_boundary_closure_complete_count
+        && lhs.macro_boundary_closure_parser_consumption_enabled_count
+            == rhs.macro_boundary_closure_parser_consumption_enabled_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -2501,6 +3263,267 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         }
     }
     return true;
+}
+
+[[nodiscard]] bool parser_readiness_preflight_entry_matches_input(
+    const GeneratedTokenParserReadinessPreflightEntry& entry,
+    const EarlyItemMacroInput& input,
+    const GeneratedTokenBufferStub& buffer,
+    const GeneratedTokenParserAdmissionGateStub& gate,
+    const ParserAdmissionDiagnosticProjectionStub& diagnostic,
+    const ParserAdmissionDiagnosticReportEntry& report_entry,
+    const std::vector<GeneratedTokenRecord>& records,
+    const base::u32 preflight_index) noexcept
+{
+    const std::string_view expected_shape =
+        parser_readiness_token_stream_shape_for_category(report_entry.blocker_category);
+    const bool token_indices_contiguous =
+        generated_token_indices_are_contiguous(buffer, records);
+    const bool delimiter_balanced =
+        generated_token_delimiters_are_balanced(buffer, records);
+    const bool source_anchors_covered =
+        generated_token_source_anchors_are_covered(input, buffer, records);
+    return entry.item.value == input.item.value
+        && entry.module.value == input.module.value
+        && entry.part_index == input.part_index
+        && entry.attribute_index == input.attribute_index
+        && entry.preflight_index == preflight_index
+        && entry.attached_part == input.attached_part
+        && entry.generated_part == buffer.generated_part
+        && entry.token_plan_identity == buffer.token_plan_identity
+        && entry.token_buffer_identity == buffer.token_buffer_identity
+        && entry.materialization_identity == buffer.materialization_identity
+        && entry.generated_buffer_identity == gate.generated_buffer_identity
+        && entry.parse_config_fingerprint == gate.parse_config_fingerprint
+        && entry.parse_gate_identity == gate.parse_gate_identity
+        && entry.diagnostic_identity == diagnostic.diagnostic_identity
+        && entry.diagnostic_anchor_identity == diagnostic.diagnostic_anchor_identity
+        && entry.report_entry_identity == report_entry.report_entry_identity
+        && entry.source_map_identity == buffer.source_map_identity
+        && entry.hygiene_mark == buffer.hygiene_mark
+        && entry.trace_identity == diagnostic.trace_identity
+        && entry.preflight_identity == parser_readiness_preflight_identity(input, buffer, gate,
+               diagnostic, report_entry, preflight_index, expected_shape, token_indices_contiguous,
+               delimiter_balanced, source_anchors_covered)
+        && entry.token_stream_name == buffer.token_stream_name
+        && entry.token_stream_shape == expected_shape
+        && entry.delimiter_balance_state == FRONTEND_MACRO_M21M_DELIMITER_BALANCED_STATE
+        && entry.source_anchor_coverage_state == FRONTEND_MACRO_M21M_SOURCE_ANCHOR_COVERED_STATE
+        && entry.readiness_policy == FRONTEND_MACRO_M21M_PREFLIGHT_POLICY
+        && entry.blocker_reason == FRONTEND_MACRO_M21M_PREFLIGHT_BLOCKER
+        && entry.token_count == buffer.token_count
+        && entry.token_records_available == gate.token_records_available
+        && entry.token_indices_contiguous == token_indices_contiguous
+        && entry.delimiter_balanced == delimiter_balanced
+        && entry.source_anchors_covered == source_anchors_covered
+        && entry.parse_config_compatible
+        && entry.hygiene_prerequisite_available
+        && entry.source_map_prerequisite_available
+        && entry.diagnostic_projection_available
+        && !entry.parser_admitted
+        && !entry.parse_ready
+        && !entry.parser_consumable
+        && !entry.generated_part_parsed
+        && !entry.generated_part_merged
+        && !entry.produced_user_generated_code;
+}
+
+[[nodiscard]] bool parser_readiness_preflight_entries_match_inputs(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.parser_readiness_preflight_entries.size() != result.inputs.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.parser_readiness_preflight_entries.size(); ++index) {
+        if (index > std::numeric_limits<base::u32>::max()) {
+            return false;
+        }
+        if (!parser_readiness_preflight_entry_matches_input(
+                result.parser_readiness_preflight_entries[index],
+                result.inputs[index],
+                result.generated_token_buffers[index],
+                result.parser_admission_gates[index],
+                result.parser_admission_diagnostics[index],
+                result.parser_admission_report_entries[index],
+                result.generated_token_records,
+                static_cast<base::u32>(index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool parser_consumption_contract_gate_matches_group(
+    const GeneratedTokenParserConsumptionContractGate& gate,
+    const GeneratedModulePartPlaceholder& placeholder,
+    const GeneratedModulePartParseMergeStub& parse_merge_stub,
+    const ParserAdmissionDiagnosticReport& report,
+    const std::vector<GeneratedTokenParserReadinessPreflightEntry>& entries) noexcept
+{
+    const std::string expected_query_name =
+        parser_consumption_contract_query_name(placeholder.module, placeholder.source_part_index);
+    const query::StableFingerprint128 expected_grouping_identity =
+        parser_consumption_contract_grouping_identity(placeholder, entries);
+    const query::StableFingerprint128 expected_anchor_identity =
+        parser_consumption_contract_anchor_identity(placeholder, entries);
+    base::u64 entry_count = 0;
+    base::u64 blocked_count = 0;
+    base::u64 derive_count = 0;
+    base::u64 empty_count = 0;
+    base::u64 contiguous_count = 0;
+    base::u64 delimiter_count = 0;
+    base::u64 source_anchor_count = 0;
+    base::u64 parse_config_count = 0;
+    base::u64 diagnostic_count = 0;
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry : entries) {
+        if (entry.module.value != placeholder.module.value
+            || entry.part_index != placeholder.source_part_index) {
+            continue;
+        }
+        ++entry_count;
+        if (!entry.parser_admitted) {
+            ++blocked_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE) {
+            ++derive_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE) {
+            ++empty_count;
+        }
+        if (entry.token_indices_contiguous) {
+            ++contiguous_count;
+        }
+        if (entry.delimiter_balanced) {
+            ++delimiter_count;
+        }
+        if (entry.source_anchors_covered) {
+            ++source_anchor_count;
+        }
+        if (entry.parse_config_compatible) {
+            ++parse_config_count;
+        }
+        if (entry.diagnostic_projection_available) {
+            ++diagnostic_count;
+        }
+    }
+    const bool structurally_checked = entry_count == contiguous_count
+        && entry_count == delimiter_count
+        && entry_count == source_anchor_count
+        && entry_count == parse_config_count
+        && entry_count == diagnostic_count;
+    return gate.module.value == placeholder.module.value
+        && gate.source_part_index == placeholder.source_part_index
+        && gate.attached_part == placeholder.source_part
+        && gate.generated_part == placeholder.generated_part
+        && gate.generated_buffer_identity == parse_merge_stub.generated_buffer_identity
+        && gate.parse_config_fingerprint == parse_merge_stub.parse_config_fingerprint
+        && gate.report_identity == report.report_identity
+        && gate.contract_identity == parser_consumption_contract_identity(placeholder, parse_merge_stub,
+               report, expected_grouping_identity, expected_anchor_identity, expected_query_name, entries)
+        && gate.contract_grouping_identity == expected_grouping_identity
+        && gate.contract_anchor_identity == expected_anchor_identity
+        && gate.contract_policy == FRONTEND_MACRO_M21N_CONTRACT_POLICY
+        && gate.contract_query_name == expected_query_name
+        && gate.blocked_reason == FRONTEND_MACRO_M21N_CONTRACT_BLOCKER
+        && gate.preflight_entry_count == entry_count
+        && gate.blocked_entry_count == blocked_count
+        && gate.derive_entry_count == derive_count
+        && gate.empty_entry_count == empty_count
+        && gate.contiguous_index_entry_count == contiguous_count
+        && gate.delimiter_balanced_entry_count == delimiter_count
+        && gate.source_anchor_covered_entry_count == source_anchor_count
+        && gate.parse_config_compatible_entry_count == parse_config_count
+        && gate.diagnostic_projection_entry_count == diagnostic_count
+        && gate.query_reusable
+        && gate.contract_visible
+        && gate.all_entries_structurally_checked == structurally_checked
+        && !gate.parser_admitted
+        && !gate.parse_ready
+        && !gate.parser_consumable
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.sema_visible
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.produced_user_generated_code;
+}
+
+[[nodiscard]] bool parser_consumption_contract_gates_match_groups(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.parser_consumption_contract_gates.size() != result.generated_parts.size()
+        || result.parser_admission_reports.size() != result.generated_parts.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < result.parser_consumption_contract_gates.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        const GeneratedModulePartParseMergeStub* const parse_merge_stub =
+            find_parse_merge_stub_for(result.generated_part_stubs, placeholder.module,
+                placeholder.source_part_index);
+        if (parse_merge_stub == nullptr
+            || !parser_consumption_contract_gate_matches_group(
+                result.parser_consumption_contract_gates[index], placeholder, *parse_merge_stub,
+                result.parser_admission_reports[index], result.parser_readiness_preflight_entries)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool macro_boundary_closure_report_matches_result(
+    const MacroExpansionBoundaryClosureReport& report,
+    const EarlyItemExpansionResult& result) noexcept
+{
+    base::u64 blocked_contract_gate_count = 0;
+    base::u64 parser_consumable_contract_gate_count = 0;
+    for (const GeneratedTokenParserConsumptionContractGate& gate :
+        result.parser_consumption_contract_gates) {
+        if (!gate.parser_admitted) {
+            ++blocked_contract_gate_count;
+        }
+        if (gate.parser_consumable) {
+            ++parser_consumable_contract_gate_count;
+        }
+    }
+    const query::StableFingerprint128 expected_grouping_identity =
+        macro_boundary_closure_grouping_identity(result);
+    return report.closure_identity == macro_boundary_closure_identity(result, expected_grouping_identity,
+               blocked_contract_gate_count, parser_consumable_contract_gate_count)
+        && report.closure_grouping_identity == expected_grouping_identity
+        && report.closure_policy == FRONTEND_MACRO_M21O_CLOSURE_POLICY
+        && report.closure_query_name == FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME
+        && report.blocked_reason == FRONTEND_MACRO_M21O_CLOSURE_BLOCKER
+        && report.macro_input_count == result.inputs.size()
+        && report.generated_part_count == result.generated_parts.size()
+        && report.parser_admission_report_count == result.parser_admission_reports.size()
+        && report.parser_readiness_preflight_entry_count
+            == result.parser_readiness_preflight_entries.size()
+        && report.parser_consumption_contract_gate_count
+            == result.parser_consumption_contract_gates.size()
+        && report.blocked_contract_gate_count == blocked_contract_gate_count
+        && report.parser_consumable_contract_gate_count == parser_consumable_contract_gate_count
+        && report.m21m_preflight_available
+        && report.m21n_contract_available
+        && report.release_closure_complete
+        && report.query_reusable
+        && report.closure_visible
+        && !report.parser_consumption_enabled
+        && !report.emit_expanded_available
+        && !report.debug_trace_available
+        && !report.source_map_available
+        && !report.standard_library_required
+        && !report.runtime_required
+        && !report.external_process_required
+        && !report.produced_user_generated_code;
+}
+
+[[nodiscard]] bool macro_boundary_closure_reports_match_result(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    return result.macro_boundary_closure_reports.size() == 1U
+        && macro_boundary_closure_report_matches_result(
+            result.macro_boundary_closure_reports.front(), result);
 }
 
 [[nodiscard]] bool generated_part_stubs_match_placeholders(
@@ -3059,6 +4082,114 @@ bool is_valid(const ParserAdmissionDiagnosticReport& report) noexcept
         && !report.produced_user_generated_code;
 }
 
+bool is_valid(const GeneratedTokenParserReadinessPreflightEntry& entry) noexcept
+{
+    return syntax::is_valid(entry.item)
+        && syntax::is_valid(entry.module)
+        && query::is_valid(entry.attached_part)
+        && query::is_valid(entry.generated_part)
+        && entry.generated_part.kind == query::ModulePartKind::generated
+        && entry.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(entry.token_plan_identity)
+        && is_nonzero_fingerprint(entry.token_buffer_identity)
+        && is_nonzero_fingerprint(entry.materialization_identity)
+        && is_nonzero_fingerprint(entry.generated_buffer_identity)
+        && is_nonzero_fingerprint(entry.parse_config_fingerprint)
+        && is_nonzero_fingerprint(entry.parse_gate_identity)
+        && is_nonzero_fingerprint(entry.diagnostic_identity)
+        && is_nonzero_fingerprint(entry.diagnostic_anchor_identity)
+        && is_nonzero_fingerprint(entry.report_entry_identity)
+        && is_nonzero_fingerprint(entry.source_map_identity)
+        && is_nonzero_fingerprint(entry.hygiene_mark)
+        && is_nonzero_fingerprint(entry.trace_identity)
+        && is_nonzero_fingerprint(entry.preflight_identity)
+        && entry.preflight_identity != entry.parse_gate_identity
+        && entry.preflight_identity != entry.diagnostic_identity
+        && !entry.token_stream_name.empty()
+        && parser_readiness_preflight_category_is_valid(entry)
+        && entry.delimiter_balance_state == FRONTEND_MACRO_M21M_DELIMITER_BALANCED_STATE
+        && entry.source_anchor_coverage_state == FRONTEND_MACRO_M21M_SOURCE_ANCHOR_COVERED_STATE
+        && entry.readiness_policy == FRONTEND_MACRO_M21M_PREFLIGHT_POLICY
+        && entry.blocker_reason == FRONTEND_MACRO_M21M_PREFLIGHT_BLOCKER
+        && entry.token_indices_contiguous
+        && entry.delimiter_balanced
+        && entry.source_anchors_covered
+        && entry.parse_config_compatible
+        && entry.hygiene_prerequisite_available
+        && entry.source_map_prerequisite_available
+        && entry.diagnostic_projection_available
+        && !entry.parser_admitted
+        && !entry.parse_ready
+        && !entry.parser_consumable
+        && !entry.generated_part_parsed
+        && !entry.generated_part_merged
+        && !entry.produced_user_generated_code;
+}
+
+bool is_valid(const GeneratedTokenParserConsumptionContractGate& gate) noexcept
+{
+    return syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && query::is_valid(gate.generated_part)
+        && gate.generated_part.kind == query::ModulePartKind::generated
+        && gate.generated_part.file.role == query::SourceRole::generated
+        && is_nonzero_fingerprint(gate.generated_buffer_identity)
+        && is_nonzero_fingerprint(gate.parse_config_fingerprint)
+        && is_nonzero_fingerprint(gate.report_identity)
+        && is_nonzero_fingerprint(gate.contract_identity)
+        && is_nonzero_fingerprint(gate.contract_grouping_identity)
+        && is_nonzero_fingerprint(gate.contract_anchor_identity)
+        && gate.contract_identity != gate.contract_grouping_identity
+        && gate.contract_identity != gate.contract_anchor_identity
+        && gate.contract_policy == FRONTEND_MACRO_M21N_CONTRACT_POLICY
+        && !gate.contract_query_name.empty()
+        && gate.blocked_reason == FRONTEND_MACRO_M21N_CONTRACT_BLOCKER
+        && gate.preflight_entry_count == gate.blocked_entry_count
+        && gate.preflight_entry_count == gate.derive_entry_count + gate.empty_entry_count
+        && gate.preflight_entry_count == gate.contiguous_index_entry_count
+        && gate.preflight_entry_count == gate.delimiter_balanced_entry_count
+        && gate.preflight_entry_count == gate.source_anchor_covered_entry_count
+        && gate.preflight_entry_count == gate.parse_config_compatible_entry_count
+        && gate.preflight_entry_count == gate.diagnostic_projection_entry_count
+        && gate.query_reusable
+        && gate.contract_visible
+        && gate.all_entries_structurally_checked
+        && !gate.parser_admitted
+        && !gate.parse_ready
+        && !gate.parser_consumable
+        && !gate.generated_part_parsed
+        && !gate.generated_part_merged
+        && !gate.sema_visible
+        && !gate.emit_expanded_available
+        && !gate.debug_trace_available
+        && !gate.source_map_available
+        && !gate.produced_user_generated_code;
+}
+
+bool is_valid(const MacroExpansionBoundaryClosureReport& report) noexcept
+{
+    return is_nonzero_fingerprint(report.closure_identity)
+        && is_nonzero_fingerprint(report.closure_grouping_identity)
+        && report.closure_identity != report.closure_grouping_identity
+        && report.closure_policy == FRONTEND_MACRO_M21O_CLOSURE_POLICY
+        && report.closure_query_name == FRONTEND_MACRO_M21O_CLOSURE_QUERY_NAME
+        && report.blocked_reason == FRONTEND_MACRO_M21O_CLOSURE_BLOCKER
+        && report.parser_consumable_contract_gate_count == 0U
+        && report.m21m_preflight_available
+        && report.m21n_contract_available
+        && report.release_closure_complete
+        && report.query_reusable
+        && report.closure_visible
+        && !report.parser_consumption_enabled
+        && !report.emit_expanded_available
+        && !report.debug_trace_available
+        && !report.source_map_available
+        && !report.standard_library_required
+        && !report.runtime_required
+        && !report.external_process_required
+        && !report.produced_user_generated_code;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -3066,7 +4197,7 @@ bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansion
 
 bool is_valid(const EarlyItemExpansionResult& result) noexcept
 {
-    return std::string_view(result.name) == FRONTEND_MACRO_M21L_EXPANSION_NAME
+    return std::string_view(result.name) == FRONTEND_MACRO_M21O_EXPANSION_NAME
         && query::is_valid_m21c_macro_expansion_plan(result.plan)
         && std::all_of(result.inputs.begin(), result.inputs.end(), [](const EarlyItemMacroInput& input) {
                return is_valid(input);
@@ -3131,10 +4262,28 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const ParserAdmissionDiagnosticReport& report) {
                    return is_valid(report);
                })
+        && std::all_of(result.parser_readiness_preflight_entries.begin(),
+               result.parser_readiness_preflight_entries.end(),
+               [](const GeneratedTokenParserReadinessPreflightEntry& entry) {
+                   return is_valid(entry);
+               })
+        && std::all_of(result.parser_consumption_contract_gates.begin(),
+               result.parser_consumption_contract_gates.end(),
+               [](const GeneratedTokenParserConsumptionContractGate& gate) {
+                   return is_valid(gate);
+               })
+        && std::all_of(result.macro_boundary_closure_reports.begin(),
+               result.macro_boundary_closure_reports.end(),
+               [](const MacroExpansionBoundaryClosureReport& report) {
+                   return is_valid(report);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
         && parser_admission_reports_match_groups(result)
+        && parser_readiness_preflight_entries_match_inputs(result)
+        && parser_consumption_contract_gates_match_groups(result)
+        && macro_boundary_closure_reports_match_result(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -3442,6 +4591,129 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.parser_readiness_preflight_entry_count =
+        static_cast<base::u64>(result.parser_readiness_preflight_entries.size());
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry :
+        result.parser_readiness_preflight_entries) {
+        if (!entry.parser_admitted) {
+            ++summary.parser_readiness_preflight_blocked_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_DERIVE_TOKEN_STREAM_SHAPE) {
+            ++summary.parser_readiness_preflight_derive_entry_count;
+        }
+        if (entry.token_stream_shape == FRONTEND_MACRO_M21M_EMPTY_TOKEN_STREAM_SHAPE) {
+            ++summary.parser_readiness_preflight_empty_entry_count;
+        }
+        if (entry.token_indices_contiguous) {
+            ++summary.parser_readiness_preflight_contiguous_index_count;
+        }
+        if (entry.delimiter_balanced) {
+            ++summary.parser_readiness_preflight_delimiter_balanced_count;
+        }
+        if (entry.source_anchors_covered) {
+            ++summary.parser_readiness_preflight_source_anchor_covered_count;
+        }
+        if (entry.parse_config_compatible) {
+            ++summary.parser_readiness_preflight_parse_config_compatible_count;
+        }
+        if (entry.parser_consumable) {
+            ++summary.parser_readiness_preflight_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (entry.parse_ready) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (entry.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (entry.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (entry.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.parser_consumption_contract_gate_count =
+        static_cast<base::u64>(result.parser_consumption_contract_gates.size());
+    for (const GeneratedTokenParserConsumptionContractGate& gate :
+        result.parser_consumption_contract_gates) {
+        if (!gate.parser_admitted) {
+            ++summary.parser_consumption_contract_blocked_gate_count;
+        }
+        if (gate.contract_visible) {
+            ++summary.parser_consumption_contract_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.parser_consumption_contract_query_reusable_count;
+        }
+        if (gate.parser_consumable) {
+            ++summary.parser_consumption_contract_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.parse_ready) {
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.generated_part_parsed) {
+            ++summary.parsed_generated_part_count;
+        }
+        if (gate.generated_part_merged) {
+            ++summary.merged_generated_part_count;
+        }
+        if (gate.sema_visible) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (gate.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (gate.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (gate.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.macro_boundary_closure_report_count =
+        static_cast<base::u64>(result.macro_boundary_closure_reports.size());
+    for (const MacroExpansionBoundaryClosureReport& report :
+        result.macro_boundary_closure_reports) {
+        if (report.closure_visible) {
+            ++summary.macro_boundary_closure_visible_count;
+        }
+        if (report.query_reusable) {
+            ++summary.macro_boundary_closure_query_reusable_count;
+        }
+        if (report.release_closure_complete) {
+            ++summary.macro_boundary_closure_complete_count;
+        }
+        if (report.parser_consumption_enabled) {
+            ++summary.macro_boundary_closure_parser_consumption_enabled_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (report.emit_expanded_available) {
+            ++summary.emit_expanded_projection_available_count;
+        }
+        if (report.debug_trace_available) {
+            ++summary.parser_admission_debug_trace_projection_count;
+        }
+        if (report.source_map_available) {
+            ++summary.parser_admission_source_map_projection_count;
+        }
+        if (report.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (report.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (report.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (report.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -3449,7 +4721,7 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     const EarlyItemExpansionResult& result) noexcept
 {
     query::StableHashBuilder builder;
-    builder.mix_string(FRONTEND_MACRO_M21L_EXPANSION_FINGERPRINT_MARKER);
+    builder.mix_string(FRONTEND_MACRO_M21O_EXPANSION_FINGERPRINT_MARKER);
     builder.mix_string(result.name);
     builder.mix_fingerprint(query::macro_expansion_plan_fingerprint(result.plan));
     builder.mix_u64(static_cast<base::u64>(result.inputs.size()));
@@ -3511,6 +4783,21 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.parser_admission_reports.size()));
     for (const ParserAdmissionDiagnosticReport& report : result.parser_admission_reports) {
         mix_parser_admission_report(builder, report);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.parser_readiness_preflight_entries.size()));
+    for (const GeneratedTokenParserReadinessPreflightEntry& entry :
+        result.parser_readiness_preflight_entries) {
+        mix_parser_readiness_preflight_entry(builder, entry);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.parser_consumption_contract_gates.size()));
+    for (const GeneratedTokenParserConsumptionContractGate& gate :
+        result.parser_consumption_contract_gates) {
+        mix_parser_consumption_contract_gate(builder, gate);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.macro_boundary_closure_reports.size()));
+    for (const MacroExpansionBoundaryClosureReport& report :
+        result.macro_boundary_closure_reports) {
+        mix_macro_boundary_closure_report(builder, report);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -3600,6 +4887,44 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.parser_admission_report_unordered_anchor_count
            << " parser_admission_report_parser_consumable="
            << summary.parser_admission_report_parser_consumable_count
+           << " parser_readiness_preflight_entries="
+           << summary.parser_readiness_preflight_entry_count
+           << " parser_readiness_preflight_blocked="
+           << summary.parser_readiness_preflight_blocked_count
+           << " derive_parser_readiness_preflight_entries="
+           << summary.parser_readiness_preflight_derive_entry_count
+           << " empty_parser_readiness_preflight_entries="
+           << summary.parser_readiness_preflight_empty_entry_count
+           << " parser_readiness_preflight_contiguous_indices="
+           << summary.parser_readiness_preflight_contiguous_index_count
+           << " parser_readiness_preflight_delimiter_balanced="
+           << summary.parser_readiness_preflight_delimiter_balanced_count
+           << " parser_readiness_preflight_source_anchor_covered="
+           << summary.parser_readiness_preflight_source_anchor_covered_count
+           << " parser_readiness_preflight_parse_config_compatible="
+           << summary.parser_readiness_preflight_parse_config_compatible_count
+           << " parser_readiness_preflight_parser_consumable="
+           << summary.parser_readiness_preflight_parser_consumable_count
+           << " parser_consumption_contract_gates="
+           << summary.parser_consumption_contract_gate_count
+           << " parser_consumption_contract_blocked_gates="
+           << summary.parser_consumption_contract_blocked_gate_count
+           << " parser_consumption_contract_visible="
+           << summary.parser_consumption_contract_visible_count
+           << " parser_consumption_contract_query_reusable="
+           << summary.parser_consumption_contract_query_reusable_count
+           << " parser_consumption_contract_parser_consumable="
+           << summary.parser_consumption_contract_parser_consumable_count
+           << " macro_boundary_closure_reports="
+           << summary.macro_boundary_closure_report_count
+           << " macro_boundary_closure_visible="
+           << summary.macro_boundary_closure_visible_count
+           << " macro_boundary_closure_query_reusable="
+           << summary.macro_boundary_closure_query_reusable_count
+           << " macro_boundary_closure_complete="
+           << summary.macro_boundary_closure_complete_count
+           << " macro_boundary_closure_parser_consumption_enabled="
+           << summary.macro_boundary_closure_parser_consumption_enabled_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -3965,6 +5290,157 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " parse_config=" << query::debug_string(report.parse_config_fingerprint)
                << '\n';
     }
+    for (base::usize index = 0; index < result.parser_readiness_preflight_entries.size(); ++index) {
+        const GeneratedTokenParserReadinessPreflightEntry& entry =
+            result.parser_readiness_preflight_entries[index];
+        stream << "  parser_readiness_preflight_entry #" << index
+               << " item=" << entry.item.value
+               << " module=" << entry.module.value
+               << " part=" << entry.part_index
+               << " attribute_index=" << entry.attribute_index
+               << " preflight_index=" << entry.preflight_index
+               << " token_stream=" << entry.token_stream_name
+               << " shape=" << entry.token_stream_shape
+               << " token_count=" << entry.token_count
+               << " token_records_available="
+               << (entry.token_records_available ? "yes" : "no")
+               << " token_indices_contiguous="
+               << (entry.token_indices_contiguous ? "yes" : "no")
+               << " delimiter_balance=" << entry.delimiter_balance_state
+               << " delimiter_balanced=" << (entry.delimiter_balanced ? "yes" : "no")
+               << " source_anchor_coverage=" << entry.source_anchor_coverage_state
+               << " source_anchors_covered=" << (entry.source_anchors_covered ? "yes" : "no")
+               << " parse_config_compatible="
+               << (entry.parse_config_compatible ? "yes" : "no")
+               << " hygiene_prerequisite_available="
+               << (entry.hygiene_prerequisite_available ? "yes" : "no")
+               << " source_map_prerequisite_available="
+               << (entry.source_map_prerequisite_available ? "yes" : "no")
+               << " diagnostic_projection_available="
+               << (entry.diagnostic_projection_available ? "yes" : "no")
+               << " parser_admitted=" << (entry.parser_admitted ? "yes" : "no")
+               << " parse_ready=" << (entry.parse_ready ? "yes" : "no")
+               << " parser_consumable=" << (entry.parser_consumable ? "yes" : "no")
+               << " generated_part_parsed="
+               << (entry.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (entry.generated_part_merged ? "yes" : "no")
+               << " user_generated_code="
+               << (entry.produced_user_generated_code ? "yes" : "no")
+               << " policy=" << entry.readiness_policy
+               << " blocker=" << entry.blocker_reason
+               << " token_buffer_identity="
+               << query::debug_string(entry.token_buffer_identity)
+               << " materialization_identity="
+               << query::debug_string(entry.materialization_identity)
+               << " parse_gate_identity="
+               << query::debug_string(entry.parse_gate_identity)
+               << " diagnostic_identity="
+               << query::debug_string(entry.diagnostic_identity)
+               << " report_entry_identity="
+               << query::debug_string(entry.report_entry_identity)
+               << " preflight_identity="
+               << query::debug_string(entry.preflight_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.parser_consumption_contract_gates.size(); ++index) {
+        const GeneratedTokenParserConsumptionContractGate& gate =
+            result.parser_consumption_contract_gates[index];
+        stream << "  parser_consumption_contract_gate #" << index
+               << " module=" << gate.module.value
+               << " source_part=" << gate.source_part_index
+               << " policy=" << gate.contract_policy
+               << " query=" << gate.contract_query_name
+               << " preflight_entries=" << gate.preflight_entry_count
+               << " blocked_entries=" << gate.blocked_entry_count
+               << " derive_entries=" << gate.derive_entry_count
+               << " empty_entries=" << gate.empty_entry_count
+               << " contiguous_index_entries=" << gate.contiguous_index_entry_count
+               << " delimiter_balanced_entries=" << gate.delimiter_balanced_entry_count
+               << " source_anchor_covered_entries=" << gate.source_anchor_covered_entry_count
+               << " parse_config_compatible_entries="
+               << gate.parse_config_compatible_entry_count
+               << " diagnostic_projection_entries="
+               << gate.diagnostic_projection_entry_count
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " contract_visible=" << (gate.contract_visible ? "yes" : "no")
+               << " all_entries_structurally_checked="
+               << (gate.all_entries_structurally_checked ? "yes" : "no")
+               << " parser_admitted=" << (gate.parser_admitted ? "yes" : "no")
+               << " parse_ready=" << (gate.parse_ready ? "yes" : "no")
+               << " parser_consumable=" << (gate.parser_consumable ? "yes" : "no")
+               << " generated_part_parsed="
+               << (gate.generated_part_parsed ? "yes" : "no")
+               << " generated_part_merged="
+               << (gate.generated_part_merged ? "yes" : "no")
+               << " sema_visible=" << (gate.sema_visible ? "yes" : "no")
+               << " emit_expanded_available="
+               << (gate.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (gate.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (gate.source_map_available ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " blocker=" << gate.blocked_reason
+               << " contract_identity="
+               << query::debug_string(gate.contract_identity)
+               << " contract_grouping_identity="
+               << query::debug_string(gate.contract_grouping_identity)
+               << " contract_anchor_identity="
+               << query::debug_string(gate.contract_anchor_identity)
+               << " report_identity=" << query::debug_string(gate.report_identity)
+               << " generated_buffer_identity="
+               << query::debug_string(gate.generated_buffer_identity)
+               << " parse_config=" << query::debug_string(gate.parse_config_fingerprint)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.macro_boundary_closure_reports.size(); ++index) {
+        const MacroExpansionBoundaryClosureReport& report =
+            result.macro_boundary_closure_reports[index];
+        stream << "  macro_boundary_closure_report #" << index
+               << " policy=" << report.closure_policy
+               << " query=" << report.closure_query_name
+               << " macro_inputs=" << report.macro_input_count
+               << " generated_parts=" << report.generated_part_count
+               << " parser_admission_reports=" << report.parser_admission_report_count
+               << " parser_readiness_preflight_entries="
+               << report.parser_readiness_preflight_entry_count
+               << " parser_consumption_contract_gates="
+               << report.parser_consumption_contract_gate_count
+               << " blocked_contract_gates=" << report.blocked_contract_gate_count
+               << " parser_consumable_contract_gates="
+               << report.parser_consumable_contract_gate_count
+               << " m21m_preflight_available="
+               << (report.m21m_preflight_available ? "yes" : "no")
+               << " m21n_contract_available="
+               << (report.m21n_contract_available ? "yes" : "no")
+               << " release_closure_complete="
+               << (report.release_closure_complete ? "yes" : "no")
+               << " query_reusable=" << (report.query_reusable ? "yes" : "no")
+               << " closure_visible=" << (report.closure_visible ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (report.parser_consumption_enabled ? "yes" : "no")
+               << " emit_expanded_available="
+               << (report.emit_expanded_available ? "yes" : "no")
+               << " debug_trace_available="
+               << (report.debug_trace_available ? "yes" : "no")
+               << " source_map_available="
+               << (report.source_map_available ? "yes" : "no")
+               << " standard_library_required="
+               << (report.standard_library_required ? "yes" : "no")
+               << " runtime_required=" << (report.runtime_required ? "yes" : "no")
+               << " external_process_required="
+               << (report.external_process_required ? "yes" : "no")
+               << " user_generated_code="
+               << (report.produced_user_generated_code ? "yes" : "no")
+               << " blocker=" << report.blocked_reason
+               << " closure_identity="
+               << query::debug_string(report.closure_identity)
+               << " closure_grouping_identity="
+               << query::debug_string(report.closure_grouping_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -3985,7 +5461,7 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     }
 
     EarlyItemExpansionResult result;
-    result.name = std::string(FRONTEND_MACRO_M21L_EXPANSION_NAME);
+    result.name = std::string(FRONTEND_MACRO_M21O_EXPANSION_NAME);
     result.plan = plan;
     const base::usize attribute_count = count_item_attributes(ast);
     result.inputs.reserve(attribute_count);
@@ -4003,6 +5479,9 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.parser_admission_diagnostics.reserve(attribute_count);
     result.parser_admission_report_entries.reserve(attribute_count);
     result.parser_admission_reports.reserve(ast.items.size());
+    result.parser_readiness_preflight_entries.reserve(attribute_count);
+    result.parser_consumption_contract_gates.reserve(ast.items.size());
+    result.macro_boundary_closure_reports.reserve(1U);
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -4076,6 +5555,16 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             result.parser_admission_diagnostics[index],
             base::checked_u32(index, "parser admission diagnostic report entry index")));
     }
+    for (base::usize index = 0; index < result.inputs.size(); ++index) {
+        result.parser_readiness_preflight_entries.push_back(make_parser_readiness_preflight_entry(
+            result.inputs[index],
+            result.generated_token_buffers[index],
+            result.parser_admission_gates[index],
+            result.parser_admission_diagnostics[index],
+            result.parser_admission_report_entries[index],
+            result.generated_token_records,
+            base::checked_u32(index, "parser readiness preflight entry index")));
+    }
     for (const GeneratedModulePartPlaceholder& placeholder : result.generated_parts) {
         const GeneratedModulePartParseMergeStub* const parse_merge_stub =
             find_parse_merge_stub_for(result.generated_part_stubs, placeholder.module,
@@ -4088,6 +5577,21 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             make_parser_admission_report(placeholder, *parse_merge_stub,
                 result.parser_admission_report_entries));
     }
+    for (base::usize index = 0; index < result.generated_parts.size(); ++index) {
+        const GeneratedModulePartPlaceholder& placeholder = result.generated_parts[index];
+        const GeneratedModulePartParseMergeStub* const parse_merge_stub =
+            find_parse_merge_stub_for(result.generated_part_stubs, placeholder.module,
+                placeholder.source_part_index);
+        if (parse_merge_stub == nullptr) {
+            return base::Result<EarlyItemExpansionResult>::fail(
+                internal_error(FRONTEND_MACRO_M21J_MISSING_PARSE_MERGE_STUB));
+        }
+        result.parser_consumption_contract_gates.push_back(
+            make_parser_consumption_contract_gate(placeholder, *parse_merge_stub,
+                result.parser_admission_reports[index],
+                result.parser_readiness_preflight_entries));
+    }
+    result.macro_boundary_closure_reports.push_back(make_macro_boundary_closure_report(result));
 
     result.summary = summarize_early_item_expansion_counts(result);
     result.fingerprint = early_item_expansion_fingerprint(result);

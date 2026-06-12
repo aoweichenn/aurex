@@ -1418,6 +1418,14 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_derive_attributes()
 {
     for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
         const syntax::ItemNode item = this->core_.ctx_.module.items[index];
+        for (const syntax::AttributeDecl& attribute : item.attributes) {
+            if (attribute.name == "derive") {
+                continue;
+            }
+            this->core_.report_unsupported(
+                attribute.range,
+                std::string(SEMA_ITEM_ATTRIBUTE_MACRO_UNIMPLEMENTED) + std::string(attribute.name));
+        }
         if (item.derives.empty()) {
             continue;
         }

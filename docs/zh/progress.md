@@ -1,9 +1,22 @@
 # 当前进度文档
 
-版本：0.1.6
-阶段：M21a Macro System Design Gate
+版本：0.1.7
+阶段：M21b AttributeDecl / Token Tree Surface
 
 ## 总体状态
+
+2026-06-12：M21b AttributeDecl / Token Tree Surface 已完成。本阶段没有实现标准库、runtime helper、external
+procedural macro、typed expression macro、hygiene、expansion source map 或真实宏展开；它把 M21a 的
+token tree / attribute surface 决策落到 frontend syntax/parser。新增 `AttributeDecl`、`AttributeTokenDecl`、
+`AttributeTokenTreeGroupKind` 和 `ItemNode::attributes`，所有 item compact payload 都保存 / copy / move /
+materialize 通用 attribute。
+
+parser 现在接受通用 item attribute 并保存 flat token-tree entries；`#[derive(Copy, Eq, Hash)]` 同时保留为
+通用 `AttributeDecl{name="derive"}` 和兼容 `DeriveDecl`，因此现有内建 derive capability 语义不变。非
+`derive` item attribute 只进入 AST/dump/tooling surface，sema 会明确报错
+`item attribute macros are parsed but macro expansion is not implemented yet: <name>`，避免用户误以为
+`#[builder]` 或 external procedural macro 已执行。新增说明见
+[Aurex M21b AttributeDecl / Token Tree Surface](m21b-attribute-token-tree-surface.md)。
 
 2026-06-11：M21a Macro System Design Gate 已完成。本阶段没有实现标准库、runtime helper、external
 procedural macro、typed expression macro 或真实用户代码生成；它把宏系统的第一批边界固化为 query-level design

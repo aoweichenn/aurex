@@ -1,5 +1,38 @@
 # 版本文档
 
+## M21b AttributeDecl / Token Tree Surface
+
+当前版本把 M21a 选定的 token tree / attribute surface 落到 frontend。该阶段仍不实现完整 macro/proc-macro、
+不生成用户代码，也不引入标准库。
+
+新增或固定：
+
+- 新增 `syntax::AttributeDecl`。
+- 新增 `syntax::AttributeTokenDecl`。
+- 新增 `syntax::AttributeTokenTreeGroupKind`。
+- 新增 `ItemNode::attributes`。
+- 所有 item compact payload 保存通用 attributes。
+- `ItemNodeList` copy / move / detach / materialize 保留 attributes。
+- parser 接受 `#[name(...)]`、`#[name[...]]`、`#[name{...}]` 形式的 item attribute token tree。
+- token tree 以 flat token stream 保存 token kind、text、range、group kind 和 depth。
+- `#[derive(...)]` 同时保存为通用 `AttributeDecl` 和兼容 `DeriveDecl`。
+- AST dump 显示 `#[attr <name> tokens=N ...]`，并保留旧 `#[derive(...)]` 输出。
+- sema 对非 `derive` item attribute 报错，明确宏展开尚未实现。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- 文本替换宏。
+- 用户自定义 derive。
+- external procedural macro 执行。
+- typed expression macro。
+- macro-generated user code lowering。
+- hygiene / origin mark。
+- expansion source map / debug trace。
+- generated module part。
+- `--emit-expanded` 或 macro trace CLI。
+
 ## M21a Macro System Design Gate
 
 当前版本开启宏系统主线，但只完成 design gate，不实现完整 macro/proc-macro、不生成用户代码，也不引入标准库。

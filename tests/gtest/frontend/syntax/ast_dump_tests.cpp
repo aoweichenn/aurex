@@ -153,6 +153,35 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     syntax::ItemNode struct_item;
     struct_item.kind = syntax::ItemKind::struct_decl;
     struct_item.name = "Box";
+    syntax::AttributeDecl builder_attribute;
+    builder_attribute.name = "builder";
+    builder_attribute.name_id = syntax::IdentId{19U};
+    builder_attribute.range = range;
+    builder_attribute.token_tree_range = range;
+    builder_attribute.token_tree = items.make_list<syntax::AttributeTokenDecl>();
+    builder_attribute.token_tree.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::l_paren,
+        "(",
+        range,
+        0,
+        syntax::AttributeTokenTreeGroupKind::paren,
+    });
+    builder_attribute.token_tree.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::identifier,
+        "flag",
+        range,
+        1,
+        syntax::AttributeTokenTreeGroupKind::none,
+    });
+    builder_attribute.token_tree.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::r_paren,
+        ")",
+        range,
+        0,
+        syntax::AttributeTokenTreeGroupKind::paren,
+    });
+    builder_attribute.has_token_tree = true;
+    struct_item.attributes.push_back(std::move(builder_attribute));
     struct_item.derives.push_back(syntax::DeriveDecl{"Copy", syntax::IdentId{20U}, range});
     struct_item.derives.push_back(syntax::DeriveDecl{"Eq", syntax::IdentId{21U}, range});
     struct_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{7U}});
@@ -241,6 +270,9 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     const syntax::ItemNodeList copied(items);
     EXPECT_EQ(copied[const_id.value].name, "ANSWER");
     EXPECT_EQ(copied[alias_id.value].where_constraints.front().capability_names.front(), "Reader");
+    ASSERT_EQ(copied[struct_id.value].attributes.size(), 1U);
+    EXPECT_EQ(copied[struct_id.value].attributes.front().name, "builder");
+    EXPECT_EQ(copied[struct_id.value].attributes.front().token_tree.size(), 3U);
     ASSERT_EQ(copied[struct_id.value].derives.size(), 2U);
     EXPECT_EQ(copied[struct_id.value].derives.front().name, "Copy");
     EXPECT_EQ(copied[struct_id.value].fields.front().name, "value");
@@ -265,6 +297,8 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_EQ(moved_constraint_range.begin, range.begin);
     EXPECT_EQ(moved_constraint_range.end, range.end);
     const syntax::ItemNode moved_struct = moved.take(struct_id.value);
+    ASSERT_EQ(moved_struct.attributes.size(), 1U);
+    EXPECT_EQ(moved_struct.attributes.front().token_tree[1].text, "flag");
     ASSERT_EQ(moved_struct.derives.size(), 2U);
     EXPECT_EQ(moved_struct.derives.back().name, "Eq");
     EXPECT_EQ(moved_struct.fields.front().visibility, syntax::Visibility::public_);

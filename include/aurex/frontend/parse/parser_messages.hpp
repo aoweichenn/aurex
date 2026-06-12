@@ -64,9 +64,6 @@ inline constexpr std::string_view PARSER_EXPECT_ITEM_ATTRIBUTE_NAME = "expected 
 
 inline constexpr std::string_view PARSER_EXPECT_ITEM_ATTRIBUTE_END = "expected ']' after item attribute";
 
-inline constexpr std::string_view PARSER_UNSUPPORTED_ITEM_ATTRIBUTE =
-    "unsupported item attribute; only derive is supported";
-
 inline constexpr std::string_view PARSER_EXPECT_DERIVE_ARGUMENT_START = "expected '(' after derive";
 
 inline constexpr std::string_view PARSER_EXPECT_DERIVE_NAME = "expected derive capability name";

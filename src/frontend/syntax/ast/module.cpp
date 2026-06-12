@@ -536,6 +536,9 @@ void AstModule::intern_stmt_node(StmtNode& node)
 void AstModule::intern_item_node(ItemNode& node)
 {
     this->intern_identifier_text(node.name, node.name_id);
+    for (AttributeDecl& attribute : node.attributes) {
+        this->intern_identifier_text(attribute.name, attribute.name_id);
+    }
     for (DeriveDecl& derive : node.derives) {
         this->intern_identifier_text(derive.name, derive.name_id);
     }

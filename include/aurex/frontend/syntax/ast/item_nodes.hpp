@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/frontend/syntax/ast/nodes.hpp>
+#include <aurex/frontend/syntax/core/token.hpp>
 
 #include <cstdint>
 #include <deque>
@@ -37,6 +38,30 @@ struct DeriveDecl {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
     base::SourceRange range{};
+};
+
+enum class AttributeTokenTreeGroupKind : base::u8 {
+    none,
+    paren,
+    bracket,
+    brace,
+};
+
+struct AttributeTokenDecl {
+    TokenKind kind = TokenKind::invalid;
+    std::string_view text;
+    base::SourceRange range{};
+    base::u32 depth = 0;
+    AttributeTokenTreeGroupKind group = AttributeTokenTreeGroupKind::none;
+};
+
+struct AttributeDecl {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+    base::SourceRange token_tree_range{};
+    AstArenaVector<AttributeTokenDecl> token_tree;
+    bool has_token_tree = false;
 };
 
 struct FieldDecl {
@@ -101,6 +126,7 @@ struct ItemNode {
     bool is_trait_default_method = false;
     std::string_view abi_name;
     BorrowContractDecl borrow_contract;
+    std::vector<AttributeDecl> attributes;
     std::vector<DeriveDecl> derives;
     std::vector<TraitSupertraitDecl> trait_supertraits;
     std::vector<ItemId> trait_items;
@@ -119,6 +145,7 @@ struct ItemNodeHeader {
 struct ConstItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     TypeId type = INVALID_TYPE_ID;
     ExprId value = INVALID_EXPR_ID;
@@ -127,6 +154,7 @@ struct ConstItemPayload {
 struct TypeAliasItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -138,6 +166,7 @@ struct TypeAliasItemPayload {
 struct StructItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -147,6 +176,7 @@ struct StructItemPayload {
 struct EnumItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -157,12 +187,14 @@ struct EnumItemPayload {
 struct OpaqueStructItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
 };
 
 struct TraitItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<TraitSupertraitDecl> supertraits;
@@ -173,6 +205,7 @@ struct TraitItemPayload {
 struct FunctionItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -188,11 +221,13 @@ struct FunctionItemPayload {
 };
 
 struct ExternBlockItemPayload {
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<ItemId> items;
 };
 
 struct ImplBlockItemPayload {
+    AstArenaVector<AttributeDecl> attributes;
     AstArenaVector<DeriveDecl> derives;
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
@@ -311,6 +346,7 @@ private:
     }
 
     [[nodiscard]] GenericConstraintDecl copy_or_move_generic_constraint(GenericConstraintDecl&& constraint);
+    [[nodiscard]] AttributeDecl copy_or_move_attribute(AttributeDecl&& attribute);
     [[nodiscard]] DeriveDecl copy_or_move_derive(DeriveDecl&& derive);
 
     template <typename Allocator>
@@ -321,6 +357,18 @@ private:
         copy.reserve(constraints.size());
         for (GenericConstraintDecl& constraint : constraints) {
             copy.push_back(this->copy_or_move_generic_constraint(std::move(constraint)));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<AttributeDecl> copy_or_move_attributes(
+        std::vector<AttributeDecl, Allocator>&& attributes)
+    {
+        AstArenaVector<AttributeDecl> copy = make_ast_arena_vector<AttributeDecl>(*this->arena_);
+        copy.reserve(attributes.size());
+        for (AttributeDecl& attribute : attributes) {
+            copy.push_back(this->copy_or_move_attribute(std::move(attribute)));
         }
         return copy;
     }
@@ -351,6 +399,7 @@ private:
     }
 
     [[nodiscard]] GenericConstraintDecl detach_generic_constraint(const GenericConstraintDecl& constraint) const;
+    [[nodiscard]] AttributeDecl detach_attribute(const AttributeDecl& attribute) const;
     [[nodiscard]] DeriveDecl detach_derive(const DeriveDecl& derive) const;
 
     template <typename Allocator>
@@ -361,6 +410,18 @@ private:
         copy.reserve(constraints.size());
         for (const GenericConstraintDecl& constraint : constraints) {
             copy.push_back(this->detach_generic_constraint(constraint));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] std::vector<AttributeDecl> detach_attributes(
+        const std::vector<AttributeDecl, Allocator>& attributes) const
+    {
+        std::vector<AttributeDecl> copy;
+        copy.reserve(attributes.size());
+        for (const AttributeDecl& attribute : attributes) {
+            copy.push_back(this->detach_attribute(attribute));
         }
         return copy;
     }

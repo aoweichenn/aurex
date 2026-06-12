@@ -11,6 +11,49 @@ namespace {
 
 using syntax::TokenKind;
 
+[[nodiscard]] syntax::AttributeTokenTreeGroupKind attribute_group_kind(const TokenKind kind) noexcept
+{
+    switch (kind) {
+        case TokenKind::l_paren:
+        case TokenKind::r_paren:
+            return syntax::AttributeTokenTreeGroupKind::paren;
+        case TokenKind::l_bracket:
+        case TokenKind::r_bracket:
+            return syntax::AttributeTokenTreeGroupKind::bracket;
+        case TokenKind::l_brace:
+        case TokenKind::r_brace:
+            return syntax::AttributeTokenTreeGroupKind::brace;
+        default:
+            return syntax::AttributeTokenTreeGroupKind::none;
+    }
+}
+
+[[nodiscard]] bool token_opens_attribute_group(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::l_paren || kind == TokenKind::l_bracket || kind == TokenKind::l_brace;
+}
+
+[[nodiscard]] bool token_closes_attribute_group(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::r_paren || kind == TokenKind::r_bracket || kind == TokenKind::r_brace;
+}
+
+[[nodiscard]] bool token_closes_attribute_group(
+    const TokenKind kind, const syntax::AttributeTokenTreeGroupKind group) noexcept
+{
+    switch (group) {
+        case syntax::AttributeTokenTreeGroupKind::paren:
+            return kind == TokenKind::r_paren;
+        case syntax::AttributeTokenTreeGroupKind::bracket:
+            return kind == TokenKind::r_bracket;
+        case syntax::AttributeTokenTreeGroupKind::brace:
+            return kind == TokenKind::r_brace;
+        case syntax::AttributeTokenTreeGroupKind::none:
+            return false;
+    }
+    return false;
+}
+
 void include_item_attribute_range(ParsedItemAttributes& attributes, const base::SourceRange& range) noexcept
 {
     if (!attributes.present) {
@@ -175,48 +218,158 @@ void ItemParser::parse_item_attribute(ParsedItemAttributes& attributes, const sy
         this->expect_recovered(TokenKind::l_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_START),
             RecoveryContext::item);
     const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_NAME));
+    syntax::AttributeDecl attribute;
+    attribute.name = attr.text();
+    attribute.name_id = syntax::INVALID_IDENT_ID;
+    attribute.range = this->merge(attribute_start.range, attr.range);
+    attribute.token_tree = this->session_.module.make_item_list<syntax::AttributeTokenDecl>();
     if (attr.text() == "derive") {
-        this->parse_derive_attribute(attributes, attr);
-    } else {
-        this->report_at(attr, std::string(PARSER_UNSUPPORTED_ITEM_ATTRIBUTE));
-        if (!this->check(TokenKind::r_bracket)) {
+        this->parse_derive_attribute(attributes, attribute);
+        attribute.range.end = this->previous().range.end;
+    } else if (token_opens_attribute_group(this->peek().kind)) {
+        const syntax::Token& opening = this->advance();
+        this->parse_attribute_token_tree(attribute, opening);
+    } else if (!this->check(TokenKind::r_bracket)) {
+        this->report_here(std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END));
+        if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::item)) {
             this->synchronize(RecoveryContext::item);
         }
     }
     if (list_start.kind == TokenKind::l_bracket) {
         this->expect_recovered_after(TokenKind::r_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END),
             RecoveryContext::item, list_start);
-        return;
+    } else {
+        this->expect_recovered(
+            TokenKind::r_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END), RecoveryContext::item);
     }
-    this->expect_recovered(TokenKind::r_bracket, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END), RecoveryContext::item);
-    static_cast<void>(attribute_start);
+    attribute.range = this->merge(attribute_start.range, this->previous().range);
+    attributes.attributes.push_back(std::move(attribute));
 }
 
-void ItemParser::parse_derive_attribute(ParsedItemAttributes& attributes, const syntax::Token& attribute_start)
+void ItemParser::parse_attribute_token_tree(syntax::AttributeDecl& attribute, const syntax::Token& opening)
+{
+    const syntax::AttributeTokenTreeGroupKind root_group = attribute_group_kind(opening.kind);
+    attribute.has_token_tree = true;
+    attribute.token_tree_range = opening.range;
+
+    base::u32 depth = 0;
+    std::vector<syntax::AttributeTokenTreeGroupKind> groups;
+    groups.push_back(root_group);
+    attribute.token_tree.push_back(
+        syntax::AttributeTokenDecl{opening.kind, opening.text(), opening.range, depth, root_group});
+    ++depth;
+
+    while (!this->is_eof() && !groups.empty()) {
+        const syntax::Token& token = this->advance();
+        const syntax::AttributeTokenTreeGroupKind current_group = groups.back();
+        const bool closing_current_group = token_closes_attribute_group(token.kind, current_group);
+        const base::u32 token_depth = closing_current_group && depth > 0 ? depth - 1U : depth;
+        attribute.token_tree.push_back(
+            syntax::AttributeTokenDecl{token.kind, token.text(), token.range, token_depth, attribute_group_kind(token.kind)});
+        attribute.token_tree_range = this->merge(opening.range, token.range);
+
+        if (token_opens_attribute_group(token.kind)) {
+            groups.push_back(attribute_group_kind(token.kind));
+            ++depth;
+            continue;
+        }
+        if (closing_current_group) {
+            groups.pop_back();
+            depth = token_depth;
+            continue;
+        }
+        if (token_closes_attribute_group(token.kind)) {
+            this->report_at(token, std::string(PARSER_EXPECT_ITEM_ATTRIBUTE_END));
+            break;
+        }
+    }
+}
+
+void ItemParser::parse_derive_attribute(ParsedItemAttributes& attributes, syntax::AttributeDecl& attribute)
 {
     const syntax::Token& argument_start =
         this->expect_recovered(TokenKind::l_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_START),
             RecoveryContext::item);
+    attribute.has_token_tree = argument_start.kind == TokenKind::l_paren;
+    if (attribute.has_token_tree) {
+        attribute.token_tree_range = argument_start.range;
+        attribute.token_tree.push_back(syntax::AttributeTokenDecl{argument_start.kind,
+            argument_start.text(),
+            argument_start.range,
+            0,
+            syntax::AttributeTokenTreeGroupKind::paren});
+    }
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EXPECT_DERIVE_NAME));
     }
     while (!this->is_eof() && !this->check(TokenKind::r_paren) && !this->check(TokenKind::r_bracket)) {
         const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_DERIVE_NAME));
+        if (attribute.has_token_tree && name.kind != TokenKind::eof) {
+            attribute.token_tree.push_back(syntax::AttributeTokenDecl{
+                name.kind, name.text(), name.range, 1, syntax::AttributeTokenTreeGroupKind::none});
+            attribute.token_tree_range = this->merge(argument_start.range, name.range);
+        }
         if (name.kind == TokenKind::identifier) {
             attributes.derives.push_back(syntax::DeriveDecl{name.text(), syntax::INVALID_IDENT_ID, name.range});
         }
         this->reset_panic();
+        if (this->check(TokenKind::r_paren)) {
+            break;
+        }
+        if (this->check(TokenKind::comma)) {
+            const syntax::Token& separator = this->peek();
+            const bool trailing_separator =
+                this->check_next(TokenKind::r_paren) || this->check_next(TokenKind::r_bracket);
+            if (!this->recover_derive_separator()) {
+                if (trailing_separator && attribute.has_token_tree) {
+                    attribute.token_tree.push_back(syntax::AttributeTokenDecl{separator.kind,
+                        separator.text(),
+                        separator.range,
+                        1,
+                        syntax::AttributeTokenTreeGroupKind::none});
+                    attribute.token_tree_range = this->merge(argument_start.range, separator.range);
+                }
+                break;
+            }
+            if (attribute.has_token_tree) {
+                attribute.token_tree.push_back(syntax::AttributeTokenDecl{separator.kind,
+                    separator.text(),
+                    separator.range,
+                    1,
+                    syntax::AttributeTokenTreeGroupKind::none});
+                attribute.token_tree_range = this->merge(argument_start.range, separator.range);
+            }
+            continue;
+        }
         if (!this->recover_derive_separator()) {
             break;
         }
     }
     if (argument_start.kind == TokenKind::l_paren) {
-        this->expect_recovered_after(TokenKind::r_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END),
+        const syntax::Token& argument_end = this->expect_recovered_after(TokenKind::r_paren,
+            std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END),
             RecoveryContext::item, argument_start);
+        if (argument_end.kind == TokenKind::r_paren) {
+            attribute.token_tree.push_back(syntax::AttributeTokenDecl{argument_end.kind,
+                argument_end.text(),
+                argument_end.range,
+                0,
+                syntax::AttributeTokenTreeGroupKind::paren});
+            attribute.token_tree_range = this->merge(argument_start.range, argument_end.range);
+        }
         return;
     }
-    this->expect_recovered(TokenKind::r_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END), RecoveryContext::item);
-    static_cast<void>(attribute_start);
+    const syntax::Token& argument_end =
+        this->expect_recovered(TokenKind::r_paren, std::string(PARSER_EXPECT_DERIVE_ARGUMENT_END),
+            RecoveryContext::item);
+    if (attribute.has_token_tree && argument_end.kind == TokenKind::r_paren) {
+        attribute.token_tree.push_back(syntax::AttributeTokenDecl{argument_end.kind,
+            argument_end.text(),
+            argument_end.range,
+            0,
+            syntax::AttributeTokenTreeGroupKind::paren});
+        attribute.token_tree_range = this->merge(argument_start.range, argument_end.range);
+    }
 }
 
 bool ItemParser::recover_derive_separator() const
@@ -246,6 +399,7 @@ void ItemParser::apply_item_attributes(const syntax::ItemId item_id, const Parse
         return;
     }
     syntax::ItemNode item = this->session_.module.items.take(item_id.value);
+    item.attributes.insert(item.attributes.end(), attributes.attributes.begin(), attributes.attributes.end());
     item.derives.insert(item.derives.end(), attributes.derives.begin(), attributes.derives.end());
     item.range.begin = std::min(item.range.begin, attributes.range.begin);
     this->session_.module.items.set(item_id.value, std::move(item));

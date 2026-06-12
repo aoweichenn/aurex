@@ -942,6 +942,18 @@ std::string_view item_kind_name(const ItemKind kind)
     return "unknown";
 }
 
+void dump_attribute(std::ostringstream& out, const AttributeDecl& attribute)
+{
+    out << " #[attr " << attribute.name;
+    if (attribute.has_token_tree) {
+        out << " tokens=" << attribute.token_tree.size() << " ";
+        for (const AttributeTokenDecl& token : attribute.token_tree) {
+            out << token.text;
+        }
+    }
+    out << "]";
+}
+
 void dump_visibility(std::ostringstream& out, const Visibility visibility)
 {
     out << visibility_name(visibility) << " ";
@@ -1393,6 +1405,11 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (item.is_trait_default_method) {
         out << " trait_default";
     }
+    for (const AttributeDecl& attribute : item.attributes) {
+        if (attribute.name != "derive") {
+            dump_attribute(out, attribute);
+        }
+    }
     if (!item.derives.empty()) {
         out << " #[derive(";
         for (base::usize i = 0; i < item.derives.size(); ++i) {
@@ -1402,6 +1419,11 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             out << item.derives[i].name;
         }
         out << ")]";
+    }
+    for (const AttributeDecl& attribute : item.attributes) {
+        if (attribute.name == "derive") {
+            dump_attribute(out, attribute);
+        }
     }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;

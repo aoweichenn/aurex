@@ -5,15 +5,15 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21 宏系统主线已开启，M21a design gate 已收口
+## 当前实现入口：M21 宏系统主线已开启，M21b attribute / token tree surface 已收口
 
-M21a 已完成宏系统设计 gate，但还没有实现完整 macro/proc-macro，也没有生成用户可用代码。当前新增的是
-`m21a_macro_design_gate_baseline()` 及其 validation/fingerprint/dump 测试，用来固定后续宏系统不能踩的坑：
-不做文本替换、不绕过 sema/borrow checking、必须支持 hygiene、source map、debug trace、declared generated
-names 和 query-backed incremental expansion。
+M21a 已完成宏系统设计 gate；M21b 已把第一块 frontend 地基落到代码：`AttributeDecl` /
+`AttributeTokenDecl` / `ItemNode::attributes` 保存通用 item attribute token tree，`#[derive(Copy, Eq, Hash)]`
+继续兼容现有内建 derive capability。非 `derive` item attribute 现在可以被 parser/AST/dump 索引，但 sema 会明确报错
+`item attribute macros are parsed but macro expansion is not implemented yet`。
 
-下一步建议继续 M21b：把现有 `DeriveDecl` 扩展成通用 `AttributeDecl` / token tree surface，并保持
-`#[derive(Copy, Eq, Hash)]` 兼容。M21b 仍不应实现标准库、external procedural macro 或 typed expression macro。
+下一步建议继续 M21c：实现 early item expansion pipeline、generated module part、expansion source map 和
+query-backed macro expansion key / fingerprint。M21c 仍不应实现标准库、external procedural macro 或 typed expression macro。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

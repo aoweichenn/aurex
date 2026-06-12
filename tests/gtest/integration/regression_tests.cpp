@@ -1352,6 +1352,13 @@ TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityDiagnostics)
     expect_contains(
         require_failure(aurexc() + " --check " + q(unsupported)).output, "unsupported derive capability: Clone");
 
+    const fs::path macro_attribute = write_source_file(tmp_root() / "item_attribute_macro_unimplemented.ax",
+        "module item_attribute_macro_unimplemented;\n"
+        "#[builder(defaults(threads = 4))]\n"
+        "struct Config { threads: i32; }\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(macro_attribute)).output,
+        "item attribute macros are parsed but macro expansion is not implemented yet: builder");
+
     const fs::path duplicate = write_source_file(tmp_root() / "derive_duplicate.ax",
         "module derive_duplicate;\n"
         "#[derive(Eq, Eq)]\n"

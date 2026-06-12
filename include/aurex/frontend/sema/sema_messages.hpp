@@ -194,6 +194,9 @@ inline constexpr std::string_view SEMA_MAIN_RETURN = "ordinary fn main must retu
 
 inline constexpr std::string_view SEMA_FIELD_STORAGE = "field type is not valid storage";
 
+inline constexpr std::string_view SEMA_ITEM_ATTRIBUTE_MACRO_UNIMPLEMENTED =
+    "item attribute macros are parsed but macro expansion is not implemented yet: ";
+
 inline constexpr std::string_view SEMA_DERIVE_TARGET = "derive attributes are only supported on struct and enum declarations";
 
 inline constexpr std::string_view SEMA_DERIVE_UNSUPPORTED = "unsupported derive capability: ";

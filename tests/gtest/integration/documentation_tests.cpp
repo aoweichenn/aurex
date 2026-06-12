@@ -68,6 +68,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m20-owned-dyn-drop-allocator-identity-release.md",
         "docs/zh/m20-owned-dyn-runtime-lowering-abi-design-release.md",
         "docs/zh/m21-macro-system-design-gate.md",
+        "docs/zh/m21b-attribute-token-tree-surface.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -334,7 +335,7 @@ TEST_F(AurexIntegrationTest, M10SupertraitUpcastingDesignDocumentationIsCurrent)
 TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
 {
     expect_document_contains(
-        "docs/zh/README.md", "文档基线：**M21a Macro System Design Gate**");
+        "docs/zh/README.md", "文档基线：**M21b AttributeDecl / Token Tree Surface**");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Advanced Dyn Design Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M11 Principal-Set Composition Release Baseline");
     expect_document_contains("docs/zh/README.md", "Aurex M12 Direct Composition Dispatch Release Baseline");
@@ -363,16 +364,24 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/README.md", "typed scalar const generic");
     expect_document_contains("docs/zh/README.md", "GenericInstanceKey::const_args");
     expect_document_contains("docs/zh/README.md", "Aurex M21a Macro System Design Gate");
-    expect_document_contains("docs/zh/progress.md", "阶段：M21a Macro System Design Gate");
+    expect_document_contains("docs/zh/README.md", "Aurex M21b AttributeDecl / Token Tree Surface");
+    expect_document_contains("docs/zh/progress.md", "阶段：M21b AttributeDecl / Token Tree Surface");
+    expect_document_contains("docs/zh/progress.md", "AttributeTokenDecl");
+    expect_document_contains("docs/zh/progress.md", "item attribute macros are parsed but macro expansion is not implemented yet");
     expect_document_contains("docs/zh/progress.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/progress.md", "query-backed incremental expansion");
     expect_document_contains("docs/zh/progress.md", "attached item codegen");
+    expect_document_contains("docs/zh/version.md", "## M21b AttributeDecl / Token Tree Surface");
+    expect_document_contains("docs/zh/version.md", "ItemNode::attributes");
     expect_document_contains("docs/zh/version.md", "## M21a Macro System Design Gate");
     expect_document_contains("docs/zh/version.md", "macro_design_gate_fingerprint()");
     expect_document_contains("docs/zh/m21-macro-system-design-gate.md", "do_not_support_textual_macros");
     expect_document_contains("docs/zh/m21-macro-system-design-gate.md", "external_procedural_macro_sandbox");
     expect_document_contains("docs/zh/m21-macro-system-design-gate.md", "m21a_macro_design_gate_baseline()");
     expect_document_contains("docs/zh/m21-macro-system-design-gate.md", "attached item codegen");
+    expect_document_contains("docs/zh/m21b-attribute-token-tree-surface.md", "AttributeDecl");
+    expect_document_contains("docs/zh/m21b-attribute-token-tree-surface.md", "AttributeTokenDecl");
+    expect_document_contains("docs/zh/m21b-attribute-token-tree-surface.md", "item attribute macros are parsed but macro expansion is not implemented yet");
     expect_document_contains(
         "docs/zh/progress.md", "M20a Owned Dyn Runtime Admission Design Gate 已完成");
     expect_document_contains(

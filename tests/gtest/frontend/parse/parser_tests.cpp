@@ -2275,8 +2275,6 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedItemAttributes)
     constexpr std::string_view source = "module parser.item_attribute_recovery;\n"
                                         "#derive(Eq)]\n"
                                         "struct MissingBracket { value: i32; }\n"
-                                        "#[unknown(Eq)]\n"
-                                        "struct Unsupported { value: i32; }\n"
                                         "#[derive()]\n"
                                         "struct Empty { value: i32; }\n"
                                         "#[derive(Eq Hash)]\n"
@@ -2302,10 +2300,70 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedItemAttributes)
         messages += '\n';
     }
     expect_contains(messages, "expected '[' after '#'");
-    expect_contains(messages, "unsupported item attribute; only derive is supported");
     expect_contains(messages, "expected derive capability name");
     expect_contains(messages, "expected ',' or ')' after derive capability");
     expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecordsGeneralItemAttributeTokenTrees)
+{
+    constexpr std::string_view source =
+        "module parser.item_attribute_token_tree;\n"
+        "#[builder(defaults(threads = 4), flag, nested[a + b])]\n"
+        "#[derive(Copy, Eq)]\n"
+        "struct Config { threads: i32; }\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const item = find_item(module, "Config");
+    ASSERT_NE(item, nullptr);
+
+    ASSERT_EQ(item->attributes.size(), 2U);
+    EXPECT_EQ(item->attributes[0].name, "builder");
+    EXPECT_TRUE(item->attributes[0].has_token_tree);
+    EXPECT_GE(item->attributes[0].token_tree.size(), 10U);
+    EXPECT_EQ(item->attributes[0].token_tree.front().kind, syntax::TokenKind::l_paren);
+    EXPECT_EQ(item->attributes[0].token_tree.front().depth, 0U);
+    EXPECT_EQ(item->attributes[0].token_tree.front().group, syntax::AttributeTokenTreeGroupKind::paren);
+    EXPECT_EQ(item->attributes[0].token_tree.back().kind, syntax::TokenKind::r_paren);
+    EXPECT_EQ(item->attributes[0].token_tree.back().depth, 0U);
+
+    EXPECT_EQ(item->attributes[1].name, "derive");
+    EXPECT_TRUE(item->attributes[1].has_token_tree);
+    ASSERT_EQ(item->derives.size(), 2U);
+    EXPECT_EQ(item->derives[0].name, "Copy");
+    EXPECT_EQ(item->derives[1].name, "Eq");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "struct Config #[attr builder tokens=");
+    expect_contains(ast, "#[attr derive tokens=");
+    expect_contains(ast, "#[derive(Copy, Eq)]");
+}
+
+TEST(CoreUnit, ParserRecordsDeriveTrailingCommaInAttributeTokenTree)
+{
+    constexpr std::string_view source =
+        "module parser.derive_attribute_token_tree;\n"
+        "#[derive(Copy,)]\n"
+        "struct Value { inner: i32; }\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const item = find_item(module, "Value");
+    ASSERT_NE(item, nullptr);
+
+    ASSERT_EQ(item->attributes.size(), 1U);
+    const syntax::AttributeDecl& attribute = item->attributes.front();
+    EXPECT_EQ(attribute.name, "derive");
+    ASSERT_TRUE(attribute.has_token_tree);
+    ASSERT_EQ(attribute.token_tree.size(), 4U);
+    EXPECT_EQ(attribute.token_tree[0].kind, syntax::TokenKind::l_paren);
+    EXPECT_EQ(attribute.token_tree[1].kind, syntax::TokenKind::identifier);
+    EXPECT_EQ(attribute.token_tree[1].text, "Copy");
+    EXPECT_EQ(attribute.token_tree[2].kind, syntax::TokenKind::comma);
+    EXPECT_EQ(attribute.token_tree[3].kind, syntax::TokenKind::r_paren);
+    EXPECT_EQ(attribute.token_tree[2].depth, 1U);
+    EXPECT_EQ(attribute.token_tree[3].depth, 0U);
+    ASSERT_EQ(item->derives.size(), 1U);
+    EXPECT_EQ(item->derives.front().name, "Copy");
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments)

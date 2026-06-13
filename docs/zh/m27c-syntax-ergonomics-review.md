@@ -27,6 +27,9 @@
 
 ## P0：`[]` 过载
 
+第一手修正设计见
+[`syntax-revision-optimization/01-angle-bracket-generics.md`](syntax-revision-optimization/01-angle-bracket-generics.md)。
+
 ### 现状
 
 当前 `[]` 至少承担这些职责：
@@ -106,6 +109,9 @@ arr[l:r]              // slice expression
 
 ## P1：builtin 名字和关键字污染
 
+第一手修正设计见
+[`syntax-revision-optimization/02-builtin-intrinsic-surface.md`](syntax-revision-optimization/02-builtin-intrinsic-surface.md)。
+
 ### 现状
 
 当前 builtin 直接进入关键字 / primary expression 入口，包括：
@@ -172,6 +178,8 @@ for i in range(0, n) {
 
 但 parser 会检查 callee 是否正好是 `range`。文档也说明 `for value in values {}` 当前不支持。
 
+第一手改动设计：[Range Loop Surface：拆掉伪 `for-in range(...)`](syntax-revision-optimization/03-range-loop-surface.md)。
+
 相关入口：
 
 - `src/frontend/parse/grammar/parser_control_stmt.cpp`
@@ -187,11 +195,11 @@ for i in range(0, n) {
 - 如果暂时不做通用 iterator，就把语法改成诚实的 range loop：
 
 ```aurex
-for i = 0..n {
+for i from 0 until n {
     ...
 }
 
-for i from 0 to n step 2 {
+for i from 0 until n by 2 {
     ...
 }
 ```
@@ -203,6 +211,9 @@ for i from 0 to n step 2 {
 - `range(start, end, step)` 是库调用、内建语法，还是编译期特殊表面？
 
 ## P1：`mut` / `const` 位置不统一
+
+第一手修正设计见
+[`syntax-revision-optimization/04-mut-const-access-surface.md`](syntax-revision-optimization/04-mut-const-access-surface.md)。
 
 ### 现状
 
@@ -242,6 +253,9 @@ var y: T = value;
 - 是否允许不可变 slice 简写 `[]T`，把 `[]const T` 变成低频显式形式？
 
 ## P2：`fn` 同时承载声明、类型和 lambda
+
+第一手修正设计见
+[`syntax-revision-optimization/05-function-closure-surface.md`](syntax-revision-optimization/05-function-closure-surface.md)。
 
 ### 现状
 

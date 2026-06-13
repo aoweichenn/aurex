@@ -2,7 +2,6 @@
 #include <aurex/infrastructure/base/string_literal_messages.hpp>
 
 #include <algorithm>
-#include <cstdint>
 #include <utility>
 
 namespace aurex::base {
@@ -83,9 +82,9 @@ constexpr u32 STRING_LITERAL_UNICODE_NULL_VALUE = 0U;
         return static_cast<u32>(c - STRING_LITERAL_ASCII_ZERO);
     }
     if (c >= STRING_LITERAL_ASCII_LOWER_A && c <= STRING_LITERAL_ASCII_LOWER_F) {
-        return static_cast<u32>(c - STRING_LITERAL_ASCII_LOWER_A + STRING_LITERAL_HEX_DIGIT_OFFSET);
+        return static_cast<u32>(c - STRING_LITERAL_ASCII_LOWER_A) + STRING_LITERAL_HEX_DIGIT_OFFSET;
     }
-    return static_cast<u32>(c - STRING_LITERAL_ASCII_UPPER_A + STRING_LITERAL_HEX_DIGIT_OFFSET);
+    return static_cast<u32>(c - STRING_LITERAL_ASCII_UPPER_A) + STRING_LITERAL_HEX_DIGIT_OFFSET;
 }
 
 template <typename DecodeResult>

@@ -23,6 +23,7 @@ language they were written in.
 - [Aurex 基础语法地基评估](zh/basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](zh/language-syntax-and-design-review.md)
 - [Aurex M27c 语法易用性与审美问题清单](zh/m27c-syntax-ergonomics-review.md)
+- [Aurex 语法修正优化](zh/syntax-revision-optimization/README.md)
 - [设计实现文档](zh/implementation.md)
 - [当前进度文档](zh/progress.md)
 - [M2.5 路线图](zh/m2.5-roadmap.md)

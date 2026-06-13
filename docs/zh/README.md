@@ -261,6 +261,7 @@ matcher-to-call binding execution is admission-only in M27c；user derive target
 - [Aurex 基础语法地基评估](basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](language-syntax-and-design-review.md)
 - [Aurex M27c 语法易用性与审美问题清单](m27c-syntax-ergonomics-review.md)
+- [Aurex 语法修正优化](syntax-revision-optimization/README.md)
 - [类、trait 与组合背景说明](class-trait-composition-background.md)
 - [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)
 - [Aurex M3 模块系统使用案例](aurex-module-system-m3-example.md)

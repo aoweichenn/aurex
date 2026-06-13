@@ -1,8 +1,12 @@
 # Builtin / Intrinsic Surface：删除硬关键字污染，收束内建能力
 
 日期：2026-06-13
-状态：语法修正优化第二手改动设计稿
+状态：语法修正优化第二手问题分析；str / slice projection 已由第七手落地
 关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 builtin 名字和关键字污染
+
+落地说明：本文保留旧 builtin 名字作为问题分析材料。当前已实际落地的 str / slice 表面以
+`07-builtin-member-projection.md` 为准：源码使用 `text.len`、`text.ptr`、`slice.len`、`slice.ptr`，
+不使用方法调用，不保留旧关键字。
 
 本文固定 Aurex 第二项语法修正方向：把当前直接暴露给用户的 builtin keyword 表面收束掉。第一批泛型修正已经把 builtin type operand 统一成 `<...>`，但这只是换括号；真正的问题是这些名字不应该全部进入语言关键字层，尤其 `strfromutf8`、`strblen`、`sliceptr`、`ptrat` 这种名字像编译器内部 helper，不像一门语言的长期用户表面。
 
@@ -29,7 +33,7 @@ strptr strblen strvalid strfromutf8 strraw
 
 ```aurex
 let text: str = strfromutf8(bytes);
-return cast<i32>(strblen(text));
+return cast<i32>(text.len);
 
 let addr: usize = ptraddr(&pair);
 let pair_ptr: *mut Pair = unsafe { ptrat<*mut Pair>(addr) };
@@ -37,10 +41,10 @@ let pointer_size: usize = sizeof<*mut Pair>;
 let erased: *const void = unsafe { ptrcast<*const void>(&pair) };
 let zero_bits: f32 = unsafe { bitcast<f32>(cast<u32>(0)) };
 
-if slicelen(ascii) != 2usize {
+if ascii.len != 2usize {
     return 11;
 }
-let ascii_ptr: *const u8 = sliceptr(ascii);
+let ascii_ptr: *const u8 = ascii.ptr;
 
 let raw: str = unsafe { strraw(strptr("raw"), strblen("raw")) };
 ```
@@ -118,8 +122,8 @@ strraw(ptr, len)             // unchecked UTF-8，unsafe
 
 ```aurex
 cast<i32>(x)
-strblen(text)
-sliceptr(bytes)
+text.len
+bytes.ptr
 ptrat<*mut Pair>(addr)
 ```
 
@@ -246,10 +250,10 @@ let p: *const u8 = text.data();
 旧写法：
 
 ```aurex
-slicelen(bytes)
-sliceptr(bytes)
-strblen(text)
-strptr(text)
+bytes.len
+bytes.ptr
+text.len
+text.ptr
 ```
 
 迁移目标：
@@ -306,10 +310,10 @@ str.from_utf8(bytes) -> Option<str>
 | `ptrat<*mut T>(addr)` | `intrinsic.ptr_at<*mut T>(addr)` | unsafe intrinsic |
 | `ptrcast<*const T>(p)` | `intrinsic.ptr_cast<*const T>(p)` | unsafe intrinsic |
 | `bitcast<T>(x)` | `intrinsic.bit_cast<T>(x)` | unsafe intrinsic |
-| `slicelen(xs)` | `xs.len()` | primitive method |
-| `sliceptr(xs)` | `xs.data()` | primitive method |
-| `strblen(s)` | `s.byte_len()` | primitive method |
-| `strptr(s)` | `s.data()` | primitive method |
+| `xs.len` | `xs.len()` | primitive method |
+| `xs.ptr` | `xs.data()` | primitive method |
+| `s.len` | `s.byte_len()` | primitive method |
+| `s.ptr` | `s.data()` | primitive method |
 | `strvalid(bytes)` | `str.is_utf8(bytes)` | str namespace |
 | `strfromutf8(bytes)` | `str.from_utf8_or_empty(bytes)` | str namespace |
 | `strraw(data, len)` | `intrinsic.str_from_raw(data, len)` | unsafe intrinsic |
@@ -389,7 +393,7 @@ intrinsic.bit_cast<f32>(bits)
 不够。
 
 ```aurex
-strblen(text)
+text.len
 ptrat<*mut Pair>(addr)
 strraw(data, len)
 ```
@@ -468,7 +472,7 @@ intrinsic.str_from_raw(data, len)
 cast<T>(x) is deprecated; use x as T
 sizeof<T> is deprecated; use sizeof<T>()
 ptrat<T>(addr) is deprecated; use intrinsic.ptr_at<T>(addr)
-strblen(s) is deprecated; use s.byte_len()
+s.len is deprecated; use s.byte_len()
 ```
 
 ### 阶段 2：删除旧 builtin type operand 表面
@@ -643,8 +647,8 @@ if str.is_utf8(bytes) {
 cast<i32>(x)
 sizeof<i32>
 ptrat<*mut Pair>(addr)
-strblen(text)
-slicelen(bytes)
+text.len
+bytes.len
 strfromutf8(bytes)
 strraw(data, len)
 ```

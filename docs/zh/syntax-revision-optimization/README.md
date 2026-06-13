@@ -12,3 +12,5 @@
 3. [Range Loop Surface：拆掉伪 `for-in range(...)`](03-range-loop-surface.md)
 4. [Mut / Const Access Surface：把可写权限从深不可变里拆开](04-mut-const-access-surface.md)
 5. [Function / Closure Surface：把闭包字面量从 `fn` 骨架里拆出来](05-function-closure-surface.md)
+6. [Function / Closure Surface：C++ 风格 capture-list 第一批落地](06-function-closure-cpp-capture-list.md)
+7. [Builtin Member Projection：str / slice 的 `.len` 和 `.ptr`](07-builtin-member-projection.md)

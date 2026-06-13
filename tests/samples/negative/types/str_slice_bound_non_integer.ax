@@ -3,5 +3,5 @@ module str_slice_bound_non_integer;
 fn main() -> i32 {
     let text: str = "abc";
     let bad = text[false:];
-    return cast<i32>(strblen(bad));
+    return cast<i32>(bad.len);
 }

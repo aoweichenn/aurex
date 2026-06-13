@@ -154,6 +154,19 @@ struct ParamDecl {
     ExprId default_value = INVALID_EXPR_ID;
 };
 
+enum class LambdaCaptureKind {
+    value,
+    shared_reference,
+    mutable_reference,
+};
+
+struct LambdaCaptureDecl {
+    std::string_view name;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
+    LambdaCaptureKind kind = LambdaCaptureKind::value;
+};
+
 struct CallArgLabelDecl {
     std::string_view name;
     base::SourceRange range{};

@@ -67,8 +67,6 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"opaque", syntax::TokenKind::kw_opaque},
     KeywordEntry{"return", syntax::TokenKind::kw_return},
     KeywordEntry{"unsafe", syntax::TokenKind::kw_unsafe},
-    KeywordEntry{"strblen", syntax::TokenKind::kw_strblen},
-    KeywordEntry{"strptr", syntax::TokenKind::kw_strptr},
     KeywordEntry{"strraw", syntax::TokenKind::kw_strraw},
     KeywordEntry{"strvalid", syntax::TokenKind::kw_strvalid},
 
@@ -80,8 +78,6 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"ptrat", syntax::TokenKind::kw_ptrat},
     KeywordEntry{"ptraddr", syntax::TokenKind::kw_ptraddr},
     KeywordEntry{"ptrcast", syntax::TokenKind::kw_ptrcast},
-    KeywordEntry{"slicelen", syntax::TokenKind::kw_slicelen},
-    KeywordEntry{"sliceptr", syntax::TokenKind::kw_sliceptr},
     KeywordEntry{"strfromutf8", syntax::TokenKind::kw_strfromutf8},
 };
 

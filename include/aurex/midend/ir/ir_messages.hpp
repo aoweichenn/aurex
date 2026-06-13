@@ -145,9 +145,9 @@ inline constexpr std::string_view IR_VERIFY_LOAD_RESULT_NONVOID = "load result m
 
 inline constexpr std::string_view IR_VERIFY_LOAD_RESULT_TYPE = "load result type mismatch";
 
-inline constexpr std::string_view IR_VERIFY_STRPTR_RESULT = "strptr result must be *const u8";
+inline constexpr std::string_view IR_VERIFY_STR_DATA_RESULT = "str_data result must be *const u8";
 
-inline constexpr std::string_view IR_VERIFY_STRBLEN_RESULT = "strblen result must be usize";
+inline constexpr std::string_view IR_VERIFY_STR_BYTE_LEN_RESULT = "str_byte_len result must be usize";
 
 inline constexpr std::string_view IR_VERIFY_STRVALID_RESULT = "strvalid result must be bool";
 

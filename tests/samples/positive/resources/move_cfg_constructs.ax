@@ -93,14 +93,14 @@ fn exercise<T>(value: T, replacement: T, flag: bool) -> T {
     let bytes: [2]u8 = b"ok";
     let byte_view: []u8 = bytes[:];
     let text: str = strfromutf8(byte_view);
-    let raw_text: str = unsafe { strraw(strptr(text), strblen(text)) };
-    if !strvalid(byte_view) || strblen(raw_text) != 2usize || slicelen(window) != 2usize ||
+    let raw_text: str = unsafe { strraw(text.ptr, text.len) };
+    if !strvalid(byte_view) || raw_text.len != 2usize || window.len != 2usize ||
         block_total + casted_addr < 0 {
         consume_copy(total);
     }
     let raw_literal: str = r"C:\tmp\a";
     let char_value: char = 'x';
-    if strblen(raw_literal) == 0usize || char_value == '\0' {
+    if raw_literal.len == 0usize || char_value == '\0' {
         consume_copy(total);
     }
 

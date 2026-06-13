@@ -157,10 +157,6 @@ constexpr std::array<std::string_view, 24> IDE_EXPRESSION_COMPLETION_KEYWORDS{
     "bitcast",
     "ptraddr",
     "ptrat",
-    "sliceptr",
-    "slicelen",
-    "strptr",
-    "strblen",
 };
 
 struct ItemDefinitionMetadata {

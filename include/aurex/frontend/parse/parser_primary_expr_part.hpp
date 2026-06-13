@@ -18,12 +18,16 @@ public:
 private:
     struct LambdaHead final {
         const syntax::Token& begin;
+        std::vector<syntax::LambdaCaptureDecl> captures;
         std::vector<syntax::ParamDecl> params;
     };
 
+    [[nodiscard]] bool lambda_head_follows() const noexcept;
     [[nodiscard]] syntax::ExprId parse_lambda_expr(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_legacy_lambda_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId finish_lambda_expr(LambdaHead head, ExprContext context);
+    [[nodiscard]] std::vector<syntax::LambdaCaptureDecl> parse_lambda_capture_list();
+    [[nodiscard]] std::optional<syntax::LambdaCaptureDecl> parse_lambda_capture();
+    bool recover_lambda_capture_separator();
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_lambda_param_list(syntax::TokenKind terminator);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_lambda_param();
     bool recover_lambda_param_separator(syntax::TokenKind terminator);

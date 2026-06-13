@@ -499,8 +499,8 @@ TEST_F(AurexIntegrationTest, StringCheckedBoundary)
     expect_contains_all(slice_ir,
         {
             "strslice.checked",
-            "strblen",
-            "strptr",
+            "str_byte_len",
+            "str_data",
         });
 
     const std::string slice_llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(str_slice)).output;

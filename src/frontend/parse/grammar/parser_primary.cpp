@@ -19,8 +19,6 @@ enum class BuiltinExprShape {
     TYPE,
     PTRADDR,
     PTRAT,
-    SLICE_UNARY,
-    STR_UNARY,
     STR_SLICE_UNARY,
     STRRAW,
 };
@@ -46,10 +44,6 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
         BuiltinExprShape::PTRAT,
         syntax::ExprKind::paddr,
     },
-    {TokenKind::kw_sliceptr, BuiltinExprShape::SLICE_UNARY, syntax::ExprKind::slice_data},
-    {TokenKind::kw_slicelen, BuiltinExprShape::SLICE_UNARY, syntax::ExprKind::slice_len},
-    {TokenKind::kw_strptr, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
-    {TokenKind::kw_strblen, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
     {TokenKind::kw_strvalid, BuiltinExprShape::STR_SLICE_UNARY, syntax::ExprKind::str_is_valid_utf8},
     {
         TokenKind::kw_strfromutf8,
@@ -117,11 +111,8 @@ private:
 
 syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context)
 {
-    if (this->check(TokenKind::pipe) || this->check(TokenKind::pipe_pipe)) {
+    if (this->check(TokenKind::l_bracket) && this->lambda_head_follows()) {
         return this->parse_lambda_expr(context);
-    }
-    if (this->check(TokenKind::kw_fn)) {
-        return this->parse_legacy_lambda_expr(context);
     }
     if (this->check(TokenKind::identifier)) {
         return NameExprParser(this->parser_).parse_name_or_struct_literal(context);
@@ -195,10 +186,6 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context)
             return parser.parse_ptraddr(context);
         case BuiltinExprShape::PTRAT:
             return parser.parse_ptrat(context);
-        case BuiltinExprShape::SLICE_UNARY:
-            return parser.parse_slice_unary(builtin->expr_kind, context);
-        case BuiltinExprShape::STR_UNARY:
-            return parser.parse_str_unary(context);
         case BuiltinExprShape::STR_SLICE_UNARY:
             return parser.parse_str_slice_unary(builtin->expr_kind, context);
         case BuiltinExprShape::STRRAW:
@@ -207,35 +194,53 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context)
     return syntax::INVALID_EXPR_ID;
 }
 
-syntax::ExprId PrimaryExprParser::parse_lambda_expr(const ExprContext context)
+bool PrimaryExprParser::lambda_head_follows() const noexcept
 {
-    std::vector<syntax::ParamDecl> params;
-    if (this->match(TokenKind::pipe_pipe)) {
-        return this->finish_lambda_expr(LambdaHead{this->previous(), std::move(params)}, context);
-    } else {
-        const syntax::Token& begin = this->expect(TokenKind::pipe, std::string(PARSER_EXPECT_CLOSURE_PARAM_LIST));
-        if (!this->check(TokenKind::pipe)) {
-            params = this->parse_lambda_param_list(TokenKind::pipe);
-        }
-        this->expect_recovered(
-            TokenKind::pipe, std::string(PARSER_EXPECT_CLOSURE_PARAM_LIST_END), RecoveryContext::parameter);
-        return this->finish_lambda_expr(LambdaHead{begin, std::move(params)}, context);
+    base::usize offset = 0;
+    if (this->peek_at(offset).kind != TokenKind::l_bracket) {
+        return false;
     }
+    ++offset;
+    if (this->peek_at(offset).kind != TokenKind::r_bracket) {
+        while (true) {
+            if (this->peek_at(offset).kind == TokenKind::amp) {
+                ++offset;
+                if (this->peek_at(offset).kind == TokenKind::kw_mut) {
+                    ++offset;
+                }
+            }
+            if (this->peek_at(offset).kind != TokenKind::identifier) {
+                break;
+            }
+            ++offset;
+            if (this->peek_at(offset).kind != TokenKind::comma) {
+                break;
+            }
+            ++offset;
+        }
+    }
+    return this->peek_at(offset).kind == TokenKind::r_bracket
+        && this->peek_at(offset + 1).kind == TokenKind::l_paren;
 }
 
-syntax::ExprId PrimaryExprParser::parse_legacy_lambda_expr(const ExprContext context)
+syntax::ExprId PrimaryExprParser::parse_lambda_expr(const ExprContext context)
 {
-    const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
-    this->report_at(begin, std::string(PARSER_LEGACY_FN_CLOSURE_LITERAL));
+    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_CLOSURE_CAPTURE_START));
+    std::vector<syntax::LambdaCaptureDecl> captures;
+    if (!this->check(TokenKind::r_bracket)) {
+        captures = this->parse_lambda_capture_list();
+    }
     this->expect_recovered(
-        TokenKind::l_paren, std::string(PARSER_LEGACY_FN_CLOSURE_LITERAL), RecoveryContext::parameter_list_start);
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_CLOSURE_CAPTURE_END), RecoveryContext::parameter);
+    this->expect_recovered(
+        TokenKind::l_paren, std::string(PARSER_EXPECT_CLOSURE_PARAM_LIST), RecoveryContext::parameter_list_start);
     std::vector<syntax::ParamDecl> params;
     if (!this->check(TokenKind::r_paren)) {
         params = this->parse_lambda_param_list(TokenKind::r_paren);
     }
-    this->expect_recovered(TokenKind::r_paren, std::string(PARSER_LEGACY_FN_CLOSURE_LITERAL),
+    this->expect_recovered(TokenKind::r_paren, std::string(PARSER_EXPECT_CLOSURE_PARAM_LIST_END),
         RecoveryContext::parameter);
-    return this->finish_lambda_expr(LambdaHead{begin, std::move(params)}, context);
+    return this->finish_lambda_expr(LambdaHead{begin, std::move(captures), std::move(params)}, context);
 }
 
 syntax::ExprId PrimaryExprParser::finish_lambda_expr(LambdaHead head, const ExprContext context)
@@ -261,8 +266,64 @@ syntax::ExprId PrimaryExprParser::finish_lambda_expr(LambdaHead head, const Expr
     }
 
     this->reset_panic();
-    return this->session_.module.push_lambda_expr(this->merge(head.begin.range, end_range), std::move(head.params),
-        return_type, body);
+    return this->session_.module.push_lambda_expr(this->merge(head.begin.range, end_range), std::move(head.captures),
+        std::move(head.params), return_type, body);
+}
+
+std::vector<syntax::LambdaCaptureDecl> PrimaryExprParser::parse_lambda_capture_list()
+{
+    std::vector<syntax::LambdaCaptureDecl> captures;
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        if (std::optional<syntax::LambdaCaptureDecl> capture = this->parse_lambda_capture()) {
+            captures.push_back(capture.value());
+        }
+        this->reset_panic();
+        if (!this->recover_lambda_capture_separator()) {
+            break;
+        }
+    }
+    return captures;
+}
+
+std::optional<syntax::LambdaCaptureDecl> PrimaryExprParser::parse_lambda_capture()
+{
+    syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    base::SourceRange range = this->peek().range;
+    if (this->match(TokenKind::amp)) {
+        kind = syntax::LambdaCaptureKind::shared_reference;
+        range = this->previous().range;
+        if (this->match(TokenKind::kw_mut)) {
+            kind = syntax::LambdaCaptureKind::mutable_reference;
+            range = this->merge(range, this->previous().range);
+        }
+    }
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_CLOSURE_CAPTURE_NAME));
+    if (name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    return syntax::LambdaCaptureDecl{name.text(), this->merge(range, name.range), syntax::INVALID_IDENT_ID, kind};
+}
+
+bool PrimaryExprParser::recover_lambda_capture_separator()
+{
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_CLOSURE_CAPTURE_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::parameter)) {
+        this->synchronize(RecoveryContext::parameter);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 std::vector<syntax::ParamDecl> PrimaryExprParser::parse_lambda_param_list(const TokenKind terminator)
@@ -309,8 +370,7 @@ bool PrimaryExprParser::recover_lambda_param_separator(const TokenKind terminato
         return !this->check(terminator);
     }
 
-    this->report_here(std::string(terminator == TokenKind::pipe ? PARSER_EXPECT_CLOSURE_PARAM_SEPARATOR
-                                                                : PARSER_EXPECT_PARAMETER_SEPARATOR));
+    this->report_here(std::string(PARSER_EXPECT_PARAMETER_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::parameter)) {
         this->synchronize(RecoveryContext::parameter);
     }

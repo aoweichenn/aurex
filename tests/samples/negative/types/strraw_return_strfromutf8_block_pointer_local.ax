@@ -2,9 +2,9 @@ module strraw_return_strfromutf8_block_pointer_local;
 
 unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
-    return strraw(strptr({
+    return strraw({
         strfromutf8(bytes[:])
-    }), 2usize);
+    }.ptr, 2usize);
 }
 
 fn main() -> i32 {

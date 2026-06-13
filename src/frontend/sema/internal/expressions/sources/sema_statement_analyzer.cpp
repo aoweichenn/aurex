@@ -965,6 +965,55 @@ void report_generic_dependent_lambda_capture(
         "captured value `" + std::string(capture.name) + "` is declared here");
 }
 
+void check_lambda_capture_mode(
+    SemanticAnalyzerCore& core, const syntax::LambdaCaptureDecl& capture, bool& has_unsupported_capture)
+{
+    if (capture.kind == syntax::LambdaCaptureKind::value) {
+        return;
+    }
+    core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REFERENCE_UNSUPPORTED));
+    has_unsupported_capture = true;
+}
+
+void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyzerCore::ExprView& expr,
+    const std::span<const LambdaCaptureCandidate> captures, bool& has_unsupported_capture)
+{
+    std::unordered_set<IdentId, IdentIdHash> listed;
+    listed.reserve(expr.lambda_captures.size());
+    for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+        check_lambda_capture_mode(core, capture, has_unsupported_capture);
+        if (!is_valid(capture.name_id)) {
+            continue;
+        }
+        if (!listed.insert(capture.name_id).second) {
+            core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DUPLICATE));
+            has_unsupported_capture = true;
+        }
+    }
+
+    std::unordered_set<IdentId, IdentIdHash> used;
+    used.reserve(captures.size());
+    for (const LambdaCaptureCandidate& capture : captures) {
+        if (!is_valid(capture.name_id)) {
+            continue;
+        }
+        used.insert(capture.name_id);
+        if (!listed.contains(capture.name_id)) {
+            core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_NOT_LISTED));
+            core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+                "captured value `" + std::string(capture.name) + "` is declared here");
+            has_unsupported_capture = true;
+        }
+    }
+
+    for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+        if (is_valid(capture.name_id) && !used.contains(capture.name_id)) {
+            core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_UNUSED));
+            has_unsupported_capture = true;
+        }
+    }
+}
+
 [[nodiscard]] bool expr_is_indexed_or_dereferenced_place(
     const syntax::AstModule& module, const syntax::ExprId expr) noexcept
 {
@@ -2772,6 +2821,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     std::vector<LambdaCaptureCandidate> captures =
         LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
     bool has_unsupported_capture = false;
+    check_lambda_capture_list(this->core_, expr, captures, has_unsupported_capture);
     for (const LambdaCaptureCandidate& capture : captures) {
         if (lambda_capture_type_is_generic_dependent(this->core_, capture.type)) {
             report_generic_dependent_lambda_capture(this->core_, capture);

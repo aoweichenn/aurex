@@ -128,8 +128,8 @@ strptr strblen strvalid strfromutf8 strraw
 let pair_ptr: *mut Pair = unsafe { ptrat[*mut Pair](addr) };
 let pointer_size: usize = sizeof[*mut Pair];
 let text: str = strfromutf8(bytes);
-let n: usize = strblen(text);
-let raw: str = unsafe { strraw(strptr("raw"), strblen("raw")) };
+let n: usize = text.len;
+let raw: str = unsafe { strraw("raw".ptr, "raw".len) };
 ```
 
 相关实现入口：

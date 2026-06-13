@@ -116,6 +116,7 @@ ExprId AstModule::push_call_expr(const ExprKind kind, const base::SourceRange& r
 
 ExprId AstModule::push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload)
 {
+    this->intern_lambda_capture_decls(payload.captures);
     this->intern_param_decls(payload.params);
     return this->exprs.append_lambda(range, std::move(payload));
 }
@@ -302,6 +303,18 @@ void AstModule::set_slice_expr(
     const base::usize index, const base::SourceRange& range, const ExprId object, const ExprId start, const ExprId end)
 {
     this->exprs.set_slice(index, range, object, start, end);
+}
+
+void AstModule::set_cast_like_expr(
+    const base::usize index, const ExprKind kind, const base::SourceRange& range, const CastExprPayload payload)
+{
+    this->exprs.set_cast_like(index, kind, range, payload);
+}
+
+void AstModule::set_cast_like_expr(
+    const base::usize index, const ExprKind kind, const base::SourceRange& range, const TypeId type, const ExprId expr)
+{
+    this->exprs.set_cast_like(index, kind, range, type, expr);
 }
 
 void AstModule::set_struct_literal_expr(
@@ -505,6 +518,7 @@ void AstModule::intern_expr_payload(const base::usize index)
     }
     if (kind == ExprKind::lambda) {
         if (LambdaExprPayload* const payload = this->exprs.lambda_payload(index); payload != nullptr) {
+            this->intern_lambda_capture_decls(payload->captures);
             this->intern_param_decls(payload->params);
         }
         return;

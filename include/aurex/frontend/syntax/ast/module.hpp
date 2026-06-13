@@ -186,12 +186,22 @@ struct AstModule {
 
     [[nodiscard]] ExprId push_lambda_expr(const base::SourceRange& range, LambdaExprPayload payload);
 
+    template <typename CaptureAllocator, typename ParamAllocator>
+    [[nodiscard]] ExprId push_lambda_expr(const base::SourceRange& range,
+        std::vector<LambdaCaptureDecl, CaptureAllocator> captures,
+        std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
+    {
+        this->intern_lambda_capture_decls(captures);
+        this->intern_param_decls(params);
+        return this->exprs.append_lambda(range, std::move(captures), std::move(params), return_type, body);
+    }
+
     template <typename ParamAllocator>
     [[nodiscard]] ExprId push_lambda_expr(
         const base::SourceRange& range, std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
     {
-        this->intern_param_decls(params);
-        return this->exprs.append_lambda(range, std::move(params), return_type, body);
+        AstArenaVector<LambdaCaptureDecl> captures = this->make_expr_list<LambdaCaptureDecl>();
+        return this->push_lambda_expr(range, std::move(captures), std::move(params), return_type, body);
     }
 
     [[nodiscard]] ExprId push_if_expr(const base::SourceRange& range, IfExprPayload payload);
@@ -296,6 +306,9 @@ struct AstModule {
 
     void set_slice_expr(base::usize index, const base::SourceRange& range, SliceExprPayload payload);
     void set_slice_expr(base::usize index, const base::SourceRange& range, ExprId object, ExprId start, ExprId end);
+
+    void set_cast_like_expr(base::usize index, ExprKind kind, const base::SourceRange& range, CastExprPayload payload);
+    void set_cast_like_expr(base::usize index, ExprKind kind, const base::SourceRange& range, TypeId type, ExprId expr);
 
     void set_struct_literal_expr(base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload);
 
@@ -416,6 +429,14 @@ private:
     {
         for (ParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
+        }
+    }
+
+    template <typename Allocator>
+    void intern_lambda_capture_decls(std::vector<LambdaCaptureDecl, Allocator>& captures)
+    {
+        for (LambdaCaptureDecl& capture : captures) {
+            this->intern_identifier_text(capture.name, capture.name_id);
         }
     }
 

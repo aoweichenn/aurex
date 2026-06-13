@@ -249,14 +249,14 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
         "  let size: usize = sizeof<*mut i32>;\n"
-        "  let data: *const u8 = strptr(s);\n"
-        "  let len: usize = strblen(s);\n"
+        "  let data: *const u8 = s.ptr;\n"
+        "  let len: usize = s.len;\n"
         "  let raw: str = unsafe { strraw(data, len) };\n"
         "  let raw_literal: str = r\"C:\\tmp\\a\";\n"
         "  let bytes: [3]u8 = b\"a\\n\\0\";\n"
         "  let bytes_view: []u8 = bytes[:];\n"
-        "  let bytes_data: *const u8 = sliceptr(bytes_view);\n"
-        "  let bytes_len: usize = slicelen(bytes_view);\n"
+        "  let bytes_data: *const u8 = bytes_view.ptr;\n"
+        "  let bytes_len: usize = bytes_view.len;\n"
         "  let b: u8 = b'\\n';\n"
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
@@ -297,8 +297,6 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
             "kw_alignof",
             "kw_ptraddr",
             "kw_ptrat",
-            "kw_sliceptr",
-            "kw_slicelen",
             "ellipsis",
             "byte_literal",
             "byte_string_literal",
@@ -345,8 +343,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
             "alignof",
             "ptraddr",
             "ptrat",
-            "sliceptr",
-            "slicelen",
+            "field .ptr",
+            "field .len",
         });
 }
 
@@ -358,7 +356,7 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
         "fn callee(value: i32, other: i32) -> i32 { return value + other; }\n"
         "fn main(input: i32, flag: bool, values: []i32) -> i32 {\n"
         "  let pair: Pair = Pair { left: input, right: 3 };\n"
-        "  let raw: str = unsafe { strraw(strptr(\"abc\"), strblen(\"abc\")) };\n"
+        "  let raw: str = unsafe { strraw(\"abc\".ptr, \"abc\".len) };\n"
         "  let slice = values[0:2];\n"
         "  let idx = values[1];\n"
         "  let computed = -input + callee(pair.left, idx) * cast<i32>(sizeof<*const i32>);\n"
@@ -449,26 +447,31 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
 {
     constexpr std::string_view source = "module parser.lambda_literals;\n"
                                         "fn main() -> i32 {\n"
-                                        "  let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;\n"
-                                        "  let add_two: fn(i32) -> i32 = |value: i32| -> i32 {\n"
+                                        "  let inc: fn(i32) -> i32 = [](value: i32) -> i32 => value + 1;\n"
+                                        "  let add_two: fn(i32) -> i32 = [](value: i32) -> i32 {\n"
                                         "    return value + 2;\n"
                                         "  };\n"
-                                        "  let one: fn() -> i32 = || -> i32 => 1;\n"
-                                        "  let spaced_one: fn() -> i32 = | | -> i32 => 1;\n"
-                                        "  let add: fn(i32, i32) -> i32 = |\n"
+                                        "  let one: fn() -> i32 = []() -> i32 => 1;\n"
+                                        "  let add: fn(i32, i32) -> i32 = [](\n"
                                         "    left: i32,\n"
                                         "    right: i32,\n"
-                                        "  | -> i32 => left + right;\n"
-                                        "  return inc(40) + add_two(0) + one() + spaced_one() + add(1, 2) - 47;\n"
+                                        "  ) -> i32 => left + right;\n"
+                                        "  let by_value = [base](value: i32) -> i32 => value + base;\n"
+                                        "  let by_ref = [&base](value: i32) -> i32 => value + base;\n"
+                                        "  let by_mut_ref = [&mut base](value: i32) -> i32 => value + base;\n"
+                                        "  return inc(40) + add_two(0) + one() + add(1, 2) - 46;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "lambda |value: i32| -> i32",
-            "lambda || -> i32",
-            "lambda |left: i32, right: i32| -> i32",
+            "lambda [](value: i32) -> i32",
+            "lambda []() -> i32",
+            "lambda [](left: i32, right: i32) -> i32",
+            "lambda [base](value: i32) -> i32",
+            "lambda [&base](value: i32) -> i32",
+            "lambda [&mut base](value: i32) -> i32",
             "stmt #",
             "return",
             "binary",
@@ -479,13 +482,13 @@ TEST(CoreUnit, ParserRejectsMalformedLambdaFunctionLiterals)
 {
     expect_parse_diagnostic("module parser.lambda_missing_return_arrow;\n"
                             "fn main() -> i32 {\n"
-                            "  let bad = |value: i32| i32 => value;\n"
+                            "  let bad = [](value: i32) i32 => value;\n"
                             "  return bad(0);\n"
                             "}\n",
         "expected '->' after closure parameter list");
     expect_parse_diagnostic("module parser.lambda_missing_body;\n"
                             "fn main() -> i32 {\n"
-                            "  let bad = |value: i32| -> i32;\n"
+                            "  let bad = [](value: i32) -> i32;\n"
                             "  return bad(0);\n"
                             "}\n",
         "expected closure body");
@@ -495,32 +498,16 @@ TEST(CoreUnit, ParserRejectsMalformedLambdaParameterLists)
 {
     expect_parse_error("module parser.lambda_missing_param_name;\n"
                        "fn main() -> i32 {\n"
-                       "  let bad = |: i32| -> i32 => 1;\n"
+                       "  let bad = [](: i32) -> i32 => 1;\n"
                        "  return bad();\n"
                        "}\n",
         "expected parameter name");
     expect_parse_error("module parser.lambda_missing_param_separator;\n"
                        "fn main() -> i32 {\n"
-                       "  let bad = |left: i32 right: i32| -> i32 => left;\n"
+                       "  let bad = [](left: i32 right: i32) -> i32 => left;\n"
                        "  return bad(0, 1);\n"
                        "}\n",
-        "expected ',' or '|' after closure parameter");
-}
-
-TEST(CoreUnit, ParserRejectsLegacyFnClosureLiterals)
-{
-    expect_parse_error("module parser.legacy_fn_closure_literal;\n"
-                       "fn main() -> i32 {\n"
-                       "  let bad = fn(value: i32) -> i32 => value;\n"
-                       "  return bad(0);\n"
-                       "}\n",
-        "legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr");
-    expect_parse_error("module parser.legacy_empty_fn_closure_literal;\n"
-                       "fn main() -> i32 {\n"
-                       "  let bad = fn() -> i32 => 1;\n"
-                       "  return bad();\n"
-                       "}\n",
-        "legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr");
+        "expected ',' or ')' after parameter");
 }
 
 TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
@@ -3651,18 +3638,12 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_alignof,
             TokenKind::kw_ptraddr,
             TokenKind::kw_ptrat,
-            TokenKind::kw_sliceptr,
-            TokenKind::kw_slicelen,
-            TokenKind::kw_strptr,
-            TokenKind::kw_strblen,
             TokenKind::kw_strvalid,
             TokenKind::kw_strfromutf8,
             TokenKind::kw_strraw,
-            TokenKind::kw_fn,
             TokenKind::kw_unsafe,
-            TokenKind::pipe,
-            TokenKind::pipe_pipe,
             TokenKind::l_paren,
+            TokenKind::l_bracket,
             TokenKind::l_brace,
             TokenKind::minus,
             TokenKind::star,
@@ -3944,8 +3925,8 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
     constexpr std::string_view source = "module parser.builtin_recovery;\n"
                                         "fn main() -> i32 {\n"
                                         "  let text: str = \"hello\";\n"
-                                        "  let data: *const u8 = strptr(text);\n"
-                                        "  let len: usize = strblen(text);\n"
+                                        "  let data: *const u8 = text.ptr;\n"
+                                        "  let len: usize = text.len;\n"
                                         "  let broken_cast: i32 = cast<i32>(1 @);\n"
                                         "  let broken_str: str = strraw(data len);\n"
                                         "  return 0;\n"

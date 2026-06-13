@@ -42,7 +42,7 @@ builtin str = {
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `sizeof[str] == 16`、`alignof[str] == 8` 这一 64-bit ABI 事实。
 - 字符串字面量解码已经集中到共享实现，普通字符串会做 UTF-8 / Unicode scalar / escape 诊断，C 字符串会拒绝内部 NUL。
-- 编译器内建已经有 `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw`；`strraw` 已被正式 `unsafe` 体系约束，checked UTF-8 构造不依赖旧 std。
+- 编译器内建已经有 `str.ptr`、`str.len`、`strvalid`、`strfromutf8`、`strraw`；`strraw` 已被正式 `unsafe` 体系约束，checked UTF-8 构造不依赖旧 std。
 - 当前仓库根目录没有 `std/` 或 `selfhost/`。不存在当前有效的 `std.core.string.String`、`std.core.bytes.Bytes`、`std.fs.path.Path`、`std.ffi.c.string.CString` 实现。
 
 因此 M2 的判断是：`str` 的 ABI 方向已经接近正确，checked-vs-unchecked 构造边界和 checked byte-offset slicing 已在语言核心收口；真正后续要补的是未来库类型边界、Unicode text API 和拥有型资源语义。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span[u8]` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为未来库层重建设计素材。
@@ -194,7 +194,7 @@ let p: *const u8 = c"hello";
 
 不要提供默认 `s[i]`。所有单位必须显式：
 
-- 当前 M2 源码语法是 `s[l:r]` / `s[:r]` / `s[l:]` / `s[:]`：`l` 和 `r` 是 UTF-8 byte offset，返回 `str`，不分配。运行时检查 `l <= r`、`r <= strblen(s)`，并要求两个边界都落在 UTF-8 code point boundary 上；失败返回空 `str`。这不是 Unicode scalar 迭代、grapheme cluster 索引或 locale-aware text segmentation。
+- 当前源码语法是 `s[l:r]` / `s[:r]` / `s[l:]` / `s[:]`：`l` 和 `r` 是 UTF-8 byte offset，返回 `str`，不分配。运行时检查 `l <= r`、`r <= s.len`，并要求两个边界都落在 UTF-8 code point boundary 上；失败返回空 `str`。这不是 Unicode scalar 迭代、grapheme cluster 索引或 locale-aware text segmentation。
 
 - `byte_len(s: str) -> usize`：O(1)，返回 UTF-8 byte 数。
 - `is_empty(s: str) -> bool`：O(1)。
@@ -332,7 +332,7 @@ unsafe {
 
 - safe context 下调用 unchecked 构造会诊断。
 - `unsafe fn` 和 unsafe 函数指针调用必须发生在 unsafe context。
-- `strptr` / `strblen` 可以继续是 safe 只读观察操作；`strvalid` / `strfromutf8` 是 safe checked 构造边界。
+- `str.ptr` / `str.len` 可以继续是 safe 只读观察操作；`strvalid` / `strfromutf8` 是 safe checked 构造边界。
 - 文档要明确：任何构造 `str` 的入口都必须证明 UTF-8 有效，或者被标记为 unsafe。
 - 当前 unsafe 不包含 borrow checker、lifetime、unsafe trait/impl/extern block 或资源模型。
 
@@ -415,7 +415,7 @@ M2 当前 language-core 至少要覆盖：
 - 普通字符串字面量允许内部 `\0`，C 字符串字面量拒绝内部 NUL。
 - 非 ASCII 文本如 `"ƒ"` 按 UTF-8 byte length 表达，不能被截断成单字节字符。
 - invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
-- `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw` 的类型检查稳定。
+- `str.ptr`、`str.len`、`strvalid`、`strfromutf8`、`strraw` 的类型检查稳定。
 - `strvalid` 对合法/非法 UTF-8 byte slice 返回稳定 bool；`strfromutf8` 成功返回文本，失败返回空 `str`。
 - checked slicing 对 `"ƒ"` 这类多字节文本遵守 UTF-8 边界：`text[0:1]` 失败并返回空 `str`，`text[0:2]` 成功。
 - `strraw` 不能继续暴露在 safe context。

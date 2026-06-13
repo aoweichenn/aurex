@@ -56,6 +56,7 @@ struct CallExprPayload {
 };
 
 struct LambdaExprPayload {
+    AstArenaVector<LambdaCaptureDecl> captures;
     AstArenaVector<ParamDecl> params;
     TypeId return_type = INVALID_TYPE_ID;
     StmtId body = INVALID_STMT_ID;
@@ -319,13 +320,22 @@ public:
 
     [[nodiscard]] ExprId append_lambda(const base::SourceRange& range, LambdaExprPayload payload);
 
+    template <typename CaptureAllocator, typename ParamAllocator>
+    [[nodiscard]] ExprId append_lambda(const base::SourceRange& range,
+        std::vector<LambdaCaptureDecl, CaptureAllocator> captures,
+        std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
+    {
+        return this->append_header(ExprKind::lambda, range,
+            this->emplace_payload(this->payloads_.lambdas, this->copy_or_move_list(std::move(captures)),
+                this->copy_or_move_list(std::move(params)), return_type, body));
+    }
+
     template <typename ParamAllocator>
     [[nodiscard]] ExprId append_lambda(
         const base::SourceRange& range, std::vector<ParamDecl, ParamAllocator> params, TypeId return_type, StmtId body)
     {
-        return this->append_header(ExprKind::lambda, range,
-            this->emplace_payload(
-                this->payloads_.lambdas, this->copy_or_move_list(std::move(params)), return_type, body));
+        AstArenaVector<LambdaCaptureDecl> captures = this->make_list<LambdaCaptureDecl>();
+        return this->append_lambda(range, std::move(captures), std::move(params), return_type, body);
     }
 
     [[nodiscard]] ExprId append_if(const base::SourceRange& range, IfExprPayload payload);
@@ -438,6 +448,8 @@ public:
     void set_index(base::usize index, const base::SourceRange& range, ExprId object, ExprId index_expr);
     void set_slice(base::usize index, const base::SourceRange& range, SliceExprPayload payload);
     void set_slice(base::usize index, const base::SourceRange& range, ExprId object, ExprId start, ExprId end);
+    void set_cast_like(base::usize index, ExprKind kind, const base::SourceRange& range, CastExprPayload payload);
+    void set_cast_like(base::usize index, ExprKind kind, const base::SourceRange& range, TypeId type, ExprId expr);
     void set_struct_literal(base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload);
 
     void set_struct_literal_with_generic_args(

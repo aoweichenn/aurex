@@ -91,8 +91,6 @@ constexpr auto TOOLING_RESERVED_WORDS = std::to_array<std::string_view>({
     "pub",
     "return",
     "sizeof",
-    "slicelen",
-    "sliceptr",
     "str",
     "struct",
     "true",

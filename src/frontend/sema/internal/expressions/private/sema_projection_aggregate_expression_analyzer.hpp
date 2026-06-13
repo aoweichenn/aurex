@@ -2,6 +2,9 @@
 
 #include <frontend/sema/internal/core/private/sema_core.hpp>
 
+#include <optional>
+#include <string_view>
+
 namespace aurex::sema {
 
 class SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer final {
@@ -21,6 +24,11 @@ public:
         syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
 
 private:
+    [[nodiscard]] std::optional<syntax::ExprKind> builtin_projection_kind_for_field(
+        TypeHandle object_type, std::string_view field_name) const noexcept;
+    [[nodiscard]] TypeHandle analyze_builtin_projection_field_expr(
+        syntax::ExprId expr_id, const ExprView& expr, syntax::ExprKind kind);
+
     SemanticAnalyzerCore& core_;
 };
 

@@ -150,6 +150,18 @@ inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_BORROW_UNSUPPORTED =
 inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_GENERIC_UNSUPPORTED =
     "capturing a generic-dependent value in a closure is not supported yet";
 
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_NOT_LISTED =
+    "closure capture must be listed in the capture list";
+
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_UNUSED =
+    "closure capture list contains a name that is not captured";
+
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_DUPLICATE =
+    "duplicate closure capture name";
+
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_REFERENCE_UNSUPPORTED =
+    "reference capture in closures is not supported yet";
+
 inline constexpr std::string_view SEMA_FUNCTION_TYPE_PARAMETER_STORAGE =
     "function type parameter type is not valid storage";
 
@@ -584,13 +596,13 @@ inline constexpr std::string_view SEMA_PTRAT_POINTER = "ptrat target type must b
 
 inline constexpr std::string_view SEMA_PTRAT_INTEGER = "ptrat address must be an integer";
 
-inline constexpr std::string_view SEMA_SLICEPTR_SLICE = "sliceptr requires a slice value";
+inline constexpr std::string_view SEMA_SLICE_PTR_SLICE = "slice.ptr requires a slice value";
 
-inline constexpr std::string_view SEMA_SLICELEN_SLICE = "slicelen requires a slice value";
+inline constexpr std::string_view SEMA_SLICE_LEN_SLICE = "slice.len requires a slice value";
 
-inline constexpr std::string_view SEMA_STRPTR_STR = "strptr requires a str value";
+inline constexpr std::string_view SEMA_STR_PTR_STR = "str.ptr requires a str value";
 
-inline constexpr std::string_view SEMA_STRBLEN_STR = "strblen requires a str value";
+inline constexpr std::string_view SEMA_STR_LEN_STR = "str.len requires a str value";
 
 inline constexpr std::string_view SEMA_STR_UTF8_SLICE =
     "str UTF-8 builtin requires a []u8 or []mut u8 byte slice";

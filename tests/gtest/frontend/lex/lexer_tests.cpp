@@ -336,7 +336,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
         "module import as pub priv extern export fn struct opaque enum const type impl trait match "
         "let var if else for in is while break continue defer return true false null "
         "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe cast "
-        "ptrcast bitcast sizeof alignof ptraddr ptrat sliceptr slicelen strptr strblen strvalid strfromutf8 strraw";
+        "ptrcast bitcast sizeof alignof ptraddr ptrat strvalid strfromutf8 strraw";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
@@ -399,10 +399,6 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
         TokenKind::kw_alignof,
         TokenKind::kw_ptraddr,
         TokenKind::kw_ptrat,
-        TokenKind::kw_sliceptr,
-        TokenKind::kw_slicelen,
-        TokenKind::kw_strptr,
-        TokenKind::kw_strblen,
         TokenKind::kw_strvalid,
         TokenKind::kw_strfromutf8,
         TokenKind::kw_strraw,
@@ -414,7 +410,8 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
 TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers)
 {
     DiagnosticSink diagnostics;
-    constexpr std::string_view source = "modulee importable pub_ fnx for2 strptrx strlen_bytes ptraddress";
+    constexpr std::string_view source =
+        "modulee importable pub_ fnx for2 string_pointer strlen_bytes ptraddress";
     lex::Lexer lexer({11}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;

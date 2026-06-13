@@ -6,7 +6,7 @@ fn identity(values: []u8) -> []u8 {
 
 unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
-    return strraw(sliceptr(identity(bytes[:])), slicelen(bytes[:]));
+    return strraw(identity(bytes[:]).ptr, bytes[:].len);
 }
 
 fn main() -> i32 {

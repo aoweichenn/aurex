@@ -7,7 +7,7 @@ fn main() -> i32 {
     if !strvalid(ascii) {
         return 1;
     }
-    if strblen(ascii_text) != 2usize {
+    if ascii_text.len != 2usize {
         return 3;
     }
 
@@ -17,7 +17,7 @@ fn main() -> i32 {
     if !strvalid(scalar) {
         return 4;
     }
-    if strblen(scalar_text) != 2usize {
+    if scalar_text.len != 2usize {
         return 6;
     }
 
@@ -27,7 +27,7 @@ fn main() -> i32 {
     if !strvalid(euro) {
         return 7;
     }
-    if strblen(euro_text) != 3usize {
+    if euro_text.len != 3usize {
         return 9;
     }
 
@@ -37,7 +37,7 @@ fn main() -> i32 {
     if !strvalid(smile) {
         return 10;
     }
-    if strblen(smile_text) != 4usize {
+    if smile_text.len != 4usize {
         return 12;
     }
 
@@ -47,7 +47,7 @@ fn main() -> i32 {
     if !strvalid(mutable) {
         return 13;
     }
-    if strblen(mutable_text) != 1usize {
+    if mutable_text.len != 1usize {
         return 15;
     }
 
@@ -57,7 +57,7 @@ fn main() -> i32 {
     if strvalid(bad) {
         return 16;
     }
-    if strblen(bad_text) != 0usize {
+    if bad_text.len != 0usize {
         return 18;
     }
 
@@ -66,7 +66,7 @@ fn main() -> i32 {
     if strvalid(overlong) {
         return 19;
     }
-    if strblen(strfromutf8(overlong)) != 0usize {
+    if strfromutf8(overlong).len != 0usize {
         return 20;
     }
 
@@ -75,7 +75,7 @@ fn main() -> i32 {
     if strvalid(surrogate) {
         return 21;
     }
-    if strblen(strfromutf8(surrogate)) != 0usize {
+    if strfromutf8(surrogate).len != 0usize {
         return 22;
     }
 
@@ -84,7 +84,7 @@ fn main() -> i32 {
     if strvalid(truncated) {
         return 23;
     }
-    if strblen(strfromutf8(truncated)) != 0usize {
+    if strfromutf8(truncated).len != 0usize {
         return 24;
     }
 

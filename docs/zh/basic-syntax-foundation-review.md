@@ -439,7 +439,7 @@ expr_stmt =
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw`。
+- `str.ptr` / `str.len` / `strvalid` / `strfromutf8` / `strraw`。
 
 已补内容：
 
@@ -703,7 +703,7 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 - 普通字符串字面量类型是 `str`。
 - `str` 在 LLVM 后端降低为 `{ ptr, usize }`。
 - `sizeof[str]` / `alignof[str]` 已有 64-bit ABI 测试。
-- 编译器内建已有 `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw`。
+- 编译器内建已有 `str.ptr`、`str.len`、`strvalid`、`strfromutf8`、`strraw`。
 
 问题：
 
@@ -717,7 +717,7 @@ M2 最小方向：
 
 ```aurex
 let text: str = "hello";
-let n: usize = strblen(text);
+let n: usize = text.len;
 let bytes: []u8 = b"ok"[:];
 let checked = strfromutf8(bytes);
 

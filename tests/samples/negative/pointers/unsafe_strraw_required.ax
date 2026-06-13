@@ -2,6 +2,6 @@ module unsafe_strraw_required;
 
 fn main() -> i32 {
     let text: str = "ok";
-    let raw: str = strraw(strptr(text), strblen(text));
-    return cast<i32>(strblen(raw));
+    let raw: str = strraw(text.ptr, text.len);
+    return cast<i32>(raw.len);
 }

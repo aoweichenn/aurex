@@ -164,14 +164,6 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "kw_ptraddr";
         case TokenKind::kw_ptrat:
             return "kw_ptrat";
-        case TokenKind::kw_sliceptr:
-            return "kw_sliceptr";
-        case TokenKind::kw_slicelen:
-            return "kw_slicelen";
-        case TokenKind::kw_strptr:
-            return "kw_strptr";
-        case TokenKind::kw_strblen:
-            return "kw_strblen";
         case TokenKind::kw_strvalid:
             return "kw_strvalid";
         case TokenKind::kw_strfromutf8:
@@ -319,6 +311,7 @@ struct ExprDumpView {
     ExprId callee = INVALID_EXPR_ID;
     std::span<const ExprId> args{};
     std::span<const CallArgLabelDecl> arg_labels{};
+    std::span<const LambdaCaptureDecl> lambda_captures{};
     std::span<const ParamDecl> lambda_params{};
     TypeId lambda_return_type = INVALID_TYPE_ID;
     StmtId lambda_body = INVALID_STMT_ID;
@@ -406,6 +399,7 @@ struct ExprDumpView {
         }
         case ExprKind::lambda: {
             const LambdaExprPayload& payload = *module.exprs.lambda_payload(id.value);
+            view.lambda_captures = readonly_span(payload.captures);
             view.lambda_params = readonly_span(payload.params);
             view.lambda_return_type = payload.return_type;
             view.lambda_body = payload.body;
@@ -1083,13 +1077,13 @@ std::string_view expr_kind_name(const ExprKind kind)
         case ExprKind::paddr:
             return "ptrat";
         case ExprKind::slice_data:
-            return "sliceptr";
+            return "slice.ptr";
         case ExprKind::slice_len:
-            return "slicelen";
+            return "slice.len";
         case ExprKind::str_data:
-            return "strptr";
+            return "str.ptr";
         case ExprKind::str_byte_len:
-            return "strblen";
+            return "str.len";
         case ExprKind::str_is_valid_utf8:
             return "strvalid";
         case ExprKind::str_from_utf8_checked:
@@ -1204,11 +1198,19 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     }
     if (expr.kind == ExprKind::lambda) {
-        if (expr.lambda_params.empty()) {
-            out << " ||";
-        } else {
-            out << " |";
+        out << " [";
+        for (base::usize i = 0; i < expr.lambda_captures.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            if (expr.lambda_captures[i].kind == LambdaCaptureKind::shared_reference) {
+                out << "&";
+            } else if (expr.lambda_captures[i].kind == LambdaCaptureKind::mutable_reference) {
+                out << "&mut ";
+            }
+            out << expr.lambda_captures[i].name;
         }
+        out << "](";
         for (base::usize i = 0; i < expr.lambda_params.size(); ++i) {
             if (i != 0) {
                 out << ", ";
@@ -1218,9 +1220,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
                 out << " = expr#" << expr.lambda_params[i].default_value.value;
             }
         }
-        if (!expr.lambda_params.empty()) {
-            out << "|";
-        }
+        out << ")";
         out << " -> " << type_label(module, expr.lambda_return_type);
     }
     if (is_valid(expr.cast_type)) {

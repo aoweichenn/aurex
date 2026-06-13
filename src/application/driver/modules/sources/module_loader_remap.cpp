@@ -252,11 +252,14 @@ template <typename T, typename Allocator>
             return destination.push_call_expr(kind, range, callee, std::move(args), std::move(labels));
         }
         case syntax::ExprKind::lambda: {
+            syntax::AstArenaVector<syntax::LambdaCaptureDecl> captures =
+                destination.make_expr_list<syntax::LambdaCaptureDecl>();
             syntax::AstArenaVector<syntax::ParamDecl> params = destination.make_expr_list<syntax::ParamDecl>();
             syntax::TypeId return_type = syntax::INVALID_TYPE_ID;
             syntax::StmtId body = syntax::INVALID_STMT_ID;
             if (syntax::LambdaExprPayload* const source_payload = source.exprs.lambda_payload(index);
                 source_payload != nullptr) {
+                captures = copy_expr_arena_list(destination, source_payload->captures);
                 params = copy_expr_arena_list(destination, source_payload->params);
                 return_type = source_payload->return_type;
                 body = source_payload->body;
@@ -264,7 +267,7 @@ template <typename T, typename Allocator>
             remap_param_decls(params, map);
             return_type = remap_type(return_type, map);
             body = remap_stmt(body, map);
-            return destination.push_lambda_expr(range, std::move(params), return_type, body);
+            return destination.push_lambda_expr(range, std::move(captures), std::move(params), return_type, body);
         }
         case syntax::ExprKind::if_expr: {
             syntax::ExprId condition = syntax::INVALID_EXPR_ID;

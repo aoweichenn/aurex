@@ -1397,7 +1397,7 @@ M2.1 至少新增或更新以下测试类别：
 
    第一批 P0 基础语法按这个顺序推进：
 
-   - 内建操作拼写已经先规范为 `sizeof<T>`、`alignof<T>`、`cast<T>(x)`、`ptrcast<T>(p)`、`bitcast<T>(x)`、`ptraddr(p)`、`ptrat<T>(addr)`、`strptr(s)`、`strblen(s)`、`strvalid(bytes)`、`strfromutf8(bytes)`、`strraw(data, len)`；旧的函数式拼写和旧 `[]` 泛型写法不再作为源码语法。
+   - 内建操作拼写已经先规范为 `sizeof<T>`、`alignof<T>`、`cast<T>(x)`、`ptrcast<T>(p)`、`bitcast<T>(x)`、`ptraddr(p)`、`ptrat<T>(addr)`、`text.ptr`、`text.len`、`strvalid(bytes)`、`strfromutf8(bytes)`、`strraw(data, len)`；旧的函数式拼写和旧 `[]` 泛型写法不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn` 已完成：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作已经不能留在普通安全表达式表面。
    - ADT-first enum 已完成非泛型 M2 形态：普通 `enum OptionI32 { some(i32), none }` / `enum Token { span(usize, usize), eof }` 成为主力写法；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal 已完成：`[1, 2, 3]` 和 `[0; 128]` 现在能构造固定长度数组值。

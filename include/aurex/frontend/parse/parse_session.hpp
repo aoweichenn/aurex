@@ -46,11 +46,6 @@ inline void count_parser_primary_expr_token(
         case syntax::TokenKind::kw_null:
             ++exprs.literals;
             break;
-        case syntax::TokenKind::kw_fn:
-        case syntax::TokenKind::pipe:
-        case syntax::TokenKind::pipe_pipe:
-            ++exprs.lambdas;
-            break;
         case syntax::TokenKind::kw_if:
             ++exprs.ifs;
             break;
@@ -66,6 +61,7 @@ inline void count_parser_primary_expr_token(
             ++exprs.slices;
             ++exprs.indexes;
             ++exprs.generic_applies;
+            ++exprs.lambdas;
             break;
         case syntax::TokenKind::l_paren:
             ++exprs.tuples;
@@ -77,10 +73,6 @@ inline void count_parser_primary_expr_token(
         case syntax::TokenKind::kw_alignof:
         case syntax::TokenKind::kw_ptraddr:
         case syntax::TokenKind::kw_ptrat:
-        case syntax::TokenKind::kw_sliceptr:
-        case syntax::TokenKind::kw_slicelen:
-        case syntax::TokenKind::kw_strptr:
-        case syntax::TokenKind::kw_strblen:
         case syntax::TokenKind::kw_strvalid:
         case syntax::TokenKind::kw_strfromutf8:
             ++exprs.casts;

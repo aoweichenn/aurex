@@ -1,7 +1,7 @@
 module lambda_capture_generic_dependent;
 
 fn capture_generic<T>(value: T) -> i32 where T: Copy {
-    let get = || -> T => value;
+    let get = [value]() -> T => value;
     return 0;
 }
 

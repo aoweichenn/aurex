@@ -2,8 +2,8 @@ module strraw_pointer_alias_return_local;
 
 unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
-    let data: *const u8 = sliceptr(bytes[:]);
-    return strraw(data, slicelen(bytes[:]));
+    let data: *const u8 = bytes[:].ptr;
+    return strraw(data, bytes[:].len);
 }
 
 fn main() -> i32 {

@@ -2,14 +2,14 @@ module lambda_closure_capture;
 
 fn direct_capture(value: i32) -> i32 {
     let base: i32 = 40;
-    let add_base = |next: i32| -> i32 => next + base;
+    let add_base = [base](next: i32) -> i32 => next + base;
     return add_base(value);
 }
 
 fn nested_capture(seed: i32) -> i32 {
-    let outer = |value: i32| -> i32 {
+    let outer = [seed](value: i32) -> i32 {
         let local: i32 = 2;
-        let inner = |next: i32| -> i32 => next + local + seed;
+        let inner = [local, seed](next: i32) -> i32 => next + local + seed;
         return inner(value);
     };
     return outer(1);
@@ -17,7 +17,7 @@ fn nested_capture(seed: i32) -> i32 {
 
 fn guard_capture(value: bool) -> i32 {
     let enabled: bool = true;
-    let choose = |flag: bool| -> i32 {
+    let choose = [enabled](flag: bool) -> i32 {
         return match flag {
             true if enabled => 7,
             _ => 3,
@@ -27,8 +27,8 @@ fn guard_capture(value: bool) -> i32 {
 }
 
 fn transitive_capture(seed: i32) -> i32 {
-    let make = |offset: i32| -> i32 {
-        let apply = |value: i32| -> i32 => value + seed + offset;
+    let make = [seed](offset: i32) -> i32 {
+        let apply = [seed, offset](value: i32) -> i32 => value + seed + offset;
         return apply(6);
     };
     return make(5);

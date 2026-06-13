@@ -66,7 +66,7 @@ let var if else for in while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char
 mut cast ptrcast bitcast sizeof alignof
-ptraddr ptrat strptr strblen strvalid strfromutf8 strraw
+ptraddr ptrat strvalid strfromutf8 strraw
 ```
 
 `c` 不是全局关键字，只在 `extern c`、`export c fn` 和 `extern c fn` 类型里作为
@@ -541,8 +541,8 @@ sizeof[T]
 alignof[T]
 ptraddr(pointer)
 ptrat[*mut T](addr)
-strptr(text)
-strblen(text)
+text.ptr
+text.len
 strvalid(bytes)
 strfromutf8(bytes)
 strraw(data, len)
@@ -555,7 +555,7 @@ strraw(data, len)
 - `bitcast` 要求源/目标尺寸相同，并限制在非 `bool` / 非 `str` / 非 `void` 的内建数值标量或 pointer 形态。
 - `ptraddr` 要求参数是 pointer，返回 `usize`。
 - `ptrat` 目标类型必须是 pointer，地址参数是整数。
-- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw` 是当前 `str` ABI 和 UTF-8 边界支撑点；`strfromutf8(bytes)` 返回 `str`，失败时返回空 `str`，不会把无效输入包装成文本；需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。
+- `str.ptr` / `str.len` / `strvalid` / `strfromutf8` / `strraw` 是当前 `str` ABI 和 UTF-8 边界支撑点；`strfromutf8(bytes)` 返回 `str`，失败时返回空 `str`，不会把无效输入包装成文本；需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。
 
 `if` 表达式：
 

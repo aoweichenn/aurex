@@ -51,8 +51,8 @@ fn main() -> i32 {
     let addr_bad = ptraddr(1);
     let from_bad = ptrat<i32>(true);
     let bad_sizeof_void: usize = sizeof<void>;
-    let bad_strptr = strptr(1);
-    let bad_strblen = strblen(1);
+    let bad_ptr = 1.ptr;
+    let bad_len = 1.len;
     let bad_strraw_data = strraw(1, cast<usize>(1));
     let bad_strraw_len = strraw(c"bytes", true);
     let bad_generic_apply = id<i32>;

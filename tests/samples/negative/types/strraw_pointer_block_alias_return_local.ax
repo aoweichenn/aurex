@@ -4,7 +4,7 @@ unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
     let data: *const u8 = {
         let view: []u8 = bytes[:];
-        sliceptr(view)
+        view.ptr
     };
     return strraw(data, 2usize);
 }

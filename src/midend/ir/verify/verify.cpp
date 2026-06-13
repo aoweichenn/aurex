@@ -1029,20 +1029,21 @@ private:
 
     void verify_str_data(const Value& value)
     {
-        this->verify_type(value.type, "strptr result");
+        this->verify_type(value.type, "str_data result");
         if (!this->is_const_u8_pointer(value.type)) {
-            this->fail(std::string(IR_VERIFY_STRPTR_RESULT));
+            this->fail(std::string(IR_VERIFY_STR_DATA_RESULT));
         }
-        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strptr operand");
+        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "str_data operand");
     }
 
     void verify_str_byte_len(const Value& value)
     {
-        this->verify_type(value.type, "strblen result");
+        this->verify_type(value.type, "str_byte_len result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
-            this->fail(std::string(IR_VERIFY_STRBLEN_RESULT));
+            this->fail(std::string(IR_VERIFY_STR_BYTE_LEN_RESULT));
         }
-        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strblen operand");
+        this->verify_value_type(
+            value.object, this->module_.types.builtin(sema::BuiltinType::str), "str_byte_len operand");
     }
 
     void verify_str_is_valid_utf8(const Value& value)

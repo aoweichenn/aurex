@@ -407,15 +407,18 @@ inline constexpr std::string_view PARSER_EXPECT_STRUCT_LITERAL_FIELD_SEPARATOR =
 
 inline constexpr std::string_view PARSER_EXPECT_EXPRESSION = "expected expression";
 
-inline constexpr std::string_view PARSER_LEGACY_FN_CLOSURE_LITERAL =
-    "legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr";
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_START = "expected '[' before closure capture list";
 
-inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST = "expected closure parameter list after '|'";
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_END = "expected ']' after closure capture list";
 
-inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST_END = "expected '|' after closure parameters";
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_NAME = "expected closure capture name";
 
-inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_SEPARATOR =
-    "expected ',' or '|' after closure parameter";
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_SEPARATOR =
+    "expected ',' or ']' after closure capture";
+
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST = "expected '(' after closure capture list";
+
+inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST_END = "expected ')' after closure parameters";
 
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_RETURN_ARROW =
     "expected '->' after closure parameter list";

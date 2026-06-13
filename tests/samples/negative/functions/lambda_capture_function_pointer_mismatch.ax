@@ -2,6 +2,6 @@ module lambda_capture_function_pointer_mismatch;
 
 fn main() -> i32 {
     let base: i32 = 1;
-    let add_base: fn(i32) -> i32 = |value: i32| -> i32 => value + base;
+    let add_base: fn(i32) -> i32 = [base](value: i32) -> i32 => value + base;
     return add_base(41);
 }

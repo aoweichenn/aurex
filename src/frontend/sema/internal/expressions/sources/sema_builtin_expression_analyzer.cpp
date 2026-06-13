@@ -105,7 +105,7 @@ TypeHandle SemanticAnalyzerCore::BuiltinExpressionAnalyzer::analyze_str_projecti
     const TypeHandle value = this->core_.analyze_expr(expr.cast_expr);
     if (!this->core_.state_.checked.types.is_str(value)) {
         this->core_.report_general(expr.range,
-            expr.kind == syntax::ExprKind::str_data ? std::string(SEMA_STRPTR_STR) : std::string(SEMA_STRBLEN_STR));
+            expr.kind == syntax::ExprKind::str_data ? std::string(SEMA_STR_PTR_STR) : std::string(SEMA_STR_LEN_STR));
     }
     if (expr.kind == syntax::ExprKind::str_data) {
         return this->core_.record_expr_type(expr_id,
@@ -121,8 +121,8 @@ TypeHandle SemanticAnalyzerCore::BuiltinExpressionAnalyzer::analyze_slice_projec
     const TypeHandle value = this->core_.analyze_expr(expr.cast_expr);
     if (!this->core_.state_.checked.types.is_slice(value)) {
         this->core_.report_general(expr.range,
-            expr.kind == syntax::ExprKind::slice_data ? std::string(SEMA_SLICEPTR_SLICE)
-                                                      : std::string(SEMA_SLICELEN_SLICE));
+            expr.kind == syntax::ExprKind::slice_data ? std::string(SEMA_SLICE_PTR_SLICE)
+                                                      : std::string(SEMA_SLICE_LEN_SLICE));
         if (expr.kind == syntax::ExprKind::slice_data) {
             return this->core_.record_expr_type(expr_id,
                 this->core_.state_.checked.types.pointer(

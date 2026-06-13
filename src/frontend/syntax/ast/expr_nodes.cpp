@@ -470,7 +470,8 @@ ExprId ExprNodeList::append_call(const ExprKind kind, const base::SourceRange& r
 
 ExprId ExprNodeList::append_lambda(const base::SourceRange& range, LambdaExprPayload payload)
 {
-    return this->append_lambda(range, std::move(payload.params), payload.return_type, payload.body);
+    return this->append_lambda(
+        range, std::move(payload.captures), std::move(payload.params), payload.return_type, payload.body);
 }
 
 ExprId ExprNodeList::append_if(const base::SourceRange& range, const IfExprPayload payload)
@@ -649,6 +650,19 @@ void ExprNodeList::set_slice(
     const base::usize index, const base::SourceRange& range, const ExprId object, const ExprId start, const ExprId end)
 {
     this->set_header(index, ExprKind::slice, range, this->emplace_payload(this->payloads_.slices, object, start, end));
+}
+
+void ExprNodeList::set_cast_like(
+    const base::usize index, const ExprKind kind, const base::SourceRange& range, const CastExprPayload payload)
+{
+    this->set_cast_like(index, kind, range, payload.type, payload.expr);
+}
+
+void ExprNodeList::set_cast_like(
+    const base::usize index, const ExprKind kind, const base::SourceRange& range, const TypeId type, const ExprId expr)
+{
+    assert(this->is_cast_like(kind));
+    this->set_header(index, kind, range, this->emplace_payload(this->payloads_.casts, type, expr));
 }
 
 void ExprNodeList::set_struct_literal(
@@ -853,8 +867,8 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         }
         case ExprKind::lambda: {
             const LambdaExprPayload* const payload = other.lambda_payload(index);
-            static_cast<void>(
-                this->append_lambda(range, copy_std_vector(payload->params), payload->return_type, payload->body));
+            static_cast<void>(this->append_lambda(range, copy_std_vector(payload->captures),
+                copy_std_vector(payload->params), payload->return_type, payload->body));
             return;
         }
         case ExprKind::if_expr: {

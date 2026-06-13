@@ -17,11 +17,11 @@ fn pointer_ops<T>(value: &T) -> bool where T: Sized {
 }
 
 fn slice_ops<T>(values: []T) -> usize where T: Sized {
-    let data: *const T = sliceptr(values);
+    let data: *const T = values.ptr;
     if ptraddr(data) == 0usize {
         return 99usize;
     }
-    return slicelen(values);
+    return values.len;
 }
 
 fn utf8_ops<T>(marker: T, bytes: []u8) -> usize where T: Sized {
@@ -35,8 +35,8 @@ fn utf8_ops<T>(marker: T, bytes: []u8) -> usize where T: Sized {
         return 97usize;
     }
     let text: str = strfromutf8(bytes);
-    let raw: str = unsafe { strraw(strptr(text), strblen(text)) };
-    return strblen(raw);
+    let raw: str = unsafe { strraw(text.ptr, text.len) };
+    return raw.len;
 }
 
 fn cast_inside_generic<T>(value: T, number: usize) -> i32 where T: Sized {

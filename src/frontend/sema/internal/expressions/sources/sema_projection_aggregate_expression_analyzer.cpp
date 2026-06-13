@@ -1,6 +1,8 @@
 #include <aurex/frontend/sema/sema_messages.hpp>
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -9,6 +11,9 @@
 namespace aurex::sema {
 
 namespace {
+
+constexpr std::string_view SEMA_BUILTIN_FIELD_LEN = "len";
+constexpr std::string_view SEMA_BUILTIN_FIELD_PTR = "ptr";
 
 struct IntegerLiteralExpr {
     syntax::ExprId literal = syntax::INVALID_EXPR_ID;
@@ -120,9 +125,56 @@ TypeHandle SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::analyze_
         }
     }
 
+    const TypeHandle object_type = this->core_.analyze_expr(expr.object);
+    if (const std::optional<syntax::ExprKind> builtin =
+            this->builtin_projection_kind_for_field(object_type, expr.field_name);
+        builtin.has_value()) {
+        return this->analyze_builtin_projection_field_expr(expr_id, expr, *builtin);
+    }
+
     const PlaceInfo place = this->core_.analyze_place_info(expr_id, true);
     this->core_.require_place_projection_safety(place, expr.range);
     return this->core_.record_expr_type(expr_id, place.type);
+}
+
+std::optional<syntax::ExprKind>
+SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::builtin_projection_kind_for_field(
+    const TypeHandle object_type, const std::string_view field_name) const noexcept
+{
+    if (field_name == SEMA_BUILTIN_FIELD_LEN) {
+        if (this->core_.state_.checked.types.is_str(object_type)) {
+            return syntax::ExprKind::str_byte_len;
+        }
+        if (this->core_.state_.checked.types.is_slice(object_type)) {
+            return syntax::ExprKind::slice_len;
+        }
+    }
+    if (field_name == SEMA_BUILTIN_FIELD_PTR) {
+        if (this->core_.state_.checked.types.is_str(object_type)) {
+            return syntax::ExprKind::str_data;
+        }
+        if (this->core_.state_.checked.types.is_slice(object_type)) {
+            return syntax::ExprKind::slice_data;
+        }
+    }
+    return std::nullopt;
+}
+
+TypeHandle SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::analyze_builtin_projection_field_expr(
+    const syntax::ExprId expr_id, const ExprView& expr, const syntax::ExprKind kind)
+{
+    this->core_.ctx_.module.set_cast_like_expr(expr_id.value, kind, expr.range, syntax::INVALID_TYPE_ID, expr.object);
+    const ExprView rewritten = this->core_.expr_view(expr_id);
+    switch (kind) {
+        case syntax::ExprKind::slice_data:
+        case syntax::ExprKind::slice_len:
+            return this->core_.analyze_slice_projection_expr(expr_id, rewritten);
+        case syntax::ExprKind::str_data:
+        case syntax::ExprKind::str_byte_len:
+            return this->core_.analyze_str_projection_expr(expr_id, rewritten);
+        default:
+            return this->core_.record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
 }
 
 TypeHandle SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::analyze_module_member_expr(

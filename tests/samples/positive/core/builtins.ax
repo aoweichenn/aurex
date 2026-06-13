@@ -20,7 +20,7 @@ fn sum_checked_text(bytes: []u8) -> i32 {
         return -1;
     }
     let text: str = strfromutf8(bytes);
-    return cast<i32>(strblen(text));
+    return cast<i32>(text.len);
 }
 
 fn main() -> i32 {
@@ -60,10 +60,10 @@ fn main() -> i32 {
     if sum_checked_text(ascii) != 2 {
         return 7;
     }
-    if slicelen(ascii) != 2usize {
+    if ascii.len != 2usize {
         return 11;
     }
-    let ascii_ptr: *const u8 = sliceptr(ascii);
+    let ascii_ptr: *const u8 = ascii.ptr;
     if unsafe { ascii_ptr[0usize] } != b'o' {
         return 12;
     }
@@ -73,12 +73,12 @@ fn main() -> i32 {
     if strvalid(invalid) {
         return 8;
     }
-    if strblen(strfromutf8(invalid)) != 0usize {
+    if strfromutf8(invalid).len != 0usize {
         return 9;
     }
 
-    let raw: str = unsafe { strraw(strptr("raw"), strblen("raw")) };
-    if strblen(raw) != 3usize {
+    let raw: str = unsafe { strraw("raw".ptr, "raw".len) };
+    if raw.len != 3usize {
         return 10;
     }
 

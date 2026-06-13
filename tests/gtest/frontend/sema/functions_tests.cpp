@@ -201,7 +201,7 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     const std::string lambda_ast = require_success(aurexc() + " --emit=ast " + q(lambda)).output;
     expect_contains_all(lambda_ast,
         {
-            "lambda |value: i32| -> i32",
+            "lambda [](value: i32) -> i32",
             "return",
             "binary",
         });
@@ -264,6 +264,10 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_capture_assign.ax"))).output,
         "left side of assignment must be writable");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_reference_capture.ax")))
+            .output,
+        "reference capture in closures is not supported yet");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");
@@ -609,7 +613,7 @@ TEST_F(AurexIntegrationTest, M7bReturnedBorrowViewsParticipateInLocalLoanCheckin
         "  var bytes: [2]u8 = [65, 66];\n"
         "  let text: str = strfromutf8(bytes[:]);\n"
         "  bytes[0] = 67;\n"
-        "  let _: usize = strblen(text);\n"
+        "  let _: usize = text.len;\n"
         "}\n",
         sema::SEMA_ACTIVE_BORROW_CONFLICT);
 

@@ -632,7 +632,7 @@ Rules:
   not add runtime bounds checks and does not add container iteration.
 - `str[start:end]`, `str[:end]`, `str[start:]`, and `str[:]` use byte offsets
   and return `str`. The operation is checked at runtime: `start <= end`,
-  `end <= strblen(text)`, and both bounds must be UTF-8 code point boundaries.
+  `end <= text.len`, and both bounds must be UTF-8 code point boundaries.
   Failure returns the empty `str` instead of trapping or constructing invalid
   UTF-8. This is not grapheme-cluster indexing, Unicode scalar iteration, or
   locale-aware text segmentation.
@@ -684,8 +684,8 @@ The following operations require an unsafe context:
 - Calling an `unsafe fn` or a value whose type is `unsafe fn(...) -> T` /
   `unsafe extern c fn(...) -> T`.
 
-Safe operations include address-of `&place`, `ptraddr(p_or_ref)`, `strptr(s)`,
-`strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof<T>`,
+Safe operations include address-of `&place`, `ptraddr(p_or_ref)`, `s.ptr`,
+`s.len`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof<T>`,
 `alignof<T>`, and checked numeric `cast<T>(x)`.
 
 `&place` always creates `&T`; `&mut place` always creates `&mut T` and requires

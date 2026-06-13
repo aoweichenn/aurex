@@ -2,8 +2,8 @@ module lambda_capture_borrowed_view;
 
 fn main() -> i32 {
     let text: str = "hello";
-    let length = || -> usize {
-        return strblen(text);
+    let length = [text]() -> usize {
+        return text.len;
     };
     return 0;
 }

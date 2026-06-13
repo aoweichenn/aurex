@@ -768,7 +768,7 @@ a{2,4}?   lazy bounded repeat
 
 `search(pattern, input)`：
 
-- 从 byte offset `0` 到 `strblen(input)` 按 UTF-8 scalar boundary 尝试起点。
+- 从 byte offset `0` 到 `input.len` 按 UTF-8 scalar boundary 尝试起点。
 - 返回第一个能匹配的起点。
 - 在同一个起点下，VM 按 NFA split 顺序维护有序线程。greedy 量词优先继续消费，并保存后备接受点；lazy/ungreedy 量词优先退出，可在更短位置接受。
 
@@ -776,7 +776,7 @@ a{2,4}?   lazy bounded repeat
 
 - 从指定 byte offset 开始搜索。
 - 如果 `start_offset` 落在 UTF-8 continuation byte 中，会先前进到下一个 scalar boundary，不会在字符中间启动匹配。
-- `start_offset > strblen(input)` 时返回 `no_match`。
+- `start_offset > input.len` 时返回 `no_match`。
 
 `RegexMatchOptions`：
 

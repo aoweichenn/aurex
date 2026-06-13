@@ -93,8 +93,8 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
 
     EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_string_builtins);
     const std::string messages = diagnostic_messages(diagnostics);
-    EXPECT_NE(messages.find(sema::SEMA_STRPTR_STR), std::string::npos);
-    EXPECT_NE(messages.find(sema::SEMA_STRBLEN_STR), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_STR_PTR_STR), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_STR_LEN_STR), std::string::npos);
     EXPECT_NE(messages.find(sema::SEMA_STRRAW_DATA_POINTER), std::string::npos);
     EXPECT_NE(messages.find(sema::SEMA_STRRAW_LENGTH_INTEGER), std::string::npos);
 }

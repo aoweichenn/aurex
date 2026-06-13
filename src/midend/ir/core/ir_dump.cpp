@@ -251,10 +251,10 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             out << "alignof " << module.types.display_name(value.target_type);
             break;
         case ValueKind::str_data:
-            out << "strptr " << value_ref(value.object);
+            out << "str_data " << value_ref(value.object);
             break;
         case ValueKind::str_byte_len:
-            out << "strblen " << value_ref(value.object);
+            out << "str_byte_len " << value_ref(value.object);
             break;
         case ValueKind::str_is_valid_utf8:
             out << "strvalid " << value_ref(value.object);

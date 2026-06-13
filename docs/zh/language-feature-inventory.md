@@ -257,7 +257,7 @@ true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
 char
 mut cast ptrcast bitcast sizeof alignof
-ptraddr ptrat strptr strblen strvalid strfromutf8 strraw
+ptraddr ptrat strvalid strfromutf8 strraw
 ```
 
 `c` 是 C ABI 语法里的上下文标记，不是全局关键字。`fn f(a: i32, b: i32, c: i32)`
@@ -491,9 +491,9 @@ safe reference 已作为 M2 基础类型落地：
 ```aurex
 type BinaryOp = fn(i32, i32) -> i32;
 type CCallback = extern c fn(*mut void, ...) -> i32;
-let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;
+let inc: fn(i32) -> i32 = [](value: i32) -> i32 => value + 1;
 let base: i32 = 40;
-let add_base = |value: i32| -> i32 => value + base;
+let add_base = [base](value: i32) -> i32 => value + base;
 ```
 
 当前语义是非捕获函数指针：函数名和无捕获闭包字面量可以作为值赋给 `fn(...) -> T`，函数名也可以作为值赋给
@@ -988,14 +988,14 @@ sizeof<T>
 alignof<T>
 ptraddr(ptr)
 ptrat<*mut T>(address)
-strptr(text)
-strblen(text)
+text.ptr
+text.len
 strvalid(bytes)
 strfromutf8(bytes)
 strraw(data, len)
 ```
 
-其中 `ptrcast`、`bitcast`、`ptrat` 和 `strraw` 是 unsafe-only；safe context 下直接使用会诊断。`cast`、`sizeof`、`alignof`、`ptraddr`、`strptr`、`strblen`、`strvalid` 和 `strfromutf8` 仍是 safe 内建。`strvalid(bytes)` 返回 `bool`；`strfromutf8(bytes)` 返回 `str`，成功时借用原 byte slice，失败时是空 `str`，因此 checked 调用失败时不会把无效输入包装成 UTF-8 文本。需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。
+其中 `ptrcast`、`bitcast`、`ptrat` 和 `strraw` 是 unsafe-only；safe context 下直接使用会诊断。`cast`、`sizeof`、`alignof`、`ptraddr`、`text.ptr`、`text.len`、`strvalid` 和 `strfromutf8` 仍是 safe 内建。`strvalid(bytes)` 返回 `bool`；`strfromutf8(bytes)` 返回 `str`，成功时借用原 byte slice，失败时是空 `str`，因此 checked 调用失败时不会把无效输入包装成 UTF-8 文本。需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。
 
 ### Pattern 语法
 
@@ -1041,7 +1041,7 @@ p1 | p2 | p3
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw`。
+- `text.ptr` / `text.len` / `strvalid` / `strfromutf8` / `strraw`。
 
 ## 已支持的高级特性
 
@@ -1282,7 +1282,7 @@ let all = bytes[:];
    ```aurex
    type Cmp = fn(a: *const void, b: *const void) -> i32;
    type Callback = extern c fn(ctx: *mut void) -> void;
-   let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;
+   let inc: fn(i32) -> i32 = [](value: i32) -> i32 => value + 1;
    ```
 
    函数名和无捕获闭包字面量可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic

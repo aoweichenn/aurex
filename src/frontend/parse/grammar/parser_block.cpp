@@ -200,17 +200,11 @@ bool BlockParser::token_starts_tail_expression() const noexcept
         case TokenKind::kw_alignof:
         case TokenKind::kw_ptraddr:
         case TokenKind::kw_ptrat:
-        case TokenKind::kw_sliceptr:
-        case TokenKind::kw_slicelen:
-        case TokenKind::kw_strptr:
-        case TokenKind::kw_strblen:
         case TokenKind::kw_strvalid:
         case TokenKind::kw_strfromutf8:
         case TokenKind::kw_strraw:
-        case TokenKind::kw_fn:
-        case TokenKind::pipe:
-        case TokenKind::pipe_pipe:
         case TokenKind::l_paren:
+        case TokenKind::l_bracket:
         case TokenKind::minus:
         case TokenKind::star:
         case TokenKind::amp:

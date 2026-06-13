@@ -944,7 +944,7 @@ TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedLocalEscape)
     constexpr std::string_view source = "module lifetime.raw_escape;\n"
                                         "unsafe fn bad() -> str {\n"
                                         "  let bytes: [2]u8 = b\"ok\";\n"
-                                        "  let ptr: *const u8 = sliceptr(bytes[:]);\n"
+                                        "  let ptr: *const u8 = bytes[:].ptr;\n"
                                         "  return strraw(ptr, 2usize);\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
@@ -959,7 +959,7 @@ TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedSliceCallLocalEscape)
                                         "}\n"
                                         "unsafe fn bad() -> str {\n"
                                         "  let bytes: [2]u8 = b\"ok\";\n"
-                                        "  return strraw(sliceptr(identity(bytes[:])), slicelen(bytes[:]));\n"
+                                        "  return strraw(identity(bytes[:]).ptr, bytes[:].len);\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
     expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);

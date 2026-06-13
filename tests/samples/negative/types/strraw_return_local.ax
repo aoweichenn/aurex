@@ -2,7 +2,7 @@ module strraw_return_local;
 
 unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
-    return strraw(sliceptr(bytes[:]), slicelen(bytes[:]));
+    return strraw(bytes[:].ptr, bytes[:].len);
 }
 
 fn main() -> i32 {

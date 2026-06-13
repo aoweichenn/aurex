@@ -388,6 +388,7 @@ public:
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
         std::span<const syntax::ExprId> args{};
         std::span<const syntax::CallArgLabelDecl> arg_labels{};
+        std::span<const syntax::LambdaCaptureDecl> lambda_captures{};
         std::span<const syntax::ParamDecl> lambda_params{};
         syntax::TypeId lambda_return_type = syntax::INVALID_TYPE_ID;
         syntax::StmtId lambda_body = syntax::INVALID_STMT_ID;

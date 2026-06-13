@@ -3,6 +3,9 @@
 日期：2026-05-11
 状态：M2 语法审计与设计建议
 
+M27c 之后的语法易用性、审美和打字成本问题，见
+[`m27c-syntax-ergonomics-review.md`](m27c-syntax-ergonomics-review.md)。本文保留为 M2 阶段的历史语法审计基线。
+
 本文基于当前工作区代码与样例整理，重点阅读范围包括：
 
 - `include/aurex/frontend/syntax/core/token.hpp`

@@ -15,6 +15,7 @@ constexpr base::usize QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT = 7U;
 constexpr base::usize QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT = 10U;
 constexpr base::usize QUERY_TEST_M27B_MACRO_EXPANSION_FACT_COUNT = 13U;
 constexpr base::usize QUERY_TEST_M27C_MACRO_EXPANSION_FACT_COUNT = 16U;
+constexpr base::usize QUERY_TEST_M27D_MACRO_EXPANSION_FACT_COUNT = 19U;
 
 [[nodiscard]] const query::MacroExpansionFact* find_fact(
     const query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
@@ -84,6 +85,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
                   query::MacroExpansionFactKind::aurex_user_derive_target_schema_admission),
         "aurex_user_derive_target_schema_admission");
     EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_output_contract_admission),
+        "aurex_macro_output_contract_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_output_declared_name_policy_admission),
+        "aurex_macro_output_declared_name_policy_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission),
+        "aurex_macro_output_diagnostic_projection_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
                   static_cast<query::MacroExpansionFactKind>(QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)),
         "invalid");
 
@@ -135,6 +145,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::macro_expansion_policy_name(
                   query::MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1),
         "aurex_macro_debuggable_diagnostic_anchor_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_output_contract_admission_v1),
+        "aurex_macro_output_contract_admission_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_output_declared_name_policy_admission_v1),
+        "aurex_macro_output_declared_name_policy_admission_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_output_diagnostic_projection_admission_v1),
+        "aurex_macro_output_diagnostic_projection_admission_v1");
     EXPECT_EQ(query::macro_expansion_policy_name(
                   static_cast<query::MacroExpansionPolicy>(QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY)),
         "invalid");
@@ -602,6 +621,134 @@ TEST(QueryUnit, MacroExpansionPlanM27cValidationRejectsCallSiteAdmissionDrift)
     duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
     duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
     EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(duplicate_kind));
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27dPinsOutputContractAdmission)
+{
+    const query::MacroExpansionPlan plan = query::m27d_macro_expansion_plan_baseline();
+
+    ASSERT_EQ(plan.name, "M27d Aurex Macro Output Contract Admission Plan");
+    ASSERT_EQ(plan.facts.size(), QUERY_TEST_M27D_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_FALSE(query::is_valid(plan));
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(plan));
+    EXPECT_TRUE(query::is_valid_m27d_macro_expansion_plan(plan));
+    EXPECT_EQ(plan.fingerprint, query::macro_expansion_plan_fingerprint(plan));
+
+    const query::MacroExpansionSummary summary = query::summarize_macro_expansion_plan_counts(plan);
+    EXPECT_EQ(summary.fact_count, QUERY_TEST_M27D_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_EQ(summary.aurex_macro_call_site_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_matcher_to_call_binding_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_user_derive_target_schema_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_output_contract_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_output_declared_name_policy_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_output_diagnostic_projection_admission_count, 1U);
+    EXPECT_EQ(summary.user_generated_code_count, 0U);
+    EXPECT_EQ(summary.standard_library_required_count, 0U);
+    EXPECT_EQ(summary.runtime_required_count, 0U);
+    EXPECT_EQ(summary.external_process_required_count, 1U);
+
+    const std::array<query::MacroExpansionFactKind, 3U> m27d_kinds{
+        query::MacroExpansionFactKind::aurex_macro_output_contract_admission,
+        query::MacroExpansionFactKind::aurex_macro_output_declared_name_policy_admission,
+        query::MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission,
+    };
+    for (const query::MacroExpansionFactKind kind : m27d_kinds) {
+        const query::MacroExpansionFact* const fact = find_fact(plan, kind);
+        ASSERT_NE(fact, nullptr);
+        EXPECT_TRUE(fact->consumes_attribute_token_tree);
+        EXPECT_TRUE(fact->requires_query_key);
+        EXPECT_TRUE(fact->requires_generated_module_part);
+        EXPECT_TRUE(fact->uses_generated_source_role);
+        EXPECT_TRUE(fact->uses_generated_module_part_kind);
+        EXPECT_TRUE(fact->requires_source_map);
+        EXPECT_TRUE(fact->requires_hygiene);
+        EXPECT_FALSE(fact->produces_user_generated_code);
+        EXPECT_FALSE(fact->standard_library_required);
+        EXPECT_FALSE(fact->runtime_required);
+        EXPECT_FALSE(fact->external_process_required);
+        EXPECT_TRUE(fact->blocks_unimplemented_item_attribute);
+    }
+
+    const std::string summary_text = query::summarize_macro_expansion_plan(plan);
+    EXPECT_NE(summary_text.find("facts=19"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_output_contracts=1"), std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_output_declared_name_policies=1"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_output_diagnostic_projections=1"),
+        std::string::npos)
+        << summary_text;
+
+    const std::string dump = query::dump_macro_expansion_plan(plan);
+    EXPECT_NE(dump.find("kind=aurex_macro_output_contract_admission"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_macro_output_declared_name_policy_admission"),
+        std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_macro_output_diagnostic_projection_admission"),
+        std::string::npos)
+        << dump;
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27dValidationRejectsOutputContractDrift)
+{
+    const query::MacroExpansionPlan plan = query::m27d_macro_expansion_plan_baseline();
+    ASSERT_TRUE(query::is_valid_m27d_macro_expansion_plan(plan));
+
+    query::MacroExpansionPlan missing_output_fact = plan;
+    missing_output_fact.facts.pop_back();
+    missing_output_fact.summary = query::summarize_macro_expansion_plan_counts(missing_output_fact);
+    missing_output_fact.fingerprint = query::macro_expansion_plan_fingerprint(missing_output_fact);
+    EXPECT_FALSE(query::is_valid_m27d_macro_expansion_plan(missing_output_fact));
+
+    query::MacroExpansionPlan generated_user_code = plan;
+    query::MacroExpansionFact* const output_contract =
+        find_fact(generated_user_code,
+            query::MacroExpansionFactKind::aurex_macro_output_contract_admission);
+    ASSERT_NE(output_contract, nullptr);
+    output_contract->produces_user_generated_code = true;
+    generated_user_code.summary = query::summarize_macro_expansion_plan_counts(generated_user_code);
+    generated_user_code.fingerprint = query::macro_expansion_plan_fingerprint(generated_user_code);
+    EXPECT_FALSE(query::is_valid_m27d_macro_expansion_plan(generated_user_code));
+
+    query::MacroExpansionPlan runtime_declared_names = plan;
+    query::MacroExpansionFact* const declared_name_policy =
+        find_fact(runtime_declared_names,
+            query::MacroExpansionFactKind::aurex_macro_output_declared_name_policy_admission);
+    ASSERT_NE(declared_name_policy, nullptr);
+    declared_name_policy->runtime_required = true;
+    runtime_declared_names.summary =
+        query::summarize_macro_expansion_plan_counts(runtime_declared_names);
+    runtime_declared_names.fingerprint =
+        query::macro_expansion_plan_fingerprint(runtime_declared_names);
+    EXPECT_FALSE(query::is_valid_m27d_macro_expansion_plan(runtime_declared_names));
+
+    query::MacroExpansionPlan missing_generated_role = plan;
+    query::MacroExpansionFact* const diagnostic_projection =
+        find_fact(missing_generated_role,
+            query::MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission);
+    ASSERT_NE(diagnostic_projection, nullptr);
+    diagnostic_projection->uses_generated_source_role = false;
+    missing_generated_role.summary =
+        query::summarize_macro_expansion_plan_counts(missing_generated_role);
+    missing_generated_role.fingerprint =
+        query::macro_expansion_plan_fingerprint(missing_generated_role);
+    EXPECT_FALSE(query::is_valid_m27d_macro_expansion_plan(missing_generated_role));
+
+    query::MacroExpansionPlan duplicate_kind = plan;
+    query::MacroExpansionFact* const diagnostic_duplicate =
+        find_fact(duplicate_kind,
+            query::MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission);
+    ASSERT_NE(diagnostic_duplicate, nullptr);
+    diagnostic_duplicate->kind =
+        query::MacroExpansionFactKind::aurex_macro_output_contract_admission;
+    duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
+    duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
+    EXPECT_FALSE(query::is_valid_m27d_macro_expansion_plan(duplicate_kind));
 }
 
 } // namespace aurex::test

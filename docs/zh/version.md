@@ -1,5 +1,103 @@
 # 版本文档
 
+## M27d Aurex Macro Output Contract Admission
+
+当前版本在 M27c Aurex Macro Call-Site And User Derive Target Schema Admission 之后，完成宏输出契约的
+admission。它不是 `macro_rules!` 移植，也不是完整 proc-macro。本阶段只让 early expansion boundary 为后续宏输出
+建立 compiler-owned token buffer identity、generated module part key、declared-name policy 和 diagnostic projection；
+不会生成 token、展开、执行、消费 parser 或修改 AST。
+
+新增或固定：
+
+- 新增 `frontend::macro::AurexMacroOutputContractOriginKind`。
+- 新增 `frontend::macro::AurexMacroOutputContractAdmissionGate`。
+- 新增 `frontend::macro::AurexMacroOutputDeclaredNamePolicyAdmissionGate`。
+- 新增 `frontend::macro::AurexMacroOutputDiagnosticProjectionAdmissionGate`。
+- 新增 `include/aurex/frontend/macro/output_contract_types.hpp`，只承载 M27d 输出契约类型。
+- 新增 `include/aurex/frontend/macro/output_contract_admission.hpp`，只暴露 M27d 收集、校验、summary、fingerprint 和 dump API。
+- 新增 `src/frontend/macro/sources/output_contract/collector.cpp`。
+- 新增 `src/frontend/macro/sources/output_contract/identity.cpp`。
+- 新增 `src/frontend/macro/sources/output_contract/validation.cpp`。
+- 新增 `src/frontend/macro/sources/output_contract/summary.cpp`。
+- 新增 `src/frontend/macro/sources/output_contract/fingerprint.cpp`。
+- 新增 `src/frontend/macro/sources/output_contract/dump.cpp`。
+- 新增私有 detail 头 `src/frontend/macro/detail/output_contract/output_contract_admission_detail.hpp`。
+- `expand_early_item_macros_noop()` 会为每个 `AurexMacroMatcherToCallBindingAdmissionGate` 生成一个 output contract。
+- `expand_early_item_macros_noop()` 会为每个 `AurexUserDeriveTargetSchemaAdmissionGate` 生成一个 output contract。
+- 每个 output contract 同步生成一个 declared-name policy gate。
+- 每个 output contract 同步生成一个 diagnostic projection gate。
+- Output contract query name 固定为
+  `m27d-aurex-macro-output-contract:<module>:<part>:<consumer-item>:<macro-item>:<output>:<name>`。
+- Future token buffer name 固定为
+  `m27d-output-buffer:<module>:<part>:<consumer-item>:<macro-item>:<output>:<name>`。
+- Declared-name policy query name 固定为
+  `m27d-aurex-macro-output-declared-name-policy:<module>:<part>:<consumer-item>:<macro-item>:<output>:<name>`。
+- Diagnostic projection query name 固定为
+  `m27d-aurex-macro-output-diagnostic:<module>:<part>:<consumer-item>:<macro-item>:<output>:<name>`。
+- Output contract policy 固定为 `aurex_macro_output_contract_admission_v1`。
+- Declared-name policy 固定为 `aurex_macro_output_declared_name_policy_admission_v1`。
+- Diagnostic projection policy 固定为 `aurex_macro_output_diagnostic_projection_admission_v1`。
+- Output contract blocker 固定为 `Aurex macro output contract is admission-only in M27d`。
+- Parser blocker 固定为 `Aurex macro output parser consumption remains blocked in M27d`。
+- Declared-name blocker 固定为
+  `Aurex macro output declared names are hidden from lookup/export/sema in M27d`。
+- Diagnostic blocker 固定为
+  `Aurex macro output diagnostics are projected but parser emission remains blocked in M27d`。
+- Summary / dump / fingerprint 新增 `aurex_macro_output_contracts`。
+- Summary / dump / fingerprint 新增 `aurex_macro_output_contract_call_bindings`。
+- Summary / dump / fingerprint 新增 `aurex_macro_output_contract_user_derives`。
+- Summary / dump / fingerprint 新增 `aurex_macro_output_declared_name_policies`。
+- Summary / dump / fingerprint 新增 `aurex_macro_output_diagnostic_projections`。
+- Summary / dump / fingerprint 新增 declared-name lookup/export/sema visibility 计数，并保持为 0。
+- Summary / dump / fingerprint 新增 diagnostic emission enabled 计数，并保持为 0。
+- Validation 拒绝 output contract 数量与 M27c binding/schema 输入不匹配。
+- Validation 拒绝 declared-name policy 或 diagnostic projection 缺失。
+- Validation 拒绝 token buffer identity、output contract identity、declared-name policy identity 或 diagnostic projection
+  identity 漂移。
+- Validation 拒绝 generated part 不是 `SourceRole::generated` / `ModulePartKind::generated`。
+- Validation 拒绝 generated source text、parser consumption、AST mutation、sema-visible generated item、declared name
+  lookup/export/sema visibility、diagnostic emission、standard library/runtime/external process requirement 或 user
+  generated code 被打开。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_output_contract_admission`。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_output_declared_name_policy_admission`。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_output_contract_admission_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_output_declared_name_policy_admission_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_output_diagnostic_projection_admission_v1`。
+- Query 层新增 `m27d_macro_expansion_plan_baseline()`。
+- Query 层新增 `is_valid_m27d_macro_expansion_plan()`。
+- M27d plan 固定为 M27c 十六个 facts 加三类 output contract / declared-name policy / diagnostic projection facts，
+  共 19 个 facts。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- Rust `macro_rules!`。
+- `$matcher` / `$($x:expr),*`。
+- 文本替换宏。
+- 真实宏展开。
+- 用户自定义 derive lowering。
+- 编译期宏代码执行。
+- external procedural macro 执行。
+- typed expression macro。
+- expression macro / statement macro。
+- generated source text。
+- generated module part parse / merge。
+- parser consumption。
+- AST mutation。
+- sema-visible generated item。
+- declared generated names lookup/export/sema visibility。
+- macro-generated user code lowering。
+- 真实 hygiene resolution。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+- macro output parser consumption remains blocked in M27d。
+- macro output declared names are hidden from lookup/export/sema in M27d。
+- macro output diagnostics are projected but parser emission remains blocked in M27d。
+- 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
 ## M27c Aurex Macro Call-Site And User Derive Target Schema Admission
 
 当前版本在 M27b Aurex Typed Matcher And Definition-Site Hygiene Admission 之后，完成 Aurex 宏调用点和用户

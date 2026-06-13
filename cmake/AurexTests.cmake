@@ -70,6 +70,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/syntax/ast_dump_tests.cpp
         tests/gtest/frontend/lex/lexer_tests.cpp
         tests/gtest/frontend/macro/early_item_expansion_tests.cpp
+        tests/gtest/frontend/macro/output_contract_admission_tests.cpp
         tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
         tests/gtest/frontend/parse/parser_tests.cpp
         tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
@@ -130,6 +131,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/parse/randomized_frontend_tests.cpp
             tests/gtest/frontend/lex/lexer_tests.cpp
             tests/gtest/frontend/macro/early_item_expansion_tests.cpp
+            tests/gtest/frontend/macro/output_contract_admission_tests.cpp
             tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
             tests/gtest/frontend/parse/parser_tests.cpp
             tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp

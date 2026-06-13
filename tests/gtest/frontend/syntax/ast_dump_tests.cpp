@@ -293,13 +293,44 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     macro_item.range = range;
     const syntax::ItemId macro_id = items.append(macro_item);
 
+    syntax::ItemNode macro_call_item;
+    macro_call_item.kind = syntax::ItemKind::macro_call;
+    macro_call_item.name = "Make";
+    macro_call_item.name_id = syntax::IdentId{16U};
+    macro_call_item.macro_call_tokens = items.make_list<syntax::AttributeTokenDecl>();
+    macro_call_item.macro_call_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::l_brace,
+        "{",
+        range,
+        0U,
+        syntax::AttributeTokenTreeGroupKind::brace,
+    });
+    macro_call_item.macro_call_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::integer_literal,
+        "1",
+        range,
+        1U,
+        syntax::AttributeTokenTreeGroupKind::none,
+    });
+    macro_call_item.macro_call_tokens.push_back(syntax::AttributeTokenDecl{
+        syntax::TokenKind::r_brace,
+        "}",
+        range,
+        0U,
+        syntax::AttributeTokenTreeGroupKind::brace,
+    });
+    macro_call_item.macro_call_range = range;
+    macro_call_item.macro_call_balanced = true;
+    macro_call_item.range = range;
+    const syntax::ItemId macro_call_id = items.append(macro_call_item);
+
     syntax::ItemNode unknown_item;
     unknown_item.kind = static_cast<syntax::ItemKind>(99);
     unknown_item.name = "unknown";
     unknown_item.range = range;
     const syntax::ItemId unknown_id = items.append(unknown_item);
 
-    ASSERT_EQ(items.size(), 11U);
+    ASSERT_EQ(items.size(), 12U);
     const syntax::ItemNodeList copied(items);
     EXPECT_EQ(copied[const_id.value].name, "ANSWER");
     EXPECT_EQ(copied[alias_id.value].where_constraints.front().capability_names.front(), "Reader");
@@ -323,6 +354,13 @@ TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
     EXPECT_EQ(copied[macro_id.value].macro_body_range.begin, range.begin);
     EXPECT_EQ(copied[macro_id.value].macro_match_clause_count, 1U);
     EXPECT_TRUE(copied[macro_id.value].macro_body_balanced);
+    EXPECT_EQ(copied[macro_call_id.value].kind, syntax::ItemKind::macro_call);
+    EXPECT_EQ(copied[macro_call_id.value].name, "Make");
+    EXPECT_EQ(copied[macro_call_id.value].name_id, syntax::IdentId{16U});
+    EXPECT_EQ(copied[macro_call_id.value].macro_call_tokens.size(), 3U);
+    EXPECT_EQ(copied[macro_call_id.value].macro_call_tokens[1].text, "1");
+    EXPECT_EQ(copied[macro_call_id.value].macro_call_range.begin, range.begin);
+    EXPECT_TRUE(copied[macro_call_id.value].macro_call_balanced);
     EXPECT_EQ(copied[unknown_id.value].name, "unknown");
 
     const syntax::ItemNode* const materialized_opaque = copied.ptr(opaque_id.value);

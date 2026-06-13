@@ -1,10 +1,54 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M27 Aurex Macro Surface Admission
+阶段：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
 附加阶段：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission
+历史阶段锚点：阶段：M27 Aurex Macro Surface Admission
 
 ## 总体状态
+
+2026-06-13：M27c Aurex Macro Call-Site And User Derive Target Schema Admission 已完成。本阶段仍不实现标准库、
+runtime helper、external procedural macro、typed expression macro、真实用户自定义 derive lowering、真实用户宏展开、
+用户编译期代码执行、文本替换宏、真实 hygiene resolution、真实 expansion source map、debug trace CLI、
+`--emit-expanded`、generated source text、generated module part parse / merge、declared generated names lookup、
+generated item visibility / export、parser-consumable generated token buffer、parser consumption execution、real
+parser dry-run execution、AST mutation 或 macro-generated user code lowering；它只把 item-level macro call-site、
+matcher-to-call binding 和 user derive target schema 固定为可验证 admission facts。
+
+新增 `ItemKind::macro_call`、`MacroCallItemPayload`、`ItemNode::macro_call_tokens`、
+`ItemNode::macro_call_range` 和 `ItemNode::macro_call_balanced`。Parser 现在支持 `macro call Name { ... }`，
+把调用体保存为 flat token tree；AST dump 输出 `macro_call ... call_tokens=... balanced=yes/no` 和
+`macro_call_body`；tooling session 将该 item 投影为 `macro_call`，IDE symbol metadata 不把 call-site 当成 stable
+definition。`expand_early_item_macros_noop()` 会为每个 macro call 生成
+`AurexMacroCallSiteAdmissionGate`，并在同模块同名 macro surface 存在时生成
+`AurexMacroMatcherToCallBindingAdmissionGate`；binding 当前只连接第一个 recognized typed matcher，不执行 matcher。
+如果 `#[derive(Name)]` 匹配同模块 `macro derive Name { ... }`，会生成
+`AurexUserDeriveTargetSchemaAdmissionGate`，记录 target kind、struct field count、enum case count 和 enum payload
+count。
+
+Summary / dump / fingerprint 新增 `aurex_macro_call_site_source_items`、
+`aurex_macro_call_site_admissions`、`aurex_macro_call_site_targets_declared`、
+`aurex_macro_call_site_balanced`、`aurex_macro_call_site_expansion_enabled`、
+`aurex_macro_matcher_to_call_bindings`、`aurex_macro_matcher_to_call_bindings_admitted`、
+`aurex_user_derive_target_schema_source_derives`、`aurex_user_derive_target_schemas`、
+`aurex_user_derive_target_schema_structs`、`aurex_user_derive_target_schema_enums`、
+`aurex_user_derive_target_schema_fields`、`aurex_user_derive_target_schema_enum_cases` 和
+`aurex_user_derive_target_schema_enum_payloads`。Validation 会拒绝 macro call source item / gate 数不匹配、
+已声明目标的 call-site 缺少 binding、binding 串错 call identity / surface identity / matcher identity、user
+derive schema 源计数与 gate 数不匹配、schema 串错 derive surface、identity/query 漂移、parser consumption、AST
+mutation、standard library、runtime、external process 或 user generated code 被打开。macro call-site expansion is
+admission-only in M27c；matcher-to-call binding execution is admission-only in M27c；user derive target schema is
+admission-only in M27c；仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+稳定 blocker 文案：macro call-site expansion is admission-only in M27c；matcher-to-call binding execution is admission-only in M27c；user derive target schema is admission-only in M27c。
+
+Query 层新增 `aurex_macro_call_site_admission`、
+`aurex_macro_matcher_to_call_binding_admission` 和 `aurex_user_derive_target_schema_admission` 三类
+`MacroExpansionFactKind`，对应 `aurex_macro_call_site_admission_v1`、
+`aurex_macro_matcher_to_call_binding_admission_v1` 和 `aurex_user_derive_target_schema_admission_v1` policy，并新增
+`m27c_macro_expansion_plan_baseline()` 与 `is_valid_m27c_macro_expansion_plan()`。M27c plan 在 M27b 十三个 facts 上叠加
+三类 call-site / matcher binding / user derive target schema facts，共 16 个 facts；默认 early expansion 仍兼容
+M21c baseline，不替换 M21-M26 builtin derive 链条。新增说明见
+[Aurex M27 Aurex Macro Surface Admission](m27-aurex-macro-surface-admission.md)。
 
 2026-06-13：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission 已完成。本阶段仍不实现标准库、
 runtime helper、external procedural macro、typed expression macro、真实用户自定义 derive lowering、真实用户宏展开、

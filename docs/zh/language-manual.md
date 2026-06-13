@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
 日期：2026-06-13
-阶段：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission，建立在 M27 Aurex Macro Surface Admission、M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure、M20d Runtime Lowering ABI Design Closure、M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+阶段：M27c Aurex Macro Call-Site And User Derive Target Schema Admission，建立在 M27b Aurex Typed Matcher And Definition-Site Hygiene Admission、M27 Aurex Macro Surface Admission、M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure、M20d Runtime Lowering ABI Design Closure、M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -49,10 +49,12 @@ A | B         表示二选一
 - 使用泛型函数、泛型类型、泛型 impl、method-local impl 泛型、`where` capability、nominal static trait、default trait method、associated type 和 associated-type equality。
 - 使用内建 item derive 属性：`#[derive(Copy, Eq, Hash)]` 可写在 `struct` / `enum` 上，生成 checked capability facts；
   它不是完整宏系统，也不生成标准库方法。
-- 使用 M27/M27b admission-only 宏声明表面：`macro Name { ... }`、`macro derive Name { ... }` 和
+- 使用 M27/M27b/M27c admission-only 宏声明与调用表面：`macro Name { ... }`、`macro derive Name { ... }`、
   `macro const Name { ... }` 可被 parser/AST/query/early expansion boundary 索引；顶层
   `match expr_list(xs) -> { xs }`、`match item(target) -> { target }` 和
-  `match tokens(input) -> { input }` 会形成 typed matcher admission facts，但不会展开、执行或交给 parser。
+  `match tokens(input) -> { input }` 会形成 typed matcher admission facts；`macro call Name { ... }` 会形成
+  call-site admission facts；匹配 `macro derive Name` 的 `#[derive(Name)]` 会形成 user derive target schema
+  admission facts，但不会展开、执行或交给 parser。
 - 使用 direct supertrait declaration：`trait Child: Parent` 和 `trait Child[T]: Parent[T]` 会进入 checked
   supertrait graph，impl 会检查 parent evidence，duplicate/cycle/private leak 会被诊断。
 - 使用 borrowed dyn trait view：`&dyn Trait`、`&mut dyn Trait` 和 `dyn Trait[Assoc = Type]`，在 checked
@@ -906,16 +908,19 @@ struct Box[T] where T: Eq + Hash {
   `Box[f64]` 满足 `Eq`。
 - 完整 macro、proc-macro、用户自定义 derive、derive 代码生成、`Clone`、`Ord` 派生和标准库 trait 派生都未实现。
 
-### 6.7 Aurex macro 声明表面
+### 6.7 Aurex macro 声明与调用表面
 
 M27 开始支持 Aurex 自己风格的宏声明 item。M27b 在这个表面之上新增 typed matcher admission 和
-definition-site hygiene admission。当前仍是 admission-only：parser、AST、dump、query 和 early expansion boundary
-能识别、索引、生成稳定 facts 并验证边界，宏体不会展开，也不会执行用户编译期代码。
+definition-site hygiene admission。M27c 继续新增 item-level macro call-site admission、matcher-to-call binding
+admission 和 user derive target schema admission。当前仍是 admission-only：parser、AST、dump、query 和 early
+expansion boundary 能识别、索引、生成稳定 facts 并验证边界，宏体不会展开，也不会执行用户编译期代码。
 
 ```text
 MacroDecl   = Visibility? "macro" MacroFlavor? Identifier MacroBody
 MacroFlavor = "derive" | "const"
 MacroBody   = "{" TokenTree* "}"
+MacroCall   = "macro" "call" Identifier MacroCallBody
+MacroCallBody = "{" TokenTree* "}"
 MacroMatcherAdmission = "match" MacroMatcherHead "(" Identifier ")" "->" "{" TokenTree* "}"
 MacroMatcherHead = "expr_list" | "item" | "tokens"
 ```
@@ -932,6 +937,13 @@ macro derive Inspect {
 macro const TokenBuild {
     match tokens(input) -> { input }
 }
+
+macro call VecBuilder {
+    1, nested(2, [3]), { value: 4 }
+}
+
+#[derive(Inspect)]
+struct Config { threads: i32; enabled: bool; }
 ```
 
 三种表面：
@@ -945,28 +957,49 @@ macro const TokenBuild {
   `AurexMacroTypedMatcherKind::item`。
 - `match tokens(input) -> { input }`：token stream matcher admission，当前只记录为
   `AurexMacroTypedMatcherKind::tokens`。
+- `macro call Name { ... }`：item-level macro call-site admission，当前只记录调用点 token tree 和 target surface
+  状态，不展开为 expression、statement 或 item。
+- `#[derive(Name)]` 匹配同模块 `macro derive Name { ... }` 时，当前只记录 user derive target schema admission。
 
 当前能做：
 
 - Parser 识别 `ItemKind::macro_decl`，并保存宏体 flat token tree。
+- Parser 识别 `ItemKind::macro_call`，并保存调用点 flat token tree。
 - AST 保存 `macro_body_tokens`、`macro_body_range`、`macro_match_clause_count` 和 `macro_body_balanced`。
+- AST 保存 `macro_call_tokens`、`macro_call_range` 和 `macro_call_balanced`。
 - AST dump 输出 `macro_kind=...`、`body_tokens=...`、`match_clauses=...`、`balanced=yes/no` 和 `macro_body`。
+- AST dump 输出 `macro_call ... call_tokens=... balanced=yes/no` 和 `macro_call_body`。
 - `macro.expand_items` 会为每个 macro item 生成 `AurexMacroSurfaceAdmissionGate`。
 - M27b 会为每个 macro item 生成 `AurexMacroDefinitionSiteHygieneAdmissionGate`。
 - M27b 会为每个顶层 `match` clause 生成 `AurexMacroTypedMatcherAdmissionGate`。
+- M27c 会为每个 `macro call Name { ... }` 生成 `AurexMacroCallSiteAdmissionGate`。
+- M27c 会为同模块同名 macro surface 的 call-site 生成 `AurexMacroMatcherToCallBindingAdmissionGate`。
+- M27c 会为匹配 `macro derive Name` 的 `#[derive(Name)]` 生成
+  `AurexUserDeriveTargetSchemaAdmissionGate`。
 - Summary/dump 会记录 `aurex_macro_definition_site_hygiene_gates`、
   `aurex_macro_typed_matcher_admissions`、`aurex_macro_expr_list_matchers`、
   `aurex_macro_item_matchers`、`aurex_macro_token_stream_matchers` 和
   `aurex_macro_unknown_matchers`。
+- Summary/dump 会记录 `aurex_macro_call_site_source_items`、`aurex_macro_call_site_admissions`、
+  `aurex_macro_matcher_to_call_bindings`、`aurex_user_derive_target_schema_source_derives` 和
+  `aurex_user_derive_target_schemas`。
 - Definition-site hygiene gate 会固定 definition-site mark、fresh name scope 和 diagnostic anchor identity，但
   definition-site hygiene resolution is admission-only in M27b。
 - Typed matcher gate 会固定 matcher fingerprint、matcher identity、binding name、output range、diagnostic anchor
   identity 和 matcher kind，但 typed matcher execution is admission-only in M27b。
+- Call-site gate 会固定 call token fingerprint、call identity、target declared state 和 diagnostic anchor identity，
+  但 macro call-site expansion is admission-only in M27c。
+- Matcher-to-call binding gate 会固定 call identity、surface identity、matcher identity 和 binding identity，但
+  matcher-to-call binding execution is admission-only in M27c。
+- User derive target schema gate 会固定 target schema fingerprint、schema identity、target kind、field count、
+  enum case count 和 enum payload count，但 user derive target schema is admission-only in M27c。
 - Query 层提供 `m27_macro_expansion_plan_baseline()`，固定 declarative / user derive / compile-time execution admission
   三类 facts。
 - Query 层提供 `m27b_macro_expansion_plan_baseline()`，固定
   `aurex_macro_typed_matcher_admission`、`aurex_macro_definition_site_hygiene_admission` 和
   `aurex_macro_debuggable_diagnostic_anchor` 三类 facts。
+- Query 层提供 `m27c_macro_expansion_plan_baseline()`，固定 `aurex_macro_call_site_admission`、
+  `aurex_macro_matcher_to_call_binding_admission` 和 `aurex_user_derive_target_schema_admission` 三类 facts。
 
 当前不能做：
 
@@ -974,16 +1007,20 @@ macro const TokenBuild {
 - 不支持 `$matcher` / `$($x:expr),*`。
 - 不执行宏展开。
 - 不执行 `macro const` 用户编译期代码。
+- 不执行 matcher-to-call binding。
 - 不把宏输出交给 parser。
 - 不 parse / merge generated module part。
 - 不修改 AST。
 - 不生成 sema-visible item。
 - 不生成用户代码。
+- 不执行 user derive lowering。
 - 不引入标准库、runtime helper 或 external process。
 - 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 `match ... -> ...` 已经从 M27 的 token hint 升级为 M27b 的结构化 admission fact，但还不是可执行 matcher DSL：
 它不会捕获调用点语法，不会生成 token buffer，不会进入 parser，也不会让 declared generated names 对 lookup 可见。
+`macro call Name { ... }` 已经从 M27c 开始成为可索引 item，但还不是表达式宏或语句宏；用户 derive target schema
+也只记录目标结构，不会生成 impl、方法或其它 sema-visible item。
 
 ### 6.8 Function
 

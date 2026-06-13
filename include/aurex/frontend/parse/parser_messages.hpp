@@ -78,6 +78,12 @@ inline constexpr std::string_view PARSER_EXPECT_MACRO_BODY = "expected '{' after
 
 inline constexpr std::string_view PARSER_EXPECT_MACRO_BODY_END = "expected '}' after macro body";
 
+inline constexpr std::string_view PARSER_EXPECT_MACRO_CALL_NAME = "expected macro call target name";
+
+inline constexpr std::string_view PARSER_EXPECT_MACRO_CALL_BODY = "expected '{' after macro call target";
+
+inline constexpr std::string_view PARSER_EXPECT_MACRO_CALL_BODY_END = "expected '}' after macro call body";
+
 inline constexpr std::string_view PARSER_VISIBILITY_PACKAGE_SCOPE_TEXT = "package";
 
 inline constexpr std::string_view PARSER_EXPECT_VISIBILITY_SCOPE = "expected visibility scope 'package'";

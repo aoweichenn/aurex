@@ -104,6 +104,7 @@ enum class ItemKind {
     extern_block,
     impl_block,
     macro_decl,
+    macro_call,
 };
 
 struct ItemNode {
@@ -140,6 +141,9 @@ struct ItemNode {
     base::SourceRange macro_body_range{};
     base::u64 macro_match_clause_count = 0;
     bool macro_body_balanced = false;
+    AstArenaVector<AttributeTokenDecl> macro_call_tokens;
+    base::SourceRange macro_call_range{};
+    bool macro_call_balanced = false;
     std::vector<TraitSupertraitDecl> trait_supertraits;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
@@ -260,6 +264,16 @@ struct MacroItemPayload {
     bool body_balanced = false;
 };
 
+struct MacroCallItemPayload {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<AttributeDecl> attributes;
+    AstArenaVector<DeriveDecl> derives;
+    AstArenaVector<AttributeTokenDecl> tokens;
+    base::SourceRange token_range{};
+    bool token_tree_balanced = false;
+};
+
 struct ItemNodePayloadArena {
     ItemNodePayloadArena() = default;
 
@@ -274,6 +288,7 @@ struct ItemNodePayloadArena {
           extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload>{arena}),
           impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload>{arena}),
           macros(base::BumpAllocatorAdapter<MacroItemPayload>{arena}),
+          macro_calls(base::BumpAllocatorAdapter<MacroCallItemPayload>{arena}),
           unknowns(base::BumpAllocatorAdapter<ItemNode>{arena})
     {
     }
@@ -290,6 +305,7 @@ struct ItemNodePayloadArena {
         this->extern_blocks.swap(other.extern_blocks);
         this->impl_blocks.swap(other.impl_blocks);
         this->macros.swap(other.macros);
+        this->macro_calls.swap(other.macro_calls);
         this->unknowns.swap(other.unknowns);
     }
 
@@ -303,6 +319,7 @@ struct ItemNodePayloadArena {
     AstArenaVector<ExternBlockItemPayload> extern_blocks;
     AstArenaVector<ImplBlockItemPayload> impl_blocks;
     AstArenaVector<MacroItemPayload> macros;
+    AstArenaVector<MacroCallItemPayload> macro_calls;
     AstArenaVector<ItemNode> unknowns;
 };
 

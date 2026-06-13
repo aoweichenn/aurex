@@ -75,7 +75,14 @@ private:
     [[nodiscard]] std::optional<syntax::EnumCaseDecl> parse_enum_case_decl();
     [[nodiscard]] bool recover_enum_case_separator() const;
     [[nodiscard]] syntax::ItemId parse_macro_decl();
-    void parse_macro_body_token_tree(syntax::ItemNode& item, const syntax::Token& opening);
+    [[nodiscard]] syntax::ItemId parse_macro_call_item(const syntax::Token& begin);
+    void parse_macro_token_tree(
+        syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+        base::SourceRange& token_range,
+        bool& token_tree_balanced,
+        const syntax::Token& opening,
+        std::string_view recovery_message,
+        base::u64* top_level_match_clause_count = nullptr);
     [[nodiscard]] std::vector<syntax::TraitSupertraitDecl> parse_optional_supertraits();
     [[nodiscard]] bool recover_supertrait_separator() const;
     [[nodiscard]] syntax::ItemId parse_trait_decl();

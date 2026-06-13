@@ -2418,6 +2418,42 @@ TEST(CoreUnit, ParserRecordsAurexMacroSurfaceDeclarations)
     expect_contains(ast, "macro_body { match expr_list");
 }
 
+TEST(CoreUnit, ParserRecordsAurexMacroCallSiteItems)
+{
+    constexpr std::string_view source =
+        "module parser.macro_call_site;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro call BuildVec {\n"
+        "  1, nested(2, [3]), { value: 4 }\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const call = find_item(module, "BuildVec");
+    ASSERT_NE(call, nullptr);
+
+    const syntax::ItemNode* call_item = nullptr;
+    for (base::usize i = 0; i < module.items.size(); ++i) {
+        const syntax::ItemNode* const item = module.items.ptr(i);
+        if (item != nullptr && item->kind == syntax::ItemKind::macro_call) {
+            call_item = item;
+            break;
+        }
+    }
+    ASSERT_NE(call_item, nullptr);
+    EXPECT_EQ(call_item->name, "BuildVec");
+    EXPECT_TRUE(call_item->macro_call_balanced);
+    ASSERT_GT(call_item->macro_call_tokens.size(), 0U);
+    EXPECT_EQ(call_item->macro_call_tokens.front().kind, syntax::TokenKind::l_brace);
+    EXPECT_EQ(call_item->macro_call_tokens.back().kind, syntax::TokenKind::r_brace);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "macro_call BuildVec call_tokens=");
+    expect_contains(ast, "balanced=yes");
+    expect_contains(ast, "macro_call_body { 1 , nested");
+}
+
 TEST(CoreUnit, ParserRejectsRustStyleMacroRulesSurface)
 {
     constexpr std::string_view source =

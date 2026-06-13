@@ -14,6 +14,7 @@ constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY = 233U;
 constexpr base::usize QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT = 7U;
 constexpr base::usize QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT = 10U;
 constexpr base::usize QUERY_TEST_M27B_MACRO_EXPANSION_FACT_COUNT = 13U;
+constexpr base::usize QUERY_TEST_M27C_MACRO_EXPANSION_FACT_COUNT = 16U;
 
 [[nodiscard]] const query::MacroExpansionFact* find_fact(
     const query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
@@ -73,6 +74,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::macro_expansion_fact_kind_name(
                   query::MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor),
         "aurex_macro_debuggable_diagnostic_anchor");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_call_site_admission),
+        "aurex_macro_call_site_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_matcher_to_call_binding_admission),
+        "aurex_macro_matcher_to_call_binding_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_user_derive_target_schema_admission),
+        "aurex_user_derive_target_schema_admission");
     EXPECT_EQ(query::macro_expansion_fact_kind_name(
                   static_cast<query::MacroExpansionFactKind>(QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)),
         "invalid");
@@ -487,6 +497,111 @@ TEST(QueryUnit, MacroExpansionPlanM27bValidationRejectsMatcherBoundaryDrift)
     duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
     duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
     EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(duplicate_kind));
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27cPinsCallSiteAndUserDeriveSchemaAdmission)
+{
+    const query::MacroExpansionPlan plan = query::m27c_macro_expansion_plan_baseline();
+
+    ASSERT_EQ(plan.name,
+        "M27c Aurex Macro Call-Site And User Derive Target Schema Admission Plan");
+    ASSERT_EQ(plan.facts.size(), QUERY_TEST_M27C_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_FALSE(query::is_valid(plan));
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(plan));
+    EXPECT_TRUE(query::is_valid_m27c_macro_expansion_plan(plan));
+    EXPECT_EQ(plan.fingerprint, query::macro_expansion_plan_fingerprint(plan));
+
+    const query::MacroExpansionSummary summary = query::summarize_macro_expansion_plan_counts(plan);
+    EXPECT_EQ(summary.fact_count, QUERY_TEST_M27C_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_EQ(summary.aurex_macro_call_site_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_matcher_to_call_binding_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_user_derive_target_schema_admission_count, 1U);
+    EXPECT_EQ(summary.user_generated_code_count, 0U);
+    EXPECT_EQ(summary.standard_library_required_count, 0U);
+    EXPECT_EQ(summary.runtime_required_count, 0U);
+    EXPECT_EQ(summary.external_process_required_count, 1U);
+
+    const std::array<query::MacroExpansionFactKind, 3U> m27c_kinds{
+        query::MacroExpansionFactKind::aurex_macro_call_site_admission,
+        query::MacroExpansionFactKind::aurex_macro_matcher_to_call_binding_admission,
+        query::MacroExpansionFactKind::aurex_user_derive_target_schema_admission,
+    };
+    for (const query::MacroExpansionFactKind kind : m27c_kinds) {
+        const query::MacroExpansionFact* const fact = find_fact(plan, kind);
+        ASSERT_NE(fact, nullptr);
+        EXPECT_TRUE(fact->consumes_attribute_token_tree);
+        EXPECT_TRUE(fact->requires_query_key);
+        EXPECT_TRUE(fact->requires_source_map);
+        EXPECT_TRUE(fact->requires_hygiene);
+        EXPECT_FALSE(fact->requires_generated_module_part);
+        EXPECT_FALSE(fact->produces_user_generated_code);
+        EXPECT_FALSE(fact->standard_library_required);
+        EXPECT_FALSE(fact->runtime_required);
+        EXPECT_FALSE(fact->external_process_required);
+        EXPECT_TRUE(fact->blocks_unimplemented_item_attribute);
+    }
+
+    const std::string summary_text = query::summarize_macro_expansion_plan(plan);
+    EXPECT_NE(summary_text.find("facts=16"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_call_site_admissions=1"), std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_matcher_to_call_bindings=1"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_user_derive_target_schemas=1"), std::string::npos)
+        << summary_text;
+
+    const std::string dump = query::dump_macro_expansion_plan(plan);
+    EXPECT_NE(dump.find("kind=aurex_macro_call_site_admission"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_macro_matcher_to_call_binding_admission"),
+        std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_user_derive_target_schema_admission"),
+        std::string::npos)
+        << dump;
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27cValidationRejectsCallSiteAdmissionDrift)
+{
+    const query::MacroExpansionPlan plan = query::m27c_macro_expansion_plan_baseline();
+    ASSERT_TRUE(query::is_valid_m27c_macro_expansion_plan(plan));
+
+    query::MacroExpansionPlan missing_schema = plan;
+    missing_schema.facts.pop_back();
+    missing_schema.summary = query::summarize_macro_expansion_plan_counts(missing_schema);
+    missing_schema.fingerprint = query::macro_expansion_plan_fingerprint(missing_schema);
+    EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(missing_schema));
+
+    query::MacroExpansionPlan executable_call = plan;
+    query::MacroExpansionFact* const call_site =
+        find_fact(executable_call, query::MacroExpansionFactKind::aurex_macro_call_site_admission);
+    ASSERT_NE(call_site, nullptr);
+    call_site->produces_user_generated_code = true;
+    executable_call.summary = query::summarize_macro_expansion_plan_counts(executable_call);
+    executable_call.fingerprint = query::macro_expansion_plan_fingerprint(executable_call);
+    EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(executable_call));
+
+    query::MacroExpansionPlan runtime_schema = plan;
+    query::MacroExpansionFact* const schema =
+        find_fact(runtime_schema, query::MacroExpansionFactKind::aurex_user_derive_target_schema_admission);
+    ASSERT_NE(schema, nullptr);
+    schema->runtime_required = true;
+    runtime_schema.summary = query::summarize_macro_expansion_plan_counts(runtime_schema);
+    runtime_schema.fingerprint = query::macro_expansion_plan_fingerprint(runtime_schema);
+    EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(runtime_schema));
+
+    query::MacroExpansionPlan duplicate_kind = plan;
+    query::MacroExpansionFact* const binding =
+        find_fact(duplicate_kind,
+            query::MacroExpansionFactKind::aurex_macro_matcher_to_call_binding_admission);
+    ASSERT_NE(binding, nullptr);
+    binding->kind = query::MacroExpansionFactKind::aurex_macro_call_site_admission;
+    duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
+    duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
+    EXPECT_FALSE(query::is_valid_m27c_macro_expansion_plan(duplicate_kind));
 }
 
 } // namespace aurex::test

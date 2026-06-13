@@ -486,6 +486,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         case syntax::ItemKind::extern_block:
         case syntax::ItemKind::impl_block:
         case syntax::ItemKind::macro_decl:
+        case syntax::ItemKind::macro_call:
             return std::nullopt;
     }
     return std::nullopt;
@@ -507,6 +508,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         case syntax::ItemKind::extern_block:
         case syntax::ItemKind::impl_block:
         case syntax::ItemKind::macro_decl:
+        case syntax::ItemKind::macro_call:
             return query::StableSymbolKind::invalid;
     }
     return query::StableSymbolKind::invalid;

@@ -23,6 +23,9 @@ enum class MacroExpansionFactKind : base::u8 {
     aurex_macro_typed_matcher_admission,
     aurex_macro_definition_site_hygiene_admission,
     aurex_macro_debuggable_diagnostic_anchor,
+    aurex_macro_call_site_admission,
+    aurex_macro_matcher_to_call_binding_admission,
+    aurex_user_derive_target_schema_admission,
 };
 
 enum class MacroExpansionStage : base::u8 {
@@ -47,6 +50,9 @@ enum class MacroExpansionPolicy : base::u8 {
     aurex_macro_typed_matcher_admission_v1,
     aurex_macro_definition_site_hygiene_admission_v1,
     aurex_macro_debuggable_diagnostic_anchor_v1,
+    aurex_macro_call_site_admission_v1,
+    aurex_macro_matcher_to_call_binding_admission_v1,
+    aurex_user_derive_target_schema_admission_v1,
 };
 
 struct MacroExpansionFact {
@@ -90,6 +96,9 @@ struct MacroExpansionSummary {
     base::u64 aurex_macro_typed_matcher_admission_count = 0;
     base::u64 aurex_macro_definition_site_hygiene_admission_count = 0;
     base::u64 aurex_macro_debuggable_diagnostic_anchor_count = 0;
+    base::u64 aurex_macro_call_site_admission_count = 0;
+    base::u64 aurex_macro_matcher_to_call_binding_admission_count = 0;
+    base::u64 aurex_user_derive_target_schema_admission_count = 0;
     base::u64 attribute_decl_input_count = 0;
     base::u64 token_tree_input_count = 0;
     base::u64 generated_source_role_count = 0;
@@ -121,6 +130,7 @@ struct MacroExpansionPlan {
 [[nodiscard]] bool is_valid_m21c_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept;
 [[nodiscard]] bool is_valid_m27_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept;
 [[nodiscard]] bool is_valid_m27b_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept;
+[[nodiscard]] bool is_valid_m27c_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept;
 
 void record_macro_expansion_fact(MacroExpansionPlan& plan, MacroExpansionFact fact);
 
@@ -133,6 +143,7 @@ void record_macro_expansion_fact(MacroExpansionPlan& plan, MacroExpansionFact fa
 [[nodiscard]] MacroExpansionPlan m21c_macro_expansion_plan_baseline();
 [[nodiscard]] MacroExpansionPlan m27_macro_expansion_plan_baseline();
 [[nodiscard]] MacroExpansionPlan m27b_macro_expansion_plan_baseline();
+[[nodiscard]] MacroExpansionPlan m27c_macro_expansion_plan_baseline();
 
 [[nodiscard]] std::string_view m21c_item_attribute_macro_unimplemented_prefix() noexcept;
 [[nodiscard]] std::string m21c_item_attribute_macro_unimplemented_message(

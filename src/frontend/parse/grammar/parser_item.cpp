@@ -12,6 +12,7 @@ namespace {
 using syntax::TokenKind;
 
 constexpr std::string_view PARSER_MACRO_CONTEXTUAL_KEYWORD_TEXT = "macro";
+constexpr std::string_view PARSER_MACRO_CALL_CONTEXTUAL_KEYWORD_TEXT = "call";
 constexpr std::string_view PARSER_MACRO_DERIVE_CONTEXTUAL_KEYWORD_TEXT = "derive";
 constexpr std::string_view PARSER_MACRO_MATCH_CLAUSE_KEYWORD_TEXT = "match";
 
@@ -472,6 +473,10 @@ syntax::ItemId ItemParser::parse_type_alias_decl()
 syntax::ItemId ItemParser::parse_macro_decl()
 {
     const syntax::Token& begin = this->advance();
+    if (token_is_contextual_keyword(this->peek(), PARSER_MACRO_CALL_CONTEXTUAL_KEYWORD_TEXT)) {
+        return this->parse_macro_call_item(begin);
+    }
+
     syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
     if (token_is_contextual_keyword(this->peek(), PARSER_MACRO_DERIVE_CONTEXTUAL_KEYWORD_TEXT)) {
         macro_kind = syntax::MacroDeclKind::derive;
@@ -493,7 +498,12 @@ syntax::ItemId ItemParser::parse_macro_decl()
     item.macro_body_range = body_start.range;
 
     if (body_start.kind == TokenKind::l_brace) {
-        this->parse_macro_body_token_tree(item, body_start);
+        this->parse_macro_token_tree(item.macro_body_tokens,
+            item.macro_body_range,
+            item.macro_body_balanced,
+            body_start,
+            PARSER_EXPECT_MACRO_BODY_END,
+            &item.macro_match_clause_count);
     }
 
     item.range = this->merge(begin.range, this->previous().range);
@@ -501,13 +511,45 @@ syntax::ItemId ItemParser::parse_macro_decl()
     return this->session_.module.push_item(std::move(item));
 }
 
-void ItemParser::parse_macro_body_token_tree(syntax::ItemNode& item, const syntax::Token& opening)
+syntax::ItemId ItemParser::parse_macro_call_item(const syntax::Token& begin)
+{
+    this->advance();
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_MACRO_CALL_NAME));
+    const syntax::Token& body_start =
+        this->expect_recovered(TokenKind::l_brace, std::string(PARSER_EXPECT_MACRO_CALL_BODY), RecoveryContext::block_start);
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::macro_call;
+    item.name = name.text();
+    item.macro_call_tokens = this->session_.module.items.make_list<syntax::AttributeTokenDecl>();
+    item.macro_call_range = body_start.range;
+
+    if (body_start.kind == TokenKind::l_brace) {
+        this->parse_macro_token_tree(item.macro_call_tokens,
+            item.macro_call_range,
+            item.macro_call_balanced,
+            body_start,
+            PARSER_EXPECT_MACRO_CALL_BODY_END);
+    }
+
+    item.range = this->merge(begin.range, this->previous().range);
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
+}
+
+void ItemParser::parse_macro_token_tree(
+    syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+    base::SourceRange& token_range,
+    bool& token_tree_balanced,
+    const syntax::Token& opening,
+    const std::string_view recovery_message,
+    base::u64* const top_level_match_clause_count)
 {
     const syntax::AttributeTokenTreeGroupKind root_group = attribute_group_kind(opening.kind);
     base::u32 depth = 0;
     std::vector<syntax::AttributeTokenTreeGroupKind> groups;
     groups.push_back(root_group);
-    item.macro_body_tokens.push_back(
+    tokens.push_back(
         syntax::AttributeTokenDecl{opening.kind, opening.text(), opening.range, depth, root_group});
     ++depth;
 
@@ -516,14 +558,14 @@ void ItemParser::parse_macro_body_token_tree(syntax::ItemNode& item, const synta
         const syntax::AttributeTokenTreeGroupKind current_group = groups.back();
         const bool closing_current_group = token_closes_attribute_group(token.kind, current_group);
         const base::u32 token_depth = closing_current_group && depth > 0 ? depth - 1U : depth;
-        item.macro_body_tokens.push_back(
+        tokens.push_back(
             syntax::AttributeTokenDecl{token.kind, token.text(), token.range, token_depth, attribute_group_kind(token.kind)});
-        item.macro_body_range = this->merge(opening.range, token.range);
+        token_range = this->merge(opening.range, token.range);
 
-        if (token.kind == TokenKind::kw_match && token_depth == 1U) {
-            ++item.macro_match_clause_count;
-        } else if (token_is_contextual_keyword(token, PARSER_MACRO_MATCH_CLAUSE_KEYWORD_TEXT) && token_depth == 1U) {
-            ++item.macro_match_clause_count;
+        if (top_level_match_clause_count != nullptr && token_depth == 1U
+            && (token.kind == TokenKind::kw_match
+                || token_is_contextual_keyword(token, PARSER_MACRO_MATCH_CLAUSE_KEYWORD_TEXT))) {
+            ++*top_level_match_clause_count;
         }
 
         if (token_opens_attribute_group(token.kind)) {
@@ -537,14 +579,14 @@ void ItemParser::parse_macro_body_token_tree(syntax::ItemNode& item, const synta
             continue;
         }
         if (token_closes_attribute_group(token.kind)) {
-            this->report_at(token, std::string(PARSER_EXPECT_MACRO_BODY_END));
+            this->report_at(token, std::string(recovery_message));
             break;
         }
     }
 
-    item.macro_body_balanced = groups.empty();
-    if (!item.macro_body_balanced) {
-        this->report_at(opening, std::string(PARSER_EXPECT_MACRO_BODY_END));
+    token_tree_balanced = groups.empty();
+    if (!token_tree_balanced) {
+        this->report_at(opening, std::string(recovery_message));
     }
 }
 

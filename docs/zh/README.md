@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M27 Aurex Macro Surface Admission**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M27c Aurex Macro Call-Site And User Derive Target Schema Admission**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -231,6 +231,20 @@ fingerprint 和 matcher identity 固定为可验证 facts。Query 层新增
 `aurex_macro_typed_matcher_admission`、`aurex_macro_definition_site_hygiene_admission` 和
 `aurex_macro_debuggable_diagnostic_anchor`。typed matcher execution is admission-only in M27b；definition-site
 hygiene resolution is admission-only in M27b；仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
+M27c 已新增 item-level macro call-site 和 user derive target schema admission：parser / AST 当前可识别
+`macro call Name { ... }`，记录 `ItemKind::macro_call`、调用点 token tree 和 delimiter balance；
+`expand_early_item_macros_noop()` 会生成 `AurexMacroCallSiteAdmissionGate`，并在同模块同名 macro surface 存在时生成
+`AurexMacroMatcherToCallBindingAdmissionGate`。`#[derive(Name)]` 匹配同模块 `macro derive Name { ... }` 时，会生成
+`AurexUserDeriveTargetSchemaAdmissionGate`，记录目标 `struct` / `enum` schema、字段数、enum case 数和 enum payload
+数。Summary / dump / fingerprint 记录 `aurex_macro_call_site_source_items`、
+`aurex_macro_call_site_admissions`、`aurex_macro_matcher_to_call_bindings`、
+`aurex_user_derive_target_schema_source_derives` 和 `aurex_user_derive_target_schemas`。Query 层新增
+`m27c_macro_expansion_plan_baseline()`、`is_valid_m27c_macro_expansion_plan()`、
+`aurex_macro_call_site_admission`、`aurex_macro_matcher_to_call_binding_admission` 和
+`aurex_user_derive_target_schema_admission`。macro call-site expansion is admission-only in M27c；
+matcher-to-call binding execution is admission-only in M27c；user derive target schema is admission-only in M27c；
+仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

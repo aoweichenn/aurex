@@ -103,6 +103,7 @@ void ItemNodeList::reserve(const base::usize size)
     this->payloads_.extern_blocks.reserve(rare);
     this->payloads_.impl_blocks.reserve(secondary);
     this->payloads_.macros.reserve(rare);
+    this->payloads_.macro_calls.reserve(rare);
     this->payloads_.unknowns.reserve(rare);
 }
 
@@ -433,6 +434,17 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     static_cast<base::u8>(node.macro_kind),
                     node.macro_body_balanced,
                 });
+        case ItemKind::macro_call:
+            return this->push_payload(this->payloads_.macro_calls,
+                MacroCallItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_or_move_attributes(std::move(node.attributes)),
+                    this->copy_or_move_derives(std::move(node.derives)),
+                    this->copy_or_move_list(std::move(node.macro_call_tokens)),
+                    node.macro_call_range,
+                    node.macro_call_balanced,
+                });
     }
     return this->push_payload(this->payloads_.unknowns, std::move(node));
 }
@@ -579,6 +591,18 @@ ItemNode ItemNodeList::load(const base::usize index) const
             loaded_known_payload = true;
             break;
         }
+        case ItemKind::macro_call: {
+            const MacroCallItemPayload& payload = this->payloads_.macro_calls[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.attributes = this->detach_attributes(payload.attributes);
+            node.derives = this->detach_derives(payload.derives);
+            node.macro_call_tokens = copy_detached_ast_vector(payload.tokens);
+            node.macro_call_range = payload.token_range;
+            node.macro_call_balanced = payload.token_tree_balanced;
+            loaded_known_payload = true;
+            break;
+        }
     }
     if (!loaded_known_payload) {
         node = this->payloads_.unknowns[header.payload];
@@ -713,6 +737,18 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.macro_match_clause_count = payload.match_clause_count;
             node.macro_kind = static_cast<MacroDeclKind>(payload.macro_kind);
             node.macro_body_balanced = payload.body_balanced;
+            loaded_known_payload = true;
+            break;
+        }
+        case ItemKind::macro_call: {
+            MacroCallItemPayload& payload = this->payloads_.macro_calls[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.attributes = this->detach_attributes(payload.attributes);
+            node.derives = this->detach_derives(payload.derives);
+            node.macro_call_tokens = copy_detached_ast_vector(payload.tokens);
+            node.macro_call_range = payload.token_range;
+            node.macro_call_balanced = payload.token_tree_balanced;
             loaded_known_payload = true;
             break;
         }

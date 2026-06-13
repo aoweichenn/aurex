@@ -668,6 +668,45 @@ aurex_macro_matcher_gate_by_name_and_index(
     return found == result.aurex_macro_typed_matcher_admission_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::AurexMacroCallSiteAdmissionGate*
+aurex_macro_call_site_gate_by_name(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view macro_name) noexcept
+{
+    const auto found = std::find_if(result.aurex_macro_call_site_admission_gates.begin(),
+        result.aurex_macro_call_site_admission_gates.end(),
+        [macro_name](const frontend::macro::AurexMacroCallSiteAdmissionGate& gate) {
+            return gate.macro_name == macro_name;
+        });
+    return found == result.aurex_macro_call_site_admission_gates.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::AurexMacroMatcherToCallBindingAdmissionGate*
+aurex_macro_binding_gate_by_call_name(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view macro_name) noexcept
+{
+    const auto found = std::find_if(result.aurex_macro_matcher_to_call_binding_gates.begin(),
+        result.aurex_macro_matcher_to_call_binding_gates.end(),
+        [macro_name](const frontend::macro::AurexMacroMatcherToCallBindingAdmissionGate& gate) {
+            return gate.macro_name == macro_name;
+        });
+    return found == result.aurex_macro_matcher_to_call_binding_gates.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::AurexUserDeriveTargetSchemaAdmissionGate*
+aurex_user_derive_schema_gate_by_target(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view target_name) noexcept
+{
+    const auto found = std::find_if(result.aurex_user_derive_target_schema_gates.begin(),
+        result.aurex_user_derive_target_schema_gates.end(),
+        [target_name](const frontend::macro::AurexUserDeriveTargetSchemaAdmissionGate& gate) {
+            return gate.target_name == target_name;
+        });
+    return found == result.aurex_user_derive_target_schema_gates.end() ? nullptr : &*found;
+}
+
 } // namespace
 
 TEST(CoreUnit, EarlyItemExpansionDispositionNamesExposeInvalidFallback)
@@ -7374,6 +7413,224 @@ TEST(CoreUnit, EarlyItemExpansionIndexesMultipleAndMalformedAurexTypedMatchers)
     EXPECT_FALSE(broken->parser_consumption_enabled);
     EXPECT_FALSE(broken->ast_mutated);
     EXPECT_FALSE(broken->produced_user_generated_code);
+}
+
+TEST(CoreUnit, EarlyItemExpansionCollectsAurexMacroCallSitesAndUserDeriveSchemas)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro call BuildVec {\n"
+        "  1, 2, nested(3)\n"
+        "}\n"
+        "macro call Missing {\n"
+        "  raw(tokens)\n"
+        "}\n"
+        "#[derive(Inspect)]\n"
+        "struct Config { threads: i32; enabled: bool; }\n"
+        "#[derive(Inspect)]\n"
+        "enum Mode { fast, slow(i32), tuple(i32, bool) }\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.aurex_macro_call_site_admission_gates.size(), 2U);
+    ASSERT_EQ(result.aurex_macro_matcher_to_call_binding_gates.size(), 1U);
+    ASSERT_EQ(result.aurex_user_derive_target_schema_gates.size(), 2U);
+
+    EXPECT_EQ(result.summary.aurex_macro_call_site_admission_gate_count, 2U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_source_item_count, 2U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_target_declared_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_visible_count, 2U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_query_reusable_count, 2U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_balanced_count, 2U);
+    EXPECT_EQ(result.summary.aurex_macro_call_site_expansion_enabled_count, 0U);
+    EXPECT_EQ(result.summary.aurex_macro_matcher_to_call_binding_gate_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_matcher_to_call_binding_admitted_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_matcher_to_call_binding_visible_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_matcher_to_call_binding_query_reusable_count, 1U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_gate_count, 2U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_source_derive_count, 2U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_struct_count, 1U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_enum_count, 1U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_unsupported_count, 0U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_field_count, 2U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_enum_case_count, 3U);
+    EXPECT_EQ(result.summary.aurex_user_derive_target_schema_enum_payload_count, 3U);
+    EXPECT_EQ(result.summary.generated_source_text_count, 0U);
+    EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.sema_visible_generated_part_count, 0U);
+    EXPECT_EQ(result.summary.user_generated_code_count, 0U);
+    EXPECT_EQ(result.summary.standard_library_required_count, 0U);
+    EXPECT_EQ(result.summary.runtime_required_count, 0U);
+    EXPECT_EQ(result.summary.external_process_required_count, 0U);
+
+    const frontend::macro::AurexMacroCallSiteAdmissionGate* const build_call =
+        aurex_macro_call_site_gate_by_name(result, "BuildVec");
+    const frontend::macro::AurexMacroCallSiteAdmissionGate* const missing_call =
+        aurex_macro_call_site_gate_by_name(result, "Missing");
+    ASSERT_NE(build_call, nullptr);
+    ASSERT_NE(missing_call, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*build_call));
+    EXPECT_TRUE(build_call->target_surface_declared);
+    EXPECT_TRUE(build_call->token_tree_balanced);
+    EXPECT_EQ(build_call->blocker_reason, "Aurex macro call-site expansion is admission-only in M27c");
+    EXPECT_EQ(build_call->query_name, "m27c-aurex-macro-call-site:0:0:2:BuildVec");
+    EXPECT_FALSE(build_call->expansion_enabled);
+    EXPECT_FALSE(build_call->parser_consumption_enabled);
+    EXPECT_FALSE(build_call->ast_mutated);
+    EXPECT_FALSE(build_call->produced_user_generated_code);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*missing_call));
+    EXPECT_FALSE(missing_call->target_surface_declared);
+    EXPECT_EQ(missing_call->blocker_reason,
+        "Aurex macro call-site target is not declared and remains blocked in M27c");
+
+    const frontend::macro::AurexMacroMatcherToCallBindingAdmissionGate* const binding =
+        aurex_macro_binding_gate_by_call_name(result, "BuildVec");
+    ASSERT_NE(binding, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*binding));
+    EXPECT_TRUE(binding->target_surface_declared);
+    EXPECT_TRUE(binding->matcher_shape_recognized);
+    EXPECT_TRUE(binding->binding_admitted);
+    EXPECT_EQ(binding->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::expr_list);
+    EXPECT_EQ(binding->matcher_head, "expr_list");
+    EXPECT_EQ(binding->binding_name, "xs");
+    EXPECT_EQ(binding->blocker_reason, "Aurex matcher-to-call binding is admission-only in M27c");
+    EXPECT_FALSE(binding->matcher_execution_enabled);
+    EXPECT_FALSE(binding->expansion_enabled);
+    EXPECT_FALSE(binding->parser_consumption_enabled);
+    EXPECT_FALSE(binding->ast_mutated);
+    EXPECT_FALSE(binding->produced_user_generated_code);
+
+    const frontend::macro::AurexUserDeriveTargetSchemaAdmissionGate* const config_schema =
+        aurex_user_derive_schema_gate_by_target(result, "Config");
+    const frontend::macro::AurexUserDeriveTargetSchemaAdmissionGate* const mode_schema =
+        aurex_user_derive_schema_gate_by_target(result, "Mode");
+    ASSERT_NE(config_schema, nullptr);
+    ASSERT_NE(mode_schema, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*config_schema));
+    EXPECT_EQ(config_schema->target_kind, frontend::macro::AurexUserDeriveTargetKind::struct_);
+    EXPECT_EQ(config_schema->derive_name, "Inspect");
+    EXPECT_EQ(config_schema->field_count, 2U);
+    EXPECT_EQ(config_schema->enum_case_count, 0U);
+    EXPECT_EQ(config_schema->blocker_reason,
+        "Aurex user derive target schema is admission-only in M27c");
+    EXPECT_FALSE(config_schema->expansion_enabled);
+    EXPECT_FALSE(config_schema->parser_consumption_enabled);
+    EXPECT_FALSE(config_schema->ast_mutated);
+    EXPECT_FALSE(config_schema->produced_user_generated_code);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*mode_schema));
+    EXPECT_EQ(mode_schema->target_kind, frontend::macro::AurexUserDeriveTargetKind::enum_);
+    EXPECT_EQ(mode_schema->enum_case_count, 3U);
+    EXPECT_EQ(mode_schema->enum_payload_count, 3U);
+    EXPECT_FALSE(mode_schema->sema_visible_generated_items);
+
+    const std::string summary = frontend::macro::summarize_early_item_expansion(result);
+    expect_contains(summary, "aurex_macro_call_site_admissions=2");
+    expect_contains(summary, "aurex_macro_call_site_source_items=2");
+    expect_contains(summary, "aurex_macro_matcher_to_call_bindings_admitted=1");
+    expect_contains(summary, "aurex_user_derive_target_schema_source_derives=2");
+    expect_contains(summary, "aurex_user_derive_target_schemas=2");
+    expect_contains(summary, "aurex_user_derive_target_schema_fields=2");
+    expect_contains(summary, "parse_ready_token_buffers=0");
+    expect_contains(summary, "user_generated_code=0");
+
+    const std::string dump = frontend::macro::dump_early_item_expansion(result);
+    expect_contains(dump, "aurex_macro_call_site_admission_gate #0");
+    expect_contains(dump, "target_surface_declared=yes");
+    expect_contains(dump, "target_surface_declared=no");
+    expect_contains(dump, "aurex_macro_matcher_to_call_binding_gate #0");
+    expect_contains(dump, "binding_admitted=yes");
+    expect_contains(dump, "aurex_user_derive_target_schema_gate #0");
+    expect_contains(dump, "target_kind=struct");
+    expect_contains(dump, "target_kind=enum");
+    expect_contains(dump, "parser_consumption_enabled=no");
+    expect_contains(dump, "user_generated_code=no");
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsAurexMacroCallSiteAndUserDeriveDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro call BuildVec {\n"
+        "  1, 2, nested(3)\n"
+        "}\n"
+        "#[derive(Inspect)]\n"
+        "struct Config { threads: i32; enabled: bool; }\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.aurex_macro_call_site_admission_gates.size(), 1U);
+    ASSERT_EQ(baseline.aurex_macro_matcher_to_call_binding_gates.size(), 1U);
+    ASSERT_EQ(baseline.aurex_user_derive_target_schema_gates.size(), 1U);
+    EXPECT_EQ(baseline.summary.aurex_macro_call_site_source_item_count, 1U);
+    EXPECT_EQ(baseline.summary.aurex_user_derive_target_schema_source_derive_count, 1U);
+
+    const auto expect_invalid = [](const frontend::macro::EarlyItemExpansionResult& result) {
+        EXPECT_FALSE(frontend::macro::is_valid(result));
+    };
+
+    const frontend::macro::EarlyItemExpansionResult missing_call_site =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_call_site_admission_gates.clear();
+        });
+    EXPECT_EQ(missing_call_site.summary.aurex_macro_call_site_admission_gate_count, 0U);
+    expect_invalid(missing_call_site);
+
+    const frontend::macro::EarlyItemExpansionResult executable_call_site =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_call_site_admission_gates.front().expansion_enabled = true;
+        });
+    EXPECT_EQ(executable_call_site.summary.aurex_macro_call_site_expansion_enabled_count, 1U);
+    expect_invalid(executable_call_site);
+
+    const frontend::macro::EarlyItemExpansionResult parser_consumable_call_site =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_call_site_admission_gates.front().parser_consumption_enabled = true;
+        });
+    EXPECT_EQ(parser_consumable_call_site.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(parser_consumable_call_site);
+
+    const frontend::macro::EarlyItemExpansionResult missing_binding =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_matcher_to_call_binding_gates.clear();
+        });
+    EXPECT_EQ(missing_binding.summary.aurex_macro_matcher_to_call_binding_gate_count, 0U);
+    expect_invalid(missing_binding);
+
+    const frontend::macro::EarlyItemExpansionResult binding_executed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_matcher_to_call_binding_gates.front().matcher_execution_enabled = true;
+        });
+    EXPECT_EQ(binding_executed.summary.aurex_macro_typed_matcher_execution_enabled_count, 1U);
+    expect_invalid(binding_executed);
+
+    const frontend::macro::EarlyItemExpansionResult schema_parser_consumable =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_user_derive_target_schema_gates.front().parser_consumption_enabled = true;
+        });
+    EXPECT_EQ(schema_parser_consumable.summary.parse_ready_token_buffer_count, 1U);
+    expect_invalid(schema_parser_consumable);
+
+    const frontend::macro::EarlyItemExpansionResult missing_schema =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_user_derive_target_schema_gates.clear();
+        });
+    EXPECT_EQ(missing_schema.summary.aurex_user_derive_target_schema_gate_count, 0U);
+    expect_invalid(missing_schema);
 }
 
 TEST(CoreUnit, EarlyItemExpansionValidationRejectsAurexTypedMatcherAndHygieneDrift)

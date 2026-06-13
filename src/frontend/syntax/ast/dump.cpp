@@ -940,6 +940,8 @@ std::string_view item_kind_name(const ItemKind kind)
             return "impl";
         case ItemKind::macro_decl:
             return "macro";
+        case ItemKind::macro_call:
+            return "macro_call";
     }
     return "unknown";
 }
@@ -1458,12 +1460,22 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             << " body_tokens=" << item.macro_body_tokens.size()
             << " match_clauses=" << item.macro_match_clause_count
             << " balanced=" << (item.macro_body_balanced ? "yes" : "no");
+    } else if (item.kind == ItemKind::macro_call) {
+        out << " call_tokens=" << item.macro_call_tokens.size()
+            << " balanced=" << (item.macro_call_balanced ? "yes" : "no");
     }
     out << "\n";
     if (item.kind == ItemKind::macro_decl) {
         indent(out, depth + 1);
         out << "macro_body";
         for (const AttributeTokenDecl& token : item.macro_body_tokens) {
+            out << " " << token.text;
+        }
+        out << "\n";
+    } else if (item.kind == ItemKind::macro_call) {
+        indent(out, depth + 1);
+        out << "macro_call_body";
+        for (const AttributeTokenDecl& token : item.macro_call_tokens) {
             out << " " << token.text;
         }
         out << "\n";

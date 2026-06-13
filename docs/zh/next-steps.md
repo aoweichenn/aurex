@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21-M27 宏系统主线已开启，M27b typed matcher / hygiene definition-site admission 已收口
+## 当前实现入口：M21-M27 宏系统主线已开启，M27c call-site / user-derive-schema admission 已收口
 
 M27 已把 Aurex 自己风格的用户宏声明入口落到 parser / AST / query / early expansion admission gate：
 `macro Name { ... }`、`macro derive Name { ... }` 和 `macro const Name { ... }` 都可被解析和索引，AST 记录
@@ -27,8 +27,22 @@ scope、diagnostic anchor、matcher fingerprint 和 matcher identity；Query 层
 `m27b_macro_expansion_plan_baseline()`、`aurex_macro_typed_matcher_admission`、
 `aurex_macro_definition_site_hygiene_admission` 和 `aurex_macro_debuggable_diagnostic_anchor`。
 typed matcher execution is admission-only in M27b；definition-site hygiene resolution is admission-only in M27b；
-仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。下一步建议进入 macro call-site admission 和 user derive
-target schema，而不是照搬 Rust 的 declarative macro DSL。
+仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
+M27c 已新增 `ItemKind::macro_call`、`AurexMacroCallSiteAdmissionGate`、
+`AurexMacroMatcherToCallBindingAdmissionGate` 和 `AurexUserDeriveTargetSchemaAdmissionGate`。当前能索引
+`macro call Name { ... }` 的调用点 token tree，能判断同模块同名 macro surface 是否存在，能把 declared call-site
+绑定到第一个 recognized typed matcher admission gate，并能在 `#[derive(Name)]` 匹配 `macro derive Name { ... }`
+时记录目标 `struct` / `enum` schema。Summary/dump/fingerprint 会记录
+`aurex_macro_call_site_source_items`、`aurex_macro_call_site_admissions`、
+`aurex_macro_matcher_to_call_bindings`、`aurex_user_derive_target_schema_source_derives` 和
+`aurex_user_derive_target_schemas`；Query 层新增 `m27c_macro_expansion_plan_baseline()`、
+`aurex_macro_call_site_admission`、`aurex_macro_matcher_to_call_binding_admission` 和
+`aurex_user_derive_target_schema_admission`。macro call-site expansion is admission-only in M27c；
+matcher-to-call binding execution is admission-only in M27c；user derive target schema is admission-only in M27c。
+下一步建议进入 macro output contract admission：先设计 compiler-owned output token buffer、declared-name policy、
+hygiene mark 和 diagnostic projection，仍不展开、不执行用户代码、不消费 parser，而不是照搬 Rust 的 declarative
+macro DSL。
 
 ## 当前实现入口：M21-M26 宏系统主线已开启，M26c builtin derive cursor rollback AST mutation verifier closure 已收口
 
@@ -250,9 +264,12 @@ M27b typed matcher / hygiene definition-site admission 已完成：继续保持 
 no-runtime / no-external-procedural-macro / no-user-generated-code，不照搬 Rust `macro_rules!`，已经把
 `match expr_list(xs) -> { ... }`、`match item(target) -> { ... }` 和 `match tokens(input) -> { ... }` 从 debug hint
 升级为结构化 matcher facts，并把 definition-site hygiene、fresh name scope、diagnostic anchor、body fingerprint 和
-query cache identity 固定清楚。下一步应进入 macro call-site admission：先设计调用点 token capture、参数 shape fact、
-调用点 diagnostic anchor 和 matcher-to-call binding，仍不展开、不执行用户代码、不消费 parser。之后再进入 user derive
-target schema / lowering design 或 compile-time execution sandbox。
+query cache identity 固定清楚。M27c 已完成 macro call-site admission、matcher-to-call binding admission 和 user
+derive target schema admission：`macro call Name { ... }` 能被 AST/tooling/query 索引，调用点 target surface
+状态、call token fingerprint、binding identity 和 derive target schema 都进入 stable facts。下一步应进入 macro
+output contract admission：先设计 output token ownership、hygiene mark、declared-name policy 和 diagnostic
+projection，仍不展开、不执行用户代码、不消费 parser。之后再进入 user derive output schema / lowering design 或
+compile-time execution sandbox。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

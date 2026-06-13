@@ -396,6 +396,8 @@ void tooling_attach_syntax_reuse_execution(
             return "impl_block";
         case syntax::ItemKind::macro_decl:
             return "macro";
+        case syntax::ItemKind::macro_call:
+            return "macro_call";
     }
     return "item";
 }

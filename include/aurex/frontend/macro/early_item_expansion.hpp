@@ -1324,6 +1324,119 @@ struct AurexMacroTypedMatcherAdmissionGate {
     bool query_reusable = true;
 };
 
+struct AurexMacroCallSiteAdmissionGate {
+    syntax::ItemId call_item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 call_token_fingerprint;
+    query::StableFingerprint128 call_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    std::string macro_name;
+    std::string call_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange call_range{};
+    base::SourceRange token_range{};
+    base::u64 token_count = 0;
+    bool token_tree_balanced = false;
+    bool target_surface_declared = false;
+    bool call_visible = true;
+    bool query_reusable = true;
+    bool expansion_enabled = false;
+    bool matcher_execution_enabled = false;
+    bool compile_time_execution_enabled = false;
+    bool parser_consumption_enabled = false;
+    bool ast_mutated = false;
+    bool sema_visible_generated_items = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+};
+
+struct AurexMacroMatcherToCallBindingAdmissionGate {
+    syntax::ItemId call_item;
+    syntax::ItemId macro_item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 matcher_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 call_identity;
+    query::StableFingerprint128 surface_admission_identity;
+    query::StableFingerprint128 matcher_identity;
+    query::StableFingerprint128 binding_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
+    AurexMacroTypedMatcherKind matcher_kind = AurexMacroTypedMatcherKind::unknown;
+    std::string macro_name;
+    std::string matcher_head;
+    std::string binding_name;
+    std::string binding_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange call_range{};
+    base::SourceRange matcher_range{};
+    bool target_surface_declared = false;
+    bool matcher_shape_recognized = false;
+    bool binding_admitted = false;
+    bool binding_visible = true;
+    bool query_reusable = true;
+    bool expansion_enabled = false;
+    bool matcher_execution_enabled = false;
+    bool compile_time_execution_enabled = false;
+    bool parser_consumption_enabled = false;
+    bool ast_mutated = false;
+    bool sema_visible_generated_items = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+};
+
+enum class AurexUserDeriveTargetKind : base::u8 {
+    unsupported,
+    struct_,
+    enum_,
+};
+
+struct AurexUserDeriveTargetSchemaAdmissionGate {
+    syntax::ItemId target_item;
+    syntax::ItemId macro_item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 derive_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 surface_admission_identity;
+    query::StableFingerprint128 target_schema_fingerprint;
+    query::StableFingerprint128 schema_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    AurexUserDeriveTargetKind target_kind = AurexUserDeriveTargetKind::unsupported;
+    std::string derive_name;
+    std::string target_name;
+    std::string schema_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange derive_range{};
+    base::SourceRange target_range{};
+    base::u64 field_count = 0;
+    base::u64 enum_case_count = 0;
+    base::u64 enum_payload_count = 0;
+    bool target_surface_declared = false;
+    bool target_supported = false;
+    bool schema_visible = true;
+    bool query_reusable = true;
+    bool expansion_enabled = false;
+    bool compile_time_execution_enabled = false;
+    bool parser_consumption_enabled = false;
+    bool ast_mutated = false;
+    bool sema_visible_generated_items = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -1533,6 +1646,27 @@ struct EarlyItemExpansionSummary {
     base::u64 aurex_macro_typed_matcher_visible_count = 0;
     base::u64 aurex_macro_typed_matcher_query_reusable_count = 0;
     base::u64 aurex_macro_typed_matcher_execution_enabled_count = 0;
+    base::u64 aurex_macro_call_site_source_item_count = 0;
+    base::u64 aurex_macro_call_site_admission_gate_count = 0;
+    base::u64 aurex_macro_call_site_target_declared_count = 0;
+    base::u64 aurex_macro_call_site_visible_count = 0;
+    base::u64 aurex_macro_call_site_query_reusable_count = 0;
+    base::u64 aurex_macro_call_site_balanced_count = 0;
+    base::u64 aurex_macro_call_site_expansion_enabled_count = 0;
+    base::u64 aurex_macro_matcher_to_call_binding_gate_count = 0;
+    base::u64 aurex_macro_matcher_to_call_binding_admitted_count = 0;
+    base::u64 aurex_macro_matcher_to_call_binding_visible_count = 0;
+    base::u64 aurex_macro_matcher_to_call_binding_query_reusable_count = 0;
+    base::u64 aurex_user_derive_target_schema_source_derive_count = 0;
+    base::u64 aurex_user_derive_target_schema_gate_count = 0;
+    base::u64 aurex_user_derive_target_schema_struct_count = 0;
+    base::u64 aurex_user_derive_target_schema_enum_count = 0;
+    base::u64 aurex_user_derive_target_schema_unsupported_count = 0;
+    base::u64 aurex_user_derive_target_schema_visible_count = 0;
+    base::u64 aurex_user_derive_target_schema_query_reusable_count = 0;
+    base::u64 aurex_user_derive_target_schema_field_count = 0;
+    base::u64 aurex_user_derive_target_schema_enum_case_count = 0;
+    base::u64 aurex_user_derive_target_schema_enum_payload_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -1600,6 +1734,13 @@ struct EarlyItemExpansionResult {
     std::vector<AurexMacroDefinitionSiteHygieneAdmissionGate>
         aurex_macro_definition_site_hygiene_gates;
     std::vector<AurexMacroTypedMatcherAdmissionGate> aurex_macro_typed_matcher_admission_gates;
+    base::u64 aurex_macro_call_site_source_item_count = 0;
+    std::vector<AurexMacroCallSiteAdmissionGate> aurex_macro_call_site_admission_gates;
+    std::vector<AurexMacroMatcherToCallBindingAdmissionGate>
+        aurex_macro_matcher_to_call_binding_gates;
+    base::u64 aurex_user_derive_target_schema_source_derive_count = 0;
+    std::vector<AurexUserDeriveTargetSchemaAdmissionGate>
+        aurex_user_derive_target_schema_gates;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -1649,6 +1790,9 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const AurexMacroSurfaceAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const AurexMacroTypedMatcherAdmissionGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const AurexMacroCallSiteAdmissionGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const AurexMacroMatcherToCallBindingAdmissionGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const AurexUserDeriveTargetSchemaAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

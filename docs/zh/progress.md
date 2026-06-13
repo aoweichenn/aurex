@@ -2,8 +2,43 @@
 
 版本：0.1.9
 阶段：M27 Aurex Macro Surface Admission
+附加阶段：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission
 
 ## 总体状态
+
+2026-06-13：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission 已完成。本阶段仍不实现标准库、
+runtime helper、external procedural macro、typed expression macro、真实用户自定义 derive lowering、真实用户宏展开、
+用户编译期代码执行、文本替换宏、真实 hygiene resolution、真实 expansion source map、debug trace CLI、
+`--emit-expanded`、generated source text、generated module part parse / merge、declared generated names lookup、
+generated item visibility / export、parser-consumable generated token buffer、parser consumption execution、real
+parser dry-run execution、AST mutation 或 macro-generated user code lowering；它把 M27 macro surface 中的顶层
+`match` clause 升级为结构化 typed matcher admission facts，并把 definition-site hygiene / fresh name scope /
+diagnostic anchor 的 admission boundary 固定到每个 macro declaration。
+
+新增 `AurexMacroDefinitionSiteHygieneAdmissionGate`、`AurexMacroTypedMatcherAdmissionGate` 和
+`AurexMacroTypedMatcherKind::{expr_list, item, tokens, unknown}`，并给 `EarlyItemExpansionResult` 增加
+`aurex_macro_definition_site_hygiene_gates` 与 `aurex_macro_typed_matcher_admission_gates`。M27b 当前识别顶层
+`match expr_list(xs) -> { xs }`、`match item(target) -> { target }` 和 `match tokens(input) -> { input }`；
+未知 head 会生成 unknown matcher gate 并保持 blocked。Summary / dump / fingerprint 新增
+`aurex_macro_definition_site_hygiene_gates`、`aurex_macro_definition_site_scope_available`、
+`aurex_macro_fresh_name_scopes`、`aurex_macro_diagnostic_anchors`、`aurex_macro_hygiene_resolution_enabled`、
+`aurex_macro_typed_matcher_admissions`、`aurex_macro_typed_matchers_recognized`、
+`aurex_macro_expr_list_matchers`、`aurex_macro_item_matchers`、`aurex_macro_token_stream_matchers`、
+`aurex_macro_unknown_matchers` 和 `aurex_macro_typed_matcher_execution_enabled`。Validation 会拒绝 surface gate
+缺少 hygiene gate、顶层 match clause 缺少 typed matcher gate、hygiene identity / matcher identity 漂移、
+matcher kind flags 漂移、typed matcher execution 被打开、definition-site hygiene resolution 被打开、declared
+names visible、parser consumption、AST mutation、standard library、runtime、external process 或 user generated code
+被打开。typed matcher execution is admission-only in M27b；definition-site hygiene resolution is admission-only in M27b；
+仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
+Query 层新增 `aurex_macro_typed_matcher_admission`、
+`aurex_macro_definition_site_hygiene_admission` 和 `aurex_macro_debuggable_diagnostic_anchor` 三类
+`MacroExpansionFactKind`，对应 `aurex_macro_typed_matcher_admission_v1`、
+`aurex_macro_definition_site_hygiene_admission_v1` 和 `aurex_macro_debuggable_diagnostic_anchor_v1` policy，并新增
+`m27b_macro_expansion_plan_baseline()` 与 `is_valid_m27b_macro_expansion_plan()`。M27b plan 在 M27 十个 facts 上叠加
+三类 typed matcher / definition-site hygiene / diagnostic anchor facts，共 13 个 facts；默认 early expansion 仍兼容
+M21c baseline，不替换 M21-M26 builtin derive 链条。新增说明见
+[Aurex M27 Aurex Macro Surface Admission](m27-aurex-macro-surface-admission.md)。
 
 2026-06-12：M27 Aurex Macro Surface Admission 已完成。本阶段打开 Aurex 自己风格的宏声明表面，但仍不采用
 Rust `macro_rules!` / `$matcher` 写法，也不实现标准库、runtime helper、external procedural macro、typed

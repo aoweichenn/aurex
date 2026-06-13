@@ -1,7 +1,7 @@
 # Aurex 语言参考手册
 
-日期：2026-06-11
-阶段：M20e Builtin Derive Attribute Closure，建立在 M20d Runtime Lowering ABI Design Closure、M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
+日期：2026-06-13
+阶段：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission，建立在 M27 Aurex Macro Surface Admission、M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure、M20d Runtime Lowering ABI Design Closure、M20c Drop / Allocator Identity Prerequisite Gate、M20b Owned Dyn IR Shape Prototype Gate、M20a Owned Dyn Runtime Admission Design Gate、M19 Dyn Ownership Runtime IR / Verifier Preparation、M18 Dyn Ownership Runtime Boundary Hardening / Lowering Design Gate、M17 Dyn Ownership Runtime Preparation、M16 Const Generic Frontend / Query / Sema Check-Only、M13c Borrowed Composition-To-Supertrait IR / Backend Runtime、M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only、M13a Advanced Dyn Remaining Policy Design Baseline、M12b Direct Composition Dispatch Hardening / Release Closure、M12a Direct Principal-Qualified Composition Method Dispatch、M11e Principal-Set Composition Hardening / Release Closure、M11c Principal-Set Composition Frontend / Sema Check-Only、M11b Principal-Set Composition Query
 Prototype Gate、M11a Advanced Dyn Design Baseline、
 M10d Supertrait Hardening / Release Closure、
 M10b Supertrait Frontend / Query / Sema Implementation、
@@ -49,6 +49,10 @@ A | B         表示二选一
 - 使用泛型函数、泛型类型、泛型 impl、method-local impl 泛型、`where` capability、nominal static trait、default trait method、associated type 和 associated-type equality。
 - 使用内建 item derive 属性：`#[derive(Copy, Eq, Hash)]` 可写在 `struct` / `enum` 上，生成 checked capability facts；
   它不是完整宏系统，也不生成标准库方法。
+- 使用 M27/M27b admission-only 宏声明表面：`macro Name { ... }`、`macro derive Name { ... }` 和
+  `macro const Name { ... }` 可被 parser/AST/query/early expansion boundary 索引；顶层
+  `match expr_list(xs) -> { xs }`、`match item(target) -> { target }` 和
+  `match tokens(input) -> { input }` 会形成 typed matcher admission facts，但不会展开、执行或交给 parser。
 - 使用 direct supertrait declaration：`trait Child: Parent` 和 `trait Child[T]: Parent[T]` 会进入 checked
   supertrait graph，impl 会检查 parent evidence，duplicate/cycle/private leak 会被诊断。
 - 使用 borrowed dyn trait view：`&dyn Trait`、`&mut dyn Trait` 和 `dyn Trait[Assoc = Type]`，在 checked
@@ -172,7 +176,7 @@ A | B         表示二选一
   dynamic destructor ABI call、cleanup marker runtime ABI call 或 async/unwind-aware drop。
 - 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
 - 没有完整 macro / proc-macro / 用户可扩展 derive 系统；当前只支持编译器内建的 `#[derive(Copy, Eq, Hash)]` 和
-  M27 admission-only 宏声明表面 `macro Name { ... }` / `macro derive Name { ... }` / `macro const Name { ... }`。
+  M27/M27b admission-only 宏声明、typed matcher、definition-site hygiene facts。
 - 没有 owning dyn、`Box<dyn Trait>`、trait-object Drop dispatch、bare `dyn A + B` parser syntax、
   歧义 composition-to-supertrait 自动选择、generic associated type、associated const、specialization、
   generic const arithmetic 或 `<T>` 风格泛型。M16 已打开 typed scalar const generic check-only 子集，但没有
@@ -904,13 +908,16 @@ struct Box[T] where T: Eq + Hash {
 
 ### 6.7 Aurex macro 声明表面
 
-M27 开始支持 Aurex 自己风格的宏声明 item，但当前是 admission-only：parser、AST、dump、query 和 early expansion
-boundary 能识别和索引它们，宏体不会展开，也不会执行用户编译期代码。
+M27 开始支持 Aurex 自己风格的宏声明 item。M27b 在这个表面之上新增 typed matcher admission 和
+definition-site hygiene admission。当前仍是 admission-only：parser、AST、dump、query 和 early expansion boundary
+能识别、索引、生成稳定 facts 并验证边界，宏体不会展开，也不会执行用户编译期代码。
 
 ```text
 MacroDecl   = Visibility? "macro" MacroFlavor? Identifier MacroBody
 MacroFlavor = "derive" | "const"
 MacroBody   = "{" TokenTree* "}"
+MacroMatcherAdmission = "match" MacroMatcherHead "(" Identifier ")" "->" "{" TokenTree* "}"
+MacroMatcherHead = "expr_list" | "item" | "tokens"
 ```
 
 ```aurex
@@ -932,6 +939,12 @@ macro const TokenBuild {
 - `macro Name { ... }`：声明式宏表面，AST 记录为 `MacroDeclKind::declarative`。
 - `macro derive Name { ... }`：用户 derive 宏表面，AST 记录为 `MacroDeclKind::derive`。
 - `macro const Name { ... }`：编译期执行宏表面，AST 记录为 `MacroDeclKind::compile_time`。
+- `match expr_list(xs) -> { xs }`：表达式列表 matcher admission，当前只记录为
+  `AurexMacroTypedMatcherKind::expr_list`。
+- `match item(target) -> { target }`：item matcher admission，当前只记录为
+  `AurexMacroTypedMatcherKind::item`。
+- `match tokens(input) -> { input }`：token stream matcher admission，当前只记录为
+  `AurexMacroTypedMatcherKind::tokens`。
 
 当前能做：
 
@@ -939,8 +952,21 @@ macro const TokenBuild {
 - AST 保存 `macro_body_tokens`、`macro_body_range`、`macro_match_clause_count` 和 `macro_body_balanced`。
 - AST dump 输出 `macro_kind=...`、`body_tokens=...`、`match_clauses=...`、`balanced=yes/no` 和 `macro_body`。
 - `macro.expand_items` 会为每个 macro item 生成 `AurexMacroSurfaceAdmissionGate`。
+- M27b 会为每个 macro item 生成 `AurexMacroDefinitionSiteHygieneAdmissionGate`。
+- M27b 会为每个顶层 `match` clause 生成 `AurexMacroTypedMatcherAdmissionGate`。
+- Summary/dump 会记录 `aurex_macro_definition_site_hygiene_gates`、
+  `aurex_macro_typed_matcher_admissions`、`aurex_macro_expr_list_matchers`、
+  `aurex_macro_item_matchers`、`aurex_macro_token_stream_matchers` 和
+  `aurex_macro_unknown_matchers`。
+- Definition-site hygiene gate 会固定 definition-site mark、fresh name scope 和 diagnostic anchor identity，但
+  definition-site hygiene resolution is admission-only in M27b。
+- Typed matcher gate 会固定 matcher fingerprint、matcher identity、binding name、output range、diagnostic anchor
+  identity 和 matcher kind，但 typed matcher execution is admission-only in M27b。
 - Query 层提供 `m27_macro_expansion_plan_baseline()`，固定 declarative / user derive / compile-time execution admission
   三类 facts。
+- Query 层提供 `m27b_macro_expansion_plan_baseline()`，固定
+  `aurex_macro_typed_matcher_admission`、`aurex_macro_definition_site_hygiene_admission` 和
+  `aurex_macro_debuggable_diagnostic_anchor` 三类 facts。
 
 当前不能做：
 
@@ -954,9 +980,10 @@ macro const TokenBuild {
 - 不生成 sema-visible item。
 - 不生成用户代码。
 - 不引入标准库、runtime helper 或 external process。
+- 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
-`match ... -> ...` 目前只是宏体内可索引的 token hint，parser 会统计顶层 `match` clause 数量，后续 typed matcher
-阶段才会赋予结构化 matcher 语义。
+`match ... -> ...` 已经从 M27 的 token hint 升级为 M27b 的结构化 admission fact，但还不是可执行 matcher DSL：
+它不会捕获调用点语法，不会生成 token buffer，不会进入 parser，也不会让 declared generated names 对 lookup 可见。
 
 ### 6.8 Function
 

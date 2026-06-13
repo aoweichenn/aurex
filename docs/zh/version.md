@@ -1,5 +1,83 @@
 # 版本文档
 
+## M27b Aurex Typed Matcher And Definition-Site Hygiene Admission
+
+当前版本在 M27 Aurex Macro Surface Admission 之后，完成 Aurex 宏声明的 typed matcher admission 和
+definition-site hygiene admission。它不是 `macro_rules!` 移植，也不是完整 proc-macro。本阶段只让 early expansion
+boundary 能把宏体顶层 `match` clause、definition-site scope、fresh name scope 和 diagnostic anchor 固定成可验证
+facts。
+
+新增或固定：
+
+- 新增 `frontend::macro::AurexMacroTypedMatcherKind`，包含 `expr_list`、`item`、`tokens` 和 `unknown`。
+- 新增 `frontend::macro::AurexMacroDefinitionSiteHygieneAdmissionGate`。
+- 新增 `frontend::macro::AurexMacroTypedMatcherAdmissionGate`。
+- `EarlyItemExpansionResult` 新增 `aurex_macro_definition_site_hygiene_gates`。
+- `EarlyItemExpansionResult` 新增 `aurex_macro_typed_matcher_admission_gates`。
+- `EarlyItemExpansionSummary` 新增 definition-site hygiene gate、scope、fresh-name、diagnostic-anchor、
+  hygiene-resolution、typed-matcher、recognized matcher、expr-list matcher、item matcher、token-stream matcher、
+  unknown matcher 和 typed-matcher execution 计数。
+- `expand_early_item_macros_noop()` 会为每个 `ItemKind::macro_decl` 生成
+  `AurexMacroDefinitionSiteHygieneAdmissionGate`。
+- `expand_early_item_macros_noop()` 会为每个顶层 `match` clause 生成
+  `AurexMacroTypedMatcherAdmissionGate`。
+- 识别 `match expr_list(xs) -> { xs }`。
+- 识别 `match item(target) -> { target }`。
+- 识别 `match tokens(input) -> { input }`。
+- 未知 matcher head 会记录为 unknown matcher admission gate，并保持 blocked。
+- Definition-site hygiene gate query name 固定为
+  `m27b-aurex-macro-definition-site-hygiene:<module>:<part>:<item>:<name>`。
+- Typed matcher gate query name 固定为
+  `m27b-aurex-macro-typed-matcher:<module>:<part>:<item>:<matcher>:<name>`。
+- Typed matcher gate policy 固定为 `aurex_macro_typed_matcher_admission_v1`。
+- Definition-site hygiene gate policy 固定为 `aurex_macro_definition_site_hygiene_admission_v1`。
+- Typed matcher gate blocker 固定为
+  `Aurex typed matcher execution is admission-only in M27b` 或
+  `Aurex macro matcher shape is unrecognized and remains blocked in M27b`。
+- Definition-site hygiene gate blocker 固定为
+  `Aurex definition-site hygiene resolution is admission-only in M27b`。
+- Validation 拒绝 surface gate 缺少 hygiene gate、顶层 match clause 缺少 typed matcher gate、hygiene identity /
+  matcher identity 漂移、matcher kind flags 漂移、typed matcher execution 被打开、definition-site hygiene
+  resolution 被打开、declared names visible、parser consumption、AST mutation、sema-visible generated item、
+  standard library/runtime/external process requirement 被打开或 user generated code 被打开。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_typed_matcher_admission`。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission`。
+- Query 层新增 `MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1`。
+- Query 层新增 `MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1`。
+- Query 层新增 `m27b_macro_expansion_plan_baseline()`。
+- Query 层新增 `is_valid_m27b_macro_expansion_plan()`。
+- M27b plan 固定为 M27 十个 facts 加三类 typed matcher / definition-site hygiene / diagnostic anchor facts，共
+  13 个 facts。
+
+仍不实现：
+
+- 标准库。
+- runtime helper。
+- Rust `macro_rules!`。
+- `$matcher` / `$($x:expr),*`。
+- 文本替换宏。
+- 真实宏展开。
+- 用户自定义 derive lowering。
+- 编译期宏代码执行。
+- external procedural macro 执行。
+- typed expression macro。
+- generated source text。
+- generated module part parse / merge。
+- parser consumption。
+- AST mutation。
+- sema-visible generated item。
+- macro-generated user code lowering。
+- 真实 hygiene resolution。
+- declared generated names lookup。
+- 真实 expansion source map。
+- debug trace CLI。
+- `--emit-expanded`。
+- typed matcher execution is admission-only in M27b。
+- definition-site hygiene resolution is admission-only in M27b。
+- 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
 ## M27 Aurex Macro Surface Admission
 
 当前版本在 M26c builtin derive cursor rollback AST mutation verifier closure 之后，完成 Aurex 自己风格的宏声明表面

@@ -13,6 +13,7 @@ constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_STAGE = 232U;
 constexpr base::u8 QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY = 233U;
 constexpr base::usize QUERY_TEST_M21C_MACRO_EXPANSION_FACT_COUNT = 7U;
 constexpr base::usize QUERY_TEST_M27_MACRO_EXPANSION_FACT_COUNT = 10U;
+constexpr base::usize QUERY_TEST_M27B_MACRO_EXPANSION_FACT_COUNT = 13U;
 
 [[nodiscard]] const query::MacroExpansionFact* find_fact(
     const query::MacroExpansionPlan& plan, const query::MacroExpansionFactKind kind) noexcept
@@ -64,6 +65,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
                   query::MacroExpansionFactKind::aurex_compile_time_macro_execution_admission),
         "aurex_compile_time_macro_execution_admission");
     EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_typed_matcher_admission),
+        "aurex_macro_typed_matcher_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission),
+        "aurex_macro_definition_site_hygiene_admission");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
+                  query::MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor),
+        "aurex_macro_debuggable_diagnostic_anchor");
+    EXPECT_EQ(query::macro_expansion_fact_kind_name(
                   static_cast<query::MacroExpansionFactKind>(QUERY_TEST_INVALID_MACRO_EXPANSION_KIND)),
         "invalid");
 
@@ -106,6 +116,15 @@ TEST(QueryUnit, MacroExpansionFactsExposeEnumNamesAndInvalidFallbacks)
     EXPECT_EQ(query::macro_expansion_policy_name(
                   query::MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1),
         "aurex_compile_time_macro_execution_admission_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1),
+        "aurex_macro_typed_matcher_admission_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1),
+        "aurex_macro_definition_site_hygiene_admission_v1");
+    EXPECT_EQ(query::macro_expansion_policy_name(
+                  query::MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1),
+        "aurex_macro_debuggable_diagnostic_anchor_v1");
     EXPECT_EQ(query::macro_expansion_policy_name(
                   static_cast<query::MacroExpansionPolicy>(QUERY_TEST_INVALID_MACRO_EXPANSION_POLICY)),
         "invalid");
@@ -362,6 +381,112 @@ TEST(QueryUnit, MacroExpansionPlanM27ValidationRejectsSurfaceBoundaryDrift)
     duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
     duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
     EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(duplicate_kind));
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27bPinsTypedMatcherAndDefinitionSiteHygieneAdmission)
+{
+    const query::MacroExpansionPlan plan = query::m27b_macro_expansion_plan_baseline();
+
+    ASSERT_EQ(plan.name, "M27b Aurex Typed Matcher And Definition-Site Hygiene Admission Plan");
+    ASSERT_EQ(plan.facts.size(), QUERY_TEST_M27B_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_FALSE(query::is_valid(plan));
+    EXPECT_FALSE(query::is_valid_m21c_macro_expansion_plan(plan));
+    EXPECT_FALSE(query::is_valid_m27_macro_expansion_plan(plan));
+    EXPECT_TRUE(query::is_valid_m27b_macro_expansion_plan(plan));
+    EXPECT_EQ(plan.fingerprint, query::macro_expansion_plan_fingerprint(plan));
+
+    const query::MacroExpansionSummary summary = query::summarize_macro_expansion_plan_counts(plan);
+    EXPECT_EQ(summary.fact_count, QUERY_TEST_M27B_MACRO_EXPANSION_FACT_COUNT);
+    EXPECT_EQ(summary.aurex_declarative_macro_surface_count, 1U);
+    EXPECT_EQ(summary.aurex_user_derive_macro_surface_count, 1U);
+    EXPECT_EQ(summary.aurex_compile_time_macro_execution_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_typed_matcher_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_definition_site_hygiene_admission_count, 1U);
+    EXPECT_EQ(summary.aurex_macro_debuggable_diagnostic_anchor_count, 1U);
+    EXPECT_EQ(summary.user_generated_code_count, 0U);
+    EXPECT_EQ(summary.standard_library_required_count, 0U);
+    EXPECT_EQ(summary.runtime_required_count, 0U);
+    EXPECT_EQ(summary.external_process_required_count, 1U);
+
+    const std::array<query::MacroExpansionFactKind, 3U> m27b_kinds{
+        query::MacroExpansionFactKind::aurex_macro_typed_matcher_admission,
+        query::MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission,
+        query::MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor,
+    };
+    for (const query::MacroExpansionFactKind kind : m27b_kinds) {
+        const query::MacroExpansionFact* const fact = find_fact(plan, kind);
+        ASSERT_NE(fact, nullptr);
+        EXPECT_TRUE(fact->consumes_attribute_token_tree);
+        EXPECT_TRUE(fact->requires_query_key);
+        EXPECT_TRUE(fact->requires_source_map);
+        EXPECT_TRUE(fact->requires_hygiene);
+        EXPECT_FALSE(fact->produces_user_generated_code);
+        EXPECT_FALSE(fact->standard_library_required);
+        EXPECT_FALSE(fact->runtime_required);
+        EXPECT_FALSE(fact->external_process_required);
+        EXPECT_TRUE(fact->blocks_unimplemented_item_attribute);
+    }
+
+    const std::string summary_text = query::summarize_macro_expansion_plan(plan);
+    EXPECT_NE(summary_text.find("facts=13"), std::string::npos) << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_typed_matcher_admissions=1"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_definition_site_hygiene_admissions=1"),
+        std::string::npos)
+        << summary_text;
+    EXPECT_NE(summary_text.find("aurex_macro_debuggable_diagnostic_anchors=1"),
+        std::string::npos)
+        << summary_text;
+
+    const std::string dump = query::dump_macro_expansion_plan(plan);
+    EXPECT_NE(dump.find("kind=aurex_macro_typed_matcher_admission"), std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_macro_definition_site_hygiene_admission"),
+        std::string::npos)
+        << dump;
+    EXPECT_NE(dump.find("kind=aurex_macro_debuggable_diagnostic_anchor"), std::string::npos)
+        << dump;
+}
+
+TEST(QueryUnit, MacroExpansionPlanM27bValidationRejectsMatcherBoundaryDrift)
+{
+    const query::MacroExpansionPlan plan = query::m27b_macro_expansion_plan_baseline();
+    ASSERT_TRUE(query::is_valid_m27b_macro_expansion_plan(plan));
+
+    query::MacroExpansionPlan missing_matcher = plan;
+    missing_matcher.facts.pop_back();
+    missing_matcher.summary = query::summarize_macro_expansion_plan_counts(missing_matcher);
+    missing_matcher.fingerprint = query::macro_expansion_plan_fingerprint(missing_matcher);
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(missing_matcher));
+
+    query::MacroExpansionPlan executable_matcher = plan;
+    query::MacroExpansionFact* const matcher =
+        find_fact(executable_matcher, query::MacroExpansionFactKind::aurex_macro_typed_matcher_admission);
+    ASSERT_NE(matcher, nullptr);
+    matcher->produces_user_generated_code = true;
+    executable_matcher.summary = query::summarize_macro_expansion_plan_counts(executable_matcher);
+    executable_matcher.fingerprint = query::macro_expansion_plan_fingerprint(executable_matcher);
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(executable_matcher));
+
+    query::MacroExpansionPlan runtime_hygiene = plan;
+    query::MacroExpansionFact* const hygiene =
+        find_fact(runtime_hygiene,
+            query::MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission);
+    ASSERT_NE(hygiene, nullptr);
+    hygiene->runtime_required = true;
+    runtime_hygiene.summary = query::summarize_macro_expansion_plan_counts(runtime_hygiene);
+    runtime_hygiene.fingerprint = query::macro_expansion_plan_fingerprint(runtime_hygiene);
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(runtime_hygiene));
+
+    query::MacroExpansionPlan duplicate_kind = plan;
+    query::MacroExpansionFact* const anchor =
+        find_fact(duplicate_kind, query::MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor);
+    ASSERT_NE(anchor, nullptr);
+    anchor->kind = query::MacroExpansionFactKind::aurex_macro_typed_matcher_admission;
+    duplicate_kind.summary = query::summarize_macro_expansion_plan_counts(duplicate_kind);
+    duplicate_kind.fingerprint = query::macro_expansion_plan_fingerprint(duplicate_kind);
+    EXPECT_FALSE(query::is_valid_m27b_macro_expansion_plan(duplicate_kind));
 }
 
 } // namespace aurex::test

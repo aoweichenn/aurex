@@ -464,6 +464,20 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/progress.md", "m27_macro_expansion_plan_baseline()");
     expect_document_contains("docs/zh/progress.md", "aurex_macro_surface_source_items");
     expect_document_contains("docs/zh/progress.md", "macro const Name { ... }");
+    expect_document_contains("docs/zh/progress.md", "AurexMacroTypedMatcherAdmissionGate");
+    expect_document_contains("docs/zh/progress.md", "AurexMacroDefinitionSiteHygieneAdmissionGate");
+    expect_document_contains("docs/zh/progress.md", "m27b_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/progress.md", "aurex_macro_typed_matcher_admissions");
+    expect_document_contains("docs/zh/progress.md", "aurex_macro_definition_site_hygiene_gates");
+    expect_document_contains("docs/zh/progress.md", "match expr_list(xs) -> { xs }");
+    expect_document_contains("docs/zh/progress.md", "match item(target) -> { target }");
+    expect_document_contains("docs/zh/progress.md", "match tokens(input) -> { input }");
+    expect_document_contains("docs/zh/progress.md",
+        "typed matcher execution is admission-only in M27b");
+    expect_document_contains("docs/zh/progress.md",
+        "definition-site hygiene resolution is admission-only in M27b");
+    expect_document_contains("docs/zh/progress.md",
+        "仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveExpansionAdmissionGate");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveSemanticExpansionPlan");
     expect_document_contains("docs/zh/progress.md", "BuiltinDeriveParserConsumptionReleaseGate");
@@ -664,6 +678,16 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/version.md", "aurex_macro_surface_admission_gates");
     expect_document_contains("docs/zh/version.md", "m27_macro_expansion_plan_baseline()");
     expect_document_contains("docs/zh/version.md", "macro_rules!");
+    expect_document_contains("docs/zh/version.md",
+        "## M27b Aurex Typed Matcher And Definition-Site Hygiene Admission");
+    expect_document_contains("docs/zh/version.md", "AurexMacroTypedMatcherAdmissionGate");
+    expect_document_contains("docs/zh/version.md", "AurexMacroDefinitionSiteHygieneAdmissionGate");
+    expect_document_contains("docs/zh/version.md", "m27b_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/version.md", "aurex_macro_typed_matcher_admission");
+    expect_document_contains("docs/zh/version.md", "aurex_macro_definition_site_hygiene_admission");
+    expect_document_contains("docs/zh/version.md", "match expr_list(xs) -> { xs }");
+    expect_document_contains("docs/zh/version.md", "match item(target) -> { target }");
+    expect_document_contains("docs/zh/version.md", "match tokens(input) -> { input }");
     expect_document_contains("docs/zh/version.md",
         "## M26c Builtin Derive Cursor Rollback AST Mutation Verifier Closure");
     expect_document_contains("docs/zh/version.md", "BuiltinDeriveParserDryRunAdmissionGate");
@@ -1319,6 +1343,26 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
         "m27_macro_expansion_plan_baseline()");
     expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "AurexMacroTypedMatcherAdmissionGate");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "AurexMacroDefinitionSiteHygieneAdmissionGate");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "m27b_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "aurex_macro_typed_matcher_admission");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "aurex_macro_definition_site_hygiene_admission");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "match expr_list(xs) -> { xs }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "match item(target) -> { target }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "match tokens(input) -> { input }");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "typed matcher execution is admission-only in M27b");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
+        "definition-site hygiene resolution is admission-only in M27b");
+    expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
         "不支持 Rust `macro_rules!`");
     expect_document_contains("docs/zh/m27-aurex-macro-surface-admission.md",
         "不支持 `$matcher` / `$($x:expr),*`");
@@ -1448,10 +1492,14 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md", "M20c drop / allocator identity prerequisite gate");
     expect_document_contains("docs/zh/next-steps.md", "M20d Runtime Lowering ABI Design Closure 已完成");
     expect_document_contains("docs/zh/next-steps.md",
-        "当前实现入口：M21-M27 宏系统主线已开启，M27 Aurex macro surface admission 已收口");
+        "当前实现入口：M21-M27 宏系统主线已开启，M27b typed matcher / hygiene definition-site admission 已收口");
     expect_document_contains("docs/zh/next-steps.md",
-        "下一步建议进入 M27b typed matcher / hygiene definition-site admission");
+        "M27b 已新增 `AurexMacroDefinitionSiteHygieneAdmissionGate` 和 `AurexMacroTypedMatcherAdmissionGate`");
+    expect_document_contains("docs/zh/next-steps.md",
+        "下一步建议进入 macro call-site admission 和 user derive");
     expect_document_contains("docs/zh/next-steps.md", "macro const Name { ... }");
+    expect_document_contains("docs/zh/next-steps.md", "m27b_macro_expansion_plan_baseline()");
+    expect_document_contains("docs/zh/next-steps.md", "aurex_macro_typed_matcher_admission");
     expect_document_contains("docs/zh/next-steps.md",
         "当前实现入口：M21-M26 宏系统主线已开启，M26c builtin derive cursor rollback AST mutation verifier closure 已收口");
     expect_document_contains("docs/zh/next-steps.md",
@@ -1463,7 +1511,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/next-steps.md",
         "M26a-M26c 已完成 builtin derive parser dry-run admission / recovery shadow / rollback verifier closure");
     expect_document_contains("docs/zh/next-steps.md",
-        "下一步建议进入 M27b typed matcher / hygiene definition-site admission");
+        "M27b typed matcher / hygiene definition-site admission 已完成");
     expect_document_contains("docs/zh/next-steps.md", "no-parser-consumption");
     expect_document_contains("docs/zh/next-steps.md", "dry-run");
     expect_document_contains("docs/zh/next-steps.md", "parser state rollback proof");
@@ -1504,6 +1552,12 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/language-feature-inventory.md", "`AurexMacroSurfaceAdmissionGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "`m27_macro_expansion_plan_baseline()`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "M27b 新增 Aurex typed matcher / definition-site hygiene admission");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`AurexMacroTypedMatcherAdmissionGate`");
+    expect_document_contains("docs/zh/language-feature-inventory.md",
+        "`m27b_macro_expansion_plan_baseline()`");
     expect_document_contains("docs/zh/language-feature-inventory.md",
         "M20c 已新增 `OwnedDynDropAllocatorIdentityGate`");
     expect_document_contains("docs/zh/language-feature-inventory.md",

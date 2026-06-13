@@ -1,6 +1,6 @@
 # Aurex 当前语法与特性清单
 
-日期：2026-06-12
+日期：2026-06-13
 阶段：M27 Aurex Macro Surface Admission
 状态：当前实现清单、M10d 完成面、M11 principal-set composition release、M12 direct composition dispatch release closure、M13a advanced dyn remaining policy design gate、M13b explicit dynproject frontend/query/sema、M13c runtime lowering、M13d release closure、M14 borrowed dyn view path inference release、M15 advanced dyn / const generic design baseline、M16 const generic check-only release、M17 dyn ownership runtime preparation release、M18 dyn ownership runtime boundary gate release、M19 dyn ownership runtime IR/verifier preparation release、M20a owned dyn runtime admission gate release、M20b owned dyn IR shape prototype release、M20c drop / allocator identity prerequisite gate release、M20d runtime lowering ABI design closure release、M20e builtin derive attribute closure、M20f struct field reference borrow closure、M20g default / named call arguments closure、M21a macro design gate、M21b attribute token-tree surface、M21c early item expansion plan、M21d no-op early expansion boundary、M21e generated module part parse/merge stub contract、M21f hygiene/source-map/debug-trace stub contract、M21g generated item declared names stub contract、M21h token materialization admission stub contract、M21i compiler-owned generated token buffer prototype、M21j generated token parser admission gate、M21k parser admission diagnostic projection gate、M21l parser admission diagnostic report projection、M21m generated token parser readiness preflight、M21n parser consumption contract gate、M21o macro expansion boundary release closure、M22a builtin derive admission、M22b builtin derive semantic plan、M22c builtin derive parser release gate、M22d builtin derive release hardening matrix、M22e builtin derive debug dump stability contract、M22f builtin derive rollback diagnostic design gate、M23a builtin derive parser consumption admission protocol、M23b builtin derive checkpoint rollback protocol、M23c builtin derive pre-consumption verification closure、M24a builtin derive controlled parser dry-run adapter、M24b builtin derive dry-run rollback diagnostic replay、M24c builtin derive dry-run negative matrix closure、M25a builtin derive parser dry-run session boundary、M25b builtin derive token cursor snapshot rollback proof、M25c builtin derive diagnostic shadow no-AST-mutation closure、M26a builtin derive parser dry-run admission gate、M26b builtin derive error recovery shadow diagnostic gate、M26c builtin derive cursor rollback AST mutation verifier closure、M27 Aurex macro surface admission 与后续非目标
 
@@ -187,6 +187,18 @@ compile-time execution、standard library、runtime、external process 或 user 
 `aurex_declarative_macro_surface`、`aurex_user_derive_macro_surface` 和
 `aurex_compile_time_macro_execution_admission`。M27 明确不支持 Rust `macro_rules!` 或 `$matcher`，也不执行宏展开、
 用户自定义 derive lowering、用户编译期代码、generated part parse/merge、AST mutation 或宏生成用户代码。
+
+M27b 新增 Aurex typed matcher / definition-site hygiene admission：`expand_early_item_macros_noop()` 会为每个
+macro item 生成 `AurexMacroDefinitionSiteHygieneAdmissionGate`，并为每个顶层 `match` clause 生成
+`AurexMacroTypedMatcherAdmissionGate`。当前能识别 `match expr_list(xs) -> { xs }`、
+`match item(target) -> { target }` 和 `match tokens(input) -> { input }`；未知 head 会进入 unknown matcher gate
+并保持 blocked。Summary / dump / fingerprint 记录 `aurex_macro_definition_site_hygiene_gates`、
+`aurex_macro_typed_matcher_admissions`、`aurex_macro_expr_list_matchers`、`aurex_macro_item_matchers`、
+`aurex_macro_token_stream_matchers`、`aurex_macro_unknown_matchers`、definition-site mark、fresh name scope、
+diagnostic anchor 和 matcher identity；Query 层新增 `m27b_macro_expansion_plan_baseline()`、
+`aurex_macro_typed_matcher_admission`、`aurex_macro_definition_site_hygiene_admission` 和
+`aurex_macro_debuggable_diagnostic_anchor`。typed matcher execution is admission-only in M27b；definition-site
+hygiene resolution is admission-only in M27b；仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 但它还不是“基础语法冻结”的语言。最需要先修的是基础层剩余不一致，而不是继续添加更高级特性：
 

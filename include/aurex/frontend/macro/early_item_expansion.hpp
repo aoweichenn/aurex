@@ -1241,6 +1241,89 @@ struct AurexMacroSurfaceAdmissionGate {
     bool query_reusable = true;
 };
 
+enum class AurexMacroTypedMatcherKind : base::u8 {
+    unknown,
+    expr_list,
+    item,
+    tokens,
+};
+
+struct AurexMacroDefinitionSiteHygieneAdmissionGate {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 surface_admission_identity;
+    query::StableFingerprint128 body_fingerprint;
+    query::StableFingerprint128 definition_site_mark;
+    query::StableFingerprint128 fresh_name_scope;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    query::StableFingerprint128 hygiene_identity;
+    syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
+    std::string macro_name;
+    std::string hygiene_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange macro_range{};
+    base::SourceRange body_range{};
+    bool definition_site_scope_available = true;
+    bool fresh_name_scope_reserved = true;
+    bool diagnostic_anchor_available = true;
+    bool hygiene_resolution_enabled = false;
+    bool declared_names_visible = false;
+    bool captures_call_site_locals = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool gate_visible = true;
+    bool query_reusable = true;
+};
+
+struct AurexMacroTypedMatcherAdmissionGate {
+    syntax::ItemId item;
+    syntax::ModuleId module;
+    base::u32 part_index = 0;
+    base::u32 matcher_index = 0;
+    query::ModulePartKey attached_part;
+    query::StableFingerprint128 surface_admission_identity;
+    query::StableFingerprint128 body_fingerprint;
+    query::StableFingerprint128 matcher_fingerprint;
+    query::StableFingerprint128 matcher_identity;
+    query::StableFingerprint128 definition_site_hygiene_identity;
+    query::StableFingerprint128 diagnostic_anchor_identity;
+    syntax::MacroDeclKind macro_kind = syntax::MacroDeclKind::declarative;
+    AurexMacroTypedMatcherKind matcher_kind = AurexMacroTypedMatcherKind::unknown;
+    std::string macro_name;
+    std::string matcher_head;
+    std::string binding_name;
+    std::string matcher_policy;
+    std::string query_name;
+    std::string blocker_reason;
+    base::SourceRange matcher_range{};
+    base::SourceRange output_range{};
+    bool matcher_shape_recognized = false;
+    bool expr_list_matcher = false;
+    bool item_matcher = false;
+    bool token_stream_matcher = false;
+    bool unknown_matcher = false;
+    bool definition_site_hygiene_available = true;
+    bool fresh_name_scope_available = true;
+    bool diagnostic_anchor_available = true;
+    bool matcher_execution_enabled = false;
+    bool expansion_enabled = false;
+    bool compile_time_execution_enabled = false;
+    bool parser_consumption_enabled = false;
+    bool ast_mutated = false;
+    bool sema_visible_generated_items = false;
+    bool standard_library_required = false;
+    bool runtime_required = false;
+    bool external_process_required = false;
+    bool produced_user_generated_code = false;
+    bool gate_visible = true;
+    bool query_reusable = true;
+};
+
 struct EarlyItemExpansionSummary {
     base::u64 macro_input_count = 0;
     base::u64 attribute_input_count = 0;
@@ -1433,6 +1516,23 @@ struct EarlyItemExpansionSummary {
     base::u64 aurex_macro_surface_expansion_enabled_count = 0;
     base::u64 aurex_macro_surface_compile_time_execution_enabled_count = 0;
     base::u64 aurex_macro_surface_parser_consumable_count = 0;
+    base::u64 aurex_macro_definition_site_hygiene_gate_count = 0;
+    base::u64 aurex_macro_definition_site_hygiene_visible_count = 0;
+    base::u64 aurex_macro_definition_site_hygiene_query_reusable_count = 0;
+    base::u64 aurex_macro_definition_site_scope_available_count = 0;
+    base::u64 aurex_macro_fresh_name_scope_reserved_count = 0;
+    base::u64 aurex_macro_diagnostic_anchor_available_count = 0;
+    base::u64 aurex_macro_hygiene_resolution_enabled_count = 0;
+    base::u64 aurex_macro_declared_names_visible_count = 0;
+    base::u64 aurex_macro_typed_matcher_admission_gate_count = 0;
+    base::u64 aurex_macro_typed_matcher_recognized_count = 0;
+    base::u64 aurex_macro_expr_list_matcher_count = 0;
+    base::u64 aurex_macro_item_matcher_count = 0;
+    base::u64 aurex_macro_token_stream_matcher_count = 0;
+    base::u64 aurex_macro_unknown_matcher_count = 0;
+    base::u64 aurex_macro_typed_matcher_visible_count = 0;
+    base::u64 aurex_macro_typed_matcher_query_reusable_count = 0;
+    base::u64 aurex_macro_typed_matcher_execution_enabled_count = 0;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -1497,6 +1597,9 @@ struct EarlyItemExpansionResult {
         builtin_derive_cursor_rollback_ast_mutation_verifier_closures;
     base::u64 aurex_macro_surface_source_item_count = 0;
     std::vector<AurexMacroSurfaceAdmissionGate> aurex_macro_surface_admission_gates;
+    std::vector<AurexMacroDefinitionSiteHygieneAdmissionGate>
+        aurex_macro_definition_site_hygiene_gates;
+    std::vector<AurexMacroTypedMatcherAdmissionGate> aurex_macro_typed_matcher_admission_gates;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };
@@ -1544,6 +1647,8 @@ struct EarlyItemExpansionResult {
 [[nodiscard]] bool is_valid(const BuiltinDeriveErrorRecoveryShadowDiagnosticGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const BuiltinDeriveCursorRollbackAstMutationVerifierClosure& closure) noexcept;
 [[nodiscard]] bool is_valid(const AurexMacroSurfaceAdmissionGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) noexcept;
+[[nodiscard]] bool is_valid(const AurexMacroTypedMatcherAdmissionGate& gate) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept;
 [[nodiscard]] bool is_valid(const EarlyItemExpansionResult& result) noexcept;
 

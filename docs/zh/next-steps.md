@@ -5,7 +5,7 @@
 这个标题保留为 M8-M20 dyn/runtime 文档测试和后续路线索引的稳定锚点。当前阶段只保留入口评估语义，
 不实现标准库、allocator API、runtime helper、`Box<dyn Trait>`、owning dyn 用户值或 dynamic Drop runtime。
 
-## 当前实现入口：M21-M27 宏系统主线已开启，M27 Aurex macro surface admission 已收口
+## 当前实现入口：M21-M27 宏系统主线已开启，M27b typed matcher / hygiene definition-site admission 已收口
 
 M27 已把 Aurex 自己风格的用户宏声明入口落到 parser / AST / query / early expansion admission gate：
 `macro Name { ... }`、`macro derive Name { ... }` 和 `macro const Name { ... }` 都可被解析和索引，AST 记录
@@ -19,7 +19,16 @@ dump / fingerprint 中会出现 `aurex_macro_surface_source_items`、`aurex_macr
 
 M27 仍是 admission-only：不采用 Rust `macro_rules!` / `$matcher` 写法，不展开宏、不执行用户编译期代码、不 parse /
 merge generated module part、不修改 AST、不生成 sema-visible item、不生成用户代码、不引入标准库/runtime/external process。
-下一步建议进入 M27b typed matcher / hygiene definition-site admission，而不是照搬 Rust 的 declarative macro DSL。
+M27b 已新增 `AurexMacroDefinitionSiteHygieneAdmissionGate` 和 `AurexMacroTypedMatcherAdmissionGate`，当前能索引
+`match expr_list(xs) -> { xs }`、`match item(target) -> { target }` 和
+`match tokens(input) -> { input }`，summary/dump/fingerprint 会记录
+`aurex_macro_definition_site_hygiene_gates`、`aurex_macro_typed_matcher_admissions`、definition-site mark、fresh name
+scope、diagnostic anchor、matcher fingerprint 和 matcher identity；Query 层新增
+`m27b_macro_expansion_plan_baseline()`、`aurex_macro_typed_matcher_admission`、
+`aurex_macro_definition_site_hygiene_admission` 和 `aurex_macro_debuggable_diagnostic_anchor`。
+typed matcher execution is admission-only in M27b；definition-site hygiene resolution is admission-only in M27b；
+仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。下一步建议进入 macro call-site admission 和 user derive
+target schema，而不是照搬 Rust 的 declarative macro DSL。
 
 ## 当前实现入口：M21-M26 宏系统主线已开启，M26c builtin derive cursor rollback AST mutation verifier closure 已收口
 
@@ -237,12 +246,13 @@ parser dry-run、不准入 dry-run execution、不执行 error recovery、不发
 不提交 session、不推进 parser cursor、不执行用户自定义 macro、不打开 external procedural macro、不生成 source
 text、不 parse / merge generated module part、不打开 parser consumption、不修改 AST、不实现标准库或 runtime helper。
 
-下一步建议进入 M27b typed matcher / hygiene definition-site admission：继续保持 no-parser-consumption /
-no-stdlib / no-runtime / no-external-procedural-macro / no-user-generated-code，不照搬 Rust `macro_rules!`，先把
+M27b typed matcher / hygiene definition-site admission 已完成：继续保持 no-parser-consumption / no-stdlib /
+no-runtime / no-external-procedural-macro / no-user-generated-code，不照搬 Rust `macro_rules!`，已经把
 `match expr_list(xs) -> { ... }`、`match item(target) -> { ... }` 和 `match tokens(input) -> { ... }` 从 debug hint
 升级为结构化 matcher facts，并把 definition-site hygiene、fresh name scope、diagnostic anchor、body fingerprint 和
-query cache identity 固定清楚。只有 matcher、hygiene、diagnostic 和 rollback facts 能稳定复用后，才进入 user derive
-lowering 或 compile-time execution sandbox。
+query cache identity 固定清楚。下一步应进入 macro call-site admission：先设计调用点 token capture、参数 shape fact、
+调用点 diagnostic anchor 和 matcher-to-call binding，仍不展开、不执行用户代码、不消费 parser。之后再进入 user derive
+target schema / lowering design 或 compile-time execution sandbox。
 
 ## 已完成入口：M20g 默认参数 / 命名参数已收口，后续继续非标准库语言特性
 

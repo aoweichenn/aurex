@@ -220,7 +220,17 @@ dump / fingerprint 中记录 `aurex_macro_surface_source_items`、`aurex_macro_s
 `m27_macro_expansion_plan_baseline()`、`is_valid_m27_macro_expansion_plan()`、`aurex_declarative_macro_surface`、
 `aurex_user_derive_macro_surface` 和 `aurex_compile_time_macro_execution_admission`。M27 明确不采用
 `macro_rules!` 或 `$matcher` 写法，仍不展开宏、不执行用户编译期代码、不 parse / merge generated module part、不修改
-AST、不生成 sema-visible item、不生成用户代码、不需要标准库/runtime/external process。
+AST、不生成 sema-visible item、不生成用户代码、不需要标准库/runtime/external process。M27b 已在该表面上新增
+`AurexMacroDefinitionSiteHygieneAdmissionGate`、`AurexMacroTypedMatcherAdmissionGate`、
+`aurex_macro_definition_site_hygiene_gates` 和 `aurex_macro_typed_matcher_admission_gates`，当前能识别顶层
+`match expr_list(xs) -> { xs }`、`match item(target) -> { target }` 和
+`match tokens(input) -> { input }`，并把 `aurex_macro_typed_matcher_admissions`、
+`aurex_macro_definition_site_hygiene_gates`、definition-site mark、fresh name scope、diagnostic anchor、matcher
+fingerprint 和 matcher identity 固定为可验证 facts。Query 层新增
+`m27b_macro_expansion_plan_baseline()`、`is_valid_m27b_macro_expansion_plan()`、
+`aurex_macro_typed_matcher_admission`、`aurex_macro_definition_site_hygiene_admission` 和
+`aurex_macro_debuggable_diagnostic_anchor`。typed matcher execution is admission-only in M27b；definition-site
+hygiene resolution is admission-only in M27b；仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

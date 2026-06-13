@@ -20,6 +20,43 @@ constexpr std::string_view FRONTEND_MACRO_M27A_AUREX_MACRO_BODY_FINGERPRINT_MARK
 constexpr std::string_view FRONTEND_MACRO_M27A_AUREX_MACRO_SURFACE_POLICY =
     "aurex_macro_surface_admission_gate_v1";
 constexpr std::string_view FRONTEND_MACRO_M27A_QUERY_NAME_PREFIX = "m27a-aurex-macro-surface:";
+constexpr std::string_view FRONTEND_MACRO_M27B_TYPED_MATCHER_MARKER =
+    "frontend.macro.m27b.typed_matcher_admission_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_MATCHER_FINGERPRINT_MARKER =
+    "frontend.macro.m27b.typed_matcher_fingerprint.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_MARKER =
+    "frontend.macro.m27b.definition_site_hygiene_admission_gate.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_DEFINITION_SITE_MARK_MARKER =
+    "frontend.macro.m27b.definition_site_mark.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_FRESH_NAME_SCOPE_MARKER =
+    "frontend.macro.m27b.fresh_name_scope.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_DIAGNOSTIC_ANCHOR_MARKER =
+    "frontend.macro.m27b.diagnostic_anchor.v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_TYPED_MATCHER_POLICY =
+    "aurex_macro_typed_matcher_admission_v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_POLICY =
+    "aurex_macro_definition_site_hygiene_admission_v1";
+constexpr std::string_view FRONTEND_MACRO_M27B_TYPED_MATCHER_QUERY_PREFIX = "m27b-aurex-macro-typed-matcher:";
+constexpr std::string_view FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_QUERY_PREFIX =
+    "m27b-aurex-macro-definition-site-hygiene:";
+constexpr std::string_view FRONTEND_MACRO_M27B_TYPED_MATCHER_BLOCKER =
+    "Aurex typed matcher execution is admission-only in M27b";
+constexpr std::string_view FRONTEND_MACRO_M27B_UNKNOWN_MATCHER_BLOCKER =
+    "Aurex macro matcher shape is unrecognized and remains blocked in M27b";
+constexpr std::string_view FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_BLOCKER =
+    "Aurex definition-site hygiene resolution is admission-only in M27b";
+constexpr std::string_view FRONTEND_MACRO_M27B_MATCHER_KEYWORD_TEXT = "match";
+constexpr std::string_view FRONTEND_MACRO_M27B_EXPR_LIST_MATCHER_TEXT = "expr_list";
+constexpr std::string_view FRONTEND_MACRO_M27B_ITEM_MATCHER_TEXT = "item";
+constexpr std::string_view FRONTEND_MACRO_M27B_TOKENS_MATCHER_TEXT = "tokens";
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_HEAD_OFFSET = 1U;
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_OPEN_PAREN_OFFSET = 2U;
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_BINDING_OFFSET = 3U;
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_CLOSE_PAREN_OFFSET = 4U;
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_ARROW_OFFSET = 5U;
+constexpr base::usize FRONTEND_MACRO_M27B_MATCHER_OUTPUT_OPEN_OFFSET = 6U;
+constexpr base::u32 FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH = 1U;
+constexpr base::u32 FRONTEND_MACRO_M27B_MATCHER_BINDING_DEPTH = 2U;
 constexpr std::string_view FRONTEND_MACRO_M27A_DECLARATIVE_BLOCKER =
     "Aurex declarative macro expansion is parser-blocked in M27a";
 constexpr std::string_view FRONTEND_MACRO_M27B_USER_DERIVE_BLOCKER =
@@ -457,6 +494,16 @@ constexpr base::u64 FRONTEND_MACRO_M21I_MAX_GENERATED_TOKEN_INDEX =
     return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
 }
 
+[[nodiscard]] base::SourceRange merged_range(
+    const base::SourceRange& begin,
+    const base::SourceRange& end) noexcept
+{
+    if (begin.source.value != end.source.value) {
+        return begin;
+    }
+    return base::SourceRange{begin.source, begin.begin, end.end};
+}
+
 [[nodiscard]] bool is_nonzero_fingerprint(const query::StableFingerprint128 fingerprint) noexcept
 {
     return fingerprint != query::StableFingerprint128{};
@@ -544,6 +591,21 @@ constexpr base::u64 FRONTEND_MACRO_M21I_MAX_GENERATED_TOKEN_INDEX =
     return "unknown";
 }
 
+[[nodiscard]] std::string_view typed_matcher_kind_name(const AurexMacroTypedMatcherKind kind) noexcept
+{
+    switch (kind) {
+        case AurexMacroTypedMatcherKind::unknown:
+            return "unknown";
+        case AurexMacroTypedMatcherKind::expr_list:
+            return "expr_list";
+        case AurexMacroTypedMatcherKind::item:
+            return "item";
+        case AurexMacroTypedMatcherKind::tokens:
+            return "tokens";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] std::string_view macro_surface_blocker_reason(const syntax::MacroDeclKind kind) noexcept
 {
     switch (kind) {
@@ -569,6 +631,43 @@ constexpr base::u64 FRONTEND_MACRO_M21I_MAX_GENERATED_TOKEN_INDEX =
     name += std::to_string(part_index);
     name.push_back(':');
     name += std::to_string(item.value);
+    name.push_back(':');
+    name += macro_name;
+    return name;
+}
+
+[[nodiscard]] std::string macro_definition_site_hygiene_query_name(
+    const syntax::ModuleId module,
+    const base::u32 part_index,
+    const syntax::ItemId item,
+    const std::string_view macro_name)
+{
+    std::string name(FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_QUERY_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(part_index);
+    name.push_back(':');
+    name += std::to_string(item.value);
+    name.push_back(':');
+    name += macro_name;
+    return name;
+}
+
+[[nodiscard]] std::string macro_typed_matcher_query_name(
+    const syntax::ModuleId module,
+    const base::u32 part_index,
+    const syntax::ItemId item,
+    const base::u32 matcher_index,
+    const std::string_view macro_name)
+{
+    std::string name(FRONTEND_MACRO_M27B_TYPED_MATCHER_QUERY_PREFIX);
+    name += std::to_string(module.value);
+    name.push_back(':');
+    name += std::to_string(part_index);
+    name.push_back(':');
+    name += std::to_string(item.value);
+    name.push_back(':');
+    name += std::to_string(matcher_index);
     name.push_back(':');
     name += macro_name;
     return name;
@@ -4676,6 +4775,268 @@ make_builtin_derive_cursor_rollback_ast_mutation_verifier_closure(
     return builder.finish();
 }
 
+struct TypedMatcherCandidate {
+    base::u32 matcher_index = 0;
+    AurexMacroTypedMatcherKind matcher_kind = AurexMacroTypedMatcherKind::unknown;
+    std::string matcher_head;
+    std::string binding_name;
+    base::SourceRange matcher_range{};
+    base::SourceRange output_range{};
+    bool matcher_shape_recognized = false;
+};
+
+[[nodiscard]] AurexMacroTypedMatcherKind matcher_kind_from_head(const std::string_view head) noexcept
+{
+    if (head == FRONTEND_MACRO_M27B_EXPR_LIST_MATCHER_TEXT) {
+        return AurexMacroTypedMatcherKind::expr_list;
+    }
+    if (head == FRONTEND_MACRO_M27B_ITEM_MATCHER_TEXT) {
+        return AurexMacroTypedMatcherKind::item;
+    }
+    if (head == FRONTEND_MACRO_M27B_TOKENS_MATCHER_TEXT) {
+        return AurexMacroTypedMatcherKind::tokens;
+    }
+    return AurexMacroTypedMatcherKind::unknown;
+}
+
+[[nodiscard]] bool token_is_match_keyword(const syntax::AttributeTokenDecl& token) noexcept
+{
+    return token.kind == syntax::TokenKind::kw_match
+        || (token.kind == syntax::TokenKind::identifier
+            && token.text == FRONTEND_MACRO_M27B_MATCHER_KEYWORD_TEXT);
+}
+
+[[nodiscard]] base::usize find_matching_top_level_output_brace(
+    const syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+    const base::usize start) noexcept
+{
+    if (start >= tokens.size() || tokens[start].kind != syntax::TokenKind::l_brace) {
+        return tokens.size();
+    }
+    const base::u32 output_depth = tokens[start].depth;
+    for (base::usize index = start + 1U; index < tokens.size(); ++index) {
+        if (tokens[index].kind == syntax::TokenKind::r_brace && tokens[index].depth == output_depth) {
+            return index;
+        }
+    }
+    return tokens.size();
+}
+
+[[nodiscard]] bool token_at_matches(
+    const syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+    const base::usize index,
+    const base::u32 depth,
+    const syntax::TokenKind kind) noexcept
+{
+    return index < tokens.size()
+        && tokens[index].depth == depth
+        && tokens[index].kind == kind;
+}
+
+[[nodiscard]] bool has_m27b_typed_matcher_shape(
+    const syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+    const base::usize match_index) noexcept
+{
+    return match_index + FRONTEND_MACRO_M27B_MATCHER_OUTPUT_OPEN_OFFSET < tokens.size()
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_HEAD_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH,
+            syntax::TokenKind::identifier)
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_OPEN_PAREN_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH,
+            syntax::TokenKind::l_paren)
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_BINDING_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_BINDING_DEPTH,
+            syntax::TokenKind::identifier)
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_CLOSE_PAREN_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH,
+            syntax::TokenKind::r_paren)
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_ARROW_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH,
+            syntax::TokenKind::arrow)
+        && token_at_matches(tokens,
+            match_index + FRONTEND_MACRO_M27B_MATCHER_OUTPUT_OPEN_OFFSET,
+            FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH,
+            syntax::TokenKind::l_brace);
+}
+
+[[nodiscard]] std::string next_token_text_or_empty(
+    const syntax::AstArenaVector<syntax::AttributeTokenDecl>& tokens,
+    const base::usize match_index)
+{
+    const base::usize head_index = match_index + FRONTEND_MACRO_M27B_MATCHER_HEAD_OFFSET;
+    return head_index < tokens.size() ? std::string(tokens[head_index].text) : std::string{};
+}
+
+[[nodiscard]] std::vector<TypedMatcherCandidate> collect_typed_matcher_candidates(
+    const syntax::ItemNode& macro_item)
+{
+    std::vector<TypedMatcherCandidate> candidates;
+    base::u32 matcher_index = 0U;
+    const auto& tokens = macro_item.macro_body_tokens;
+    for (base::usize index = 0; index < tokens.size(); ++index) {
+        const syntax::AttributeTokenDecl& match_token = tokens[index];
+        if (match_token.depth != FRONTEND_MACRO_M27B_MATCHER_TOP_LEVEL_DEPTH
+            || !token_is_match_keyword(match_token)) {
+            continue;
+        }
+
+        TypedMatcherCandidate candidate;
+        candidate.matcher_index = matcher_index;
+        ++matcher_index;
+        candidate.matcher_range = match_token.range;
+        if (has_m27b_typed_matcher_shape(tokens, index)) {
+            candidate.matcher_head =
+                std::string(tokens[index + FRONTEND_MACRO_M27B_MATCHER_HEAD_OFFSET].text);
+            candidate.binding_name =
+                std::string(tokens[index + FRONTEND_MACRO_M27B_MATCHER_BINDING_OFFSET].text);
+            candidate.matcher_kind = matcher_kind_from_head(candidate.matcher_head);
+            const base::usize output_open = index + FRONTEND_MACRO_M27B_MATCHER_OUTPUT_OPEN_OFFSET;
+            const base::usize output_close = find_matching_top_level_output_brace(tokens, output_open);
+            if (output_close < tokens.size()) {
+                candidate.output_range = merged_range(tokens[output_open].range, tokens[output_close].range);
+                candidate.matcher_range = merged_range(match_token.range, tokens[output_close].range);
+                candidate.matcher_shape_recognized = candidate.matcher_kind != AurexMacroTypedMatcherKind::unknown;
+            }
+        } else {
+            candidate.matcher_head = next_token_text_or_empty(tokens, index);
+        }
+        candidates.push_back(std::move(candidate));
+    }
+    return candidates;
+}
+
+[[nodiscard]] base::usize count_aurex_macro_matcher_candidates(const syntax::AstModule& ast)
+{
+    base::usize count = 0;
+    for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
+        const syntax::ItemNode& item = ast.items[item_index];
+        if (item.kind != syntax::ItemKind::macro_decl) {
+            continue;
+        }
+        count = base::checked_add_usize(
+            count,
+            static_cast<base::usize>(item.macro_match_clause_count),
+            "M27b Aurex macro typed matcher candidate reserve");
+    }
+    return count;
+}
+
+[[nodiscard]] query::StableFingerprint128 matcher_fingerprint(
+    const AurexMacroTypedMatcherAdmissionGate& gate) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_MATCHER_FINGERPRINT_MARKER);
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_u32(gate.matcher_index);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_u8(static_cast<base::u8>(gate.matcher_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.matcher_head);
+    builder.mix_string(gate.binding_name);
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.end));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.end));
+    builder.mix_bool(gate.matcher_shape_recognized);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 definition_site_mark(
+    const AurexMacroSurfaceAdmissionGate& surface) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_DEFINITION_SITE_MARK_MARKER);
+    builder.mix_u32(surface.item.value);
+    builder.mix_u32(surface.module.value);
+    builder.mix_u32(surface.part_index);
+    builder.mix_string(surface.macro_name);
+    builder.mix_fingerprint(surface.admission_identity);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 fresh_name_scope(
+    const AurexMacroSurfaceAdmissionGate& surface) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_FRESH_NAME_SCOPE_MARKER);
+    builder.mix_u32(surface.item.value);
+    builder.mix_u32(surface.module.value);
+    builder.mix_u32(surface.part_index);
+    builder.mix_string(surface.macro_name);
+    builder.mix_fingerprint(surface.body_fingerprint);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 diagnostic_anchor_identity(
+    const AurexMacroSurfaceAdmissionGate& surface,
+    const base::SourceRange& anchor) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_DIAGNOSTIC_ANCHOR_MARKER);
+    builder.mix_u32(surface.item.value);
+    builder.mix_u32(surface.module.value);
+    builder.mix_u32(surface.part_index);
+    builder.mix_string(surface.macro_name);
+    builder.mix_u64(static_cast<base::u64>(anchor.source.value));
+    builder.mix_u64(static_cast<base::u64>(anchor.begin));
+    builder.mix_u64(static_cast<base::u64>(anchor.end));
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_definition_site_hygiene_identity(
+    const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_MARKER);
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(gate.surface_admission_identity);
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_fingerprint(gate.definition_site_mark);
+    builder.mix_fingerprint(gate.fresh_name_scope);
+    builder.mix_fingerprint(gate.diagnostic_anchor_identity);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.query_name);
+    return builder.finish();
+}
+
+[[nodiscard]] query::StableFingerprint128 macro_typed_matcher_identity(
+    const AurexMacroTypedMatcherAdmissionGate& gate) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(FRONTEND_MACRO_M27B_TYPED_MATCHER_MARKER);
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_u32(gate.matcher_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(gate.surface_admission_identity);
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_fingerprint(gate.matcher_fingerprint);
+    builder.mix_fingerprint(gate.definition_site_hygiene_identity);
+    builder.mix_fingerprint(gate.diagnostic_anchor_identity);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_u8(static_cast<base::u8>(gate.matcher_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.matcher_head);
+    builder.mix_string(gate.binding_name);
+    builder.mix_bool(gate.matcher_shape_recognized);
+    builder.mix_string(gate.query_name);
+    return builder.finish();
+}
+
 [[nodiscard]] EarlyItemExpansionDisposition disposition_for_attribute(
     const syntax::AttributeDecl& attribute) noexcept
 {
@@ -6056,6 +6417,96 @@ void mix_aurex_macro_surface_admission_gate(
     builder.mix_bool(gate.query_reusable);
 }
 
+void mix_aurex_macro_definition_site_hygiene_gate(
+    query::StableHashBuilder& builder,
+    const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) noexcept
+{
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(gate.surface_admission_identity);
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_fingerprint(gate.definition_site_mark);
+    builder.mix_fingerprint(gate.fresh_name_scope);
+    builder.mix_fingerprint(gate.diagnostic_anchor_identity);
+    builder.mix_fingerprint(gate.hygiene_identity);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.hygiene_policy);
+    builder.mix_string(gate.query_name);
+    builder.mix_string(gate.blocker_reason);
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.macro_range.end));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.body_range.end));
+    builder.mix_bool(gate.definition_site_scope_available);
+    builder.mix_bool(gate.fresh_name_scope_reserved);
+    builder.mix_bool(gate.diagnostic_anchor_available);
+    builder.mix_bool(gate.hygiene_resolution_enabled);
+    builder.mix_bool(gate.declared_names_visible);
+    builder.mix_bool(gate.captures_call_site_locals);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.produced_user_generated_code);
+    builder.mix_bool(gate.gate_visible);
+    builder.mix_bool(gate.query_reusable);
+}
+
+void mix_aurex_macro_typed_matcher_admission_gate(
+    query::StableHashBuilder& builder,
+    const AurexMacroTypedMatcherAdmissionGate& gate) noexcept
+{
+    builder.mix_u32(gate.item.value);
+    builder.mix_u32(gate.module.value);
+    builder.mix_u32(gate.part_index);
+    builder.mix_u32(gate.matcher_index);
+    builder.mix_fingerprint(query::stable_key_fingerprint(gate.attached_part));
+    builder.mix_fingerprint(gate.surface_admission_identity);
+    builder.mix_fingerprint(gate.body_fingerprint);
+    builder.mix_fingerprint(gate.matcher_fingerprint);
+    builder.mix_fingerprint(gate.matcher_identity);
+    builder.mix_fingerprint(gate.definition_site_hygiene_identity);
+    builder.mix_fingerprint(gate.diagnostic_anchor_identity);
+    builder.mix_u8(static_cast<base::u8>(gate.macro_kind));
+    builder.mix_u8(static_cast<base::u8>(gate.matcher_kind));
+    builder.mix_string(gate.macro_name);
+    builder.mix_string(gate.matcher_head);
+    builder.mix_string(gate.binding_name);
+    builder.mix_string(gate.matcher_policy);
+    builder.mix_string(gate.query_name);
+    builder.mix_string(gate.blocker_reason);
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.matcher_range.end));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.source.value));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.begin));
+    builder.mix_u64(static_cast<base::u64>(gate.output_range.end));
+    builder.mix_bool(gate.matcher_shape_recognized);
+    builder.mix_bool(gate.expr_list_matcher);
+    builder.mix_bool(gate.item_matcher);
+    builder.mix_bool(gate.token_stream_matcher);
+    builder.mix_bool(gate.unknown_matcher);
+    builder.mix_bool(gate.definition_site_hygiene_available);
+    builder.mix_bool(gate.fresh_name_scope_available);
+    builder.mix_bool(gate.diagnostic_anchor_available);
+    builder.mix_bool(gate.matcher_execution_enabled);
+    builder.mix_bool(gate.expansion_enabled);
+    builder.mix_bool(gate.compile_time_execution_enabled);
+    builder.mix_bool(gate.parser_consumption_enabled);
+    builder.mix_bool(gate.ast_mutated);
+    builder.mix_bool(gate.sema_visible_generated_items);
+    builder.mix_bool(gate.standard_library_required);
+    builder.mix_bool(gate.runtime_required);
+    builder.mix_bool(gate.external_process_required);
+    builder.mix_bool(gate.produced_user_generated_code);
+    builder.mix_bool(gate.gate_visible);
+    builder.mix_bool(gate.query_reusable);
+}
+
 void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSummary& summary) noexcept
 {
     builder.mix_u64(summary.macro_input_count);
@@ -6249,6 +6700,23 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.aurex_macro_surface_expansion_enabled_count);
     builder.mix_u64(summary.aurex_macro_surface_compile_time_execution_enabled_count);
     builder.mix_u64(summary.aurex_macro_surface_parser_consumable_count);
+    builder.mix_u64(summary.aurex_macro_definition_site_hygiene_gate_count);
+    builder.mix_u64(summary.aurex_macro_definition_site_hygiene_visible_count);
+    builder.mix_u64(summary.aurex_macro_definition_site_hygiene_query_reusable_count);
+    builder.mix_u64(summary.aurex_macro_definition_site_scope_available_count);
+    builder.mix_u64(summary.aurex_macro_fresh_name_scope_reserved_count);
+    builder.mix_u64(summary.aurex_macro_diagnostic_anchor_available_count);
+    builder.mix_u64(summary.aurex_macro_hygiene_resolution_enabled_count);
+    builder.mix_u64(summary.aurex_macro_declared_names_visible_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_admission_gate_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_recognized_count);
+    builder.mix_u64(summary.aurex_macro_expr_list_matcher_count);
+    builder.mix_u64(summary.aurex_macro_item_matcher_count);
+    builder.mix_u64(summary.aurex_macro_token_stream_matcher_count);
+    builder.mix_u64(summary.aurex_macro_unknown_matcher_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_visible_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_query_reusable_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_execution_enabled_count);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -6570,6 +7038,35 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
         && lhs.aurex_macro_surface_compile_time_execution_enabled_count
             == rhs.aurex_macro_surface_compile_time_execution_enabled_count
         && lhs.aurex_macro_surface_parser_consumable_count == rhs.aurex_macro_surface_parser_consumable_count
+        && lhs.aurex_macro_definition_site_hygiene_gate_count
+            == rhs.aurex_macro_definition_site_hygiene_gate_count
+        && lhs.aurex_macro_definition_site_hygiene_visible_count
+            == rhs.aurex_macro_definition_site_hygiene_visible_count
+        && lhs.aurex_macro_definition_site_hygiene_query_reusable_count
+            == rhs.aurex_macro_definition_site_hygiene_query_reusable_count
+        && lhs.aurex_macro_definition_site_scope_available_count
+            == rhs.aurex_macro_definition_site_scope_available_count
+        && lhs.aurex_macro_fresh_name_scope_reserved_count
+            == rhs.aurex_macro_fresh_name_scope_reserved_count
+        && lhs.aurex_macro_diagnostic_anchor_available_count
+            == rhs.aurex_macro_diagnostic_anchor_available_count
+        && lhs.aurex_macro_hygiene_resolution_enabled_count
+            == rhs.aurex_macro_hygiene_resolution_enabled_count
+        && lhs.aurex_macro_declared_names_visible_count
+            == rhs.aurex_macro_declared_names_visible_count
+        && lhs.aurex_macro_typed_matcher_admission_gate_count
+            == rhs.aurex_macro_typed_matcher_admission_gate_count
+        && lhs.aurex_macro_typed_matcher_recognized_count
+            == rhs.aurex_macro_typed_matcher_recognized_count
+        && lhs.aurex_macro_expr_list_matcher_count == rhs.aurex_macro_expr_list_matcher_count
+        && lhs.aurex_macro_item_matcher_count == rhs.aurex_macro_item_matcher_count
+        && lhs.aurex_macro_token_stream_matcher_count == rhs.aurex_macro_token_stream_matcher_count
+        && lhs.aurex_macro_unknown_matcher_count == rhs.aurex_macro_unknown_matcher_count
+        && lhs.aurex_macro_typed_matcher_visible_count == rhs.aurex_macro_typed_matcher_visible_count
+        && lhs.aurex_macro_typed_matcher_query_reusable_count
+            == rhs.aurex_macro_typed_matcher_query_reusable_count
+        && lhs.aurex_macro_typed_matcher_execution_enabled_count
+            == rhs.aurex_macro_typed_matcher_execution_enabled_count
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -8929,6 +9426,73 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     return true;
 }
 
+[[nodiscard]] bool aurex_macro_hygiene_gates_match_surfaces(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    if (result.aurex_macro_definition_site_hygiene_gates.size()
+        != result.aurex_macro_surface_admission_gates.size()) {
+        return false;
+    }
+    for (const AurexMacroSurfaceAdmissionGate& surface : result.aurex_macro_surface_admission_gates) {
+        const auto found = std::find_if(result.aurex_macro_definition_site_hygiene_gates.begin(),
+            result.aurex_macro_definition_site_hygiene_gates.end(),
+            [&surface](const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) {
+                return gate.item.value == surface.item.value
+                    && gate.module.value == surface.module.value
+                    && gate.part_index == surface.part_index
+                    && gate.macro_name == surface.macro_name
+                    && gate.surface_admission_identity == surface.admission_identity
+                    && gate.body_fingerprint == surface.body_fingerprint;
+            });
+        if (found == result.aurex_macro_definition_site_hygiene_gates.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool aurex_macro_typed_matcher_gates_match_surfaces(
+    const EarlyItemExpansionResult& result) noexcept
+{
+    base::u64 expected_matchers = 0U;
+    for (const AurexMacroSurfaceAdmissionGate& surface : result.aurex_macro_surface_admission_gates) {
+        expected_matchers += surface.match_clause_count;
+    }
+    if (expected_matchers
+        != static_cast<base::u64>(result.aurex_macro_typed_matcher_admission_gates.size())) {
+        return false;
+    }
+    for (const AurexMacroTypedMatcherAdmissionGate& matcher :
+        result.aurex_macro_typed_matcher_admission_gates) {
+        const auto surface = std::find_if(result.aurex_macro_surface_admission_gates.begin(),
+            result.aurex_macro_surface_admission_gates.end(),
+            [&matcher](const AurexMacroSurfaceAdmissionGate& gate) {
+                return gate.item.value == matcher.item.value
+                    && gate.module.value == matcher.module.value
+                    && gate.part_index == matcher.part_index
+                    && gate.macro_name == matcher.macro_name
+                    && gate.admission_identity == matcher.surface_admission_identity
+                    && gate.body_fingerprint == matcher.body_fingerprint;
+            });
+        if (surface == result.aurex_macro_surface_admission_gates.end()) {
+            return false;
+        }
+        const auto hygiene = std::find_if(result.aurex_macro_definition_site_hygiene_gates.begin(),
+            result.aurex_macro_definition_site_hygiene_gates.end(),
+            [&matcher](const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) {
+                return gate.item.value == matcher.item.value
+                    && gate.module.value == matcher.module.value
+                    && gate.part_index == matcher.part_index
+                    && gate.macro_name == matcher.macro_name
+                    && gate.hygiene_identity == matcher.definition_site_hygiene_identity;
+            });
+        if (hygiene == result.aurex_macro_definition_site_hygiene_gates.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool per_input_stubs_match_inputs(const EarlyItemExpansionResult& result) noexcept
 {
     if (result.inputs.size() != result.source_maps.size()
@@ -9099,6 +9663,72 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     gate.declarative_surface = macro_item.macro_kind == syntax::MacroDeclKind::declarative;
     gate.user_derive_surface = macro_item.macro_kind == syntax::MacroDeclKind::derive;
     gate.compile_time_execution_surface = macro_item.macro_kind == syntax::MacroDeclKind::compile_time;
+    return gate;
+}
+
+[[nodiscard]] AurexMacroDefinitionSiteHygieneAdmissionGate
+make_aurex_macro_definition_site_hygiene_gate(const AurexMacroSurfaceAdmissionGate& surface)
+{
+    const std::string query_name =
+        macro_definition_site_hygiene_query_name(surface.module, surface.part_index, surface.item,
+            surface.macro_name);
+    AurexMacroDefinitionSiteHygieneAdmissionGate gate;
+    gate.item = surface.item;
+    gate.module = surface.module;
+    gate.part_index = surface.part_index;
+    gate.attached_part = surface.attached_part;
+    gate.surface_admission_identity = surface.admission_identity;
+    gate.body_fingerprint = surface.body_fingerprint;
+    gate.definition_site_mark = definition_site_mark(surface);
+    gate.fresh_name_scope = fresh_name_scope(surface);
+    gate.diagnostic_anchor_identity = diagnostic_anchor_identity(surface, surface.body_range);
+    gate.macro_kind = surface.macro_kind;
+    gate.macro_name = surface.macro_name;
+    gate.hygiene_policy = std::string(FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_POLICY);
+    gate.query_name = query_name;
+    gate.blocker_reason = std::string(FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_BLOCKER);
+    gate.macro_range = surface.macro_range;
+    gate.body_range = surface.body_range;
+    gate.hygiene_identity = macro_definition_site_hygiene_identity(gate);
+    return gate;
+}
+
+[[nodiscard]] AurexMacroTypedMatcherAdmissionGate make_aurex_macro_typed_matcher_gate(
+    const AurexMacroSurfaceAdmissionGate& surface,
+    const AurexMacroDefinitionSiteHygieneAdmissionGate& hygiene,
+    const TypedMatcherCandidate& candidate)
+{
+    const std::string query_name = macro_typed_matcher_query_name(surface.module, surface.part_index,
+        surface.item, candidate.matcher_index, surface.macro_name);
+    AurexMacroTypedMatcherAdmissionGate gate;
+    gate.item = surface.item;
+    gate.module = surface.module;
+    gate.part_index = surface.part_index;
+    gate.matcher_index = candidate.matcher_index;
+    gate.attached_part = surface.attached_part;
+    gate.surface_admission_identity = surface.admission_identity;
+    gate.body_fingerprint = surface.body_fingerprint;
+    gate.definition_site_hygiene_identity = hygiene.hygiene_identity;
+    gate.diagnostic_anchor_identity = diagnostic_anchor_identity(surface, candidate.matcher_range);
+    gate.macro_kind = surface.macro_kind;
+    gate.matcher_kind = candidate.matcher_kind;
+    gate.macro_name = surface.macro_name;
+    gate.matcher_head = candidate.matcher_head;
+    gate.binding_name = candidate.binding_name;
+    gate.matcher_policy = std::string(FRONTEND_MACRO_M27B_TYPED_MATCHER_POLICY);
+    gate.query_name = query_name;
+    gate.blocker_reason = std::string(candidate.matcher_shape_recognized
+            ? FRONTEND_MACRO_M27B_TYPED_MATCHER_BLOCKER
+            : FRONTEND_MACRO_M27B_UNKNOWN_MATCHER_BLOCKER);
+    gate.matcher_range = candidate.matcher_range;
+    gate.output_range = candidate.output_range;
+    gate.matcher_shape_recognized = candidate.matcher_shape_recognized;
+    gate.expr_list_matcher = candidate.matcher_kind == AurexMacroTypedMatcherKind::expr_list;
+    gate.item_matcher = candidate.matcher_kind == AurexMacroTypedMatcherKind::item;
+    gate.token_stream_matcher = candidate.matcher_kind == AurexMacroTypedMatcherKind::tokens;
+    gate.unknown_matcher = candidate.matcher_kind == AurexMacroTypedMatcherKind::unknown;
+    gate.matcher_fingerprint = matcher_fingerprint(gate);
+    gate.matcher_identity = macro_typed_matcher_identity(gate);
     return gate;
 }
 
@@ -10464,6 +11094,91 @@ bool is_valid(const AurexMacroSurfaceAdmissionGate& gate) noexcept
         && gate.query_reusable;
 }
 
+bool is_valid(const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) noexcept
+{
+    return syntax::is_valid(gate.item)
+        && syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && is_nonzero_fingerprint(gate.surface_admission_identity)
+        && is_nonzero_fingerprint(gate.body_fingerprint)
+        && is_nonzero_fingerprint(gate.definition_site_mark)
+        && is_nonzero_fingerprint(gate.fresh_name_scope)
+        && is_nonzero_fingerprint(gate.diagnostic_anchor_identity)
+        && is_nonzero_fingerprint(gate.hygiene_identity)
+        && !gate.macro_name.empty()
+        && gate.hygiene_policy == FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_POLICY
+        && gate.query_name == macro_definition_site_hygiene_query_name(
+               gate.module, gate.part_index, gate.item, gate.macro_name)
+        && gate.blocker_reason == FRONTEND_MACRO_M27B_DEFINITION_SITE_HYGIENE_BLOCKER
+        && source_range_is_well_formed(gate.macro_range)
+        && source_range_is_well_formed(gate.body_range)
+        && gate.hygiene_identity == macro_definition_site_hygiene_identity(gate)
+        && gate.definition_site_scope_available
+        && gate.fresh_name_scope_reserved
+        && gate.diagnostic_anchor_available
+        && !gate.hygiene_resolution_enabled
+        && !gate.declared_names_visible
+        && !gate.captures_call_site_locals
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.gate_visible
+        && gate.query_reusable;
+}
+
+bool is_valid(const AurexMacroTypedMatcherAdmissionGate& gate) noexcept
+{
+    const base::u64 matcher_kind_count = (gate.expr_list_matcher ? 1U : 0U)
+        + (gate.item_matcher ? 1U : 0U)
+        + (gate.token_stream_matcher ? 1U : 0U)
+        + (gate.unknown_matcher ? 1U : 0U);
+    const bool kind_matches_flags =
+        (gate.matcher_kind == AurexMacroTypedMatcherKind::expr_list && gate.expr_list_matcher)
+        || (gate.matcher_kind == AurexMacroTypedMatcherKind::item && gate.item_matcher)
+        || (gate.matcher_kind == AurexMacroTypedMatcherKind::tokens && gate.token_stream_matcher)
+        || (gate.matcher_kind == AurexMacroTypedMatcherKind::unknown && gate.unknown_matcher);
+
+    return syntax::is_valid(gate.item)
+        && syntax::is_valid(gate.module)
+        && query::is_valid(gate.attached_part)
+        && is_nonzero_fingerprint(gate.surface_admission_identity)
+        && is_nonzero_fingerprint(gate.body_fingerprint)
+        && is_nonzero_fingerprint(gate.matcher_fingerprint)
+        && is_nonzero_fingerprint(gate.matcher_identity)
+        && is_nonzero_fingerprint(gate.definition_site_hygiene_identity)
+        && is_nonzero_fingerprint(gate.diagnostic_anchor_identity)
+        && !gate.macro_name.empty()
+        && gate.matcher_policy == FRONTEND_MACRO_M27B_TYPED_MATCHER_POLICY
+        && gate.query_name == macro_typed_matcher_query_name(
+               gate.module, gate.part_index, gate.item, gate.matcher_index, gate.macro_name)
+        && gate.matcher_fingerprint == matcher_fingerprint(gate)
+        && gate.matcher_identity == macro_typed_matcher_identity(gate)
+        && source_range_is_well_formed(gate.matcher_range)
+        && (gate.matcher_shape_recognized ? source_range_is_well_formed(gate.output_range) : true)
+        && matcher_kind_count == 1U
+        && kind_matches_flags
+        && gate.matcher_shape_recognized == (gate.matcher_kind != AurexMacroTypedMatcherKind::unknown)
+        && gate.blocker_reason == (gate.matcher_shape_recognized
+               ? FRONTEND_MACRO_M27B_TYPED_MATCHER_BLOCKER
+               : FRONTEND_MACRO_M27B_UNKNOWN_MATCHER_BLOCKER)
+        && gate.definition_site_hygiene_available
+        && gate.fresh_name_scope_available
+        && gate.diagnostic_anchor_available
+        && !gate.matcher_execution_enabled
+        && !gate.expansion_enabled
+        && !gate.compile_time_execution_enabled
+        && !gate.parser_consumption_enabled
+        && !gate.ast_mutated
+        && !gate.sema_visible_generated_items
+        && !gate.standard_library_required
+        && !gate.runtime_required
+        && !gate.external_process_required
+        && !gate.produced_user_generated_code
+        && gate.gate_visible
+        && gate.query_reusable;
+}
+
 bool is_valid(const EarlyItemExpansionSummary& summary, const EarlyItemExpansionResult& result) noexcept
 {
     return summary_equals(summary, summarize_early_item_expansion_counts(result));
@@ -10646,6 +11361,16 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
                [](const AurexMacroSurfaceAdmissionGate& gate) {
                    return is_valid(gate);
                })
+        && std::all_of(result.aurex_macro_definition_site_hygiene_gates.begin(),
+               result.aurex_macro_definition_site_hygiene_gates.end(),
+               [](const AurexMacroDefinitionSiteHygieneAdmissionGate& gate) {
+                   return is_valid(gate);
+               })
+        && std::all_of(result.aurex_macro_typed_matcher_admission_gates.begin(),
+               result.aurex_macro_typed_matcher_admission_gates.end(),
+               [](const AurexMacroTypedMatcherAdmissionGate& gate) {
+                   return is_valid(gate);
+               })
         && per_input_stubs_match_inputs(result)
         && generated_token_records_match_buffers(result)
         && parser_admission_report_entries_match_diagnostics(result)
@@ -10673,6 +11398,8 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && builtin_derive_cursor_rollback_ast_mutation_verifier_closures_match_groups(result)
         && result.aurex_macro_surface_source_item_count
             == static_cast<base::u64>(result.aurex_macro_surface_admission_gates.size())
+        && aurex_macro_hygiene_gates_match_surfaces(result)
+        && aurex_macro_typed_matcher_gates_match_surfaces(result)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -12129,6 +12856,104 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.aurex_macro_definition_site_hygiene_gate_count =
+        static_cast<base::u64>(result.aurex_macro_definition_site_hygiene_gates.size());
+    for (const AurexMacroDefinitionSiteHygieneAdmissionGate& gate :
+        result.aurex_macro_definition_site_hygiene_gates) {
+        if (gate.gate_visible) {
+            ++summary.aurex_macro_definition_site_hygiene_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.aurex_macro_definition_site_hygiene_query_reusable_count;
+        }
+        if (gate.definition_site_scope_available) {
+            ++summary.aurex_macro_definition_site_scope_available_count;
+        }
+        if (gate.fresh_name_scope_reserved) {
+            ++summary.aurex_macro_fresh_name_scope_reserved_count;
+        }
+        if (gate.diagnostic_anchor_available) {
+            ++summary.aurex_macro_diagnostic_anchor_available_count;
+        }
+        if (gate.hygiene_resolution_enabled) {
+            ++summary.aurex_macro_hygiene_resolution_enabled_count;
+        }
+        if (gate.declared_names_visible) {
+            ++summary.aurex_macro_declared_names_visible_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
+    summary.aurex_macro_typed_matcher_admission_gate_count =
+        static_cast<base::u64>(result.aurex_macro_typed_matcher_admission_gates.size());
+    for (const AurexMacroTypedMatcherAdmissionGate& gate :
+        result.aurex_macro_typed_matcher_admission_gates) {
+        if (gate.matcher_shape_recognized) {
+            ++summary.aurex_macro_typed_matcher_recognized_count;
+        }
+        if (gate.expr_list_matcher) {
+            ++summary.aurex_macro_expr_list_matcher_count;
+        }
+        if (gate.item_matcher) {
+            ++summary.aurex_macro_item_matcher_count;
+        }
+        if (gate.token_stream_matcher) {
+            ++summary.aurex_macro_token_stream_matcher_count;
+        }
+        if (gate.unknown_matcher) {
+            ++summary.aurex_macro_unknown_matcher_count;
+        }
+        if (gate.gate_visible) {
+            ++summary.aurex_macro_typed_matcher_visible_count;
+        }
+        if (gate.query_reusable) {
+            ++summary.aurex_macro_typed_matcher_query_reusable_count;
+        }
+        if (gate.diagnostic_anchor_available) {
+            ++summary.aurex_macro_diagnostic_anchor_available_count;
+        }
+        if (gate.matcher_execution_enabled) {
+            ++summary.aurex_macro_typed_matcher_execution_enabled_count;
+        }
+        if (gate.expansion_enabled) {
+            ++summary.aurex_macro_surface_expansion_enabled_count;
+        }
+        if (gate.compile_time_execution_enabled) {
+            ++summary.aurex_macro_surface_compile_time_execution_enabled_count;
+        }
+        if (gate.parser_consumption_enabled) {
+            ++summary.aurex_macro_surface_parser_consumable_count;
+            ++summary.parse_ready_token_buffer_count;
+        }
+        if (gate.ast_mutated) {
+            ++summary.ast_mutation_count;
+        }
+        if (gate.sema_visible_generated_items) {
+            ++summary.sema_visible_generated_part_count;
+        }
+        if (gate.standard_library_required) {
+            ++summary.standard_library_required_count;
+        }
+        if (gate.runtime_required) {
+            ++summary.runtime_required_count;
+        }
+        if (gate.external_process_required) {
+            ++summary.external_process_required_count;
+        }
+        if (gate.produced_user_generated_code) {
+            ++summary.user_generated_code_count;
+        }
+    }
     return summary;
 }
 
@@ -12319,6 +13144,16 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
     builder.mix_u64(static_cast<base::u64>(result.aurex_macro_surface_admission_gates.size()));
     for (const AurexMacroSurfaceAdmissionGate& gate : result.aurex_macro_surface_admission_gates) {
         mix_aurex_macro_surface_admission_gate(builder, gate);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.aurex_macro_definition_site_hygiene_gates.size()));
+    for (const AurexMacroDefinitionSiteHygieneAdmissionGate& gate :
+        result.aurex_macro_definition_site_hygiene_gates) {
+        mix_aurex_macro_definition_site_hygiene_gate(builder, gate);
+    }
+    builder.mix_u64(static_cast<base::u64>(result.aurex_macro_typed_matcher_admission_gates.size()));
+    for (const AurexMacroTypedMatcherAdmissionGate& gate :
+        result.aurex_macro_typed_matcher_admission_gates) {
+        mix_aurex_macro_typed_matcher_admission_gate(builder, gate);
     }
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
@@ -12668,6 +13503,30 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << summary.aurex_macro_surface_compile_time_execution_enabled_count
            << " aurex_macro_surface_parser_consumable="
            << summary.aurex_macro_surface_parser_consumable_count
+           << " aurex_macro_definition_site_hygiene_gates="
+           << summary.aurex_macro_definition_site_hygiene_gate_count
+           << " aurex_macro_definition_site_scope_available="
+           << summary.aurex_macro_definition_site_scope_available_count
+           << " aurex_macro_fresh_name_scopes="
+           << summary.aurex_macro_fresh_name_scope_reserved_count
+           << " aurex_macro_diagnostic_anchors="
+           << summary.aurex_macro_diagnostic_anchor_available_count
+           << " aurex_macro_hygiene_resolution_enabled="
+           << summary.aurex_macro_hygiene_resolution_enabled_count
+           << " aurex_macro_typed_matcher_admissions="
+           << summary.aurex_macro_typed_matcher_admission_gate_count
+           << " aurex_macro_typed_matchers_recognized="
+           << summary.aurex_macro_typed_matcher_recognized_count
+           << " aurex_macro_expr_list_matchers="
+           << summary.aurex_macro_expr_list_matcher_count
+           << " aurex_macro_item_matchers="
+           << summary.aurex_macro_item_matcher_count
+           << " aurex_macro_token_stream_matchers="
+           << summary.aurex_macro_token_stream_matcher_count
+           << " aurex_macro_unknown_matchers="
+           << summary.aurex_macro_unknown_matcher_count
+           << " aurex_macro_typed_matcher_execution_enabled="
+           << summary.aurex_macro_typed_matcher_execution_enabled_count
            << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " ast_mutations=" << summary.ast_mutation_count
@@ -14313,6 +15172,93 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << " admission_identity=" << query::debug_string(gate.admission_identity)
                << '\n';
     }
+    for (base::usize index = 0; index < result.aurex_macro_definition_site_hygiene_gates.size();
+         ++index) {
+        const AurexMacroDefinitionSiteHygieneAdmissionGate& gate =
+            result.aurex_macro_definition_site_hygiene_gates[index];
+        stream << "  aurex_macro_definition_site_hygiene_gate #" << index
+               << " item=" << gate.item.value
+               << " module=" << gate.module.value
+               << " part=" << gate.part_index
+               << " name=" << gate.macro_name
+               << " kind=" << macro_decl_kind_name(gate.macro_kind)
+               << " policy=" << gate.hygiene_policy
+               << " query=" << gate.query_name
+               << " definition_site_scope_available="
+               << (gate.definition_site_scope_available ? "yes" : "no")
+               << " fresh_name_scope_reserved="
+               << (gate.fresh_name_scope_reserved ? "yes" : "no")
+               << " diagnostic_anchor_available="
+               << (gate.diagnostic_anchor_available ? "yes" : "no")
+               << " hygiene_resolution_enabled="
+               << (gate.hygiene_resolution_enabled ? "yes" : "no")
+               << " declared_names_visible="
+               << (gate.declared_names_visible ? "yes" : "no")
+               << " call_site_capture="
+               << (gate.captures_call_site_locals ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " gate_visible=" << (gate.gate_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " blocker=" << gate.blocker_reason
+               << " definition_site_mark="
+               << query::debug_string(gate.definition_site_mark)
+               << " fresh_name_scope=" << query::debug_string(gate.fresh_name_scope)
+               << " diagnostic_anchor="
+               << query::debug_string(gate.diagnostic_anchor_identity)
+               << " hygiene_identity=" << query::debug_string(gate.hygiene_identity)
+               << '\n';
+    }
+    for (base::usize index = 0; index < result.aurex_macro_typed_matcher_admission_gates.size();
+         ++index) {
+        const AurexMacroTypedMatcherAdmissionGate& gate =
+            result.aurex_macro_typed_matcher_admission_gates[index];
+        stream << "  aurex_macro_typed_matcher_admission_gate #" << index
+               << " item=" << gate.item.value
+               << " module=" << gate.module.value
+               << " part=" << gate.part_index
+               << " matcher=" << gate.matcher_index
+               << " name=" << gate.macro_name
+               << " macro_kind=" << macro_decl_kind_name(gate.macro_kind)
+               << " matcher_kind=" << typed_matcher_kind_name(gate.matcher_kind)
+               << " head=" << gate.matcher_head
+               << " binding=" << gate.binding_name
+               << " policy=" << gate.matcher_policy
+               << " query=" << gate.query_name
+               << " recognized=" << (gate.matcher_shape_recognized ? "yes" : "no")
+               << " expr_list=" << (gate.expr_list_matcher ? "yes" : "no")
+               << " item_matcher=" << (gate.item_matcher ? "yes" : "no")
+               << " token_stream=" << (gate.token_stream_matcher ? "yes" : "no")
+               << " unknown=" << (gate.unknown_matcher ? "yes" : "no")
+               << " definition_site_hygiene_available="
+               << (gate.definition_site_hygiene_available ? "yes" : "no")
+               << " fresh_name_scope_available="
+               << (gate.fresh_name_scope_available ? "yes" : "no")
+               << " diagnostic_anchor_available="
+               << (gate.diagnostic_anchor_available ? "yes" : "no")
+               << " matcher_execution_enabled="
+               << (gate.matcher_execution_enabled ? "yes" : "no")
+               << " expansion_enabled=" << (gate.expansion_enabled ? "yes" : "no")
+               << " compile_time_execution_enabled="
+               << (gate.compile_time_execution_enabled ? "yes" : "no")
+               << " parser_consumption_enabled="
+               << (gate.parser_consumption_enabled ? "yes" : "no")
+               << " ast_mutated=" << (gate.ast_mutated ? "yes" : "no")
+               << " sema_visible_generated_items="
+               << (gate.sema_visible_generated_items ? "yes" : "no")
+               << " user_generated_code="
+               << (gate.produced_user_generated_code ? "yes" : "no")
+               << " gate_visible=" << (gate.gate_visible ? "yes" : "no")
+               << " query_reusable=" << (gate.query_reusable ? "yes" : "no")
+               << " blocker=" << gate.blocker_reason
+               << " matcher_fingerprint=" << query::debug_string(gate.matcher_fingerprint)
+               << " matcher_identity=" << query::debug_string(gate.matcher_identity)
+               << " hygiene_identity="
+               << query::debug_string(gate.definition_site_hygiene_identity)
+               << " diagnostic_anchor="
+               << query::debug_string(gate.diagnostic_anchor_identity)
+               << '\n';
+    }
     return stream.str();
 }
 
@@ -14377,6 +15323,8 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.builtin_derive_error_recovery_shadow_diagnostic_gates.reserve(ast.items.size());
     result.builtin_derive_cursor_rollback_ast_mutation_verifier_closures.reserve(ast.items.size());
     result.aurex_macro_surface_admission_gates.reserve(ast.items.size());
+    result.aurex_macro_definition_site_hygiene_gates.reserve(ast.items.size());
+    result.aurex_macro_typed_matcher_admission_gates.reserve(count_aurex_macro_matcher_candidates(ast));
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -14387,8 +15335,16 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
             if (!attached_part_result) {
                 return base::Result<EarlyItemExpansionResult>::fail(attached_part_result.error());
             }
-            result.aurex_macro_surface_admission_gates.push_back(
-                make_aurex_macro_surface_admission_gate(ast, item_id, attached_part_result.value()));
+            AurexMacroSurfaceAdmissionGate surface_gate =
+                make_aurex_macro_surface_admission_gate(ast, item_id, attached_part_result.value());
+            AurexMacroDefinitionSiteHygieneAdmissionGate hygiene_gate =
+                make_aurex_macro_definition_site_hygiene_gate(surface_gate);
+            for (const TypedMatcherCandidate& candidate : collect_typed_matcher_candidates(item)) {
+                result.aurex_macro_typed_matcher_admission_gates.push_back(
+                    make_aurex_macro_typed_matcher_gate(surface_gate, hygiene_gate, candidate));
+            }
+            result.aurex_macro_definition_site_hygiene_gates.push_back(std::move(hygiene_gate));
+            result.aurex_macro_surface_admission_gates.push_back(std::move(surface_gate));
         }
         if (item.attributes.empty()) {
             continue;

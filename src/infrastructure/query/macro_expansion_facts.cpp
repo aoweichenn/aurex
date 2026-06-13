@@ -1,9 +1,9 @@
 #include <aurex/infrastructure/query/macro_expansion_facts.hpp>
 
 #include <algorithm>
-#include <array>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace aurex::query {
 namespace {
@@ -14,6 +14,8 @@ constexpr std::string_view QUERY_MACRO_EXPANSION_M21C_PLAN_NAME =
     "M21c Early Item Macro Expansion Plan";
 constexpr std::string_view QUERY_MACRO_EXPANSION_M27_PLAN_NAME =
     "M27 Aurex Macro Surface Admission Plan";
+constexpr std::string_view QUERY_MACRO_EXPANSION_M27B_PLAN_NAME =
+    "M27b Aurex Typed Matcher And Definition-Site Hygiene Admission Plan";
 constexpr std::string_view QUERY_MACRO_EXPANSION_ATTRIBUTE_INPUT_FACT =
     "m21b_attribute_decl_token_tree_input";
 constexpr std::string_view QUERY_MACRO_EXPANSION_DERIVE_PASSTHROUGH_FACT =
@@ -34,11 +36,18 @@ constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_USER_DERIVE_SURFACE_FACT 
     "aurex_user_derive_macro_surface_admission";
 constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_COMPILE_TIME_ADMISSION_FACT =
     "aurex_compile_time_macro_execution_admission";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_TYPED_MATCHER_ADMISSION_FACT =
+    "aurex_macro_typed_matcher_admission";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_DEFINITION_SITE_HYGIENE_FACT =
+    "aurex_macro_definition_site_hygiene_admission";
+constexpr std::string_view QUERY_MACRO_EXPANSION_AUREX_DEBUGGABLE_DIAGNOSTIC_ANCHOR_FACT =
+    "aurex_macro_debuggable_diagnostic_anchor";
 constexpr std::string_view QUERY_MACRO_EXPANSION_UNIMPLEMENTED_PREFIX =
     "item attribute macros are parsed but macro expansion is not implemented yet: ";
 constexpr base::u8 QUERY_MACRO_EXPANSION_INVALID_ENUM_VALUE = 255U;
 constexpr base::usize QUERY_MACRO_EXPANSION_M21C_FACT_COUNT = 7U;
 constexpr base::usize QUERY_MACRO_EXPANSION_M27_FACT_COUNT = 10U;
+constexpr base::usize QUERY_MACRO_EXPANSION_M27B_FACT_COUNT = 13U;
 
 [[nodiscard]] base::u8 stable_kind_value(const MacroExpansionFactKind kind) noexcept
 {
@@ -204,6 +213,42 @@ constexpr base::usize QUERY_MACRO_EXPANSION_M27_FACT_COUNT = 10U;
                 && fact.requires_hygiene
                 && !fact.external_process_required
                 && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_macro_typed_matcher_admission:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
+        case MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor:
+            return fact.stage == MacroExpansionStage::early_item_expansion
+                && fact.policy == MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1
+                && !fact.consumes_attribute_decl
+                && fact.consumes_attribute_token_tree
+                && !fact.preserves_builtin_derive
+                && fact.requires_query_key
+                && !fact.requires_generated_module_part
+                && fact.requires_source_map
+                && fact.requires_hygiene
+                && !fact.external_process_required
+                && fact.blocks_unimplemented_item_attribute;
     }
     return false;
 }
@@ -214,18 +259,18 @@ constexpr base::usize QUERY_MACRO_EXPANSION_M27_FACT_COUNT = 10U;
         return false;
     }
 
-    std::array<bool, QUERY_MACRO_EXPANSION_M27_FACT_COUNT> seen{};
+    std::vector<bool> seen(fact_count, false);
     for (const MacroExpansionFact& fact : plan.facts) {
         if (!is_valid(fact.kind)) {
             return false;
         }
         const base::usize index = static_cast<base::usize>(fact.kind) - 1U;
-        if (index >= fact_count || seen[index]) {
+        if (index >= seen.size() || seen[index]) {
             return false;
         }
         seen[index] = true;
     }
-    return std::all_of(seen.begin(), seen.begin() + static_cast<std::ptrdiff_t>(fact_count), [](const bool present) {
+    return std::all_of(seen.begin(), seen.end(), [](const bool present) {
         return present;
     });
 }
@@ -244,6 +289,12 @@ constexpr base::usize QUERY_MACRO_EXPANSION_M27_FACT_COUNT = 10U;
         && lhs.aurex_user_derive_macro_surface_count == rhs.aurex_user_derive_macro_surface_count
         && lhs.aurex_compile_time_macro_execution_admission_count
             == rhs.aurex_compile_time_macro_execution_admission_count
+        && lhs.aurex_macro_typed_matcher_admission_count
+            == rhs.aurex_macro_typed_matcher_admission_count
+        && lhs.aurex_macro_definition_site_hygiene_admission_count
+            == rhs.aurex_macro_definition_site_hygiene_admission_count
+        && lhs.aurex_macro_debuggable_diagnostic_anchor_count
+            == rhs.aurex_macro_debuggable_diagnostic_anchor_count
         && lhs.attribute_decl_input_count == rhs.attribute_decl_input_count
         && lhs.token_tree_input_count == rhs.token_tree_input_count
         && lhs.generated_source_role_count == rhs.generated_source_role_count
@@ -269,6 +320,9 @@ void mix_summary(StableHashBuilder& builder, const MacroExpansionSummary& summar
     builder.mix_u64(summary.aurex_declarative_macro_surface_count);
     builder.mix_u64(summary.aurex_user_derive_macro_surface_count);
     builder.mix_u64(summary.aurex_compile_time_macro_execution_admission_count);
+    builder.mix_u64(summary.aurex_macro_typed_matcher_admission_count);
+    builder.mix_u64(summary.aurex_macro_definition_site_hygiene_admission_count);
+    builder.mix_u64(summary.aurex_macro_debuggable_diagnostic_anchor_count);
     builder.mix_u64(summary.attribute_decl_input_count);
     builder.mix_u64(summary.token_tree_input_count);
     builder.mix_u64(summary.generated_source_role_count);
@@ -529,6 +583,60 @@ void append_fact_flags(std::ostringstream& stream, const MacroExpansionFact& fac
     return fact;
 }
 
+[[nodiscard]] MacroExpansionFact make_aurex_typed_matcher_admission_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_TYPED_MATCHER_ADMISSION_FACT,
+        MacroExpansionFactKind::aurex_macro_typed_matcher_admission,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1,
+        "macro body top-level match hints",
+        "AurexMacroTypedMatcherAdmissionGate typed matcher facts",
+        "typed matcher execution remains blocked in M27b");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
+[[nodiscard]] MacroExpansionFact make_aurex_definition_site_hygiene_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_DEFINITION_SITE_HYGIENE_FACT,
+        MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1,
+        "macro declaration definition site",
+        "AurexMacroDefinitionSiteHygieneAdmissionGate",
+        "definition-site hygiene resolution remains admission-only in M27b");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
+[[nodiscard]] MacroExpansionFact make_aurex_debuggable_diagnostic_anchor_fact()
+{
+    MacroExpansionFact fact = make_macro_expansion_fact(
+        QUERY_MACRO_EXPANSION_AUREX_DEBUGGABLE_DIAGNOSTIC_ANCHOR_FACT,
+        MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor,
+        MacroExpansionStage::early_item_expansion,
+        MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1,
+        "macro matcher source anchors",
+        "stable macro matcher diagnostic anchors",
+        "macro matcher diagnostics remain non-emitting in M27b");
+    fact.consumes_attribute_token_tree = true;
+    fact.requires_query_key = true;
+    fact.requires_source_map = true;
+    fact.requires_hygiene = true;
+    fact.blocks_unimplemented_item_attribute = true;
+    return fact;
+}
+
 } // namespace
 
 std::string_view macro_expansion_fact_kind_name(const MacroExpansionFactKind kind) noexcept
@@ -554,6 +662,12 @@ std::string_view macro_expansion_fact_kind_name(const MacroExpansionFactKind kin
             return "aurex_user_derive_macro_surface";
         case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
             return "aurex_compile_time_macro_execution_admission";
+        case MacroExpansionFactKind::aurex_macro_typed_matcher_admission:
+            return "aurex_macro_typed_matcher_admission";
+        case MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission:
+            return "aurex_macro_definition_site_hygiene_admission";
+        case MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor:
+            return "aurex_macro_debuggable_diagnostic_anchor";
     }
     return "invalid";
 }
@@ -598,6 +712,12 @@ std::string_view macro_expansion_policy_name(const MacroExpansionPolicy policy) 
             return "aurex_user_derive_macro_surface_v1";
         case MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1:
             return "aurex_compile_time_macro_execution_admission_v1";
+        case MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1:
+            return "aurex_macro_typed_matcher_admission_v1";
+        case MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1:
+            return "aurex_macro_definition_site_hygiene_admission_v1";
+        case MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1:
+            return "aurex_macro_debuggable_diagnostic_anchor_v1";
     }
     return "invalid";
 }
@@ -615,6 +735,9 @@ bool is_valid(const MacroExpansionFactKind kind) noexcept
         case MacroExpansionFactKind::aurex_declarative_macro_surface:
         case MacroExpansionFactKind::aurex_user_derive_macro_surface:
         case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
+        case MacroExpansionFactKind::aurex_macro_typed_matcher_admission:
+        case MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission:
+        case MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor:
             return true;
     }
     return false;
@@ -646,6 +769,9 @@ bool is_valid(const MacroExpansionPolicy policy) noexcept
         case MacroExpansionPolicy::aurex_declarative_macro_surface_v1:
         case MacroExpansionPolicy::aurex_user_derive_macro_surface_v1:
         case MacroExpansionPolicy::aurex_compile_time_macro_execution_admission_v1:
+        case MacroExpansionPolicy::aurex_macro_typed_matcher_admission_v1:
+        case MacroExpansionPolicy::aurex_macro_definition_site_hygiene_admission_v1:
+        case MacroExpansionPolicy::aurex_macro_debuggable_diagnostic_anchor_v1:
             return true;
     }
     return false;
@@ -697,6 +823,17 @@ bool is_valid_m27_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept
         && plan.fingerprint == macro_expansion_plan_fingerprint(plan);
 }
 
+bool is_valid_m27b_macro_expansion_plan(const MacroExpansionPlan& plan) noexcept
+{
+    return std::string_view(plan.name) == QUERY_MACRO_EXPANSION_M27B_PLAN_NAME
+        && plan_has_each_fact_kind_once(plan, QUERY_MACRO_EXPANSION_M27B_FACT_COUNT)
+        && std::all_of(plan.facts.begin(), plan.facts.end(), [](const MacroExpansionFact& fact) {
+               return is_valid(fact);
+           })
+        && is_valid(plan.summary, plan)
+        && plan.fingerprint == macro_expansion_plan_fingerprint(plan);
+}
+
 void record_macro_expansion_fact(MacroExpansionPlan& plan, MacroExpansionFact fact)
 {
     plan.facts.push_back(std::move(fact));
@@ -737,6 +874,15 @@ MacroExpansionSummary summarize_macro_expansion_plan_counts(const MacroExpansion
                 break;
             case MacroExpansionFactKind::aurex_compile_time_macro_execution_admission:
                 ++summary.aurex_compile_time_macro_execution_admission_count;
+                break;
+            case MacroExpansionFactKind::aurex_macro_typed_matcher_admission:
+                ++summary.aurex_macro_typed_matcher_admission_count;
+                break;
+            case MacroExpansionFactKind::aurex_macro_definition_site_hygiene_admission:
+                ++summary.aurex_macro_definition_site_hygiene_admission_count;
+                break;
+            case MacroExpansionFactKind::aurex_macro_debuggable_diagnostic_anchor:
+                ++summary.aurex_macro_debuggable_diagnostic_anchor_count;
                 break;
         }
         if (fact.consumes_attribute_decl) {
@@ -803,6 +949,12 @@ std::string summarize_macro_expansion_plan(const MacroExpansionPlan& plan)
            << summary.aurex_user_derive_macro_surface_count
            << " aurex_compile_time_macro_execution_admissions="
            << summary.aurex_compile_time_macro_execution_admission_count
+           << " aurex_macro_typed_matcher_admissions="
+           << summary.aurex_macro_typed_matcher_admission_count
+           << " aurex_macro_definition_site_hygiene_admissions="
+           << summary.aurex_macro_definition_site_hygiene_admission_count
+           << " aurex_macro_debuggable_diagnostic_anchors="
+           << summary.aurex_macro_debuggable_diagnostic_anchor_count
            << " user_generated_code=" << summary.user_generated_code_count
            << " standard_library_required=" << summary.standard_library_required_count
            << " runtime_required=" << summary.runtime_required_count
@@ -864,6 +1016,28 @@ MacroExpansionPlan m27_macro_expansion_plan_baseline()
     record_macro_expansion_fact(plan, make_aurex_declarative_surface_fact());
     record_macro_expansion_fact(plan, make_aurex_user_derive_surface_fact());
     record_macro_expansion_fact(plan, make_aurex_compile_time_admission_fact());
+    plan.summary = summarize_macro_expansion_plan_counts(plan);
+    plan.fingerprint = macro_expansion_plan_fingerprint(plan);
+    return plan;
+}
+
+MacroExpansionPlan m27b_macro_expansion_plan_baseline()
+{
+    MacroExpansionPlan plan;
+    plan.name = std::string(QUERY_MACRO_EXPANSION_M27B_PLAN_NAME);
+    record_macro_expansion_fact(plan, make_attribute_input_fact());
+    record_macro_expansion_fact(plan, make_builtin_derive_fact());
+    record_macro_expansion_fact(plan, make_query_key_fact());
+    record_macro_expansion_fact(plan, make_generated_part_fact());
+    record_macro_expansion_fact(plan, make_source_map_fact());
+    record_macro_expansion_fact(plan, make_unimplemented_blocker_fact());
+    record_macro_expansion_fact(plan, make_external_blocker_fact());
+    record_macro_expansion_fact(plan, make_aurex_declarative_surface_fact());
+    record_macro_expansion_fact(plan, make_aurex_user_derive_surface_fact());
+    record_macro_expansion_fact(plan, make_aurex_compile_time_admission_fact());
+    record_macro_expansion_fact(plan, make_aurex_typed_matcher_admission_fact());
+    record_macro_expansion_fact(plan, make_aurex_definition_site_hygiene_fact());
+    record_macro_expansion_fact(plan, make_aurex_debuggable_diagnostic_anchor_fact());
     plan.summary = summarize_macro_expansion_plan_counts(plan);
     plan.fingerprint = macro_expansion_plan_fingerprint(plan);
     return plan;

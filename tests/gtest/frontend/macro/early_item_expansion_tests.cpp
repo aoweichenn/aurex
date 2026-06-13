@@ -641,6 +641,33 @@ template <typename Mutator>
     return found == result.aurex_macro_surface_admission_gates.end() ? nullptr : &*found;
 }
 
+[[nodiscard]] const frontend::macro::AurexMacroDefinitionSiteHygieneAdmissionGate*
+aurex_macro_hygiene_gate_by_name(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view macro_name) noexcept
+{
+    const auto found = std::find_if(result.aurex_macro_definition_site_hygiene_gates.begin(),
+        result.aurex_macro_definition_site_hygiene_gates.end(),
+        [macro_name](const frontend::macro::AurexMacroDefinitionSiteHygieneAdmissionGate& gate) {
+            return gate.macro_name == macro_name;
+        });
+    return found == result.aurex_macro_definition_site_hygiene_gates.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const frontend::macro::AurexMacroTypedMatcherAdmissionGate*
+aurex_macro_matcher_gate_by_name_and_index(
+    const frontend::macro::EarlyItemExpansionResult& result,
+    const std::string_view macro_name,
+    const base::u32 matcher_index) noexcept
+{
+    const auto found = std::find_if(result.aurex_macro_typed_matcher_admission_gates.begin(),
+        result.aurex_macro_typed_matcher_admission_gates.end(),
+        [macro_name, matcher_index](const frontend::macro::AurexMacroTypedMatcherAdmissionGate& gate) {
+            return gate.macro_name == macro_name && gate.matcher_index == matcher_index;
+        });
+    return found == result.aurex_macro_typed_matcher_admission_gates.end() ? nullptr : &*found;
+}
+
 } // namespace
 
 TEST(CoreUnit, EarlyItemExpansionDispositionNamesExposeInvalidFallback)
@@ -7160,6 +7187,305 @@ TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAurexMacroSurfaceAdmission)
         mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
             result.aurex_macro_surface_admission_gates.front().query_name =
                 "m27a-aurex-macro-surface:wrong";
+        }));
+}
+
+TEST(CoreUnit, EarlyItemExpansionCollectsAurexTypedMatcherAndDefinitionSiteHygieneGates)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n"
+        "macro derive Inspect {\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro const TokenBuild {\n"
+        "  match tokens(input) -> { input }\n"
+        "}\n"
+        "macro Weird {\n"
+        "  match unknown(input) -> { input }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.aurex_macro_surface_admission_gates.size(), 4U);
+    ASSERT_EQ(result.aurex_macro_definition_site_hygiene_gates.size(), 4U);
+    ASSERT_EQ(result.aurex_macro_typed_matcher_admission_gates.size(), 4U);
+    EXPECT_EQ(result.summary.aurex_macro_definition_site_hygiene_gate_count, 4U);
+    EXPECT_EQ(result.summary.aurex_macro_definition_site_scope_available_count, 4U);
+    EXPECT_EQ(result.summary.aurex_macro_fresh_name_scope_reserved_count, 4U);
+    EXPECT_EQ(result.summary.aurex_macro_diagnostic_anchor_available_count, 8U);
+    EXPECT_EQ(result.summary.aurex_macro_hygiene_resolution_enabled_count, 0U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_admission_gate_count, 4U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_recognized_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_expr_list_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_item_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_token_stream_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_unknown_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_execution_enabled_count, 0U);
+    EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.user_generated_code_count, 0U);
+    EXPECT_EQ(result.summary.standard_library_required_count, 0U);
+    EXPECT_EQ(result.summary.runtime_required_count, 0U);
+    EXPECT_EQ(result.summary.external_process_required_count, 0U);
+
+    const frontend::macro::AurexMacroDefinitionSiteHygieneAdmissionGate* const build_hygiene =
+        aurex_macro_hygiene_gate_by_name(result, "BuildVec");
+    ASSERT_NE(build_hygiene, nullptr);
+    EXPECT_TRUE(frontend::macro::is_valid(*build_hygiene));
+    EXPECT_EQ(build_hygiene->query_name, "m27b-aurex-macro-definition-site-hygiene:0:0:0:BuildVec");
+    EXPECT_TRUE(build_hygiene->definition_site_scope_available);
+    EXPECT_TRUE(build_hygiene->fresh_name_scope_reserved);
+    EXPECT_TRUE(build_hygiene->diagnostic_anchor_available);
+    EXPECT_FALSE(build_hygiene->hygiene_resolution_enabled);
+    EXPECT_FALSE(build_hygiene->declared_names_visible);
+    EXPECT_FALSE(build_hygiene->produced_user_generated_code);
+
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const expr_matcher =
+        aurex_macro_matcher_gate_by_name_and_index(result, "BuildVec", 0U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const item_matcher =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Inspect", 0U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const token_matcher =
+        aurex_macro_matcher_gate_by_name_and_index(result, "TokenBuild", 0U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const unknown_matcher =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Weird", 0U);
+    ASSERT_NE(expr_matcher, nullptr);
+    ASSERT_NE(item_matcher, nullptr);
+    ASSERT_NE(token_matcher, nullptr);
+    ASSERT_NE(unknown_matcher, nullptr);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*expr_matcher));
+    EXPECT_EQ(expr_matcher->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::expr_list);
+    EXPECT_EQ(expr_matcher->matcher_head, "expr_list");
+    EXPECT_EQ(expr_matcher->binding_name, "xs");
+    EXPECT_TRUE(expr_matcher->matcher_shape_recognized);
+    EXPECT_TRUE(expr_matcher->expr_list_matcher);
+    EXPECT_FALSE(expr_matcher->matcher_execution_enabled);
+    EXPECT_FALSE(expr_matcher->expansion_enabled);
+    EXPECT_FALSE(expr_matcher->parser_consumption_enabled);
+    EXPECT_EQ(expr_matcher->query_name, "m27b-aurex-macro-typed-matcher:0:0:0:0:BuildVec");
+
+    EXPECT_TRUE(frontend::macro::is_valid(*item_matcher));
+    EXPECT_EQ(item_matcher->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::item);
+    EXPECT_EQ(item_matcher->binding_name, "target");
+    EXPECT_TRUE(item_matcher->item_matcher);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*token_matcher));
+    EXPECT_EQ(token_matcher->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::tokens);
+    EXPECT_EQ(token_matcher->binding_name, "input");
+    EXPECT_TRUE(token_matcher->token_stream_matcher);
+
+    EXPECT_TRUE(frontend::macro::is_valid(*unknown_matcher));
+    EXPECT_EQ(unknown_matcher->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::unknown);
+    EXPECT_EQ(unknown_matcher->matcher_head, "unknown");
+    EXPECT_TRUE(unknown_matcher->unknown_matcher);
+    EXPECT_FALSE(unknown_matcher->matcher_shape_recognized);
+
+    const std::string summary = frontend::macro::summarize_early_item_expansion(result);
+    expect_contains(summary, "aurex_macro_definition_site_hygiene_gates=4");
+    expect_contains(summary, "aurex_macro_typed_matcher_admissions=4");
+    expect_contains(summary, "aurex_macro_typed_matchers_recognized=3");
+    expect_contains(summary, "aurex_macro_expr_list_matchers=1");
+    expect_contains(summary, "aurex_macro_unknown_matchers=1");
+    expect_contains(summary, "aurex_macro_typed_matcher_execution_enabled=0");
+
+    const std::string dump = frontend::macro::dump_early_item_expansion(result);
+    expect_contains(dump, "aurex_macro_definition_site_hygiene_gate #0");
+    expect_contains(dump, "definition_site_scope_available=yes");
+    expect_contains(dump, "fresh_name_scope_reserved=yes");
+    expect_contains(dump, "aurex_macro_typed_matcher_admission_gate #0");
+    expect_contains(dump, "matcher_kind=expr_list");
+    expect_contains(dump, "matcher_kind=item");
+    expect_contains(dump, "matcher_kind=tokens");
+    expect_contains(dump, "matcher_kind=unknown");
+    expect_contains(dump, "matcher_execution_enabled=no");
+}
+
+TEST(CoreUnit, EarlyItemExpansionIndexesMultipleAndMalformedAurexTypedMatchers)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro Many {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "  match tokens(raw) -> { raw }\n"
+        "  match item(target) -> { target }\n"
+        "}\n"
+        "macro Broken {\n"
+        "  match expr_list xs -> { xs }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult result = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(result));
+    ASSERT_EQ(result.aurex_macro_surface_admission_gates.size(), 2U);
+    ASSERT_EQ(result.aurex_macro_definition_site_hygiene_gates.size(), 2U);
+    ASSERT_EQ(result.aurex_macro_typed_matcher_admission_gates.size(), 4U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_admission_gate_count, 4U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_recognized_count, 3U);
+    EXPECT_EQ(result.summary.aurex_macro_expr_list_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_item_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_token_stream_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_unknown_matcher_count, 1U);
+    EXPECT_EQ(result.summary.aurex_macro_typed_matcher_execution_enabled_count, 0U);
+    EXPECT_EQ(result.summary.aurex_macro_surface_parser_consumable_count, 0U);
+    EXPECT_EQ(result.summary.parse_ready_token_buffer_count, 0U);
+    EXPECT_EQ(result.summary.ast_mutation_count, 0U);
+    EXPECT_EQ(result.summary.user_generated_code_count, 0U);
+
+    const frontend::macro::AurexMacroSurfaceAdmissionGate* const many_surface =
+        aurex_macro_surface_gate_by_name(result, "Many");
+    const frontend::macro::AurexMacroSurfaceAdmissionGate* const broken_surface =
+        aurex_macro_surface_gate_by_name(result, "Broken");
+    ASSERT_NE(many_surface, nullptr);
+    ASSERT_NE(broken_surface, nullptr);
+    EXPECT_EQ(many_surface->match_clause_count, 3U);
+    EXPECT_EQ(broken_surface->match_clause_count, 1U);
+
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const many_expr =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Many", 0U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const many_tokens =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Many", 1U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const many_item =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Many", 2U);
+    const frontend::macro::AurexMacroTypedMatcherAdmissionGate* const broken =
+        aurex_macro_matcher_gate_by_name_and_index(result, "Broken", 0U);
+    ASSERT_NE(many_expr, nullptr);
+    ASSERT_NE(many_tokens, nullptr);
+    ASSERT_NE(many_item, nullptr);
+    ASSERT_NE(broken, nullptr);
+
+    EXPECT_EQ(many_expr->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::expr_list);
+    EXPECT_EQ(many_expr->binding_name, "xs");
+    EXPECT_TRUE(many_expr->matcher_shape_recognized);
+    EXPECT_EQ(many_expr->query_name, "m27b-aurex-macro-typed-matcher:0:0:0:0:Many");
+    EXPECT_EQ(many_tokens->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::tokens);
+    EXPECT_EQ(many_tokens->binding_name, "raw");
+    EXPECT_EQ(many_tokens->query_name, "m27b-aurex-macro-typed-matcher:0:0:0:1:Many");
+    EXPECT_EQ(many_item->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::item);
+    EXPECT_EQ(many_item->binding_name, "target");
+    EXPECT_EQ(many_item->query_name, "m27b-aurex-macro-typed-matcher:0:0:0:2:Many");
+
+    EXPECT_EQ(broken->matcher_kind, frontend::macro::AurexMacroTypedMatcherKind::unknown);
+    EXPECT_EQ(broken->matcher_head, "expr_list");
+    EXPECT_TRUE(broken->binding_name.empty());
+    EXPECT_TRUE(broken->unknown_matcher);
+    EXPECT_FALSE(broken->matcher_shape_recognized);
+    EXPECT_FALSE(broken->parser_consumption_enabled);
+    EXPECT_FALSE(broken->ast_mutated);
+    EXPECT_FALSE(broken->produced_user_generated_code);
+}
+
+TEST(CoreUnit, EarlyItemExpansionValidationRejectsAurexTypedMatcherAndHygieneDrift)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.aurex_macro_definition_site_hygiene_gates.size(), 1U);
+    ASSERT_EQ(baseline.aurex_macro_typed_matcher_admission_gates.size(), 1U);
+
+    const frontend::macro::EarlyItemExpansionResult missing_hygiene =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_definition_site_hygiene_gates.clear();
+        });
+    EXPECT_EQ(missing_hygiene.summary.aurex_macro_definition_site_hygiene_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_hygiene));
+
+    const frontend::macro::EarlyItemExpansionResult hygiene_enabled =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_definition_site_hygiene_gates.front().hygiene_resolution_enabled = true;
+        });
+    EXPECT_EQ(hygiene_enabled.summary.aurex_macro_hygiene_resolution_enabled_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(hygiene_enabled));
+
+    const frontend::macro::EarlyItemExpansionResult missing_matcher =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.clear();
+        });
+    EXPECT_EQ(missing_matcher.summary.aurex_macro_typed_matcher_admission_gate_count, 0U);
+    EXPECT_FALSE(frontend::macro::is_valid(missing_matcher));
+
+    const frontend::macro::EarlyItemExpansionResult matcher_executed =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().matcher_execution_enabled = true;
+        });
+    EXPECT_EQ(matcher_executed.summary.aurex_macro_typed_matcher_execution_enabled_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(matcher_executed));
+
+    const frontend::macro::EarlyItemExpansionResult matcher_consumable =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().parser_consumption_enabled = true;
+        });
+    EXPECT_EQ(matcher_consumable.summary.aurex_macro_surface_parser_consumable_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(matcher_consumable));
+
+    const frontend::macro::EarlyItemExpansionResult wrong_kind_flags =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().item_matcher = true;
+        });
+    EXPECT_EQ(wrong_kind_flags.summary.aurex_macro_item_matcher_count, 1U);
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_kind_flags));
+
+    const frontend::macro::EarlyItemExpansionResult wrong_surface_identity =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().surface_admission_identity =
+                query::stable_fingerprint("different m27b surface identity");
+        });
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_surface_identity));
+
+    const frontend::macro::EarlyItemExpansionResult wrong_hygiene_identity =
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().definition_site_hygiene_identity =
+                query::stable_fingerprint("different m27b definition-site hygiene identity");
+        });
+    EXPECT_FALSE(frontend::macro::is_valid(wrong_hygiene_identity));
+}
+
+TEST(CoreUnit, EarlyItemExpansionFingerprintTracksAurexTypedMatcherAndHygieneAdmission)
+{
+    constexpr std::string_view source =
+        "module macro.early_item_expansion;\n"
+        "macro BuildVec {\n"
+        "  match expr_list(xs) -> { xs }\n"
+        "}\n";
+
+    const frontend::macro::EarlyItemExpansionResult baseline = expand_source(source);
+    ASSERT_TRUE(frontend::macro::is_valid(baseline));
+    ASSERT_EQ(baseline.aurex_macro_definition_site_hygiene_gates.size(), 1U);
+    ASSERT_EQ(baseline.aurex_macro_typed_matcher_admission_gates.size(), 1U);
+
+    const auto expect_fingerprint_drift =
+        [&baseline](const frontend::macro::EarlyItemExpansionResult& result) {
+            EXPECT_NE(result.fingerprint, baseline.fingerprint);
+            EXPECT_FALSE(frontend::macro::is_valid(result));
+        };
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_definition_site_hygiene_gates.front().hygiene_identity =
+                query::stable_fingerprint("different m27b hygiene identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().matcher_identity =
+                query::stable_fingerprint("different m27b matcher identity");
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().binding_name = "changed";
+        }));
+
+    expect_fingerprint_drift(
+        mutated_expansion_result(baseline, [](frontend::macro::EarlyItemExpansionResult& result) {
+            result.aurex_macro_typed_matcher_admission_gates.front().query_name =
+                "m27b-aurex-macro-typed-matcher:wrong";
         }));
 }
 

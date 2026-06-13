@@ -11049,7 +11049,7 @@ fn is_other_category(value: usize) -> bool {
         contains_ranges(GC_CN_RANGES[:], GC_CN_RANGES_COUNT, value);
 }
 
-fn contains_ranges(ranges: []const usize, count: usize, value: usize) -> bool {
+fn contains_ranges(ranges: []usize, count: usize, value: usize) -> bool {
     var low: usize = 0usize;
     var high: usize = count;
     while low < high {
@@ -11067,7 +11067,7 @@ fn contains_ranges(ranges: []const usize, count: usize, value: usize) -> bool {
     return false;
 }
 
-fn alias_lookup(aliases: []const PropertyAlias, count: usize, pattern: str, name_start: usize, name_len: usize) -> usize {
+fn alias_lookup(aliases: []PropertyAlias, count: usize, pattern: str, name_start: usize, name_len: usize) -> usize {
     var index: usize = 0usize;
     while index < count {
         if normalized_name_matches(pattern, name_start, name_len, aliases[index].name) {

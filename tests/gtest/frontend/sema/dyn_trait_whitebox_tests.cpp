@@ -919,7 +919,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
         "  fn ptr(self: &Self, value: *const T) -> *const T;\n"
         "  fn arr_ptr(self: &Self, value: *const [2]T) -> *const [2]T;\n"
         "  @borrow(return = [value])\n"
-        "  fn slice(self: &Self, value: []const T) -> []const T;\n"
+        "  fn slice(self: &Self, value: []T) -> []T;\n"
         "  @borrow(return = [self])\n"
         "  fn item_ref(self: &Self) -> &T;\n"
         "  fn tuple(self: &Self, value: (T, i32)) -> (T, i32);\n"
@@ -930,7 +930,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
         "  fn ptr(self: &File, value: *const i32) -> *const i32 { return value; }\n"
         "  fn arr_ptr(self: &File, value: *const [2]i32) -> *const [2]i32 { return value; }\n"
         "  @borrow(return = [value])\n"
-        "  fn slice(self: &File, value: []const i32) -> []const i32 { return value; }\n"
+        "  fn slice(self: &File, value: []i32) -> []i32 { return value; }\n"
         "  @borrow(return = [self])\n"
         "  fn item_ref(self: &File) -> &i32 { return &self.value; }\n"
         "  fn tuple(self: &File, value: (i32, i32)) -> (i32, i32) { return value; }\n"
@@ -957,7 +957,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[1].return_type), "*const [2]i32");
     EXPECT_EQ(checked.trait_object_method_slots[2].method_name, "slice");
     EXPECT_EQ(checked.trait_object_method_slots[2].slot, 2U);
-    EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[2].return_type), "[]const i32");
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[2].return_type), "[]i32");
     EXPECT_EQ(checked.trait_object_method_slots[3].method_name, "item_ref");
     EXPECT_EQ(checked.trait_object_method_slots[3].slot, 3U);
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[3].return_type), "&i32");
@@ -984,7 +984,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
             "slot #5 dyn Complex<i32>.callback slot=5",
             "return=*const i32",
             "return=*const [2]i32",
-            "return=[]const i32",
+            "return=[]i32",
             "return=&i32",
             "return=(i32, i32)",
             "return=fn(i32) -> i32",
@@ -1307,7 +1307,7 @@ TEST(CoreUnit, DynTraitRejectsInvalidObjectSurfacesAndMissingImplCoercions)
         },
         {
             "module dyn_trait_self_slice_param_whitebox;\n"
-            "trait Bad { fn take(self: &Self, value: []const Self) -> i32; }\n"
+            "trait Bad { fn take(self: &Self, value: []Self) -> i32; }\n"
             "fn render(value: &dyn Bad) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "dyn trait `Bad` method `take` can only use Self in the receiver",

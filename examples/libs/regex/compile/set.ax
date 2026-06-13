@@ -19,19 +19,19 @@ struct LiteralBuildStats {
     max_byte_len: usize;
 }
 
-pub fn compile_set(patterns: []const str) -> t.RegexSet {
+pub fn compile_set(patterns: []str) -> t.RegexSet {
     return compile_set_with_options(patterns, t.default_options());
 }
 
-pub fn compile_set_bytes(patterns: []const str) -> t.RegexSet {
+pub fn compile_set_bytes(patterns: []str) -> t.RegexSet {
     return compile_set_bytes_with_options(patterns, t.default_options());
 }
 
-pub fn compile_set_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+pub fn compile_set_with_options(patterns: []str, options: t.RegexOptions) -> t.RegexSet {
     return compile_set_with_mode(patterns, t.MODE_TEXT, options);
 }
 
-pub fn compile_set_bytes_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+pub fn compile_set_bytes_with_options(patterns: []str, options: t.RegexOptions) -> t.RegexSet {
     return compile_set_with_mode(patterns, t.MODE_BYTES, options);
 }
 
@@ -74,7 +74,7 @@ pub fn program_bytes(compiled: &t.RegexSet) -> usize {
         + compiled.literal_terminal_len * sizeof<t.SetLiteralTerminal>;
 }
 
-fn compile_set_with_mode(patterns: []const str, mode: u8, options: t.RegexOptions) -> t.RegexSet {
+fn compile_set_with_mode(patterns: []str, mode: u8, options: t.RegexOptions) -> t.RegexSet {
     let pattern_count: usize = slicelen(patterns);
     if pattern_count > limits.MAX_SET_PATTERNS {
         return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, limits.MAX_SET_PATTERNS);
@@ -121,7 +121,7 @@ fn compile_set_with_mode(patterns: []const str, mode: u8, options: t.RegexOption
     return compiled;
 }
 
-fn can_compile_literal_trie_set(patterns: []const str, mode: u8, options: t.RegexOptions) -> bool {
+fn can_compile_literal_trie_set(patterns: []str, mode: u8, options: t.RegexOptions) -> bool {
     if !literal_trie_options_supported(options) {
         return false;
     }
@@ -189,7 +189,7 @@ fn is_regex_meta_byte(value: u8) -> bool {
         value == ascii.BACKSLASH;
 }
 
-fn compile_literal_trie_set(patterns: []const str, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
+fn compile_literal_trie_set(patterns: []str, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
     let pattern_count: usize = slicelen(patterns);
     var compiled: t.RegexSet = create_set(pattern_count, mode, total_pattern_bytes, options);
     if compiled.status != t.RegexStatus.ok {

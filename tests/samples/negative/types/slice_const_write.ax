@@ -2,7 +2,7 @@ module slice_const_write;
 
 fn main() -> i32 {
     let values: [4]i32 = [1, 2, 3, 4];
-    let slice: []const i32 = values[:];
+    let slice: []i32 = values[:];
     slice[0] = 9;
     return 0;
 }

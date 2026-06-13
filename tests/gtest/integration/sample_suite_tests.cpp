@@ -208,7 +208,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"strraw_return_strfromutf8_unsafe_block_pointer_local", "borrowed local storage cannot escape the function"},
     {"strraw_return_slice_call_local", "borrowed local storage cannot escape the function"},
     {"strraw_return_local", "borrowed local storage cannot escape the function"},
-    {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
+    {"strfromutf8_non_slice", "str UTF-8 builtin requires a []u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},
     {"try_result_extra_case", "try expression requires result-like ok/err enum or option-like some/none enum"},
     {"try_option_extra_case", "try expression requires result-like ok/err enum or option-like some/none enum"},

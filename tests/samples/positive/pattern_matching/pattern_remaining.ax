@@ -13,14 +13,14 @@ fn payload_score(packet: Packet) -> i32 {
     };
 }
 
-fn first_or_zero(values: []const i32) -> i32 {
+fn first_or_zero(values: []i32) -> i32 {
     if values is [head, ..] {
         return head;
     }
     return 0;
 }
 
-fn edge_sum(values: []const i32) -> i32 {
+fn edge_sum(values: []i32) -> i32 {
     return match values {
         [head, .., tail] => head + tail,
         [single] => single,
@@ -28,7 +28,7 @@ fn edge_sum(values: []const i32) -> i32 {
     };
 }
 
-fn slice_always(values: []const i32) -> i32 {
+fn slice_always(values: []i32) -> i32 {
     return match values {
         [..] => 1,
     };
@@ -52,7 +52,7 @@ fn unwrap_or_zero(packet: Packet) -> i32 {
 fn main() -> i32 {
     let values: [3]i32 = [4, 5, 6];
     let [left, .., right] = values;
-    let slice: []const i32 = values[:];
+    let slice: []i32 = values[:];
     return payload_score(Packet.int(10)) +
         payload_score(Packet.other(20)) +
         payload_score(Packet.none) +

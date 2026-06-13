@@ -138,7 +138,7 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     return t.database_result(t.RegexStatus.ok, required, required);
 }
 
-pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
+pub fn deserialize_regex(bytes: []u8) -> t.Regex {
     let data: *const u8 = sliceptr(bytes);
     let len: usize = slicelen(bytes);
     if len < REGEX_HEADER_BYTES || !has_regex_magic(data, len) {
@@ -239,7 +239,7 @@ pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
     return compiled;
 }
 
-pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
+pub fn deserialize_set(bytes: []u8) -> t.RegexSet {
     let data: *const u8 = sliceptr(bytes);
     let len: usize = slicelen(bytes);
     if len < HEADER_BYTES || !has_set_magic(data, len) {

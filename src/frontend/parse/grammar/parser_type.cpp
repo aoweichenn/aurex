@@ -325,9 +325,7 @@ syntax::TypeId TypeParser::parse_type()
                 if (this->match(TokenKind::kw_mut)) {
                     mutability = syntax::PointerMutability::mut;
                 } else if (this->match(TokenKind::kw_const)) {
-                    mutability = syntax::PointerMutability::const_;
-                } else {
-                    this->report_here(std::string(PARSER_EXPECT_TYPE_SLICE_MUTABILITY));
+                    this->report_at(this->previous(), std::string(PARSER_LEGACY_CONST_SLICE_TYPE));
                 }
                 constructors.push_back(TypeConstructor{
                     TypeConstructorKind::slice,

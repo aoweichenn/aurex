@@ -468,7 +468,8 @@ inline constexpr std::string_view PARSER_EXPECT_UNSUPPORTED_UPDATE = "expected u
 
 inline constexpr std::string_view PARSER_EXPECT_TYPE_POINTER_MUTABILITY = "expected 'mut' or 'const' after '*'";
 
-inline constexpr std::string_view PARSER_EXPECT_TYPE_SLICE_MUTABILITY = "expected 'mut' or 'const' after '[]'";
+inline constexpr std::string_view PARSER_LEGACY_CONST_SLICE_TYPE =
+    "legacy []const T is no longer supported; write []T for a shared slice view";
 
 inline constexpr std::string_view PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE =
     "expected 'c' after 'extern' in function type";

@@ -152,7 +152,7 @@ inline constexpr std::string_view IR_VERIFY_STRBLEN_RESULT = "strblen result mus
 inline constexpr std::string_view IR_VERIFY_STRVALID_RESULT = "strvalid result must be bool";
 
 inline constexpr std::string_view IR_VERIFY_STR_UTF8_SLICE =
-    "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice";
+    "str UTF-8 builtin operand must be a []u8 or []mut u8 byte slice";
 
 inline constexpr std::string_view IR_VERIFY_STRFROMUTF8_RESULT = "strfromutf8 result must be str";
 

@@ -342,8 +342,8 @@ unsafe {
 
 旧 std 已经从当前树删除，不应急着重建完整 `std.core.str`。M2 当前先提供两个 compiler builtin 来锁住 safe/unsafe 边界：
 
-- `strvalid(bytes: []const u8 | []mut u8) -> bool`：只验证 byte slice 是否为有效 UTF-8。
-- `strfromutf8(bytes: []const u8 | []mut u8) -> str`：成功返回借用原 byte slice 的文本；失败返回空 `str`。需要区分“合法空输入”和“非法输入”时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`，也不 trap。
+- `strvalid(bytes: []u8 | []mut u8) -> bool`：只验证 byte slice 是否为有效 UTF-8。
+- `strfromutf8(bytes: []u8 | []mut u8) -> str`：成功返回借用原 byte slice 的文本；失败返回空 `str`。需要区分“合法空输入”和“非法输入”时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`，也不 trap。
 - `s[l:r] -> str`：按 byte offset 切片，检查 bounds 和 UTF-8 code point boundary；失败返回空 `str`，不会 trap，也不会构造 invalid UTF-8。
 
 未来库层的最小 text surface 可以在这个边界上继续设计：

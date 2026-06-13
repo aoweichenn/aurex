@@ -51,9 +51,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `&void` | no | Reference pointee must be valid storage |
 | Type | `[4]i32` | yes | Integer literal length |
 | Type | `[N]i32` | no | Const expr lengths are not part of M2 |
-| Type | `[]const i32` | yes | Immutable borrowed slice, fat pointer value |
+| Type | `[]i32` | yes | Shared borrowed slice, fat pointer value |
 | Type | `[]mut i32` | yes | Mutable borrowed slice, fat pointer value |
-| Type | `[]i32` | no | Slice mutability is required |
+| Type | `[]const i32` | no | Legacy const slice spelling; write `[]i32` |
 | Type | `(i32, bool)` | yes | Anonymous tuple/product type |
 | Type | `(i32,)` | yes | One-element tuple uses a trailing comma |
 | Type | `()` | no | Empty tuple type is not part of M2 |
@@ -97,7 +97,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `let r: &mut i32 = &mut value;` where `value` is `let` | no | `&mut` requires writable storage |
 | Expr | `let p: *mut i32 = &mut value;` | no | `&mut` is safe reference syntax, not raw pointer syntax |
 | Expr | `ptrcast<T>(p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
-| Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]const u8` / `[]mut u8` |
+| Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]u8` / `[]mut u8` |
 | Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `str`; failure returns empty `str` |
 | Expr | `text[i]` where `text` is `str` | no | Use checked byte-range slicing; scalar/grapheme APIs are deferred |
 | Expr | `value++` / `value--` | no | Use assignment operators |

@@ -607,7 +607,7 @@ fn write(value: &mut i32, replacement: i32) -> void {
 
 ```aurex
 [4]i32
-[]const i32
+[]i32
 []mut u8
 ```
 
@@ -615,16 +615,17 @@ fn write(value: &mut i32, replacement: i32) -> void {
 
 ```aurex
 let values: [4]i32 = [1, 2, 3, 4];
-let all: []const i32 = values[:];
-let middle: []const i32 = values[1:3];
+let all: []i32 = values[:];
+let middle: []i32 = values[1:3];
 ```
 
 规则：
 
 - `[N]T` 是固定长度数组。
-- `[]const T` / `[]mut T` 是 borrowed slice。
-- `[]T` 会被拒绝，必须写 `const` 或 `mut`。
-- `[]mut T` 可赋给 `[]const T`；反过来不行。
+- `[]T` / `[]mut T` 是 borrowed slice。
+- `[]T` 是 shared/read-only borrowed slice view；`[]mut T` 是 writable
+  borrowed slice view。旧写法 `[]const T` 会被拒绝，必须写 `[]T`。
+- `[]mut T` 可赋给 `[]T`；反过来不行。
 - slice 是 fat value：data pointer + length。
 
 ### 5.6 Tuple
@@ -1640,18 +1641,18 @@ enum 名字不特殊，形状才重要。
 | `alignof<T>` | safe | `usize` | 查询有效 storage type 的 ABI alignment。 |
 | `ptraddr(p_or_ref)` | safe | `usize` | 读取 raw pointer 或 reference 的地址值。 |
 | `ptrat<T>(addr)` | unsafe | `T` | 从整数地址构造 raw pointer，`T` 必须是 pointer。 |
-| `sliceptr(slice)` | safe | `*const T` 或 `*mut T` | 返回 slice 底层 data pointer；`[]const T` 返回 `*const T`，`[]mut T` 返回 `*mut T`。 |
+| `sliceptr(slice)` | safe | `*const T` 或 `*mut T` | 返回 slice 底层 data pointer；`[]T` 返回 `*const T`，`[]mut T` 返回 `*mut T`。 |
 | `slicelen(slice)` | safe | `usize` | 返回 slice element count。 |
 | `strptr(s)` | safe | `*const u8` | 返回 `str` 底层 byte pointer。 |
 | `strblen(s)` | safe | `usize` | 返回 `str` byte length。 |
-| `strvalid(bytes)` | safe | `bool` | 检查 `[]const u8` 或 `[]mut u8` 是否是有效 UTF-8。 |
+| `strvalid(bytes)` | safe | `bool` | 检查 `[]u8` 或 `[]mut u8` 是否是有效 UTF-8。 |
 | `strfromutf8(bytes)` | safe | `str` | 成功时借用 byte slice 作为 `str`；失败返回空 `str`。 |
 | `strraw(data, len)` | unsafe | `str` | 不检查 UTF-8，从 `*const u8` 和 length 构造 `str`。 |
 
 示例：
 
 ```aurex
-fn from_bytes(bytes: []const u8) -> str {
+fn from_bytes(bytes: []u8) -> str {
     if !strvalid(bytes) {
         return "";
     }
@@ -1662,7 +1663,7 @@ fn raw_roundtrip(text_value: str) -> str {
     return unsafe { strraw(strptr(text_value), strblen(text_value)) };
 }
 
-fn first_byte(bytes: []const u8) -> u8 {
+fn first_byte(bytes: []u8) -> u8 {
     if slicelen(bytes) == 0usize {
         return 0u8;
     }
@@ -2264,7 +2265,7 @@ analysis。它们是当前语言的一部分，但仍保持比 Rust 更窄的用
 
 - `&T` / `&mut T`
 - `&[origin] T` / `&mut [origin] T`
-- `[]const T` / `[]mut T`
+- `[]T` / `[]mut T`
 - `str`
 - 包含上述类型的 struct、enum、tuple、array、函数返回类型或 associated projection
 
@@ -2633,7 +2634,7 @@ fn call_raw(value: *const i32) -> i32 {
 
 ```aurex
 *i32                 // pointer 必须写 *const / *mut
-[]i32                // slice 必须写 []const / []mut
+[]const i32          // shared slice 必须写 []T，writable slice 写 []mut T
 [N]i32               // 数组长度不是标识符
 [1 + 2]i32           // 数组长度不是 const expr
 Box<>                // 泛型实参不能为空

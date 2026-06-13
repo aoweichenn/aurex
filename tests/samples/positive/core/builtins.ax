@@ -15,7 +15,7 @@ enum Tiny: u16 {
     one = 1,
 }
 
-fn sum_checked_text(bytes: []const u8) -> i32 {
+fn sum_checked_text(bytes: []u8) -> i32 {
     if !strvalid(bytes) {
         return -1;
     }
@@ -56,7 +56,7 @@ fn main() -> i32 {
     }
 
     let ascii_bytes: [2]u8 = b"ok";
-    let ascii: []const u8 = ascii_bytes[:];
+    let ascii: []u8 = ascii_bytes[:];
     if sum_checked_text(ascii) != 2 {
         return 7;
     }
@@ -69,7 +69,7 @@ fn main() -> i32 {
     }
 
     let invalid_bytes: [1]u8 = [0x80u8];
-    let invalid: []const u8 = invalid_bytes[:];
+    let invalid: []u8 = invalid_bytes[:];
     if strvalid(invalid) {
         return 8;
     }

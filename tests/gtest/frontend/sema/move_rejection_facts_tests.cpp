@@ -73,7 +73,7 @@ constexpr std::string_view MOVE_REJECTION_TEST_SOURCE =
     "  let inner: File = value?;\n"
     "  return ResultFile.ok(inner);\n"
     "}\n"
-    "fn first(values: []const File) -> File {\n"
+    "fn first(values: []File) -> File {\n"
     "  return values[0];\n"
     "}\n"
     "fn main() -> i32 {\n"

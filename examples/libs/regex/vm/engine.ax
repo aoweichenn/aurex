@@ -199,17 +199,17 @@ pub fn workspace_bytes_for_states(state_count: usize) -> usize {
     return workspace_bytes_for(state_count, 2usize);
 }
 
-pub fn search_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+pub fn search_bytes_compiled(compiled: &t.Regex, input: []u8) -> t.MatchResult {
     return search_bytes_compiled_from(compiled, input, 0usize);
 }
 
-pub fn search_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.MatchResult {
+pub fn search_bytes_compiled_from(compiled: &t.Regex, input: []u8, start_offset: usize) -> t.MatchResult {
     return search_bytes_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
 }
 
 pub fn search_bytes_compiled_with_match_options(
     compiled: &t.Regex,
-    input: []const u8,
+    input: []u8,
     start_offset: usize,
     match_options: t.RegexMatchOptions
 ) -> t.MatchResult {
@@ -227,13 +227,13 @@ pub fn search_bytes_compiled_with_match_options(
     return search_with_match_options(compiled, bytes_input_with_options(input, compiled.options), start_offset, match_options, &mut workspace);
 }
 
-pub fn fullmatch_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+pub fn fullmatch_bytes_compiled(compiled: &t.Regex, input: []u8) -> t.MatchResult {
     return fullmatch_bytes_compiled_with_match_options(compiled, input, t.default_match_options());
 }
 
 pub fn fullmatch_bytes_compiled_with_match_options(
     compiled: &t.Regex,
-    input: []const u8,
+    input: []u8,
     match_options: t.RegexMatchOptions
 ) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
@@ -251,17 +251,17 @@ pub fn fullmatch_bytes_compiled_with_match_options(
     return apply_not_null(found, match_options);
 }
 
-pub fn captures_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+pub fn captures_bytes_compiled(compiled: &t.Regex, input: []u8) -> t.Captures {
     return captures_bytes_compiled_from(compiled, input, 0usize);
 }
 
-pub fn captures_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.Captures {
+pub fn captures_bytes_compiled_from(compiled: &t.Regex, input: []u8, start_offset: usize) -> t.Captures {
     return captures_bytes_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
 }
 
 pub fn captures_bytes_compiled_with_match_options(
     compiled: &t.Regex,
-    input: []const u8,
+    input: []u8,
     start_offset: usize,
     match_options: t.RegexMatchOptions
 ) -> t.Captures {
@@ -280,13 +280,13 @@ pub fn captures_bytes_compiled_with_match_options(
     return captures_from_match(compiled, found, workspace.best_caps);
 }
 
-pub fn captures_bytes_fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+pub fn captures_bytes_fullmatch_compiled(compiled: &t.Regex, input: []u8) -> t.Captures {
     return captures_bytes_fullmatch_compiled_with_match_options(compiled, input, t.default_match_options());
 }
 
 pub fn captures_bytes_fullmatch_compiled_with_match_options(
     compiled: &t.Regex,
-    input: []const u8,
+    input: []u8,
     match_options: t.RegexMatchOptions
 ) -> t.Captures {
     if compiled.status != t.RegexStatus.ok {
@@ -382,7 +382,7 @@ pub fn captures_compiled_from_into(
 
 pub fn captures_bytes_compiled_from_into(
     compiled: &t.Regex,
-    input: []const u8,
+    input: []u8,
     start_offset: usize,
     workspace: &mut Workspace,
     captures: &mut t.Captures
@@ -436,7 +436,7 @@ pub fn matches_set_compiled(
 
 pub fn matches_bytes_set_compiled(
     compiled: &t.RegexSet,
-    input: []const u8,
+    input: []u8,
     out_pattern_ids: *mut usize,
     out_capacity: usize
 ) -> t.SetMatchesResult {
@@ -463,11 +463,11 @@ pub fn find_set_compiled_from(compiled: &t.RegexSet, input: str, start_offset: u
     return find_set_input(compiled, set_text_input(compiled, input), start_offset);
 }
 
-pub fn find_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8) -> t.SetMatchSpan {
+pub fn find_bytes_set_compiled(compiled: &t.RegexSet, input: []u8) -> t.SetMatchSpan {
     return find_bytes_set_compiled_from(compiled, input, 0usize);
 }
 
-pub fn find_bytes_set_compiled_from(compiled: &t.RegexSet, input: []const u8, start_offset: usize) -> t.SetMatchSpan {
+pub fn find_bytes_set_compiled_from(compiled: &t.RegexSet, input: []u8, start_offset: usize) -> t.SetMatchSpan {
     if compiled.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, compiled.status);
     }
@@ -507,7 +507,7 @@ pub fn scan_set_overlapping_compiled(compiled: &t.RegexSet, input: str, callback
     return scan_set_all_spans_input(compiled, set_text_input(compiled, input), callback);
 }
 
-pub fn scan_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_bytes_set_compiled(compiled: &t.RegexSet, input: []u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.status != t.RegexStatus.ok {
         return t.set_matches_result(compiled.status, false, 0usize, 0usize);
     }
@@ -517,7 +517,7 @@ pub fn scan_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8, callbac
     return scan_set_input(compiled, set_bytes_input(compiled, input), callback);
 }
 
-pub fn scan_bytes_set_spans_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_bytes_set_spans_compiled(compiled: &t.RegexSet, input: []u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.status != t.RegexStatus.ok {
         return t.set_matches_result(compiled.status, false, 0usize, 0usize);
     }
@@ -527,7 +527,7 @@ pub fn scan_bytes_set_spans_compiled(compiled: &t.RegexSet, input: []const u8, c
     return scan_set_all_spans_input(compiled, set_bytes_input(compiled, input), callback);
 }
 
-pub fn scan_bytes_set_overlapping_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_bytes_set_overlapping_compiled(compiled: &t.RegexSet, input: []u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.status != t.RegexStatus.ok {
         return t.set_matches_result(compiled.status, false, 0usize, 0usize);
     }
@@ -537,7 +537,7 @@ pub fn scan_bytes_set_overlapping_compiled(compiled: &t.RegexSet, input: []const
     return scan_set_all_spans_input(compiled, set_bytes_input(compiled, input), callback);
 }
 
-pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.TextChunk) -> t.MatchResult {
+pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []t.TextChunk) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -557,7 +557,7 @@ pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.TextChunk)
     return search_with_workspace(compiled, raw_text_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), 0usize, &mut workspace);
 }
 
-pub fn search_bytes_vectored_compiled(compiled: &t.Regex, chunks: []const t.RegexChunk) -> t.MatchResult {
+pub fn search_bytes_vectored_compiled(compiled: &t.Regex, chunks: []t.RegexChunk) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -574,7 +574,7 @@ pub fn search_bytes_vectored_compiled(compiled: &t.Regex, chunks: []const t.Rege
 
 pub fn matches_set_vectored_compiled(
     compiled: &t.RegexSet,
-    chunks: []const t.TextChunk,
+    chunks: []t.TextChunk,
     out_pattern_ids: *mut usize,
     out_capacity: usize
 ) -> t.SetMatchesResult {
@@ -594,7 +594,7 @@ pub fn matches_set_vectored_compiled(
 
 pub fn matches_bytes_set_vectored_compiled(
     compiled: &t.RegexSet,
-    chunks: []const t.RegexChunk,
+    chunks: []t.RegexChunk,
     out_pattern_ids: *mut usize,
     out_capacity: usize
 ) -> t.SetMatchesResult {
@@ -612,7 +612,7 @@ pub fn matches_bytes_set_vectored_compiled(
     return matches_set_input(compiled, raw_bytes_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), out_pattern_ids, out_capacity);
 }
 
-pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk) -> t.SetMatchSpan {
+pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []t.TextChunk) -> t.SetMatchSpan {
     if compiled.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, compiled.status);
     }
@@ -627,7 +627,7 @@ pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextC
     return find_set_input(compiled, raw_text_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), 0usize);
 }
 
-pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.status != t.RegexStatus.ok {
         return t.set_matches_result(compiled.status, false, 0usize, 0usize);
     }
@@ -642,11 +642,11 @@ pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t
     return scan_set_all_spans_input(compiled, raw_text_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), callback);
 }
 
-pub fn scan_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
     return scan_set_spans_vectored_compiled(compiled, chunks, callback);
 }
 
-pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk) -> t.SetMatchSpan {
+pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []t.RegexChunk) -> t.SetMatchSpan {
     if compiled.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, compiled.status);
     }
@@ -661,7 +661,7 @@ pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t
     return find_set_input(compiled, raw_bytes_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), 0usize);
 }
 
-pub fn scan_bytes_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_bytes_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.status != t.RegexStatus.ok {
         return t.set_matches_result(compiled.status, false, 0usize, 0usize);
     }
@@ -676,7 +676,7 @@ pub fn scan_bytes_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []c
     return scan_set_all_spans_input(compiled, raw_bytes_input(unsafe { ptrcast<*const u8>(flat.data) }, flat.len, compiled.options), callback);
 }
 
-pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
     return scan_bytes_set_spans_vectored_compiled(compiled, chunks, callback);
 }
 
@@ -3819,7 +3819,7 @@ fn apply_not_null(found: t.MatchResult, match_options: t.RegexMatchOptions) -> t
     return found;
 }
 
-fn bytes_input_with_options(input: []const u8, options: t.RegexOptions) -> InputView {
+fn bytes_input_with_options(input: []u8, options: t.RegexOptions) -> InputView {
     return InputView {
         text: "",
         data: sliceptr(input),
@@ -3830,7 +3830,7 @@ fn bytes_input_with_options(input: []const u8, options: t.RegexOptions) -> Input
     };
 }
 
-fn flatten_text_chunks(chunks: []const t.TextChunk) -> FlatInput {
+fn flatten_text_chunks(chunks: []t.TextChunk) -> FlatInput {
     let chunk_count: usize = slicelen(chunks);
     var total: usize = 0usize;
     var index: usize = 0usize;
@@ -3841,7 +3841,7 @@ fn flatten_text_chunks(chunks: []const t.TextChunk) -> FlatInput {
     return flatten_text_chunks_with_len(chunks, total);
 }
 
-fn flatten_text_chunks_with_len(chunks: []const t.TextChunk, total: usize) -> FlatInput {
+fn flatten_text_chunks_with_len(chunks: []t.TextChunk, total: usize) -> FlatInput {
     let allocation_len: usize = if total == 0usize { 1usize } else { total };
     let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>);
     if data == null {
@@ -3865,7 +3865,7 @@ fn flatten_text_chunks_with_len(chunks: []const t.TextChunk, total: usize) -> Fl
     return FlatInput { data: data, len: total, status: t.RegexStatus.ok };
 }
 
-fn flatten_byte_chunks(chunks: []const t.RegexChunk) -> FlatInput {
+fn flatten_byte_chunks(chunks: []t.RegexChunk) -> FlatInput {
     let chunk_count: usize = slicelen(chunks);
     var total: usize = 0usize;
     var index: usize = 0usize;
@@ -3928,7 +3928,7 @@ fn set_text_input(compiled: &t.RegexSet, input: str) -> InputView {
     return text_input_with_options(input, compiled.options);
 }
 
-fn set_bytes_input(compiled: &t.RegexSet, input: []const u8) -> InputView {
+fn set_bytes_input(compiled: &t.RegexSet, input: []u8) -> InputView {
     return bytes_input_with_options(input, compiled.options);
 }
 

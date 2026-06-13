@@ -75,7 +75,7 @@ pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {
     return stream.status;
 }
 
-pub fn stream_feed_bytes(stream: &mut t.RegexStream, chunk: []const u8) -> t.RegexStatus {
+pub fn stream_feed_bytes(stream: &mut t.RegexStream, chunk: []u8) -> t.RegexStatus {
     if stream.status != t.RegexStatus.ok {
         return stream.status;
     }

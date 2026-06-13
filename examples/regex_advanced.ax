@@ -321,7 +321,7 @@ fn require_options_builder() -> i32 {
 
 fn require_bytes_api() -> i32 {
     let bytes_value: [2]u8 = [0xc3u8, 0xa9u8];
-    let view: []const u8 = bytes_value[:];
+    let view: []u8 = bytes_value[:];
     let raw_match: i32 = ensure(CASE_BYTES + 1, bytes.fullmatch("..", view));
     if raw_match != 0 {
         return raw_match;
@@ -367,7 +367,7 @@ fn require_bytes_api() -> i32 {
         return CASE_BYTES + 9 + bytes.status_code(scan_set.status);
     }
     let scan_value: [8]u8 = [0x00u8, 0x10u8, 0x20u8, 0xffu8, 0x5au8, 0x00u8, 0x01u8, 0x42u8];
-    let scan_view: []const u8 = scan_value[:];
+    let scan_view: []u8 = scan_value[:];
     var scan_ids: [8]usize = [0usize; 8];
     let scan_result: bytes.SetMatchesResult = bytes.matches_set_compiled(&scan_set, scan_view, ids_ptr(&mut scan_ids), SET_ID_CAPACITY);
     if scan_result.status != bytes.RegexStatus.ok || scan_result.count != 1usize || scan_ids[0usize] != 1usize {
@@ -383,7 +383,7 @@ fn require_bytes_api() -> i32 {
 
 fn require_bytes_parity() -> i32 {
     let words_value: [7]u8 = [0x61u8, 0x62u8, 0x20u8, 0x63u8, 0x64u8, 0x20u8, 0x65u8];
-    let words: []const u8 = words_value[:];
+    let words: []u8 = words_value[:];
     var word_re: bytes.Regex = bytes.compile("\\w+");
     defer bytes.destroy(&mut word_re);
     if !word_re.valid() {
@@ -409,7 +409,7 @@ fn require_bytes_parity() -> i32 {
     }
 
     let csv_value: [5]u8 = [0x61u8, 0x2cu8, 0x62u8, 0x2cu8, 0x63u8];
-    let csv: []const u8 = csv_value[:];
+    let csv: []u8 = csv_value[:];
     var comma: bytes.Regex = bytes.compile(",");
     defer bytes.destroy(&mut comma);
     var split: bytes.SplitIter = bytes.splitn_iter(&comma, csv, 2usize);
@@ -441,7 +441,7 @@ fn require_bytes_parity() -> i32 {
     if !encoded.ok() {
         return CASE_BYTES_PARITY + 9 + bytes.status_code(encoded.status);
     }
-    let db_view: []const u8 = db[:encoded.written];
+    let db_view: []u8 = db[:encoded.written];
     var decoded: bytes.RegexSet = bytes.deserialize_set(db_view);
     defer bytes.destroy_set(&mut decoded);
     var ids: [8]usize = [0usize; 8];
@@ -528,8 +528,8 @@ fn require_regex_set_scan_and_vectored() -> i32 {
 
     let bytes_left: [4]u8 = [0x78u8, 0x78u8, 0x20u8, 0x61u8];
     let bytes_right: [4]u8 = [0x62u8, 0x20u8, 0x63u8, 0x64u8];
-    let left_view: []const u8 = bytes_left[:];
-    let right_view: []const u8 = bytes_right[:];
+    let left_view: []u8 = bytes_left[:];
+    let right_view: []u8 = bytes_right[:];
     let byte_chunks: [2]bytes.RegexChunk = [
         bytes.RegexChunk { data: sliceptr(left_view), len: slicelen(left_view) },
         bytes.RegexChunk { data: sliceptr(right_view), len: slicelen(right_view) },
@@ -562,7 +562,7 @@ fn require_database_roundtrip() -> i32 {
     if !encoded.ok() || encoded.required == 0usize {
         return CASE_DATABASE + 2 + regex.status_code(encoded.status);
     }
-    let bytes_view: []const u8 = storage[:encoded.written];
+    let bytes_view: []u8 = storage[:encoded.written];
     var decoded: regex.RegexSet = regex.deserialize_set(bytes_view);
     defer regex.destroy_set(&mut decoded);
     if !decoded.valid() {
@@ -580,7 +580,7 @@ fn require_database_roundtrip() -> i32 {
         return small_result;
     }
     storage[DATABASE_MODE_OFFSET] = INVALID_DATABASE_MODE;
-    let corrupt_view: []const u8 = storage[:encoded.written];
+    let corrupt_view: []u8 = storage[:encoded.written];
     var corrupt: regex.RegexSet = regex.deserialize_set(corrupt_view);
     defer regex.destroy_set(&mut corrupt);
     return ensure(CASE_DATABASE + 6 + regex.status_code(corrupt.status), corrupt.status == regex.RegexStatus.database_error);
@@ -711,7 +711,7 @@ fn require_input_cursor_boundaries() -> i32 {
     }
 
     let bytes_value: [2]u8 = [0xc3u8, 0xa9u8];
-    let bytes_view: []const u8 = bytes_value[:];
+    let bytes_view: []u8 = bytes_value[:];
     var zero_bytes: bytes.Regex = bytes.compile("a*");
     defer bytes.destroy(&mut zero_bytes);
     if !zero_bytes.valid() {
@@ -1088,8 +1088,8 @@ fn require_regex_set_all_span_and_overlap() -> i32 {
 
     let bytes_left: [2]u8 = [0x61u8, 0x62u8];
     let bytes_right: [3]u8 = [0x61u8, 0x62u8, 0x61u8];
-    let left_view: []const u8 = bytes_left[:];
-    let right_view: []const u8 = bytes_right[:];
+    let left_view: []u8 = bytes_left[:];
+    let right_view: []u8 = bytes_right[:];
     let byte_chunks: [2]bytes.RegexChunk = [
         bytes.RegexChunk { data: sliceptr(left_view), len: slicelen(left_view) },
         bytes.RegexChunk { data: sliceptr(right_view), len: slicelen(right_view) },
@@ -1100,7 +1100,7 @@ fn require_regex_set_all_span_and_overlap() -> i32 {
     if byte_spans.status != bytes.RegexStatus.ok || byte_spans.count != 7usize {
         return CASE_SET_ALL_SPANS + 5 + bytes.status_code(byte_spans.status);
     }
-    let bytes_input: []const u8 = bytes_right[:];
+    let bytes_input: []u8 = bytes_right[:];
     let byte_overlap: bytes.SetMatchesResult = bytes.scan_set_overlapping_compiled(&byte_set, bytes_input, set_all_spans_callback);
     return ensure(CASE_SET_ALL_SPANS + 6 + bytes.status_code(byte_overlap.status), byte_overlap.status == bytes.RegexStatus.ok && byte_overlap.count == 4usize);
 }
@@ -1136,7 +1136,7 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
     if !database.ok() {
         return CASE_SET_LITERAL_TRIE + 6 + regex.status_code(database.status);
     }
-    let encoded_view: []const u8 = encoded[:database.written];
+    let encoded_view: []u8 = encoded[:database.written];
     var decoded: regex.RegexSet = regex.deserialize_set(encoded_view);
     defer regex.destroy_set(&mut decoded);
     let decoded_found: regex.SetMatchSpan = regex.find_set_compiled(&decoded, "ushers history");
@@ -1154,7 +1154,7 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
         return CASE_SET_LITERAL_TRIE + 8 + bytes.status_code(byte_set.status);
     }
     let byte_input: [7]u8 = [0x75u8, 0x73u8, 0x68u8, 0x65u8, 0x72u8, 0x73u8, 0x21u8];
-    let byte_view: []const u8 = byte_input[:];
+    let byte_view: []u8 = byte_input[:];
     let byte_found: bytes.SetMatchSpan = bytes.find_set_compiled(&byte_set, byte_view);
     let byte_code: i32 = ensure(
         CASE_SET_LITERAL_TRIE + 9 + bytes.status_code(byte_found.status),
@@ -1279,7 +1279,7 @@ fn require_industrial_api_surface() -> i32 {
     if !serialized.ok() || serialized.required != regex.regex_database_bytes(&db_regex) {
         return CASE_INDUSTRIAL_API + 5 + regex.status_code(serialized.status);
     }
-    let database_view: []const u8 = database_buffer[:serialized.written];
+    let database_view: []u8 = database_buffer[:serialized.written];
     var loaded: regex.Regex = regex.deserialize_regex(database_view);
     defer regex.destroy(&mut loaded);
     if !loaded.valid() || regex.capture_index(&loaded, "key") != 1usize {

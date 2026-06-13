@@ -50,11 +50,11 @@ pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
     return step.part;
 }
 
-pub fn bytes_split_iter(compiled: &t.Regex, input: []const u8) -> t.BytesSplitIter {
+pub fn bytes_split_iter(compiled: &t.Regex, input: []u8) -> t.BytesSplitIter {
     return bytes_splitn_iter(compiled, input, t.CAPTURE_MISSING);
 }
 
-pub fn bytes_splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) -> t.BytesSplitIter {
+pub fn bytes_splitn_iter(compiled: &t.Regex, input: []u8, limit: usize) -> t.BytesSplitIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat<*const t.Regex>(ptraddr(compiled)) };
     return t.BytesSplitIter {
         compiled: compiled_ptr,

@@ -709,7 +709,7 @@ std::string type_label(const AstModule& module, const TypeId id)
             out << "]" << type_label(module, type.array_element);
             break;
         case TypeKind::slice:
-            out << "[]" << (type.slice_mutability == PointerMutability::mut ? "mut " : "const ");
+            out << (type.slice_mutability == PointerMutability::mut ? "[]mut " : "[]");
             out << type_label(module, type.slice_element);
             break;
         case TypeKind::tuple:

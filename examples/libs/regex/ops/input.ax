@@ -20,7 +20,7 @@ pub fn text(value: str) -> RegexInput {
     };
 }
 
-pub fn bytes(value: []const u8) -> RegexInput {
+pub fn bytes(value: []u8) -> RegexInput {
     return bytes_raw(sliceptr(value), slicelen(value));
 }
 

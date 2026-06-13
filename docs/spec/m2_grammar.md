@@ -193,7 +193,7 @@ char
 &i32
 &mut i32
 [4]i32
-[]const i32
+[]i32
 []mut u8
 *mut [4]i32
 (i32, bool)
@@ -220,10 +220,11 @@ Rules:
   M2 references do not include borrow checking, lifetimes, borrowed-return
   rules, or alias analysis.
 - Array type length is an integer literal, not a const expression.
-- Slice types require `const` or `mut` after `[]`; bare `[]T` is rejected.
+- Slice types use `[]T` for a shared borrowed slice and `[]mut T` for a
+  writable borrowed slice. Legacy `[]const T` is rejected; write `[]T`.
 - Slices are fat values represented as data pointer plus length. They can be
-  produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
-  `[]const T` is not assignable to `[]mut T`.
+  produced from arrays or other slices. `[]mut T` is assignable to `[]T`;
+  `[]T` is not assignable to `[]mut T`.
 - Tuple types are anonymous product types. `(A, B)` has two elements, and
   `(A,)` is the one-element tuple form. `()` is not part of M2 syntax.
   Anonymous tuple elements are accessible by numeric fields such as `.0` and
@@ -580,7 +581,7 @@ Tuple expressions:
 Slice expressions:
 
 ```aurex
-let all: []const i32 = values[:];
+let all: []i32 = values[:];
 let prefix = values[:3];
 let suffix = values[1:];
 let middle = values[1:3];
@@ -695,7 +696,7 @@ context. Code that needs a raw pointer address must use the explicit
 reference is a safe load or place projection; unary `*` on a raw pointer remains
 unsafe-only.
 
-`strvalid(bytes)` accepts a `[]const u8` or `[]mut u8` borrowed byte slice and
+`strvalid(bytes)` accepts a `[]u8` or `[]mut u8` borrowed byte slice and
 returns `bool`. `strfromutf8(bytes)` accepts the same slice shape and returns
 `str`: on success it borrows the original byte slice as text, and on failure it
 returns the empty `str`. A caller that needs to distinguish failure from valid

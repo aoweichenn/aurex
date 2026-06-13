@@ -3,7 +3,7 @@ module strraw_pointer_block_alias_return_local;
 unsafe fn bad() -> str {
     let bytes: [2]u8 = b"ok";
     let data: *const u8 = {
-        let view: []const u8 = bytes[:];
+        let view: []u8 = bytes[:];
         sliceptr(view)
     };
     return strraw(data, 2usize);

@@ -597,7 +597,7 @@ TEST_F(AurexIntegrationTest, M7bReturnedBorrowViewsParticipateInLocalLoanCheckin
         "module m7b.slice_alias_write;\n"
         "fn main() -> void {\n"
         "  var values: [3]i32 = [1, 2, 3];\n"
-        "  let slice: []const i32 = values[:];\n"
+        "  let slice: []i32 = values[:];\n"
         "  values[0] = 9;\n"
         "  let _: i32 = slice[0];\n"
         "}\n",

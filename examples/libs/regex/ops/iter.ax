@@ -41,7 +41,7 @@ pub fn find_next(iter: &mut t.FindIter) -> t.MatchResult {
     return step.result;
 }
 
-pub fn bytes_find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {
+pub fn bytes_find_iter(compiled: &t.Regex, input: []u8) -> t.BytesFindIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat<*const t.Regex>(ptraddr(compiled)) };
     return t.BytesFindIter {
         compiled: compiled_ptr,
@@ -90,7 +90,7 @@ pub fn captures_next(iter: &mut t.CaptureIter) -> t.Captures {
     return step.captures;
 }
 
-pub fn bytes_captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCaptureIter {
+pub fn bytes_captures_iter(compiled: &t.Regex, input: []u8) -> t.BytesCaptureIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat<*const t.Regex>(ptraddr(compiled)) };
     return t.BytesCaptureIter {
         compiled: compiled_ptr,

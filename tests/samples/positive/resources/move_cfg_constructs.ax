@@ -60,8 +60,8 @@ fn exercise<T>(value: T, replacement: T, flag: bool) -> T {
 
     let values: [2]i32 = [total, 2];
     let repeated: [2]i32 = [0; 2];
-    let view: []const i32 = values[:];
-    let window: []const i32 = values[0:2];
+    let view: []i32 = values[:];
+    let window: []i32 = values[0:2];
     let empty: [0]i32 = [];
     let pair = Pair { left: view[0], right: repeated[0] };
     let tuple = (pair.left, pair.right);
@@ -91,7 +91,7 @@ fn exercise<T>(value: T, replacement: T, flag: bool) -> T {
     }
 
     let bytes: [2]u8 = b"ok";
-    let byte_view: []const u8 = bytes[:];
+    let byte_view: []u8 = bytes[:];
     let text: str = strfromutf8(byte_view);
     let raw_text: str = unsafe { strraw(strptr(text), strblen(text)) };
     if !strvalid(byte_view) || strblen(raw_text) != 2usize || slicelen(window) != 2usize ||

@@ -1,6 +1,6 @@
 module strraw_return_slice_call_local;
 
-fn identity(values: []const u8) -> []const u8 {
+fn identity(values: []u8) -> []u8 {
     return values;
 }
 

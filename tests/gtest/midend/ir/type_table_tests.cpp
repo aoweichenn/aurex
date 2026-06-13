@@ -125,7 +125,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths)
     EXPECT_EQ(module.types.display_name(array_i32), array_display + "i32");
     EXPECT_EQ(module.types.display_name(array_ptr_i32), array_display + "*mut i32");
     EXPECT_EQ(module.types.display_name(ptr_array_i32), std::string("*mut ") + array_display + "i32");
-    EXPECT_EQ(module.types.display_name(const_slice_i32), "[]const i32");
+    EXPECT_EQ(module.types.display_name(const_slice_i32), "[]i32");
     EXPECT_EQ(module.types.display_name(mut_slice_i32), "[]mut i32");
     EXPECT_EQ(module.types.display_name(tuple_i32_bool), "(i32, bool)");
     EXPECT_EQ(module.types.display_name(single_tuple_i32), "(i32,)");

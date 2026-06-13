@@ -185,7 +185,7 @@ part engine;
 module regex.vm;
 
 priv struct Program {
-    code: []const u8;
+    code: []u8;
 }
 
 pub(package) fn compile(pattern: str) -> Result[Program, Error] {

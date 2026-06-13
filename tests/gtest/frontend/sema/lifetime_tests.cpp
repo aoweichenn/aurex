@@ -954,7 +954,7 @@ TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedLocalEscape)
 TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedSliceCallLocalEscape)
 {
     constexpr std::string_view source = "module lifetime.raw_slice_call_escape;\n"
-                                        "fn identity(values: []const u8) -> []const u8 {\n"
+                                        "fn identity(values: []u8) -> []u8 {\n"
                                         "  return values;\n"
                                         "}\n"
                                         "unsafe fn bad() -> str {\n"
@@ -1057,7 +1057,7 @@ TEST(CoreUnit, LifetimeFactsRejectExternConcreteBorrowSurfaceElisionWithoutBody)
     constexpr std::string_view source = "module lifetime.extern_concrete_surfaces;\n"
                                         "extern c {\n"
                                         "  fn choose_text(left: str, right: str) -> str;\n"
-                                        "  fn choose_slice(left: []const u8, right: []const u8) -> []const u8;\n"
+                                        "  fn choose_slice(left: []u8, right: []u8) -> []u8;\n"
                                         "  fn choose_array(left: &i32, right: &i32) -> [2]&i32;\n"
                                         "  fn choose_tuple_scalar(left: &i32, right: &i32) -> (&i32, i32);\n"
                                         "  fn choose_callback(left: &i32, right: &i32) -> fn() -> &i32;\n"

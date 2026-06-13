@@ -186,7 +186,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes
         "pub fn compute(seed: i32) -> i32 {\n"
         "  let box: Box = Box { value: seed };\n"
         "  let values: [3]i32 = [box.value, id(seed + 1), cast<i32>(2)];\n"
-        "  let view: []const i32 = values[:];\n"
+        "  let view: []i32 = values[:];\n"
         "  let selected: Maybe = Maybe.some(view[0]);\n"
         "  let block_value: i32 = { let local = choose(selected); local };\n"
         "  let via_if: i32 = if seed == 41 { apply(add, 1, 2) } else { 0 };\n"

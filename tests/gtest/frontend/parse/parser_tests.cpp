@@ -254,7 +254,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let raw: str = unsafe { strraw(data, len) };\n"
         "  let raw_literal: str = r\"C:\\tmp\\a\";\n"
         "  let bytes: [3]u8 = b\"a\\n\\0\";\n"
-        "  let bytes_view: []const u8 = bytes[:];\n"
+        "  let bytes_view: []u8 = bytes[:];\n"
         "  let bytes_data: *const u8 = sliceptr(bytes_view);\n"
         "  let bytes_len: usize = slicelen(bytes_view);\n"
         "  let b: u8 = b'\\n';\n"
@@ -356,7 +356,7 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
         "module parser.expr_arena;\n"
         "struct Pair { left: i32; right: i32; }\n"
         "fn callee(value: i32, other: i32) -> i32 { return value + other; }\n"
-        "fn main(input: i32, flag: bool, values: []const i32) -> i32 {\n"
+        "fn main(input: i32, flag: bool, values: []i32) -> i32 {\n"
         "  let pair: Pair = Pair { left: input, right: 3 };\n"
         "  let raw: str = unsafe { strraw(strptr(\"abc\"), strblen(\"abc\")) };\n"
         "  let slice = values[0:2];\n"
@@ -395,9 +395,11 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
 TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions)
 {
     constexpr std::string_view source = "module parser.slices;\n"
-                                        "type ConstSlice = []const i32;\n"
+                                        "type SharedSlice = []i32;\n"
                                         "type MutSlice = []mut i32;\n"
-                                        "fn use(values: []const i32, mut_values: []mut i32) -> i32 {\n"
+                                        "type SpacedSharedSlice = [] i32;\n"
+                                        "type SpacedMutSlice = [] mut i32;\n"
+                                        "fn use(values: []i32, mut_values: []mut i32) -> i32 {\n"
                                         "  let all = values[:];\n"
                                         "  let prefix = values[:2];\n"
                                         "  let suffix = values[1:];\n"
@@ -409,7 +411,7 @@ TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "alias []const i32",
+            "alias []i32",
             "alias []mut i32",
             "slice",
             "slice_start",
@@ -1124,11 +1126,26 @@ TEST(CoreUnit, ParserRejectsMalformedModulePartDeclarations)
         "use declarations must appear before items");
 }
 
-TEST(CoreUnit, ParserRejectsBareSliceType)
+TEST(CoreUnit, ParserAcceptsSharedSliceTypeWithoutConst)
 {
-    expect_parse_error("module parser.bad_slice_type;\n"
-                       "type Bad = []i32;\n",
-        "expected 'mut' or 'const' after '[]'");
+    const syntax::AstModule module = parse_success("module parser.shared_slice_type;\n"
+                                                   "type Shared = []i32;\n"
+                                                   "type SpacedShared = [] i32;\n");
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "alias []i32",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsLegacyConstSliceType)
+{
+    expect_parse_error("module parser.legacy_const_slice_type;\n"
+                       "type Old = []const i32;\n",
+        "legacy []const T is no longer supported; write []T for a shared slice view");
+    expect_parse_error("module parser.spaced_legacy_const_slice_type;\n"
+                       "type Old = [] const i32;\n",
+        "legacy []const T is no longer supported; write []T for a shared slice view");
 }
 
 TEST(CoreUnit, ParserRejectsUnsafeWithoutBlock)
@@ -3209,7 +3226,7 @@ TEST(CoreUnit, ParserParsesReferenceOriginQualifiersWithoutStealingArrayOrSliceR
         "  item: &[data] T;\n"
         "}\n"
         "fn choose<T, origin left, origin right>(lhs: &[left] T, rhs: &[right] T) -> &[left | right] T;\n"
-        "fn array_ref(value: &[16]u8) -> &[]const u8;\n";
+        "fn array_ref(value: &[16]u8) -> &[]u8;\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* view = find_item(module, "View");
@@ -4400,7 +4417,7 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
                        "fn main() -> i32 { let values: [2]i32 = [1, 2]; return values[0, 1]; }\n",
         "index expression expects one argument");
     expect_parse_error("module parser.type_slice_start;\n"
-                       "fn main() -> []const i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
+                       "fn main() -> []i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
         "expected expression");
     {
         const syntax::AstModule module = parse_success("module parser.literal_generic_arg;\n"

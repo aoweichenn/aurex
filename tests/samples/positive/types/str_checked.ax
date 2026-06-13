@@ -2,7 +2,7 @@ module str_checked;
 
 fn main() -> i32 {
     let ascii_bytes: [2]u8 = b"ok";
-    let ascii: []const u8 = ascii_bytes[:];
+    let ascii: []u8 = ascii_bytes[:];
     let ascii_text = strfromutf8(ascii);
     if !strvalid(ascii) {
         return 1;
@@ -12,7 +12,7 @@ fn main() -> i32 {
     }
 
     let scalar_bytes: [2]u8 = [0xCEu8, 0xBBu8];
-    let scalar: []const u8 = scalar_bytes[:];
+    let scalar: []u8 = scalar_bytes[:];
     let scalar_text = strfromutf8(scalar);
     if !strvalid(scalar) {
         return 4;
@@ -22,7 +22,7 @@ fn main() -> i32 {
     }
 
     let euro_bytes: [3]u8 = [0xE2u8, 0x82u8, 0xACu8];
-    let euro: []const u8 = euro_bytes[:];
+    let euro: []u8 = euro_bytes[:];
     let euro_text = strfromutf8(euro);
     if !strvalid(euro) {
         return 7;
@@ -32,7 +32,7 @@ fn main() -> i32 {
     }
 
     let smile_bytes: [4]u8 = [0xF0u8, 0x9Fu8, 0x98u8, 0x80u8];
-    let smile: []const u8 = smile_bytes[:];
+    let smile: []u8 = smile_bytes[:];
     let smile_text = strfromutf8(smile);
     if !strvalid(smile) {
         return 10;
@@ -52,7 +52,7 @@ fn main() -> i32 {
     }
 
     let bad_bytes: [1]u8 = [0x80u8];
-    let bad: []const u8 = bad_bytes[:];
+    let bad: []u8 = bad_bytes[:];
     let bad_text = strfromutf8(bad);
     if strvalid(bad) {
         return 16;
@@ -62,7 +62,7 @@ fn main() -> i32 {
     }
 
     let overlong_bytes: [2]u8 = [0xC0u8, 0x80u8];
-    let overlong: []const u8 = overlong_bytes[:];
+    let overlong: []u8 = overlong_bytes[:];
     if strvalid(overlong) {
         return 19;
     }
@@ -71,7 +71,7 @@ fn main() -> i32 {
     }
 
     let surrogate_bytes: [3]u8 = [0xEDu8, 0xA0u8, 0x80u8];
-    let surrogate: []const u8 = surrogate_bytes[:];
+    let surrogate: []u8 = surrogate_bytes[:];
     if strvalid(surrogate) {
         return 21;
     }
@@ -80,7 +80,7 @@ fn main() -> i32 {
     }
 
     let truncated_bytes: [1]u8 = [0xE2u8];
-    let truncated: []const u8 = truncated_bytes[:];
+    let truncated: []u8 = truncated_bytes[:];
     if strvalid(truncated) {
         return 23;
     }

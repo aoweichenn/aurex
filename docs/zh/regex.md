@@ -82,7 +82,7 @@ build/tests/regex_stress
 `regex.bytes`
 
 - text facade 的 raw byte 版本。
-- `compile` 等价于 `regex.api.compile_bytes`，匹配函数接受 `[]const u8`。
+- `compile` 等价于 `regex.api.compile_bytes`，匹配函数接受 `[]u8`。
 - 支持 bytes compiled regex、bytes captures、bytes find/captures/split/replace、bytes RegexSet 扫描、bytes database 和 bytes stream；`.` 和 literal 消费一个 raw byte，`\xNN` 在 bytes 模式匹配单个 byte。
 
 `regex.core.types`
@@ -130,7 +130,7 @@ build/tests/regex_stress
 
 `regex.compile.set`
 
-- 将 `[]const str` 多个 pattern 编译为共享 `RegexSet` 状态表。
+- 将 `[]str` 多个 pattern 编译为共享 `RegexSet` 状态表。
 - 对无 regex 元字符、非 case-insensitive、非 extended mode 的 exact literal set，构建共享 prefix trie 后补 failure/output link，形成持久标量 Aho-Corasick 自动机；同时仍输出普通 `State` 程序用于统一 database 验证和通用后备语义。text 模式按 UTF-8 scalar 过渡但 span 仍保存 byte offset，bytes 模式按 raw byte 过渡；重复 literal 保留独立 pattern id。
 - 非 exact literal set 仍走通用路径：每个 pattern 单独解析成安全 NFA，再复制到同一个 set program；set 起点用 split 串联多个 pattern 起点，accept state 的 `value` 保存 pattern id。
 - 支持 text set 和 bytes set；释放使用 `destroy_set`。
@@ -138,7 +138,7 @@ build/tests/regex_stress
 `regex.compile.database`
 
 - 将 `RegexSet` 序列化为稳定 little-endian byte database，字段逐项编码，不依赖 C struct ABI。
-- `deserialize_set` 从 `[]const u8` 还原 `RegexSet`，验证 magic、version、mode、容量、state 引用、class range 边界、match pattern id 以及 exact-literal 自动机 node/terminal 引用；v3 database 会保留 literal set 的 AC fast path，不在 roundtrip 后退回 VM active-list 路径。
+- `deserialize_set` 从 `[]u8` 还原 `RegexSet`，验证 magic、version、mode、容量、state 引用、class range 边界、match pattern id 以及 exact-literal 自动机 node/terminal 引用；v3 database 会保留 literal set 的 AC fast path，不在 roundtrip 后退回 VM active-list 路径。
 
 `regex.compile.parser`
 
@@ -223,10 +223,10 @@ pub fn compile(pattern: str) -> Regex;
 pub fn compile_bytes(pattern: str) -> Regex;
 pub fn compile_with_options(pattern: str, options: RegexOptions) -> Regex;
 pub fn compile_bytes_with_options(pattern: str, options: RegexOptions) -> Regex;
-pub fn compile_set(patterns: []const str) -> RegexSet;
-pub fn compile_set_bytes(patterns: []const str) -> RegexSet;
-pub fn compile_set_with_options(patterns: []const str, options: RegexOptions) -> RegexSet;
-pub fn compile_set_bytes_with_options(patterns: []const str, options: RegexOptions) -> RegexSet;
+pub fn compile_set(patterns: []str) -> RegexSet;
+pub fn compile_set_bytes(patterns: []str) -> RegexSet;
+pub fn compile_set_with_options(patterns: []str, options: RegexOptions) -> RegexSet;
+pub fn compile_set_bytes_with_options(patterns: []str, options: RegexOptions) -> RegexSet;
 pub fn builder(pattern: str) -> RegexBuilder;
 pub fn builder_compile(value: &RegexBuilder) -> Regex;
 pub fn destroy(compiled: &mut Regex) -> void;
@@ -268,30 +268,30 @@ pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_cap
 pub fn captures_compiled(compiled: &Regex, input: str) -> Captures;
 pub fn captures_compiled_with_match_options(compiled: &Regex, input: str, start_offset: usize, match_options: RegexMatchOptions) -> Captures;
 pub fn captures_fullmatch_compiled(compiled: &Regex, input: str) -> Captures;
-pub fn search_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
-pub fn search_bytes_compiled_with_match_options(compiled: &Regex, input: []const u8, start_offset: usize, match_options: RegexMatchOptions) -> MatchResult;
-pub fn fullmatch_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
-pub fn captures_bytes_compiled(compiled: &Regex, input: []const u8) -> Captures;
+pub fn search_bytes_compiled(compiled: &Regex, input: []u8) -> MatchResult;
+pub fn search_bytes_compiled_with_match_options(compiled: &Regex, input: []u8, start_offset: usize, match_options: RegexMatchOptions) -> MatchResult;
+pub fn fullmatch_bytes_compiled(compiled: &Regex, input: []u8) -> MatchResult;
+pub fn captures_bytes_compiled(compiled: &Regex, input: []u8) -> Captures;
 pub fn matches_set_compiled(compiled: &RegexSet, input: str, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
-pub fn matches_bytes_set_compiled(compiled: &RegexSet, input: []const u8, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
+pub fn matches_bytes_set_compiled(compiled: &RegexSet, input: []u8, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
 pub fn find_set_compiled(compiled: &RegexSet, input: str) -> SetMatchSpan;
-pub fn find_bytes_set_compiled(compiled: &RegexSet, input: []const u8) -> SetMatchSpan;
+pub fn find_bytes_set_compiled(compiled: &RegexSet, input: []u8) -> SetMatchSpan;
 pub fn scan_set_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_bytes_set_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_compiled(compiled: &RegexSet, input: []u8, callback: SetScanCallback) -> SetMatchesResult;
 pub fn scan_set_spans_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_bytes_set_spans_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_spans_compiled(compiled: &RegexSet, input: []u8, callback: SetScanCallback) -> SetMatchesResult;
 pub fn scan_set_overlapping_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_bytes_set_overlapping_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
-pub fn search_vectored_compiled(compiled: &Regex, chunks: []const TextChunk) -> MatchResult;
-pub fn search_bytes_vectored_compiled(compiled: &Regex, chunks: []const RegexChunk) -> MatchResult;
-pub fn scan_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []const TextChunk, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_bytes_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []const RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []const TextChunk, callback: SetScanCallback) -> SetMatchesResult;
-pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []const RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_overlapping_compiled(compiled: &RegexSet, input: []u8, callback: SetScanCallback) -> SetMatchesResult;
+pub fn search_vectored_compiled(compiled: &Regex, chunks: []TextChunk) -> MatchResult;
+pub fn search_bytes_vectored_compiled(compiled: &Regex, chunks: []RegexChunk) -> MatchResult;
+pub fn scan_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []TextChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []TextChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
 pub fn serialize_set(compiled: &RegexSet, out: *mut u8, out_capacity: usize) -> DatabaseResult;
-pub fn deserialize_set(bytes: []const u8) -> RegexSet;
+pub fn deserialize_set(bytes: []u8) -> RegexSet;
 pub fn serialize_regex(compiled: &Regex, out: *mut u8, out_capacity: usize) -> DatabaseResult;
-pub fn deserialize_regex(bytes: []const u8) -> Regex;
+pub fn deserialize_regex(bytes: []u8) -> Regex;
 pub fn destroy_captures(captures: &mut Captures) -> void;
 pub fn capture_at(captures: &Captures, index: usize) -> CaptureSpan;
 pub fn capture_text(input: str, captures: &Captures, index: usize) -> str;
@@ -301,7 +301,7 @@ pub fn no_capture() -> usize;
 
 pub fn find_iter(compiled: &Regex, input: str) -> FindIter;
 pub fn find_next(iter: &mut FindIter) -> MatchResult;
-pub fn bytes_find_iter(compiled: &Regex, input: []const u8) -> BytesFindIter;
+pub fn bytes_find_iter(compiled: &Regex, input: []u8) -> BytesFindIter;
 pub fn bytes_find_next(iter: &mut BytesFindIter) -> MatchResult;
 pub fn captures_iter(compiled: &Regex, input: str) -> CaptureIter;
 pub fn captures_next(iter: &mut CaptureIter) -> Captures;
@@ -309,7 +309,7 @@ pub fn captures_next(iter: &mut CaptureIter) -> Captures;
 pub fn split_iter(compiled: &Regex, input: str) -> SplitIter;
 pub fn splitn_iter(compiled: &Regex, input: str, limit: usize) -> SplitIter;
 pub fn split_next(iter: &mut SplitIter) -> SplitPart;
-pub fn bytes_split_iter(compiled: &Regex, input: []const u8) -> BytesSplitIter;
+pub fn bytes_split_iter(compiled: &Regex, input: []u8) -> BytesSplitIter;
 pub fn bytes_split_next(iter: &mut BytesSplitIter) -> SplitPart;
 
 pub fn replace_all(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
@@ -321,8 +321,8 @@ pub fn replace_n_append(compiled: &Regex, input: str, replacement: str, limit: u
 pub fn replace_all_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_first_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_n_with(compiled: &Regex, input: str, callback: ReplaceCallback, limit: usize, out: *mut u8, out_capacity: usize) -> ReplaceResult;
-pub fn bytes_replace_all(compiled: &Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
-pub fn bytes_replace_all_with(compiled: &Regex, input: []const u8, callback: BytesReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn bytes_replace_all(compiled: &Regex, input: []u8, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn bytes_replace_all_with(compiled: &Regex, input: []u8, callback: BytesReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 
 pub fn escape_pattern(input: str, out: *mut u8, out_capacity: usize) -> BufferResult;
 pub fn quote(input: str, out: *mut u8, out_capacity: usize) -> BufferResult;
@@ -331,7 +331,7 @@ pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> Buff
 pub fn open_stream(compiled: &Regex) -> RegexStream;
 pub fn open_bytes_stream(compiled: &Regex) -> RegexStream;
 pub fn stream_feed(stream: &mut RegexStream, chunk: str) -> RegexStatus;
-pub fn stream_feed_bytes(stream: &mut RegexStream, chunk: []const u8) -> RegexStatus;
+pub fn stream_feed_bytes(stream: &mut RegexStream, chunk: []u8) -> RegexStatus;
 pub fn stream_next(stream: &mut RegexStream) -> MatchResult;
 pub fn stream_finish(stream: &mut RegexStream) -> RegexStatus;
 pub fn destroy_stream(stream: &mut RegexStream) -> void;
@@ -487,7 +487,7 @@ pub struct DatabaseResult {
 
 ## 5. 正则语法
 
-Text regex 默认匹配消费单位是 UTF-8 `str` 的 Unicode scalar value，公开 span 仍是 byte offset；`\X` 是显式 grapheme cluster atom，按 Unicode 17.0 UAX #29 extended grapheme cluster 规则消费一个 cluster。bytes regex 的匹配消费单位是 `[]const u8` 的 raw byte，bytes 模式不支持 `\X`。
+Text regex 默认匹配消费单位是 UTF-8 `str` 的 Unicode scalar value，公开 span 仍是 byte offset；`\X` 是显式 grapheme cluster atom，按 Unicode 17.0 UAX #29 extended grapheme cluster 规则消费一个 cluster。bytes regex 的匹配消费单位是 `[]u8` 的 raw byte，bytes 模式不支持 `\X`。
 
 ### 5.1 顶层文法
 
@@ -880,12 +880,12 @@ Bytes facade：
 import regex.bytes as bytes;
 
 let raw: [2]u8 = [0xc3u8, 0xa9u8];
-let view: []const u8 = raw[:];
+let view: []u8 = raw[:];
 let ok: bool = bytes.fullmatch("..", view);
 ```
 
 - `regex.api.compile_bytes` 和 `regex.bytes.compile` 产生 bytes mode `Regex`。
-- bytes mode 只接受 `[]const u8` 输入；text mode API 调用 bytes regex 会返回 `unsupported`。
+- bytes mode 只接受 `[]u8` 输入；text mode API 调用 bytes regex 会返回 `unsupported`。
 - bytes mode 中 `.` 消费一个 byte，`\xNN` 匹配一个 byte；Unicode 属性仍可解析，但输入值只有 `0..255`。
 - `regex.bytes` 现在和 text API 对齐：`find_iter` / `captures_iter` / `split_iter` / `splitn_iter` / `replace_all` / `replace_first` / `replace_n` / callback replace / set database / stream 均有 raw byte 版本。
 
@@ -937,7 +937,7 @@ let found: regex.MatchResult = regex.stream_next(&mut stream);
 regex.stream_finish(&mut stream);
 ```
 
-- stream API 支持 text regex 和 bytes regex；text 使用 `stream_feed(str)`，bytes 使用 `regex.bytes.stream_feed([]const u8)` / `stream_feed_bytes`。
+- stream API 支持 text regex 和 bytes regex；text 使用 `stream_feed(str)`，bytes 使用 `regex.bytes.stream_feed([]u8)` / `stream_feed_bytes`。
 - `stream_next` 返回从 stream 开头计算的绝对 byte offset。
 - 未 `stream_finish` 时，如果最优 match 正好结束在当前 buffer 尾部，会返回 `no_match` 并等待后续 chunk，以避免截断可继续扩展的 match。
 - `RegexOptions.stream_history_limit` 是流式 buffer 的保留上限；超过上限返回 `workspace_too_large`，用于把长流内存保留变成显式预算。

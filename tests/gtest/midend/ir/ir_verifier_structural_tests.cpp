@@ -1115,7 +1115,7 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors)
             "strblen result must be usize",
             "strblen operand type mismatch",
             "strvalid result must be bool",
-            "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
+            "str UTF-8 builtin operand must be a []u8 or []mut u8 byte slice",
             "strfromutf8 result must be str",
             "str slice result must be str",
             "str slice object type mismatch",

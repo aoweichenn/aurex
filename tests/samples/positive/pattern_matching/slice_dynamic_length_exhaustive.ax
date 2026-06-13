@@ -1,13 +1,13 @@
 module slice_dynamic_length_exhaustive;
 
-fn first_or_empty(values: []const i32) -> i32 {
+fn first_or_empty(values: []i32) -> i32 {
     return match values {
         [] => 0,
         [head, ..] => head,
     };
 }
 
-fn bool_head_score(values: []const bool) -> i32 {
+fn bool_head_score(values: []bool) -> i32 {
     return match values {
         [] => 0,
         [true, ..] => 1,

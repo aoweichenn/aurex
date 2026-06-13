@@ -593,7 +593,7 @@ inline constexpr std::string_view SEMA_STRPTR_STR = "strptr requires a str value
 inline constexpr std::string_view SEMA_STRBLEN_STR = "strblen requires a str value";
 
 inline constexpr std::string_view SEMA_STR_UTF8_SLICE =
-    "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice";
+    "str UTF-8 builtin requires a []u8 or []mut u8 byte slice";
 
 inline constexpr std::string_view SEMA_STRRAW_ARITY = "strraw requires data and length arguments";
 

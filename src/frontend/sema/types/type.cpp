@@ -27,8 +27,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_REFERENCE_ORIGIN_PREFIX = "&[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_REFERENCE_ORIGIN_CLOSE = "] ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
+constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_PREFIX = "[]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
-constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX = "[]const ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_OPEN = "(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_CLOSE = ")";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_SEPARATOR = ", ";
@@ -1058,7 +1058,7 @@ std::string TypeTable::display_name(const TypeHandle type) const
                 break;
             case TypeKind::slice:
                 name.append(info.slice_mutability == PointerMutability::mut ? SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX
-                                                                            : SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX);
+                                                                            : SEMA_TYPE_DISPLAY_SLICE_PREFIX);
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.slice_element, {}});
                 break;
             case TypeKind::tuple:

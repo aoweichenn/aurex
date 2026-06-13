@@ -511,7 +511,7 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
                                     "enum Mode { fast, slow }\n"
                                     "pub trait Shape<T> {\n"
                                     "  fn ptr(self: *const Self, value: *mut T) -> *const T;\n"
-                                    "  fn slice(self: &Self, values: []const T) -> T;\n"
+                                    "  fn slice(self: &Self, values: []T) -> T;\n"
                                     "  fn pair(self: &Self, value: (Self, T)) -> T;\n"
                                     "  fn callback(self: &Self, op: fn(T) -> T) -> T;\n"
                                     "  fn concrete(self: &Self, token: Token, mode: Mode) -> Token;\n"
@@ -519,7 +519,7 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
                                     "struct Box { value: i32; }\n"
                                     "impl Shape<i32> for Box {\n"
                                     "  fn ptr(self: *const Box, value: *mut i32) -> *const i32 { return null; }\n"
-                                    "  fn slice(self: &Box, values: []const i32) -> i32 { return values[0]; }\n"
+                                    "  fn slice(self: &Box, values: []i32) -> i32 { return values[0]; }\n"
                                     "  fn pair(self: &Box, value: (Box, i32)) -> i32 {\n"
                                     "    let (_, right) = value;\n"
                                     "    return right;\n"
@@ -540,7 +540,7 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
         {
             "trait Shape<T0> params=1 associated_types=0 requirements=5",
             "requirement ptr(*const Self, *mut T) -> *const T",
-            "requirement slice(&Self, []const T) -> T",
+            "requirement slice(&Self, []T) -> T",
             "requirement pair(&Self, (Self, T)) -> T",
             "requirement callback(&Self, fn(T) -> T) -> T",
             "requirement concrete(&Self, trait_registry_composite_whitebox.Token, "

@@ -449,7 +449,7 @@ TEST_F(AurexIntegrationTest, M2SafeReferences)
     const std::string reference_slice_ir = require_success(aurexc() + " --emit=ir " + q(reference_slice)).output;
     expect_contains_all(reference_slice_ir,
         {
-            "fn first(values: &[]const i32)",
+            "fn first(values: &[]i32)",
             "slice_data",
             "index_addr",
         });
@@ -517,10 +517,10 @@ TEST_F(AurexIntegrationTest, StringCheckedBoundary)
 
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "strvalid_non_slice.ax"))).output,
-        "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice");
+        "str UTF-8 builtin requires a []u8 or []mut u8 byte slice");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "strfromutf8_non_slice.ax"))).output,
-        "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice");
+        "str UTF-8 builtin requires a []u8 or []mut u8 byte slice");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "str_slice_bound_non_integer.ax"))).output,
         "slice bound must be an integer");
@@ -589,7 +589,7 @@ TEST_F(AurexIntegrationTest, SliceRegressions)
     const std::string basic_ir = require_success(aurexc() + " --emit=ir " + q(slice_basic)).output;
     expect_contains_all(basic_ir,
         {
-            "[]const i32",
+            "[]i32",
             "slice ",
             "slice_data",
             "slice_len",
@@ -605,7 +605,7 @@ TEST_F(AurexIntegrationTest, SliceRegressions)
     expect_contains_all(mut_ir,
         {
             "[]mut i32",
-            "[]const i32",
+            "[]i32",
             "slice_data",
         });
 
@@ -622,7 +622,7 @@ TEST_F(AurexIntegrationTest, SliceRegressions)
     const std::string generic_ir = require_success(aurexc() + " --emit=ir " + q(slice_generic)).output;
     expect_contains_all(generic_ir,
         {
-            "fn first<i32>(values: []const i32)",
+            "fn first<i32>(values: []i32)",
             "[]mut i32",
         });
 
@@ -1421,8 +1421,8 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
         "impl<T> Box<*const T> {\n"
         "  fn ptr_marker(self: &Box<*const T>) -> i32 { return 1; }\n"
         "}\n"
-        "impl<T> Box<[]const T> {\n"
-        "  fn slice_marker(self: &Box<[]const T>) -> i32 { return 2; }\n"
+        "impl<T> Box<[]T> {\n"
+        "  fn slice_marker(self: &Box<[]T>) -> i32 { return 2; }\n"
         "}\n"
         "impl<T> Box<[4]T> {\n"
         "  fn array_marker(self: &Box<[4]T>) -> i32 { return 3; }\n"
@@ -1437,8 +1437,8 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
         "  let value: i32 = 1;\n"
         "  let ptr_box: Box<*const i32> = Box<*const i32> { value: unsafe { ptrat<*const i32>(ptraddr(&value)) } };\n"
         "  let array: [4]i32 = [1, 2, 3, 4];\n"
-        "  let slice: []const i32 = array[:];\n"
-        "  let slice_box: Box<[]const i32> = Box<[]const i32> { value: slice };\n"
+        "  let slice: []i32 = array[:];\n"
+        "  let slice_box: Box<[]i32> = Box<[]i32> { value: slice };\n"
         "  let array_box: Box<[4]i32> = Box<[4]i32> { value: array };\n"
         "  let tuple_box: Box<(i32, bool)> = Box<(i32, bool)> { value: (1, true) };\n"
         "  let fn_box: Box<Unary<i32>> = Box<Unary<i32>> { value: id_i32 };\n"
@@ -1450,7 +1450,7 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
     expect_contains_all(checked,
         {
             "method generic_impl_nested_owner.Box<*const i32>.ptr_marker<i32> -> i32",
-            "method generic_impl_nested_owner.Box<[]const i32>.slice_marker<i32> -> i32",
+            "method generic_impl_nested_owner.Box<[]i32>.slice_marker<i32> -> i32",
             "method generic_impl_nested_owner.Box<[4]i32>.array_marker<i32> -> i32",
             "method generic_impl_nested_owner.Box<(i32, bool)>.tuple_marker<i32> -> i32",
             "method generic_impl_nested_owner.Box<fn(i32) -> i32>.fn_marker<i32> -> i32",
@@ -1727,8 +1727,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "fn array_ptr_box<T>(value: *mut [2]T) -> Box<*mut [2]T> {\n"
         "  return Box<*mut [2]T> { value: id<*mut [2]T>(value) };\n"
         "}\n"
-        "fn slice_box<T>(value: []const T) -> Box<[]const T> {\n"
-        "  return Box<[]const T> { value: id<[]const T>(value) };\n"
+        "fn slice_box<T>(value: []T) -> Box<[]T> {\n"
+        "  return Box<[]T> { value: id<[]T>(value) };\n"
         "}\n"
         "fn function_box<T>(value: Unary<T>) -> Box<Unary<T>> {\n"
         "  return Box<Unary<T>> { value: id<Unary<T>>(value) };\n"
@@ -1742,7 +1742,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "fn wrap_array<V>(value: *mut [2]V) -> Box<*mut [2]V> {\n"
         "  return array_ptr_box<V>(value);\n"
         "}\n"
-        "fn wrap_slice<W>(value: []const W) -> Box<[]const W> {\n"
+        "fn wrap_slice<W>(value: []W) -> Box<[]W> {\n"
         "  return slice_box<W>(value);\n"
         "}\n"
         "fn wrap_function<X>(value: Unary<X>) -> Box<Unary<X>> {\n"
@@ -1905,7 +1905,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
             "fn slice_id<T>(value: []mut T) -> []mut T { return value; }\n"
             "fn main() -> i32 {\n"
             "  let values: [2]i32 = [1, 2];\n"
-            "  let slice: []const i32 = values[:];\n"
+            "  let slice: []i32 = values[:];\n"
             "  let same = slice_id(slice);\n"
             "  return 0;\n"
             "}\n");

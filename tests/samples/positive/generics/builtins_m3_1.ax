@@ -16,7 +16,7 @@ fn pointer_ops<T>(value: &T) -> bool where T: Sized {
     return ptraddr(recast) == addr;
 }
 
-fn slice_ops<T>(values: []const T) -> usize where T: Sized {
+fn slice_ops<T>(values: []T) -> usize where T: Sized {
     let data: *const T = sliceptr(values);
     if ptraddr(data) == 0usize {
         return 99usize;
@@ -24,7 +24,7 @@ fn slice_ops<T>(values: []const T) -> usize where T: Sized {
     return slicelen(values);
 }
 
-fn utf8_ops<T>(marker: T, bytes: []const u8) -> usize where T: Sized {
+fn utf8_ops<T>(marker: T, bytes: []u8) -> usize where T: Sized {
     if sizeof<T> == 0usize {
         return 99usize;
     }

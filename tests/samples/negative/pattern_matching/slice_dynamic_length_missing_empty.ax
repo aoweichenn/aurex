@@ -1,6 +1,6 @@
 module slice_dynamic_length_missing_empty;
 
-fn score(values: []const i32) -> i32 {
+fn score(values: []i32) -> i32 {
     return match values {
         [_, ..] => 1,
     };

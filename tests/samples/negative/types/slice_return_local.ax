@@ -1,6 +1,6 @@
 module slice_return_local;
 
-fn bad() -> []const u8 {
+fn bad() -> []u8 {
     let bytes: [2]u8 = b"ok";
     return bytes[:];
 }

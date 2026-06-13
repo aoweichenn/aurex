@@ -1,7 +1,7 @@
 # Mut / Const Access Surface：把可写权限从深不可变里拆开
 
 日期：2026-06-13
-状态：语法修正优化第四手改动设计稿
+状态：语法修正优化第四手改动设计稿；建议硬切，不保留成功兼容路径
 关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 `mut` / `const` 位置不统一
 
 本文固定 Aurex `mut` / `const` 语法表面的第一阶段修正方向。核心结论不是“`mut` 放前面还是放后面”，而是先把概念拆干净：Aurex 当前已经有 `let` / `var`、`&T` / `&mut T`、`*const T` / `*mut T`、`[]const T` / `[]mut T` 四组表面，如果继续把它们都叫“const/mutability”，用户和实现都会把 binding、view、object immutability 和 aliasing 证明混成一坨。
@@ -360,16 +360,16 @@ fn fill(out: []mut u8, value: u8) -> void {
 
 `[]T` 必须被规范明确写成 borrowed slice，不是 owned array，不是 dynamic array，不是 `Vec<T>`。
 
-### 决策 6：`[]const T` 进入迁移期，然后删除
+### 决策 6：`[]const T` 作为 legacy error，不进入成功路径
 
-迁移策略：
+开发期语言还没稳定，第一阶段就应该硬切：
 
 ```aurex
-let old: []const u8 = data[:]; // migration: accepted with warning
+let old: []const u8 = data[:]; // error: write []u8
 let new: []u8 = data[:];       // target
 ```
 
-`[]const T` 不建议永久保留为别名。原因是它会继续把用户引向“元素是 const”的读法，也会让同一个概念有两种写法。
+`[]const T` 不应该作为别名、warning path 或第二套成功语法存在。原因是它会继续把用户引向“元素是 const”的读法，也会让同一个概念有两种写法。parser 可以识别这个旧 token 序列并给出定向诊断，但不能把它构造成合法 shared slice type 继续通过编译。
 
 ## 最终表面表
 
@@ -417,7 +417,7 @@ SliceType     = "[]" "mut"? Type
 - `&mut T` 是 writable reference。
 - `[]T` 是 shared slice。
 - `[]mut T` 是 writable slice。
-- 迁移期可以继续接受 `[]const T`，但应产生 deprecation warning。
+- `[]const T` 是 legacy error；诊断指向 `[]T`。
 
 parser 修改点非常局部：
 
@@ -427,11 +427,11 @@ parser 修改点非常局部：
 
 目标：
     "[]" 后如果是 "mut"，解析 writable slice
-    "[]" 后如果是 "const"，解析 legacy shared slice 并警告
+    "[]" 后如果是 "const"，报 legacy syntax error，提示改成 []T
     否则直接解析元素类型，得到 shared slice
 ```
 
-这不是空格特例。`[]T`、`[] T`、`[]mut T`、`[] mut T` 在 token 序列能匹配 grammar 时都按同一规则解析。
+这不是空格特例。`[]T`、`[] T`、`[]mut T`、`[] mut T` 在 token 序列能匹配 grammar 时都按同一规则解析；`[]const T` 和 `[] const T` 也是同一个 legacy error。parser 为了恢复可以在报错后继续消费 `const` 并解析后续 `T`，但这个文件必须保持有诊断，不能被当作合法程序接受。
 
 ## AST / Sema 影响
 
@@ -483,10 +483,10 @@ expected const or mut after []
 cannot write through shared slice view
 slice element assignment requires []mut T
 raw pointer type requires 'const' or 'mut' after '*'
-legacy []const T is deprecated; write []T for a shared slice view
+legacy []const T is no longer supported; write []T for a shared slice view
 ```
 
-如果迁移期暂时没有 warning infrastructure，可以先同时接受 `[]T` 和 `[]const T`，并在文档、样例、测试里全部改成 `[]T`。等 warning 基础设施可用后再打开 deprecation diagnostic。
+不要先同时接受 `[]T` 和 `[]const T`。这会制造中间态，并把文档已经指出的误读继续留在用户表面。旧写法只允许出现在负例测试、迁移说明和诊断样例里。
 
 ## 类型转换规则
 
@@ -560,13 +560,13 @@ view T
 
 这会多造关键字，还会让高频类型更长。当前没有必要。
 
-## 迁移计划
+## 落地计划
 
-### Stage 1：接受新语法
+### Stage 1：硬切 parser / display
 
 - parser 接受 `[]T`。
-- parser 继续接受 `[]mut T`。
-- parser 暂时接受 `[]const T`，最好给 warning。
+- parser 接受 `[]mut T`。
+- parser 拒绝 `[]const T`，并给出 `write []T` 的 legacy diagnostic。
 - type display 优先输出 `[]T` 而不是 `[]const T`。
 
 ### Stage 2：更新文档、样例和测试
@@ -576,11 +576,11 @@ view T
 - builtin/intrinsic、str/slice API 文档跟随改名。
 - type display golden test 更新成 `[]T`。
 
-### Stage 3：收紧旧语法
+### Stage 3：内部命名清理
 
-- `[]const T` 从 warning 升级为 error。
-- error message 指向 `[]T`。
-- 删除 parser 里的 legacy branch。
+- 视改动规模单独把 `PointerMutability` 机械重命名为 `AccessMutability` / `ViewAccess`。
+- 把用户诊断中的 “const slice/object” 全部换成 shared/read-only view 表述。
+- 保留 raw pointer 的 `*const T` 命名，不把 raw pointer 和 safe slice 的展示策略混在一起。
 
 ## 测试要求
 
@@ -588,7 +588,7 @@ Parser：
 
 - 接受 `[]u8`。
 - 接受 `[]mut u8`。
-- 迁移期接受 `[]const u8` 并产生 warning；如果暂时没有 warning 系统，至少保证 AST 等价于 `[]u8`。
+- 拒绝 `[]const u8`，诊断提示 `write []u8`。
 - `*u8` 继续拒绝。
 - `*const u8` / `*mut u8` 继续接受。
 - `&u8` / `&mut u8` 继续接受。

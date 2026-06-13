@@ -33,10 +33,10 @@ fn main() -> i32 {
     var pointer_source: i32 = 9;
     let pointer_value: *const i32 = as_const_ptr(&pointer_source);
     let bytes: [3]u8 = [1u8, 2u8, 3u8];
-    let view: []const u8 = bytes[:];
+    let view: []u8 = bytes[:];
     let triple: (i32, bool, u8) = (4, true, 7u8);
     let (triple_value, triple_ok, triple_byte) = triple;
-    let complex: (*const i32, []const u8, fn(i32) -> i32) = (pointer_value, view, inc);
+    let complex: (*const i32, []u8, fn(i32) -> i32) = (pointer_value, view, inc);
     let array_tuple: ([2]u8, i32) = ([1u8, 2u8], 3);
     let nested: ((i32, bool), (i32,)) = (pair, (x,));
     let (_, _, complex_func) = complex;

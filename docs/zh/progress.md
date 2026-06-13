@@ -1276,7 +1276,7 @@ prototype / extern / trait lifetime release policy 与旧 analyzer cleanup。
 [Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
 新基线明确不照抄 Rust lifetime surface，而是采用 `@borrow(return = [...])` 作为函数边界主 contract，并选择
 `&[origin] T` / `&mut[origin] T` 作为显式 origin-qualified reference type；该语法沿用 Aurex 现有 `&T` /
-`&mut T`，避免 Rust apostrophe lifetime、避免新增 `ref` 关键字，并与 `Name[T]` 泛型、`[]const T` slice、
+`&mut T`，避免 Rust apostrophe lifetime、避免新增 `ref` 关键字，并与 `Name[T]` 泛型、`[]T` slice、
 `[16]T` 数组保持无歧义。该语法只在 type context 中解析，不占用未来 lambda/closure 的表达式语法空间；完整
 closure/lambda capture 后续独立设计，但 M7c facts 预留 `ClosureCaptureFact` / `ClosureEnvironmentFact`。
 设计同时把 M7c/M7d 拆为 M7c-A/B/C lifetime facts + region solver + old analyzer replacement，以及 M7d-A/B/C
@@ -2000,7 +2000,7 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - `pub fn` 返回类型已收紧为必须显式；private helper 仍可推导。
 - lexer 已支持嵌套 `/* ... */` 块注释。
 - enum 已支持 ADT-first 形态：普通 enum 可省略 base type 和 discriminant，tag 自动分配；多字段 payload 可用 `.case(a, b)` pattern 按字段解构；显式 `enum Status: u8 { ok = 0, err = 1 }` 仍作为 C-like/repr enum 形态保留。generic enum 已进入 M2 基线，`Option[T]` / `Result[T, E]` 这类类型参数 ADT 可被实例化和匹配。
-- 数组、slice、tuple、函数指针和字面量基础语法已闭合：固定数组支持 `[1, 2, 3]` 和 `[0; 128]`，borrowed slice 支持 `[]const T` / `[]mut T` 以及 `a[l:r]`、`a[:r]`、`a[l:]`、`a[:]`；tuple 支持 `(A, B)` / `(A,)` 类型、`(a, b)` / `(a,)` 字面量、局部 `let (a, _) = value;` 解构、tuple pattern 和数字字段访问 `value.0` / `value . 1`；匿名 tuple 不支持 `.first` / `.second` 这类命名字段；函数类型支持 `fn(i32) -> i32`、`extern c fn(*const u8, ...) -> i32`、函数名作为值、局部/参数/字段函数指针间接调用；字面量支持普通字符串、C 字符串、raw/multiline raw string、byte string、byte literal、Unicode scalar `char` 和整数/浮点类型后缀。
+- 数组、slice、tuple、函数指针和字面量基础语法已闭合：固定数组支持 `[1, 2, 3]` 和 `[0; 128]`，borrowed slice 支持 `[]T` / `[]mut T` 以及 `a[l:r]`、`a[:r]`、`a[l:]`、`a[:]`；tuple 支持 `(A, B)` / `(A,)` 类型、`(a, b)` / `(a,)` 字面量、局部 `let (a, _) = value;` 解构、tuple pattern 和数字字段访问 `value.0` / `value . 1`；匿名 tuple 不支持 `.first` / `.second` 这类命名字段；函数类型支持 `fn(i32) -> i32`、`extern c fn(*const u8, ...) -> i32`、函数名作为值、局部/参数/字段函数指针间接调用；字面量支持普通字符串、C 字符串、raw/multiline raw string、byte string、byte literal、Unicode scalar `char` 和整数/浮点类型后缀。
 - 最小 `unsafe` 已落地：`unsafe { ... }` 可作为 statement 或 expression，`unsafe fn` 和 unsafe 函数指针类型会把调用限制在 unsafe context 内；raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 都必须在 unsafe context 中使用。
 - 泛型已支持最小非资源类 `where` capability predicate：`Sized`、`Eq`、`Ord`、`Hash`。`Copy` / `Drop` 等资源类约束、用户自定义 trait、associated type、const generic 和 trait object 仍暂缓。
 - 泛型边界已扩展到 generic struct / function / enum / type alias，以及 `impl<T> Box<T>` 这类 owner generic impl；method-local generic parameter 仍不属于 M2。

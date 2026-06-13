@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aurex/frontend/macro/output_contract_admission.hpp>
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/base/result.hpp>
 #include <aurex/infrastructure/query/macro_expansion_facts.hpp>
@@ -1667,6 +1668,7 @@ struct EarlyItemExpansionSummary {
     base::u64 aurex_user_derive_target_schema_field_count = 0;
     base::u64 aurex_user_derive_target_schema_enum_case_count = 0;
     base::u64 aurex_user_derive_target_schema_enum_payload_count = 0;
+    AurexMacroOutputContractSummary aurex_macro_output_contracts;
     base::u64 generated_source_text_count = 0;
     base::u64 parse_ready_token_buffer_count = 0;
     base::u64 parsed_generated_part_count = 0;
@@ -1741,6 +1743,12 @@ struct EarlyItemExpansionResult {
     base::u64 aurex_user_derive_target_schema_source_derive_count = 0;
     std::vector<AurexUserDeriveTargetSchemaAdmissionGate>
         aurex_user_derive_target_schema_gates;
+    std::vector<AurexMacroOutputContractAdmissionGate>
+        aurex_macro_output_contract_gates;
+    std::vector<AurexMacroOutputDeclaredNamePolicyAdmissionGate>
+        aurex_macro_output_declared_name_policy_gates;
+    std::vector<AurexMacroOutputDiagnosticProjectionAdmissionGate>
+        aurex_macro_output_diagnostic_projection_gates;
     EarlyItemExpansionSummary summary;
     query::StableFingerprint128 fingerprint;
 };

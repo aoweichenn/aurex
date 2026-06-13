@@ -1,4 +1,5 @@
 #include <aurex/frontend/macro/early_item_expansion.hpp>
+#include <aurex/frontend/macro/output_contract_admission.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
 
 #include <algorithm>
@@ -7142,6 +7143,7 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
     builder.mix_u64(summary.aurex_user_derive_target_schema_field_count);
     builder.mix_u64(summary.aurex_user_derive_target_schema_enum_case_count);
     builder.mix_u64(summary.aurex_user_derive_target_schema_enum_payload_count);
+    mix_aurex_macro_output_contract_summary(builder, summary.aurex_macro_output_contracts);
     builder.mix_u64(summary.generated_source_text_count);
     builder.mix_u64(summary.parse_ready_token_buffer_count);
     builder.mix_u64(summary.parsed_generated_part_count);
@@ -7532,6 +7534,7 @@ void mix_summary(query::StableHashBuilder& builder, const EarlyItemExpansionSumm
             == rhs.aurex_user_derive_target_schema_enum_case_count
         && lhs.aurex_user_derive_target_schema_enum_payload_count
             == rhs.aurex_user_derive_target_schema_enum_payload_count
+        && lhs.aurex_macro_output_contracts == rhs.aurex_macro_output_contracts
         && lhs.generated_source_text_count == rhs.generated_source_text_count
         && lhs.parse_ready_token_buffer_count == rhs.parse_ready_token_buffer_count
         && lhs.parsed_generated_part_count == rhs.parsed_generated_part_count
@@ -12263,6 +12266,12 @@ bool is_valid(const EarlyItemExpansionResult& result) noexcept
         && aurex_macro_call_sites_match_optional_surfaces(result)
         && aurex_macro_matcher_to_call_bindings_match_inputs(result)
         && aurex_user_derive_target_schemas_match_surfaces(result)
+        && aurex_macro_output_contract_admissions_are_valid(
+            result.aurex_macro_matcher_to_call_binding_gates,
+            result.aurex_user_derive_target_schema_gates,
+            result.aurex_macro_output_contract_gates,
+            result.aurex_macro_output_declared_name_policy_gates,
+            result.aurex_macro_output_diagnostic_projection_gates)
         && is_valid(result.summary, result)
         && result.fingerprint == early_item_expansion_fingerprint(result);
 }
@@ -13948,6 +13957,26 @@ EarlyItemExpansionSummary summarize_early_item_expansion_counts(
             ++summary.user_generated_code_count;
         }
     }
+    summary.aurex_macro_output_contracts = summarize_aurex_macro_output_contract_admissions(
+        result.aurex_macro_output_contract_gates,
+        result.aurex_macro_output_declared_name_policy_gates,
+        result.aurex_macro_output_diagnostic_projection_gates);
+    summary.generated_source_text_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.generated_source_text_count;
+    summary.parse_ready_token_buffer_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.parse_ready_token_buffer_count;
+    summary.ast_mutation_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.ast_mutation_count;
+    summary.sema_visible_generated_part_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.sema_visible_generated_part_count;
+    summary.standard_library_required_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.standard_library_required_count;
+    summary.runtime_required_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.runtime_required_count;
+    summary.external_process_required_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.external_process_required_count;
+    summary.user_generated_code_count +=
+        summary.aurex_macro_output_contracts.blocked_effects.user_generated_code_count;
     return summary;
 }
 
@@ -14166,6 +14195,10 @@ query::StableFingerprint128 early_item_expansion_fingerprint(
         result.aurex_user_derive_target_schema_gates) {
         mix_aurex_user_derive_target_schema_gate(builder, gate);
     }
+    mix_aurex_macro_output_contract_admissions(builder,
+        result.aurex_macro_output_contract_gates,
+        result.aurex_macro_output_declared_name_policy_gates,
+        result.aurex_macro_output_diagnostic_projection_gates);
     mix_summary(builder, summarize_early_item_expansion_counts(result));
     return builder.finish();
 }
@@ -14567,8 +14600,10 @@ std::string summarize_early_item_expansion(const EarlyItemExpansionResult& resul
            << " aurex_user_derive_target_schema_enum_cases="
            << summary.aurex_user_derive_target_schema_enum_case_count
            << " aurex_user_derive_target_schema_enum_payloads="
-           << summary.aurex_user_derive_target_schema_enum_payload_count
-           << " generated_source_text=" << summary.generated_source_text_count
+           << summary.aurex_user_derive_target_schema_enum_payload_count;
+    append_aurex_macro_output_contract_summary(
+        stream, summary.aurex_macro_output_contracts);
+    stream << " generated_source_text=" << summary.generated_source_text_count
            << " parse_ready_token_buffers=" << summary.parse_ready_token_buffer_count
            << " ast_mutations=" << summary.ast_mutation_count
            << " user_generated_code=" << summary.user_generated_code_count
@@ -16440,6 +16475,10 @@ std::string dump_early_item_expansion(const EarlyItemExpansionResult& result)
                << query::debug_string(gate.diagnostic_anchor_identity)
                << '\n';
     }
+    dump_aurex_macro_output_contract_admissions(stream,
+        result.aurex_macro_output_contract_gates,
+        result.aurex_macro_output_declared_name_policy_gates,
+        result.aurex_macro_output_diagnostic_projection_gates);
     return stream.str();
 }
 
@@ -16509,6 +16548,10 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
     result.aurex_macro_call_site_admission_gates.reserve(ast.items.size());
     result.aurex_macro_matcher_to_call_binding_gates.reserve(ast.items.size());
     result.aurex_user_derive_target_schema_gates.reserve(attribute_count);
+    const base::usize output_contract_capacity = ast.items.size() + attribute_count;
+    result.aurex_macro_output_contract_gates.reserve(output_contract_capacity);
+    result.aurex_macro_output_declared_name_policy_gates.reserve(output_contract_capacity);
+    result.aurex_macro_output_diagnostic_projection_gates.reserve(output_contract_capacity);
 
     for (base::usize item_index = 0; item_index < ast.items.size(); ++item_index) {
         const syntax::ItemId item_id{base::checked_u32(item_index, syntax::SYNTAX_ITEM_NODE_ID_CONTEXT)};
@@ -16649,6 +16692,18 @@ base::Result<EarlyItemExpansionResult> expand_early_item_macros_noop(const synta
                     *surface));
         }
     }
+
+    AurexMacroOutputContractAdmissionSet output_admissions =
+        collect_aurex_macro_output_contract_admissions(
+            result.aurex_macro_surface_admission_gates,
+            result.aurex_macro_matcher_to_call_binding_gates,
+            result.aurex_user_derive_target_schema_gates);
+    result.aurex_macro_output_contract_gates =
+        std::move(output_admissions.output_contracts);
+    result.aurex_macro_output_declared_name_policy_gates =
+        std::move(output_admissions.declared_name_policies);
+    result.aurex_macro_output_diagnostic_projection_gates =
+        std::move(output_admissions.diagnostic_projections);
 
     for (base::usize index = 0; index < result.parser_admission_diagnostics.size(); ++index) {
         result.parser_admission_report_entries.push_back(make_parser_admission_report_entry(

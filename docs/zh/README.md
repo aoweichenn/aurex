@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M27c Aurex Macro Call-Site And User Derive Target Schema Admission**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M27d Aurex Macro Output Contract Admission**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
 reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
@@ -245,6 +245,18 @@ M27c 已新增 item-level macro call-site 和 user derive target schema admissio
 `aurex_user_derive_target_schema_admission`。macro call-site expansion is admission-only in M27c；
 matcher-to-call binding execution is admission-only in M27c；user derive target schema is admission-only in M27c；
 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
+M27d 已新增 macro output contract admission：`expand_early_item_macros_noop()` 会为每个
+`AurexMacroMatcherToCallBindingAdmissionGate` 和 `AurexUserDeriveTargetSchemaAdmissionGate` 生成
+`AurexMacroOutputContractAdmissionGate`，并同步生成 `AurexMacroOutputDeclaredNamePolicyAdmissionGate` 与
+`AurexMacroOutputDiagnosticProjectionAdmissionGate`。Summary / dump / fingerprint 记录
+`aurex_macro_output_contracts`、`aurex_macro_output_declared_name_policies` 和
+`aurex_macro_output_diagnostic_projections`；Query 层新增 `m27d_macro_expansion_plan_baseline()`、
+`is_valid_m27d_macro_expansion_plan()`、`aurex_macro_output_contract_admission`、
+`aurex_macro_output_declared_name_policy_admission` 和
+`aurex_macro_output_diagnostic_projection_admission`。macro output parser consumption remains blocked in M27d；
+macro output declared names are hidden from lookup/export/sema in M27d；macro output diagnostics are projected but
+parser emission remains blocked in M27d；仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

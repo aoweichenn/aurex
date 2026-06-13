@@ -1,12 +1,14 @@
 # Aurex M27 Aurex Macro Surface Admission
 
-阶段：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
+阶段：M27d Aurex Macro Output Contract Admission
 
 历史收口：M27 Aurex Macro Surface Admission
 
 附加收口：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission
 
-本轮收口：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
+附加收口：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
+
+本轮收口：M27d Aurex Macro Output Contract Admission
 
 ## 阶段定位
 
@@ -29,6 +31,12 @@ parser / AST 现在能索引 item 位置的 `macro call Name { ... }`；early ex
 admission gate，并在同模块同名宏声明存在时建立 matcher-to-call binding admission gate；`#[derive(Name)]` 如果
 匹配同模块 `macro derive Name { ... }`，会记录目标 `struct` / `enum` 的 schema admission gate。M27c 仍不展开、
 不执行、不消费 parser、不修改 AST、不产生 sema-visible generated item。
+
+M27d 在 M27c 的 matcher-to-call binding 和 user derive target schema 之后继续前进一步：不生成宏输出 token、
+不把输出交给 parser、不修改 AST，而是为每个可进入后续输出路径的输入建立 compiler-owned macro output contract
+admission。每个 contract 同时保留 future output token buffer identity、generated `ModulePartKey`、declared-name
+policy admission gate 和 diagnostic projection admission gate。M27d 的重点是把“未来会产生什么输出、谁拥有、哪些名字
+不可见、诊断如何投影”固定成 query-backed facts；它仍不是真实宏展开。
 
 ## 为什么不采用 Rust macro_rules
 
@@ -131,6 +139,12 @@ Early expansion 层：
   recognized typed matcher；缺失目标宏时只保留 call-site blocker，不生成 binding gate。
 - M27c 对匹配同模块 `macro derive Name` 的 `#[derive(Name)]`，生成一个
   `AurexUserDeriveTargetSchemaAdmissionGate`，记录目标 kind、字段数、enum case 数和 enum payload 数。
+- M27d 对每个 `AurexMacroMatcherToCallBindingAdmissionGate` 生成一个
+  `AurexMacroOutputContractAdmissionGate`。
+- M27d 对每个 `AurexUserDeriveTargetSchemaAdmissionGate` 生成一个
+  `AurexMacroOutputContractAdmissionGate`。
+- M27d 对每个 output contract 同步生成一个 `AurexMacroOutputDeclaredNamePolicyAdmissionGate` 和一个
+  `AurexMacroOutputDiagnosticProjectionAdmissionGate`。
 - gate 记录 source item 数、body fingerprint、admission identity、query name、宏 kind、宏名、body token count、match
   clause count、body balance 和 blocker reason。
 - summary / dump / fingerprint 会包含：
@@ -171,6 +185,21 @@ Early expansion 层：
   - `aurex_user_derive_target_schema_fields`
   - `aurex_user_derive_target_schema_enum_cases`
   - `aurex_user_derive_target_schema_enum_payloads`
+- M27d summary / dump / fingerprint 还会包含：
+  - `aurex_macro_output_contracts`
+  - `aurex_macro_output_contract_call_bindings`
+  - `aurex_macro_output_contract_user_derives`
+  - `aurex_macro_output_contract_compiler_owned`
+  - `aurex_macro_output_contract_source_maps`
+  - `aurex_macro_output_contract_hygiene_marks`
+  - `aurex_macro_output_contract_diagnostic_projections`
+  - `aurex_macro_output_contract_declared_name_policies`
+  - `aurex_macro_output_declared_name_policies`
+  - `aurex_macro_output_declared_name_sets_reserved`
+  - `aurex_macro_output_lookup_visible_declared_names`
+  - `aurex_macro_output_diagnostic_projections`
+  - `aurex_macro_output_diagnostic_debuggable`
+  - `aurex_macro_output_diagnostic_emission_enabled`
 - validation 会拒绝 source item / gate 数不匹配、body 不平衡、query name 漂移、admission identity 漂移、错误 surface
   kind、打开 expansion / compile-time execution / parser consumption / AST mutation / sema-visible generated items /
   standard library / runtime / external process / user generated code。
@@ -183,6 +212,12 @@ Early expansion 层：
   源计数与 gate 数不匹配、schema 串错 derive surface、target schema identity 漂移、call-site / binding / schema
   打开 expansion、matcher execution、compile-time execution、parser consumption、AST mutation、sema-visible generated
   items、standard library、runtime、external process 或 user generated code。
+- M27d validation 还会拒绝输出 contract 数量与 M27c binding/schema 输入不一致、缺少 declared-name policy、
+  缺少 diagnostic projection、token buffer identity 漂移、output contract identity 漂移、declared-name policy link
+  漂移、diagnostic projection link 漂移、generated part 不是 `SourceRole::generated` /
+  `ModulePartKind::generated`、打开 generated source text、parser consumption、AST mutation、sema-visible generated
+  items、declared name lookup/export/sema visibility、diagnostic parser emission、standard library、runtime、
+  external process 或 user generated code。
 
 Query 层：
 
@@ -213,6 +248,16 @@ Query 层：
   - `aurex_user_derive_target_schema_admission_v1`
 - M27c 新增 `m27c_macro_expansion_plan_baseline()` 和 `is_valid_m27c_macro_expansion_plan()`。
 - M27c plan 是 M27b 13 个 facts 加三类 call-site / matcher binding / user derive target schema facts，共 16 个 facts。
+- M27d 新增 `MacroExpansionFactKind::aurex_macro_output_contract_admission`。
+- M27d 新增 `MacroExpansionFactKind::aurex_macro_output_declared_name_policy_admission`。
+- M27d 新增 `MacroExpansionFactKind::aurex_macro_output_diagnostic_projection_admission`。
+- M27d 新增对应 policy：
+  - `aurex_macro_output_contract_admission_v1`
+  - `aurex_macro_output_declared_name_policy_admission_v1`
+  - `aurex_macro_output_diagnostic_projection_admission_v1`
+- M27d 新增 `m27d_macro_expansion_plan_baseline()` 和 `is_valid_m27d_macro_expansion_plan()`。
+- M27d plan 是 M27c 16 个 facts 加三类 output contract / declared-name policy / diagnostic projection facts，共
+  19 个 facts。
 
 ## 当前不能做什么
 
@@ -243,6 +288,9 @@ M27 明确不实现以下能力：
 - macro call-site expansion is admission-only in M27c。
 - matcher-to-call binding execution is admission-only in M27c。
 - user derive target schema is admission-only in M27c。
+- macro output parser consumption remains blocked in M27d。
+- macro output declared names are hidden from lookup/export/sema in M27d。
+- macro output diagnostics are projected but parser emission remains blocked in M27d。
 - 仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
 
 ## 设计不变量
@@ -298,15 +346,38 @@ M27c 的新增不变量：
   `sema_visible_generated_items=false`、`standard_library_required=false`、`runtime_required=false`、
   `external_process_required=false` 和 `produced_user_generated_code=false`。
 
+M27d 的新增不变量：
+
+- 每个 matcher-to-call binding 和 user derive target schema 必须各有一个 output contract。
+- 每个 output contract 必须有一个 declared-name policy gate 和一个 diagnostic projection gate。
+- output contract 必须使用 compiler-owned future token buffer identity，并保留 generated `ModulePartKey`。
+- generated part 必须保持 `SourceRole::generated` 和 `ModulePartKind::generated`。
+- token buffer identity 必须先绑定 source-map / hygiene identity，再参与 output contract identity；不能让 token
+  buffer identity 反向依赖 output contract identity。
+- declared-name policy 必须绑定 output contract identity、declared-name set fingerprint、hygiene mark 和 diagnostic
+  anchor identity。
+- diagnostic projection 必须绑定 output contract identity、token buffer identity、source-map identity、hygiene mark 和
+  diagnostic anchor identity。
+- output contract 必须保持 `compiler_owned_output=true`、`source_map_available=true`、
+  `hygiene_mark_available=true`、`diagnostic_projection_available=true` 和
+  `declared_name_policy_available=true`。
+- output contract 必须保持 `token_buffer_materialized=false`、`generated_source_text=false`、
+  `parse_ready=false`、`parser_consumable=false`、`parser_consumption_enabled=false`、
+  `ast_mutated=false` 和 `sema_visible_generated_items=false`。
+- declared-name policy 必须保持 `declared_name_set_reserved=true`，同时保持 `lookup_visible=false`、
+  `export_visible=false` 和 `sema_visible=false`。
+- diagnostic projection 必须保持 `debug_projection_available=true`，同时保持
+  `diagnostic_emission_enabled=false` 和 `parser_consumable=false`。
+- M27d 仍必须保持 `standard_library_required=false`、`runtime_required=false`、
+  `external_process_required=false` 和 `produced_user_generated_code=false`。
+
 ## 下一步
 
-M27c 已完成 call-site / matcher binding / user derive target schema admission。建议后续按下面顺序推进：
+M27d 已完成 macro output contract admission。建议后续按下面顺序推进：
 
-1. Macro output contract admission：先设计宏输出 token buffer 的 ownership、hygiene mark、declared-name policy 和
-   diagnostic projection，仍不把输出交给 parser。
-2. User derive output schema design：为 `macro derive Name` 设计 capability/output 声明、impl/item output 分类和错误定位，
+1. User derive output schema design：为 `macro derive Name` 设计 capability/output 声明、impl/item output 分类和错误定位，
    但仍不执行 lowering。
-3. Dry-run parser admission：允许 compiler-owned generated token stream 做受控 parse dry-run，但仍保持 rollback、diagnostic
+2. Dry-run parser admission：允许 compiler-owned generated token stream 做受控 parse dry-run，但仍保持 rollback、diagnostic
    shadow 和 no-AST-mutation 闭包。
-4. Compile-time execution sandbox：在 const eval / comptime 子集、资源限制、权限模型、deterministic fingerprint 和 diagnostic
+3. Compile-time execution sandbox：在 const eval / comptime 子集、资源限制、权限模型、deterministic fingerprint 和 diagnostic
    replay 设计完成前，不执行 `macro const`。

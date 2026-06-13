@@ -1,11 +1,51 @@
 # 当前进度文档
 
 版本：0.1.9
-阶段：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
+阶段：M27d Aurex Macro Output Contract Admission
+附加阶段：M27c Aurex Macro Call-Site And User Derive Target Schema Admission
 附加阶段：M27b Aurex Typed Matcher And Definition-Site Hygiene Admission
 历史阶段锚点：阶段：M27 Aurex Macro Surface Admission
 
 ## 总体状态
+
+2026-06-13：M27d Aurex Macro Output Contract Admission 已完成。本阶段仍不实现标准库、runtime helper、
+external procedural macro、typed expression macro、真实用户自定义 derive lowering、真实用户宏展开、用户编译期代码执行、
+文本替换宏、真实 hygiene resolution、真实 expansion source map、debug trace CLI、`--emit-expanded`、generated source
+text、generated module part parse / merge、declared generated names lookup、generated item visibility / export、
+parser-consumable generated token buffer、parser consumption execution、real parser dry-run execution、AST mutation 或
+macro-generated user code lowering；它只把 matcher-to-call binding 和 user derive target schema 的 future output
+边界固定为 compiler-owned admission facts。
+
+新增 `AurexMacroOutputContractAdmissionGate`、`AurexMacroOutputDeclaredNamePolicyAdmissionGate`、
+`AurexMacroOutputDiagnosticProjectionAdmissionGate` 和独立的 `output_contract` 模块。每个 matcher-to-call binding 和
+user derive target schema 会生成一个 output contract；每个 output contract 保留 generated `ModulePartKey`、
+future output token buffer identity、source-map identity、hygiene mark、declared-name policy identity 和 diagnostic
+projection identity。Declared-name policy gate 只预留 declared-name set，保持 lookup/export/sema 全部不可见；
+diagnostic projection gate 只提供 debug projection，保持 parser emission 关闭。
+
+Summary / dump / fingerprint 新增 `aurex_macro_output_contracts`、
+`aurex_macro_output_contract_call_bindings`、`aurex_macro_output_contract_user_derives`、
+`aurex_macro_output_contract_compiler_owned`、`aurex_macro_output_contract_source_maps`、
+`aurex_macro_output_contract_hygiene_marks`、`aurex_macro_output_contract_diagnostic_projections`、
+`aurex_macro_output_contract_declared_name_policies`、`aurex_macro_output_declared_name_policies`、
+`aurex_macro_output_declared_name_sets_reserved`、`aurex_macro_output_lookup_visible_declared_names`、
+`aurex_macro_output_diagnostic_projections`、`aurex_macro_output_diagnostic_debuggable` 和
+`aurex_macro_output_diagnostic_emission_enabled`。Validation 会拒绝 output contract 与 M27c 输入不匹配、
+declared-name policy 或 diagnostic projection 缺失、token buffer identity / output contract identity / link identity 漂移、
+generated part role 漂移、generated source text、parser consumption、AST mutation、sema visibility、declared name
+lookup/export/sema visibility、diagnostic emission、standard library、runtime、external process 或 user generated code
+被打开。macro output parser consumption remains blocked in M27d；macro output declared names are hidden from lookup/export/sema in M27d；macro output diagnostics are projected but parser emission remains blocked in M27d；
+仍不展开宏/不执行用户编译期代码/不消费 parser/不修改 AST。
+
+Query 层新增 `aurex_macro_output_contract_admission`、
+`aurex_macro_output_declared_name_policy_admission` 和
+`aurex_macro_output_diagnostic_projection_admission` 三类 `MacroExpansionFactKind`，对应
+`aurex_macro_output_contract_admission_v1`、`aurex_macro_output_declared_name_policy_admission_v1` 和
+`aurex_macro_output_diagnostic_projection_admission_v1` policy，并新增
+`m27d_macro_expansion_plan_baseline()` 与 `is_valid_m27d_macro_expansion_plan()`。M27d plan 在 M27c 十六个 facts 上叠加
+三类 output contract / declared-name policy / diagnostic projection facts，共 19 个 facts；默认 early expansion 仍兼容
+M21c baseline，不替换 M21-M26 builtin derive 链条。新增说明见
+[Aurex M27 Aurex Macro Surface Admission](m27-aurex-macro-surface-admission.md)。
 
 2026-06-13：M27c Aurex Macro Call-Site And User Derive Target Schema Admission 已完成。本阶段仍不实现标准库、
 runtime helper、external procedural macro、typed expression macro、真实用户自定义 derive lowering、真实用户宏展开、

@@ -71,7 +71,7 @@ constexpr std::string_view TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE = "module tool
 constexpr std::string_view TOOLING_LSP_SYMBOL_SOURCE = "module tooling.symbols;\n"
                                                        "type Count = i32;\n"
                                                        "enum Mode { fast }\n"
-                                                       "struct Box[T] { value: T; }\n"
+                                                       "struct Box<T> { value: T; }\n"
                                                        "fn main() -> i32 { return 0; }\n";
 
 constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_SOURCE = "module tooling.methods;\n"
@@ -97,12 +97,12 @@ constexpr std::string_view TOOLING_SESSION_TRAIT_SOURCE =
     "  type Item = i32;\n"
     "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
     "}\n"
-    "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+    "fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {\n"
     "  return value.get();\n"
     "}\n"
     "fn main() -> i32 {\n"
     "  let bytes = Bytes { value: 7 };\n"
-    "  return read_i32[Bytes](&bytes) - 7;\n"
+    "  return read_i32<Bytes>(&bytes) - 7;\n"
     "}\n";
 
 constexpr std::string_view TOOLING_WORKSPACE_LEFT_SOURCE = "module tooling.left;\n"
@@ -117,8 +117,8 @@ constexpr std::string_view TOOLING_WORKSPACE_RIGHT_SOURCE = "module tooling.righ
 
 constexpr std::string_view TOOLING_WORKSPACE_SYMBOL_SOURCE = "module tooling.index;\n"
                                                              "enum Mode { fast }\n"
-                                                             "struct Box[T] { value: T; }\n"
-                                                             "fn read(box: Box[i32]) -> i32 {\n"
+                                                             "struct Box<T> { value: T; }\n"
+                                                             "fn read(box: Box<i32>) -> i32 {\n"
                                                              "  return box.value;\n"
                                                              "}\n";
 
@@ -233,8 +233,9 @@ constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
 {
     std::string result;
     result.push_back('"');
-    for (const unsigned char raw_ch : text) {
-        const char ch = static_cast<char>(raw_ch);
+    for (const char raw_ch : text) {
+        const auto byte = static_cast<unsigned char>(raw_ch);
+        const char ch = static_cast<char>(byte);
         switch (ch) {
             case '"':
                 result.append("\\\"");
@@ -258,11 +259,11 @@ constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
                 result.append("\\t");
                 break;
             default:
-                if (raw_ch < TOOLING_TEST_JSON_CONTROL_LIMIT) {
+                if (byte < TOOLING_TEST_JSON_CONTROL_LIMIT) {
                     result.append("\\u00");
-                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[(raw_ch >> TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT)
+                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[(byte >> TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT)
                         & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
-                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[raw_ch & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
+                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[byte & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
                 } else {
                     result.push_back(ch);
                 }
@@ -2579,7 +2580,7 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
         + ",\"languageId\":\"aurex\",\"version\":1,\"text\":\"module tooling.symbols;\\n"
           "type Count = i32;\\n"
           "enum Mode { fast }\\n"
-          "struct Box[T] { value: T; }\\n"
+          "struct Box<T> { value: T; }\\n"
           "fn main() -> i32 { return 0; }\\n"
           "// quote: \\\" slash: \\/ backslash: \\\\ tab:\\t return:\\r form:\\f backspace:\\b unicode:\\u0041\\n\"}}}";
     responses = server.handle_json_message(escaped_open);

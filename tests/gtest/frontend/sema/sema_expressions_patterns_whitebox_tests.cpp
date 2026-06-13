@@ -9,15 +9,8 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
     syntax::AstModule module;
     module.modules = {module_info({"root"})};
 
-    syntax::TypeNode u8_type;
-    u8_type.kind = syntax::TypeKind::primitive;
-    u8_type.primitive = syntax::PrimitiveTypeKind::u8;
-    const TypeId u8_type_id = module.push_type(u8_type);
-    syntax::TypeNode const_u8_ptr_type;
-    const_u8_ptr_type.kind = syntax::TypeKind::pointer;
-    const_u8_ptr_type.pointer_mutability = syntax::PointerMutability::const_;
-    const_u8_ptr_type.pointee = u8_type_id;
-    const TypeId const_u8_ptr_type_id = module.push_type(const_u8_ptr_type);
+    const TypeId u8_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::u8));
+    const TypeId const_u8_ptr_type_id = module.push_type(pointer_node(u8_type_id));
 
     const ExprId str_value = push_name(module, "text");
     const ExprId data_value = push_name(module, "data");
@@ -39,8 +32,7 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
-    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    prepare_expr_storage(analyzer, module);
     analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
     analyzer.state_.flow.current_module = module_id(0);
 
@@ -81,13 +73,66 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
     analyzer.state_.functions.global_values[text_key].type = usize;
     analyzer.state_.functions.global_values[data_key].type = usize;
     analyzer.state_.functions.global_values[len_key].type = str;
+    const auto reset_expr_cache = [&](const ExprId expr_id) {
+        analyzer.state_.checked.expr_intrinsic_types[expr_id.value] = INVALID_TYPE_HANDLE;
+        analyzer.state_.checked.expr_types[expr_id.value] = INVALID_TYPE_HANDLE;
+        analyzer.state_.checked.expr_expected_types[expr_id.value] = INVALID_TYPE_HANDLE;
+    };
+    reset_expr_cache(str_value);
+    reset_expr_cache(data_value);
+    reset_expr_cache(length_value);
+    reset_expr_cache(str_data_id);
+    reset_expr_cache(str_byte_len_id);
+    reset_expr_cache(str_from_bytes_id);
+
+    const base::usize diagnostics_before_invalid_string_builtins = diagnostics.diagnostics().size();
     static_cast<void>(analyzer.analyze_str_projection_expr(str_data_id, analyzer.expr_view(str_data_id)));
     static_cast<void>(analyzer.analyze_str_projection_expr(str_byte_len_id, analyzer.expr_view(str_byte_len_id)));
     static_cast<void>(
         analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, analyzer.expr_view(str_from_bytes_id)));
 
-    EXPECT_GT(diagnostics.diagnostics().size(), 0U);
+    EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_string_builtins);
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_STRPTR_STR), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_STRBLEN_STR), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_STRRAW_DATA_POINTER), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_STRRAW_LENGTH_INTEGER), std::string::npos);
 }
+
+TEST(CoreUnit, SemanticWhiteBoxBuiltinTypeOperandDiagnostics)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const TypeId void_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::void_));
+    const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId const_i32_ptr_type_id = module.push_type(pointer_node(i32_type_id));
+    const ExprId bool_addr = push_bool(module, "true");
+    const ExprId sizeof_void = module.push_cast_like_expr(
+        syntax::ExprKind::size_of, {}, syntax::CastExprPayload{void_type_id, syntax::INVALID_EXPR_ID});
+    const ExprId ptrat_bad = module.push_cast_like_expr(
+        syntax::ExprKind::paddr, {}, syntax::CastExprPayload{const_i32_ptr_type_id, bool_addr});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle usize = types.builtin(BuiltinType::usize);
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle const_i32_ptr = types.pointer(PointerMutability::const_, i32);
+
+    EXPECT_TRUE(
+        types.same(analyzer.analyze_size_or_align_expr(sizeof_void, analyzer.expr_view(sizeof_void)), usize));
+    EXPECT_TRUE(types.same(analyzer.analyze_paddr_expr(ptrat_bad, analyzer.expr_view(ptrat_bad)), const_i32_ptr));
+
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_SIZEOF_ALIGNOF_STORAGE), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_PTRAT_INTEGER), std::string::npos);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxSliceBuiltinExpressions)
 {
     syntax::AstModule module;

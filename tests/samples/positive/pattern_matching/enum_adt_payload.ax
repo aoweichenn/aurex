@@ -21,7 +21,7 @@ fn value(opt: OptionI32) -> i32 {
 fn token_score(token: Token) -> i32 {
     return match token {
         .ident(name) => 1,
-        .span(start, end) => cast[i32](end - start) + 1,
+        .span(start, end) => cast<i32>(end - start) + 1,
         .eof => 3,
     };
 }
@@ -29,6 +29,6 @@ fn token_score(token: Token) -> i32 {
 fn main() -> i32 {
     let opt = OptionI32.some(41);
     let none = OptionI32.none;
-    let token = Token.span(cast[usize](1), cast[usize](2));
+    let token = Token.span(cast<usize>(1), cast<usize>(2));
     return value(opt) + value(none) + token_score(token) - 43;
 }

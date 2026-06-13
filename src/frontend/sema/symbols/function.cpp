@@ -6,8 +6,8 @@ namespace aurex::sema {
 
 namespace {
 
-constexpr std::string_view SEMA_FUNCTION_GENERIC_ARG_LIST_OPEN = "[";
-constexpr std::string_view SEMA_FUNCTION_GENERIC_ARG_LIST_CLOSE = "]";
+constexpr std::string_view SEMA_FUNCTION_GENERIC_ARG_LIST_OPEN = "<";
+constexpr std::string_view SEMA_FUNCTION_GENERIC_ARG_LIST_CLOSE = ">";
 constexpr std::string_view SEMA_FUNCTION_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr base::usize SEMA_FUNCTION_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE = 16;
 

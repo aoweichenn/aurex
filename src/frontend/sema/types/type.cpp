@@ -39,8 +39,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_FN_PREFIX = "unsafe fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_EXTERN_C_FN_PREFIX = "unsafe extern c fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_VARIADIC = "...";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_RETURN = ") -> ";
-constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN = "[";
-constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = "]";
+constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN = "<";
+constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = ">";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR = ".";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TRAIT_OBJECT_PREFIX = "dyn ";
@@ -304,16 +304,9 @@ TypeTable& TypeTable::operator=(const TypeTable& other)
     return *this;
 }
 
-TypeTable::TypeTable(TypeTable&& other) noexcept
-    : arena_(std::move(other.arena_)), types_(std::move(other.types_)), pointer_types_(std::move(other.pointer_types_)),
-      reference_types_(std::move(other.reference_types_)), array_types_(std::move(other.array_types_)),
-      slice_types_(std::move(other.slice_types_)), tuple_types_(std::move(other.tuple_types_)),
-      function_types_(std::move(other.function_types_)), texts_(std::move(other.texts_)),
-      generic_param_types_(std::move(other.generic_param_types_)),
-      associated_projection_types_(std::move(other.associated_projection_types_)),
-      trait_object_types_(std::move(other.trait_object_types_))
+TypeTable::TypeTable(TypeTable&& other) noexcept : TypeTable()
 {
-    this->rebind_interned_texts();
+    this->swap(other);
 }
 
 TypeTable& TypeTable::operator=(TypeTable&& other) noexcept

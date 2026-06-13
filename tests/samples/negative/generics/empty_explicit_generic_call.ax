@@ -1,9 +1,9 @@
 module empty_explicit_generic_call;
 
-fn id[T](value: T) -> T {
+fn id<T>(value: T) -> T {
     return value;
 }
 
 fn main() -> i32 {
-    return id[](1);
+    return id<>(1);
 }

@@ -1,6 +1,6 @@
 module where_duplicate_capability;
 
-fn same[T](left: T, right: T) -> bool where T: Eq + Eq {
+fn same<T>(left: T, right: T) -> bool where T: Eq + Eq {
     return left == right;
 }
 

@@ -11,7 +11,7 @@ impl Box {
 }
 
 fn as_ptr(value: &Box) -> *const Box {
-    return unsafe { ptrat[*const Box](ptraddr(value)) };
+    return unsafe { ptrat<*const Box>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

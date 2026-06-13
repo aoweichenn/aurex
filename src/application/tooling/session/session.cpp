@@ -1039,7 +1039,8 @@ std::string tooling_file_uri_from_path(const std::string_view path)
     std::string uri;
     uri.reserve(TOOLING_FILE_URI_PREFIX.size() + normalized.size());
     uri.append(TOOLING_FILE_URI_PREFIX);
-    for (const unsigned char ch : normalized) {
+    for (const char raw_ch : normalized) {
+        const auto ch = static_cast<unsigned char>(raw_ch);
         if (ch == TOOLING_URI_SPACE || !tooling_uri_char_is_plain(ch)) {
             tooling_append_percent_encoded(uri, ch);
             continue;

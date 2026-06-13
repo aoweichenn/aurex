@@ -5,14 +5,14 @@ enum ResultI32I32: u8 {
     err(i32) = 2,
 }
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
 fn fallible() -> ResultI32I32 {
     return ResultI32I32.err(7);
 }
 
-fn duplicate[T](value: T, replacement: T) -> ResultI32I32 {
+fn duplicate<T>(value: T, replacement: T) -> ResultI32I32 {
     var current: T = value;
     defer consume(current);
     let consumed: T = current;

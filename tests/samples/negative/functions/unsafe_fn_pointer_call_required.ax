@@ -3,7 +3,7 @@ module unsafe_fn_pointer_call_required;
 type UnsafeRead = unsafe fn(*const i32) -> i32;
 
 fn as_const_ptr(value: &i32) -> *const i32 {
-    return unsafe { ptrat[*const i32](ptraddr(value)) };
+    return unsafe { ptrat<*const i32>(ptraddr(value)) };
 }
 
 unsafe fn read_raw(value: *const i32) -> i32 {

@@ -1,8 +1,8 @@
 module paddr_wide_literal;
 
 fn main() -> i32 {
-    let pointer: *const i32 = unsafe { ptrat[*const i32](4294967296) };
-    if ptraddr(pointer) == cast[usize](0) {
+    let pointer: *const i32 = unsafe { ptrat<*const i32>(4294967296) };
+    if ptraddr(pointer) == cast<usize>(0) {
         return 1;
     }
     return 0;

@@ -1,6 +1,6 @@
 module expression_index_not_generic_call;
 
-fn id[T](value: T) -> T {
+fn id<T>(value: T) -> T {
     return value;
 }
 

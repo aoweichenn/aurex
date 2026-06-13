@@ -3,7 +3,7 @@ module type_alias_import;
 import samplelib.aliases as aliases;
 
 fn as_imported_ptr(value: &mut aliases.ImportedInt) -> aliases.ImportedIntPtr {
-    return unsafe { ptrat[aliases.ImportedIntPtr](ptraddr(value)) };
+    return unsafe { ptrat<aliases.ImportedIntPtr>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

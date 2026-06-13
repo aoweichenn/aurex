@@ -13,12 +13,12 @@ enum Choice: u8 {
     one = 1,
 }
 
-fn phantom[T](value: i32) -> i32 {
+fn phantom<T>(value: i32) -> i32 {
     return value;
 }
 
 fn as_const_ptr(value: &i32) -> *const i32 {
-    return unsafe { ptrat[*const i32](ptraddr(value)) };
+    return unsafe { ptrat<*const i32>(ptraddr(value)) };
 }
 
 unsafe fn read_raw(value: *const i32) -> i32 {
@@ -29,7 +29,7 @@ fn type_examples() -> i32 {
     let count: i32 = true;
     let pair = Pair { left: true, missing: 2 };
     let bytes: [2]u8 = [1, 300];
-    return count + pair.left + cast[i32](bytes[0]);
+    return count + pair.left + cast<i32>(bytes[0]);
 }
 
 fn expression_examples() -> i32 {

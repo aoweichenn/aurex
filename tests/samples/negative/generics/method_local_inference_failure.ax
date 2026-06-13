@@ -5,7 +5,7 @@ struct Box {
 }
 
 impl Box {
-    fn marker[T](self: &Box) -> i32 {
+    fn marker<T>(self: &Box) -> i32 {
         return self.value;
     }
 }

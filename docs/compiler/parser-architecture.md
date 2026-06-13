@@ -55,14 +55,13 @@ The shared parser-part bridge is layered deliberately:
 - `parser_part_ranges.cpp` owns source-range composition and AST range lookup
   helpers used by parser parts.
 - Postfix suffixes are emitted directly as compact AST nodes. `parser_postfix.cpp`
-  keeps `[]` disambiguation local: colon syntax always emits `slice`, clear
-  type-argument continuations emit `generic_apply`, and value-shaped bracket
-  syntax emits `index`. M2.1 deliberately uses a syntactic type-shaped contract
-  for selector continuations: generic selectors require an uppercase/type-like
-  base and uppercase/type-like or type-only arguments, so `Type[T].case`
-  remains a generic selector while `items[index].field` remains value indexing.
-  Later stages consume those explicit nodes instead of a second materialization
-  path.
+  keeps `[]` strictly for index and slice syntax. Generic expression suffixes use
+  `<...>` and are accepted only when the closing `>` is followed by `(`, `{`, or
+  `.`. This keeps `items[index].field` as value indexing while allowing
+  `Type<T>.case`, `make<T>(value)`, and `Box<T> { ... }` without depending on
+  identifier casing, type-shaped heuristics, whitespace, or semantic symbol
+  tables. Later stages consume those explicit nodes instead of a second
+  materialization path.
 
 Recovery token sets are split into source-private start-token, list-boundary,
 and delimiter-boundary files. The public recovery API should stay limited to
@@ -209,12 +208,16 @@ it represents. Do not inline a long token switch into a grammar parser part.
 
 ## Ambiguous Syntax Guardrails
 
-Postfix `[]` uses one delimiter for generic type arguments and value indexing,
-so the parser applies conservative syntactic guardrails before emitting the
-final AST node. Type-only arguments and generic-call/type-literal continuations
-become `generic_apply`; selector continuations become `generic_apply` only when
-the base and arguments satisfy the M2.1 type-shaped contract; colon syntax
-becomes `slice`; the remaining value form becomes `index`.
+Postfix `[]` is reserved for value indexing and slicing. Generic arguments use
+`<...>` everywhere: declarations, types, associated type constraints, builtin
+type operands, generic calls, generic struct literals, and explicit enum-case
+selectors.
+
+Expression-level `<...>` is deliberately not whitespace-sensitive. The parser
+accepts a generic suffix only when the balanced closing `>` is followed by a
+generic continuation: `(` for calls, `{` for struct literals in normal expression
+contexts, or `.` for selectors. Otherwise `<` and `>` remain ordinary comparison
+or shift-related tokens.
 
 Protected cases:
 
@@ -222,21 +225,18 @@ Protected cases:
 - Array literals and repeat literals such as `[1, 2, 3]` and `[0; 128]`.
 - Index expressions such as `items[index]`, including selector chains such as
   `items[index].field`.
-- Type-selector expressions such as `Option[T].some` and `core.mem.Box[T].new`
-  when the selector base and bracket arguments are syntactically type-shaped.
-  Lowercase value selectors are intentionally kept as value indexing in M2.1
-  because the parser does not depend on semantic symbol tables.
-- Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
-- Explicit generic function calls such as `id[i32](value)`. The parser emits a
+- Type-selector expressions such as `Option<T>.some` and `core.mem.Box<T>.new`.
+- Builtin type arguments such as `cast<i32>(value)` and `sizeof<T>`.
+- Explicit generic function calls such as `id<i32>(value)`. The parser emits a
   `generic_apply` callee followed by a `call` suffix, so sema no longer owns a
   second raw-chain lowering step.
-- Generic struct literals such as `Wrap[Wrap[i32]] { ... }`.
+- Generic struct literals such as `Wrap<Wrap<i32>> { ... }`.
 - Conditions where struct literals must not be parsed as the condition value.
-- Legacy `<...>` syntax is not a recovery target for generics. `<` and `>` are
-  comparison or shift-related tokens in the language grammar.
+- Legacy `[]` generic syntax is not a recovery target for generics. `[` and `]`
+  remain array, slice, index, pattern, attribute, and origin delimiters.
 
-Generic parameter lists and type argument lists are non-empty. `fn f[]`,
-`Box[]`, and `id[](...)` are parser errors instead of recoverable shorthand
+Generic parameter lists and type argument lists are non-empty. `fn f<>`,
+`Box<>`, and `id<>(...)` are parser errors instead of recoverable shorthand
 for inference.
 
 Before changing lookahead or expression parsing, add a focused parser regression

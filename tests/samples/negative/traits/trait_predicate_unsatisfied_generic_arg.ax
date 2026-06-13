@@ -18,11 +18,11 @@ impl Reader for File {
     }
 }
 
-fn use_reader[T](value: T) -> i32 where T: Reader {
+fn use_reader<T>(value: T) -> i32 where T: Reader {
     return 0;
 }
 
 fn main() -> i32 {
     let other = Other { value: 9 };
-    return use_reader[Other](other);
+    return use_reader<Other>(other);
 }

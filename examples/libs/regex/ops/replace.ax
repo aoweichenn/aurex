@@ -410,7 +410,7 @@ fn output_tail(out: *mut u8, out_capacity: usize, written: usize) -> *mut u8 {
         return null;
     }
     return unsafe {
-        ptrat[*mut u8](ptraddr(out) + written)
+        ptrat<*mut u8>(ptraddr(out) + written)
     };
 }
 
@@ -764,26 +764,26 @@ fn copy_scalar_utf8(value: usize, out: *mut u8, out_capacity: usize, written: us
         return CopyState { written: written, required: required, status: t.RegexStatus.replacement_error };
     }
     if value <= 0x7fusize {
-        return copy_byte(cast[u8](value), out, out_capacity, written, required);
+        return copy_byte(cast<u8>(value), out, out_capacity, written, required);
     }
     if value <= 0x7ffusize {
-        let first: u8 = cast[u8](0xc0usize | (value >> 6usize));
-        let second: u8 = cast[u8](0x80usize | (value & 0x3fusize));
+        let first: u8 = cast<u8>(0xc0usize | (value >> 6usize));
+        let second: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
         let copied_first: CopyState = copy_byte(first, out, out_capacity, written, required);
         return copy_byte(second, out, out_capacity, copied_first.written, copied_first.required);
     }
     if value <= 0xffffusize {
-        let first3: u8 = cast[u8](0xe0usize | (value >> 12usize));
-        let second3: u8 = cast[u8](0x80usize | ((value >> 6usize) & 0x3fusize));
-        let third3: u8 = cast[u8](0x80usize | (value & 0x3fusize));
+        let first3: u8 = cast<u8>(0xe0usize | (value >> 12usize));
+        let second3: u8 = cast<u8>(0x80usize | ((value >> 6usize) & 0x3fusize));
+        let third3: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
         let copied_first3: CopyState = copy_byte(first3, out, out_capacity, written, required);
         let copied_second3: CopyState = copy_byte(second3, out, out_capacity, copied_first3.written, copied_first3.required);
         return copy_byte(third3, out, out_capacity, copied_second3.written, copied_second3.required);
     }
-    let first4: u8 = cast[u8](0xf0usize | (value >> 18usize));
-    let second4: u8 = cast[u8](0x80usize | ((value >> 12usize) & 0x3fusize));
-    let third4: u8 = cast[u8](0x80usize | ((value >> 6usize) & 0x3fusize));
-    let fourth4: u8 = cast[u8](0x80usize | (value & 0x3fusize));
+    let first4: u8 = cast<u8>(0xf0usize | (value >> 18usize));
+    let second4: u8 = cast<u8>(0x80usize | ((value >> 12usize) & 0x3fusize));
+    let third4: u8 = cast<u8>(0x80usize | ((value >> 6usize) & 0x3fusize));
+    let fourth4: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
     let copied_first4: CopyState = copy_byte(first4, out, out_capacity, written, required);
     let copied_second4: CopyState = copy_byte(second4, out, out_capacity, copied_first4.written, copied_first4.required);
     let copied_third4: CopyState = copy_byte(third4, out, out_capacity, copied_second4.written, copied_second4.required);

@@ -603,16 +603,16 @@ TEST(CoreUnit, DynTraitTypeTableInternsCopiesMovesAndDisplaysObjects)
     EXPECT_TRUE(types.is_trait_object(object));
     EXPECT_FALSE(types.is_trait_object(i32));
     EXPECT_FALSE(types.is_trait_object(sema::TypeHandle{static_cast<base::u32>(types.size())}));
-    EXPECT_EQ(types.display_name(object), "dyn Mapper[i32,bool]");
+    EXPECT_EQ(types.display_name(object), "dyn Mapper<i32,bool>");
 
     const sema::TypeTable copied = types;
     EXPECT_TRUE(copied.is_trait_object(object));
-    EXPECT_EQ(copied.display_name(object), "dyn Mapper[i32,bool]");
+    EXPECT_EQ(copied.display_name(object), "dyn Mapper<i32,bool>");
 
     sema::TypeTable moved = copied;
     moved = std::move(types);
     EXPECT_TRUE(moved.is_trait_object(object));
-    EXPECT_EQ(moved.display_name(object), "dyn Mapper[i32,bool]");
+    EXPECT_EQ(moved.display_name(object), "dyn Mapper<i32,bool>");
 
     sema::TypeTable invalid_key_types;
     EXPECT_FALSE(sema::is_valid(invalid_key_types.trait_object(
@@ -807,7 +807,7 @@ TEST(CoreUnit, DynTraitAssociatedEqualitySubstitutesMethodReturnType)
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 3 };\n"
-        "  let source: &dyn Source[Item = i32] = &file;\n"
+        "  let source: &dyn Source<Item = i32> = &file;\n"
         "  return source.item();\n"
         "}\n";
 
@@ -815,7 +815,7 @@ TEST(CoreUnit, DynTraitAssociatedEqualitySubstitutesMethodReturnType)
     ASSERT_EQ(checked.trait_object_callability.size(), 1U);
     ASSERT_EQ(checked.trait_object_method_slots.size(), 1U);
     EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type),
-        "dyn Source[Item = i32]");
+        "dyn Source<Item = i32>");
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots.front().return_type), "i32");
     ASSERT_EQ(checked.trait_object_coercions.size(), 1U);
     ASSERT_EQ(checked.vtable_layouts.size(), 1U);
@@ -828,19 +828,19 @@ TEST(CoreUnit, DynTraitAssociatedEqualitySubstitutesMethodReturnType)
         saw_item_call = true;
         EXPECT_EQ(call.vtable_slot, 0U);
         EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
-        EXPECT_EQ(checked.types.display_name(call.self_type), "dyn Source[Item = i32]");
+        EXPECT_EQ(checked.types.display_name(call.self_type), "dyn Source<Item = i32>");
     }
     EXPECT_TRUE(saw_item_call);
 
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait_object #0 dyn Source[Item = i32] slots=1",
-            "slot #0 dyn Source[Item = i32].item slot=0 requirement=1 receiver_access=shared "
-            "receiver=&dyn Source[Item = i32] return=i32",
-            "dyn_trait_associated_view_whitebox.File as dyn Source[Item = i32] slots=1",
-            "&dyn_trait_associated_view_whitebox.File -> &dyn Source[Item = i32]",
-            "vtable_slot dyn Source[Item = i32].item -> i32 requirement=1 slot=0",
+            "trait_object #0 dyn Source<Item = i32> slots=1",
+            "slot #0 dyn Source<Item = i32>.item slot=0 requirement=1 receiver_access=shared "
+            "receiver=&dyn Source<Item = i32> return=i32",
+            "dyn_trait_associated_view_whitebox.File as dyn Source<Item = i32> slots=1",
+            "&dyn_trait_associated_view_whitebox.File -> &dyn Source<Item = i32>",
+            "vtable_slot dyn Source<Item = i32>.item -> i32 requirement=1 slot=0",
         });
 }
 
@@ -848,29 +848,29 @@ TEST(CoreUnit, DynTraitGenericObjectRecordsMultipleSlotsAndSubstitutedParams)
 {
     const std::string_view source =
         "module dyn_trait_generic_view_whitebox;\n"
-        "trait Reader[T] {\n"
+        "trait Reader<T> {\n"
         "  fn read(self: &Self, value: T) -> T;\n"
         "  fn reset(self: &Self) -> i32;\n"
         "}\n"
         "struct File { value: i32; }\n"
-        "impl Reader[i32] for File {\n"
+        "impl Reader<i32> for File {\n"
         "  fn read(self: &File, value: i32) -> i32 { return value; }\n"
         "  fn reset(self: &File) -> i32 { return self.value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 11 };\n"
-        "  let reader: &dyn Reader[i32] = &file;\n"
+        "  let reader: &dyn Reader<i32> = &file;\n"
         "  return reader.read(4) + reader.reset();\n"
         "}\n";
 
     const sema::CheckedModule checked = analyze_dyn_trait_source(source);
     ASSERT_EQ(checked.trait_object_callability.size(), 1U);
-    EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type), "dyn Reader[i32]");
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type), "dyn Reader<i32>");
     EXPECT_EQ(checked.trait_object_callability.front().method_slot_count, 2U);
     ASSERT_EQ(checked.trait_object_method_slots.size(), 2U);
     EXPECT_EQ(checked.trait_object_method_slots[0].method_name, "read");
     EXPECT_EQ(checked.trait_object_method_slots[0].slot, 0U);
-    EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[0].receiver_type), "&dyn Reader[i32]");
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[0].receiver_type), "&dyn Reader<i32>");
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[0].return_type), "i32");
     EXPECT_EQ(checked.trait_object_method_slots[1].method_name, "reset");
     EXPECT_EQ(checked.trait_object_method_slots[1].slot, 1U);
@@ -886,12 +886,12 @@ TEST(CoreUnit, DynTraitGenericObjectRecordsMultipleSlotsAndSubstitutedParams)
         if (call.method_name == "read") {
             saw_read_call = true;
             EXPECT_EQ(call.vtable_slot, 0U);
-            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Reader[i32]");
+            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Reader<i32>");
             EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
         } else if (call.method_name == "reset") {
             saw_reset_call = true;
             EXPECT_EQ(call.vtable_slot, 1U);
-            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Reader[i32]");
+            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Reader<i32>");
             EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
         }
     }
@@ -901,13 +901,13 @@ TEST(CoreUnit, DynTraitGenericObjectRecordsMultipleSlotsAndSubstitutedParams)
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait_object #0 dyn Reader[i32] slots=2",
-            "slot #0 dyn Reader[i32].read slot=0",
-            "slot #1 dyn Reader[i32].reset slot=1",
-            "dyn_trait_generic_view_whitebox.File as dyn Reader[i32] slots=2",
-            "&dyn_trait_generic_view_whitebox.File -> &dyn Reader[i32]",
-            "vtable_slot dyn Reader[i32].read -> i32 requirement=0 slot=0",
-            "vtable_slot dyn Reader[i32].reset -> i32 requirement=1 slot=1",
+            "trait_object #0 dyn Reader<i32> slots=2",
+            "slot #0 dyn Reader<i32>.read slot=0",
+            "slot #1 dyn Reader<i32>.reset slot=1",
+            "dyn_trait_generic_view_whitebox.File as dyn Reader<i32> slots=2",
+            "&dyn_trait_generic_view_whitebox.File -> &dyn Reader<i32>",
+            "vtable_slot dyn Reader<i32>.read -> i32 requirement=0 slot=0",
+            "vtable_slot dyn Reader<i32>.reset -> i32 requirement=1 slot=1",
         });
 }
 
@@ -915,7 +915,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
 {
     const std::string_view source =
         "module dyn_trait_complex_slots_whitebox;\n"
-        "trait Complex[T] {\n"
+        "trait Complex<T> {\n"
         "  fn ptr(self: &Self, value: *const T) -> *const T;\n"
         "  fn arr_ptr(self: &Self, value: *const [2]T) -> *const [2]T;\n"
         "  @borrow(return = [value])\n"
@@ -926,7 +926,7 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
         "  fn callback(self: &Self, value: fn(T) -> T) -> fn(T) -> T;\n"
         "}\n"
         "struct File { value: i32; }\n"
-        "impl Complex[i32] for File {\n"
+        "impl Complex<i32> for File {\n"
         "  fn ptr(self: &File, value: *const i32) -> *const i32 { return value; }\n"
         "  fn arr_ptr(self: &File, value: *const [2]i32) -> *const [2]i32 { return value; }\n"
         "  @borrow(return = [value])\n"
@@ -938,13 +938,13 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 29 };\n"
-        "  let complex: &dyn Complex[i32] = &file;\n"
+        "  let complex: &dyn Complex<i32> = &file;\n"
         "  return 0;\n"
         "}\n";
 
     const sema::CheckedModule checked = analyze_dyn_trait_source(source);
     ASSERT_EQ(checked.trait_object_callability.size(), 1U);
-    EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type), "dyn Complex[i32]");
+    EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type), "dyn Complex<i32>");
     EXPECT_TRUE(checked.types.is_trait_object(checked.trait_object_callability.front().object_type));
     EXPECT_EQ(checked.trait_object_callability.front().method_slot_count, 6U);
     ASSERT_EQ(checked.trait_object_method_slots.size(), 6U);
@@ -975,13 +975,13 @@ TEST(CoreUnit, DynTraitComplexReturnTypesSubstituteGenericSlots)
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait_object #0 dyn Complex[i32] slots=6",
-            "slot #0 dyn Complex[i32].ptr slot=0",
-            "slot #1 dyn Complex[i32].arr_ptr slot=1",
-            "slot #2 dyn Complex[i32].slice slot=2",
-            "slot #3 dyn Complex[i32].item_ref slot=3",
-            "slot #4 dyn Complex[i32].tuple slot=4",
-            "slot #5 dyn Complex[i32].callback slot=5",
+            "trait_object #0 dyn Complex<i32> slots=6",
+            "slot #0 dyn Complex<i32>.ptr slot=0",
+            "slot #1 dyn Complex<i32>.arr_ptr slot=1",
+            "slot #2 dyn Complex<i32>.slice slot=2",
+            "slot #3 dyn Complex<i32>.item_ref slot=3",
+            "slot #4 dyn Complex<i32>.tuple slot=4",
+            "slot #5 dyn Complex<i32>.callback slot=5",
             "return=*const i32",
             "return=*const [2]i32",
             "return=[]const i32",
@@ -1022,16 +1022,16 @@ TEST(CoreUnit, DynTraitMultipleGenericArgumentsKeepCanonicalIdentityAndDisplay)
 {
     const std::string_view source =
         "module dyn_trait_two_generic_args_whitebox;\n"
-        "trait Mapper[K, V] {\n"
+        "trait Mapper<K, V> {\n"
         "  fn pick(self: &Self, key: K, value: V) -> V;\n"
         "}\n"
         "struct File { value: i32; }\n"
-        "impl Mapper[i32, bool] for File {\n"
+        "impl Mapper<i32, bool> for File {\n"
         "  fn pick(self: &File, key: i32, value: bool) -> bool { return value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 23 };\n"
-        "  let mapper: &dyn Mapper[i32, bool] = &file;\n"
+        "  let mapper: &dyn Mapper<i32, bool> = &file;\n"
         "  if mapper.pick(1, true) { return 1; }\n"
         "  return 0;\n"
         "}\n";
@@ -1039,11 +1039,11 @@ TEST(CoreUnit, DynTraitMultipleGenericArgumentsKeepCanonicalIdentityAndDisplay)
     const sema::CheckedModule checked = analyze_dyn_trait_source(source);
     ASSERT_EQ(checked.trait_object_callability.size(), 1U);
     EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type),
-        "dyn Mapper[i32,bool]");
+        "dyn Mapper<i32,bool>");
     ASSERT_EQ(checked.trait_object_method_slots.size(), 1U);
     EXPECT_EQ(checked.trait_object_method_slots.front().method_name, "pick");
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots.front().receiver_type),
-        "&dyn Mapper[i32,bool]");
+        "&dyn Mapper<i32,bool>");
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots.front().return_type), "bool");
     ASSERT_EQ(checked.trait_object_coercions.size(), 1U);
     ASSERT_EQ(checked.vtable_layouts.size(), 1U);
@@ -1053,7 +1053,7 @@ TEST(CoreUnit, DynTraitMultipleGenericArgumentsKeepCanonicalIdentityAndDisplay)
         if (call.method_name == "pick" && call.dispatch == sema::TraitMethodDispatchKind::vtable_slot) {
             saw_pick_call = true;
             EXPECT_EQ(call.vtable_slot, 0U);
-            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Mapper[i32,bool]");
+            EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Mapper<i32,bool>");
             EXPECT_EQ(checked.types.display_name(call.return_type), "bool");
         }
     }
@@ -1064,14 +1064,14 @@ TEST(CoreUnit, DynTraitAssociatedEqualityOrderIsCanonicalAndImplMustMatch)
 {
     const std::string_view source =
         "module dyn_trait_multi_assoc_view_whitebox;\n"
-        "trait Source[T] {\n"
+        "trait Source<T> {\n"
         "  type Item;\n"
         "  type Error;\n"
         "  fn item(self: &Self, value: T) -> Self.Item;\n"
         "  fn err(self: &Self) -> Self.Error;\n"
         "}\n"
         "struct File { value: i32; }\n"
-        "impl Source[i32] for File {\n"
+        "impl Source<i32> for File {\n"
         "  type Item = i32;\n"
         "  type Error = bool;\n"
         "  fn item(self: &File, value: i32) -> i32 { return value; }\n"
@@ -1079,7 +1079,7 @@ TEST(CoreUnit, DynTraitAssociatedEqualityOrderIsCanonicalAndImplMustMatch)
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 17 };\n"
-        "  let source: &dyn Source[i32, Error = bool, Item = i32] = &file;\n"
+        "  let source: &dyn Source<i32, Error = bool, Item = i32> = &file;\n"
         "  if source.err() { return source.item(5); }\n"
         "  return 0;\n"
         "}\n";
@@ -1087,7 +1087,7 @@ TEST(CoreUnit, DynTraitAssociatedEqualityOrderIsCanonicalAndImplMustMatch)
     const sema::CheckedModule checked = analyze_dyn_trait_source(source);
     ASSERT_EQ(checked.trait_object_callability.size(), 1U);
     EXPECT_EQ(checked.types.display_name(checked.trait_object_callability.front().object_type),
-        "dyn Source[i32,Error = bool,Item = i32]");
+        "dyn Source<i32,Error = bool,Item = i32>");
     EXPECT_EQ(checked.trait_object_callability.front().method_slot_count, 2U);
     ASSERT_EQ(checked.trait_object_method_slots.size(), 2U);
     EXPECT_EQ(checked.types.display_name(checked.trait_object_method_slots[0].return_type), "i32");
@@ -1125,7 +1125,7 @@ TEST(CoreUnit, DynTraitAssociatedEqualityOrderIsCanonicalAndImplMustMatch)
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 1 };\n"
-        "  let source: &dyn Source[Item = i32] = &file;\n"
+        "  let source: &dyn Source<Item = i32> = &file;\n"
         "  return 0;\n"
         "}\n",
         "type dyn_trait_multi_assoc_impl_mismatch_whitebox.File cannot be coerced to dyn trait `Source` "
@@ -1219,14 +1219,14 @@ TEST(CoreUnit, DynTraitRejectsInvalidObjectSurfacesAndMissingImplCoercions)
         {
             "module dyn_trait_unknown_associated_whitebox;\n"
             "trait Source { type Item; fn item(self: &Self) -> Self.Item; }\n"
-            "fn render(source: &dyn Source[Other = i32]) -> i32 { return 0; }\n"
+            "fn render(source: &dyn Source<Other = i32>) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "trait Source has no associated type `Other`",
         },
         {
             "module dyn_trait_duplicate_associated_whitebox;\n"
             "trait Source { type Item; fn item(self: &Self) -> Self.Item; }\n"
-            "fn render(source: &dyn Source[Item = i32, Item = i32]) -> i32 { return 0; }\n"
+            "fn render(source: &dyn Source<Item = i32, Item = i32>) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "duplicate associated type equality for Source.Item",
         },
@@ -1265,7 +1265,7 @@ TEST(CoreUnit, DynTraitRejectsInvalidObjectSurfacesAndMissingImplCoercions)
         },
         {
             "module dyn_trait_missing_generic_args_whitebox;\n"
-            "trait Reader[T] { fn read(self: &Self, value: T) -> i32; }\n"
+            "trait Reader<T> { fn read(self: &Self, value: T) -> i32; }\n"
             "fn render(reader: &dyn Reader) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "too few trait type arguments for Reader: expected 1, got 0",
@@ -1273,14 +1273,14 @@ TEST(CoreUnit, DynTraitRejectsInvalidObjectSurfacesAndMissingImplCoercions)
         {
             "module dyn_trait_plain_trait_with_args_whitebox;\n"
             "trait Draw { fn draw(self: &Self) -> i32; }\n"
-            "fn render(drawable: &dyn Draw[i32]) -> i32 { return 0; }\n"
+            "fn render(drawable: &dyn Draw<i32>) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "trait Draw is not generic",
         },
         {
             "module dyn_trait_generic_arity_mismatch_whitebox;\n"
-            "trait Reader[A, B] { fn read(self: &Self, value: A) -> B; }\n"
-            "fn render(reader: &dyn Reader[i32]) -> i32 { return 0; }\n"
+            "trait Reader<A, B> { fn read(self: &Self, value: A) -> B; }\n"
+            "fn render(reader: &dyn Reader<i32>) -> i32 { return 0; }\n"
             "fn main() -> i32 { return 0; }\n",
             "too few trait type arguments for Reader: expected 2, got 1",
         },

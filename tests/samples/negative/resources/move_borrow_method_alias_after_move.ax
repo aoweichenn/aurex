@@ -1,22 +1,22 @@
 module move_borrow_method_alias_after_move;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-impl[T] Box[T] {
-    fn borrow(self: &Box[T]) -> &T {
+impl<T> Box<T> {
+    fn borrow(self: &Box<T>) -> &T {
         return &self.value;
     }
 }
 
-fn consume[T](value: Box[T]) -> void {
+fn consume<T>(value: Box<T>) -> void {
 }
 
-fn inspect[T](value: &T) -> void {
+fn inspect<T>(value: &T) -> void {
 }
 
-fn duplicate[T](box: Box[T]) -> void {
+fn duplicate<T>(box: Box<T>) -> void {
     let borrowed: &T = box.borrow();
     consume(box);
     inspect(borrowed);

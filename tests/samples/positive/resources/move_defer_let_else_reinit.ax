@@ -5,14 +5,14 @@ enum MaybeI32 {
     none,
 }
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
 fn maybe() -> MaybeI32 {
     return MaybeI32.none;
 }
 
-fn duplicate[T](value: T, replacement: T) -> i32 {
+fn duplicate<T>(value: T, replacement: T) -> i32 {
     var current: T = value;
     defer consume(current);
     let consumed: T = current;

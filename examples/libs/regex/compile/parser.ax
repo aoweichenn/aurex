@@ -947,7 +947,7 @@ fn starts_class_operator(parser: &Parser, first: u8, second: u8) -> bool {
 }
 
 fn byte_scalar(value: u8) -> usize {
-    return cast[usize](value);
+    return cast<usize>(value);
 }
 
 fn is_octal_digit(value: u8) -> bool {
@@ -955,7 +955,7 @@ fn is_octal_digit(value: u8) -> bool {
 }
 
 fn octal_value(value: u8) -> usize {
-    return cast[usize](value - ascii.DIGIT_0);
+    return cast<usize>(value - ascii.DIGIT_0);
 }
 
 fn newline_negated_class_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
@@ -1435,7 +1435,7 @@ fn parse_control_escape_value(parser: &mut Parser, source_start: usize) -> Codep
         return CodepointSpec { value: 0usize, valid: false };
     }
     advance(parser);
-    return CodepointSpec { value: cast[usize](value & 0x1fu8), valid: true };
+    return CodepointSpec { value: cast<usize>(value & 0x1fu8), valid: true };
 }
 
 fn parse_fixed_hex(parser: &mut Parser, source_start: usize, count: usize) -> CodepointSpec {

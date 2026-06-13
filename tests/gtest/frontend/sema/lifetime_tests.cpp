@@ -574,7 +574,7 @@ TEST(CoreUnit, LifetimeFactsPopulateTypeCheckBodyAuthorityFlags)
 TEST(CoreUnit, LifetimeFactsAcceptValidExplicitOrigin)
 {
     constexpr std::string_view source = "module lifetime.valid;\n"
-                                        "fn id[origin data](value: &[data] i32) -> &[data] i32 {\n"
+                                        "fn id<origin data>(value: &[data] i32) -> &[data] i32 {\n"
                                         "  return value;\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
@@ -664,7 +664,7 @@ TEST(CoreUnit, LifetimeFactsCollectEnumOrPatternBorrowSummaryOrigins)
 TEST(CoreUnit, LifetimeFactsAcceptExplicitOriginSet)
 {
     constexpr std::string_view source = "module lifetime.origin_set;\n"
-                                        "fn keep[origin left, origin right](value: &[left | right] i32)"
+                                        "fn keep<origin left, origin right>(value: &[left | right] i32)"
                                         " -> &[left | right] i32 {\n"
                                         "  return value;\n"
                                         "}\n"
@@ -685,7 +685,7 @@ TEST(CoreUnit, LifetimeFactsAcceptExplicitOriginSet)
 TEST(CoreUnit, DropCheckFactsCollectSourceLevelGenericStructuralOutlives)
 {
     constexpr std::string_view source = "module lifetime.dropck_source_ok;\n"
-                                        "fn keep_alive[T, origin data](view: &[data] i32, payload: T) -> void {\n"
+                                        "fn keep_alive<T, origin data>(view: &[data] i32, payload: T) -> void {\n"
                                         "  let holder: ((&[data] i32, T), i32) = ((view, payload), 0);\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
@@ -725,7 +725,7 @@ TEST(CoreUnit, DropCheckFactsCollectSourceLevelGenericStructuralOutlives)
 TEST(CoreUnit, DropCheckFactsDiagnoseSourceLevelDanglingBorrowedField)
 {
     constexpr std::string_view source = "module lifetime.dropck_source_bad;\n"
-                                        "fn bad[T](view: &[missing] i32, payload: T) -> void {\n"
+                                        "fn bad<T>(view: &[missing] i32, payload: T) -> void {\n"
                                         "  let holder: ((&[missing] i32, T), i32) = ((view, payload), 0);\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
@@ -737,7 +737,7 @@ TEST(CoreUnit, DropCheckFactsDiagnoseSourceLevelDanglingBorrowedField)
 TEST(CoreUnit, DropCheckFactsKeepTupleSiblingBorrowedFieldSeparateFromGenericCleanup)
 {
     constexpr std::string_view source = "module lifetime.dropck_tuple_precise;\n"
-                                        "fn keep_alive[T, origin data](view: &[data] i32, payload: T) -> void {\n"
+                                        "fn keep_alive<T, origin data>(view: &[data] i32, payload: T) -> void {\n"
                                         "  let holder: ((&[data] i32, T), i32) = ((view, payload), 0);\n"
                                         "}\n"
                                         "fn main() -> void {}\n";
@@ -828,7 +828,7 @@ TEST(CoreUnit, LifetimeFactsRejectUnknownExplicitOrigin)
 TEST(CoreUnit, LifetimeFactsRejectReturnOriginOutsideExplicitReturnType)
 {
     constexpr std::string_view source = "module lifetime.return_mismatch;\n"
-                                        "fn bad[origin left, origin right](left: &[left] i32, right: &[right] i32)"
+                                        "fn bad<origin left, origin right>(left: &[left] i32, right: &[right] i32)"
                                         " -> &[left] i32 {\n"
                                         "  return right;\n"
                                         "}\n"
@@ -1024,7 +1024,7 @@ TEST(CoreUnit, LifetimeFactsRejectAmbiguousPublicElision)
 TEST(CoreUnit, LifetimeFactsRejectNestedReferenceTypeOutlivesMismatch)
 {
     constexpr std::string_view source = "module lifetime.type_outlives;\n"
-                                        "fn bad[origin outer, origin inner](value: &[outer] &[inner] i32)"
+                                        "fn bad<origin outer, origin inner>(value: &[outer] &[inner] i32)"
                                         " -> &[outer] &[inner] i32 {\n"
                                         "  return value;\n"
                                         "}\n"

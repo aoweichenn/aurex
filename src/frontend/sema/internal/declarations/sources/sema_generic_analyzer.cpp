@@ -85,7 +85,8 @@ template <typename Info>
 
 [[nodiscard]] base::u64 mix_generic_identity_text(base::u64 hash, const std::string_view text) noexcept
 {
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned char>(raw_byte);
         hash = mix_generic_identity_byte(hash, byte);
     }
     return hash;

@@ -1,10 +1,10 @@
 module duplicate_generic_fn;
 
-fn id[T](value: T) -> T {
+fn id<T>(value: T) -> T {
     return value;
 }
 
-fn id[U](value: U) -> U {
+fn id<U>(value: U) -> U {
     return value;
 }
 

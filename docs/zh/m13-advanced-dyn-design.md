@@ -15,7 +15,7 @@ supertrait upcast metadata，得到 borrowed supertrait view。M13a 不把这个
 它只固定 policy、query gate、事实边界、diagnostics 计划、verifier/backend 测试计划和非目标。
 
 M13b 已在该设计上完成第一段实现：用户可写
-`dynproject[SourcePrincipal, TargetSupertrait](view)`，frontend/sema 会检查 source principal 属于 borrowed
+`dynproject<SourcePrincipal, TargetSupertrait>(view)`，frontend/sema 会检查 source principal 属于 borrowed
 composition、target 是该 source principal 的 supertrait，并记录
 `CompositionProjectionFact{kind=composition_to_supertrait}`。M13c 已继续把该 checked fact lowering 为
 `trait_object_composition_project` + `trait_object_upcast`，不新增 runtime metadata policy。
@@ -59,7 +59,7 @@ trait Debug { fn debug(self: &Self) -> i32; }
 
 fn score(view: &dyn (Child + Debug)) -> i32 {
     // M13c lowering 为 composition project + supertrait upcast。
-    let parent: &dyn Parent = dynproject[Child, Parent](view);
+    let parent: &dyn Parent = dynproject<Child, Parent>(view);
     return parent.parent();
 }
 ```
@@ -116,7 +116,7 @@ M13a gate 固定 6 个候选：
 
 M13b 按 frontend/query/sema 范围完成，M13c 按 IR/backend runtime 范围完成：
 
-1. Frontend/sema explicit projection 入口：`dynproject[SourcePrincipal, TargetSupertrait](view)`。
+1. Frontend/sema explicit projection 入口：`dynproject<SourcePrincipal, TargetSupertrait>(view)`。
 2. `CompositionProjectionFact` 记录 `composition_to_supertrait`，并把 source principal、target supertrait、
    principal-set identity、borrow kind 和 supertrait edge fingerprint 混入稳定 projection path。
 3. Checked dump / fingerprint / query summary 已暴露 `supertrait_projections`。
@@ -135,7 +135,7 @@ trait Child: Parent { fn child(self: &Self) -> i32; }
 trait Debug { fn debug(self: &Self) -> i32; }
 
 fn score(view: &dyn (Child + Debug)) -> i32 {
-    let parent: &dyn Parent = dynproject[Child, Parent](view);
+    let parent: &dyn Parent = dynproject<Child, Parent>(view);
     return parent.parent();
 }
 ```

@@ -136,9 +136,9 @@ TEST(CoreUnit, TraitSupertraitFactsInstantiateGenericTransitiveArgs)
 {
     const sema::CheckedModule checked = analyze_supertrait_source(
         "module trait_supertrait_generic_edges_whitebox;\n"
-        "trait Parent[T] {}\n"
-        "trait Mid[T]: Parent[T] {}\n"
-        "trait Child[T]: Mid[T] {}\n"
+        "trait Parent<T> {}\n"
+        "trait Mid<T>: Parent<T> {}\n"
+        "trait Child<T>: Mid<T> {}\n"
         "fn main() -> i32 { return 0; }\n");
 
     ASSERT_EQ(checked.trait_supertrait_edges.size(), 3U);
@@ -174,30 +174,30 @@ TEST(CoreUnit, TraitSupertraitImplObligationSubstitutesGenericParentArgs)
 {
     const sema::CheckedModule checked = analyze_supertrait_source(
         "module trait_supertrait_impl_generic_parent_whitebox;\n"
-        "trait Parent[T] {}\n"
-        "trait Child[T]: Parent[T] {}\n"
+        "trait Parent<T> {}\n"
+        "trait Child<T>: Parent<T> {}\n"
         "struct File { value: i32; }\n"
-        "impl Parent[i32] for File {}\n"
-        "impl Child[i32] for File {}\n"
+        "impl Parent<i32> for File {}\n"
+        "impl Child<i32> for File {}\n"
         "fn main() -> i32 { return 0; }\n");
 
     ASSERT_EQ(checked.trait_impls.size(), 2U);
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "impl Parent[i32] for trait_supertrait_impl_generic_parent_whitebox.File",
-            "impl Child[i32] for trait_supertrait_impl_generic_parent_whitebox.File",
+            "impl Parent<i32> for trait_supertrait_impl_generic_parent_whitebox.File",
+            "impl Child<i32> for trait_supertrait_impl_generic_parent_whitebox.File",
             "Child -> Parent ordinal=0 depth=1",
             "args=[T]",
         });
 
     expect_supertrait_source_diagnostic(
         "module trait_supertrait_impl_generic_mismatch_whitebox;\n"
-        "trait Parent[T] {}\n"
-        "trait Child[T]: Parent[T] {}\n"
+        "trait Parent<T> {}\n"
+        "trait Child<T>: Parent<T> {}\n"
         "struct File { value: i32; }\n"
-        "impl Parent[bool] for File {}\n"
-        "impl Child[i32] for File {}\n"
+        "impl Parent<bool> for File {}\n"
+        "impl Child<i32> for File {}\n"
         "fn main() -> i32 { return 0; }\n",
         "impl `Child` requires supertrait evidence `Parent` for "
         "trait_supertrait_impl_generic_mismatch_whitebox.File");

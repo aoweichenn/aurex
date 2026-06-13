@@ -21,29 +21,29 @@ This matrix records whether a syntax position is supported by current M2.
 | Literal | `1.0u8` | no | Integer suffixes are not accepted on float literals |
 | Literal | `1.0_f32` | no | Underscore suffix spelling is not part of M2 |
 | Type alias | `type MyInt = i32;` | yes | Structural alias |
-| Type alias | `type Alias[T] = T;` | yes | Generic structural alias |
-| Type alias | `type Alias[T] where T: Sized = *const T;` | yes | Built-in non-resource capabilities only |
+| Type alias | `type Alias<T> = T;` | yes | Generic structural alias |
+| Type alias | `type Alias<T> where T: Sized = *const T;` | yes | Built-in non-resource capabilities only |
 | Struct | `struct Point { x: i32; }` | yes | Fields separated by `;` |
-| Struct | `struct Box[T] { value: T; }` | yes | Basic generic struct |
+| Struct | `struct Box<T> { value: T; }` | yes | Basic generic struct |
 | Enum | `enum E { a, b }` | yes | ADT-first, auto tag |
 | Enum | `enum E: u8 { a = 0 }` | yes | C-like/repr-style form |
 | Enum | `enum E { span(usize, usize) }` | yes | Multi-field payload supported |
-| Enum | `enum Option[T] { some(T), none }` | yes | Generic ADT enum |
+| Enum | `enum Option<T> { some(T), none }` | yes | Generic ADT enum |
 | Opaque | `opaque struct FILE;` | yes | Used by extern C |
 | Function | `fn f() -> i32 { return 1; }` | yes | Normal function |
 | Function | `unsafe fn f(p: *const i32) -> i32 { return *p; }` | yes | Body is an unsafe context |
 | Function | `fn f();` | yes | Prototype; explicit return required |
-| Function | `fn id[T](x: T) -> T { return x; }` | yes | Basic generic function |
-| Function | `fn id[T: Copy](x: T) -> T` | no | Generic bounds are not part of M2 |
-| Function | `fn f[T](x: T) -> bool where T: Eq` | yes | Built-in non-resource capability predicate |
-| Function | `fn f[T]() where T: Copy` | no | Resource capabilities are deferred |
+| Function | `fn id<T>(x: T) -> T { return x; }` | yes | Basic generic function |
+| Function | `fn id<T: Copy>(x: T) -> T` | no | Generic bounds are not part of M2 |
+| Function | `fn f<T>(x: T) -> bool where T: Eq` | yes | Built-in non-resource capability predicate |
+| Function | `fn f<T>() where T: Copy` | no | Resource capabilities are deferred |
 | C ABI | `extern c { fn puts(s: *const u8) -> i32; }` | yes | Explicit return required |
 | C ABI | `export c fn main() -> i32 { return 0; }` | yes | Function only |
-| C ABI | `extern c { fn id[T](x: T) -> T; }` | no | Not supported by M2 semantic analysis |
+| C ABI | `extern c { fn id<T>(x: T) -> T; }` | no | Not supported by M2 semantic analysis |
 | Impl | `impl Point { fn move(self: *mut Point) {} }` | yes | Target must resolve to named aggregate |
 | Impl | `impl *mut Point {}` | no | Not supported by M2 semantic analysis |
-| Impl | `impl[T] Box[T] {}` | yes | Impl generic parameters must appear in the target type |
-| Impl | `impl Box { fn id[T](self: *const Box, value: T) -> T { return value; } }` | no | Method-local generics remain outside M2 |
+| Impl | `impl<T> Box<T> {}` | yes | Impl generic parameters must appear in the target type |
+| Impl | `impl Box { fn id<T>(self: *const Box, value: T) -> T { return value; } }` | no | Method-local generics remain outside M2 |
 | Type | `*mut i32` / `*const u8` | yes | Pointer mutability required |
 | Type | `*i32` | no | Missing `mut`/`const` |
 | Type | `&i32` | yes | Safe shared reference, distinct from raw pointer |
@@ -63,12 +63,12 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `extern c fn(*const u8, ...) -> i32` | yes | C ABI function pointer; variadic only for `extern c fn` |
 | Type | `unsafe extern c fn(*const u8) -> i32` | yes | Unsafe C ABI function pointer |
 | Type | `fn(i32, ...) -> i32` | no | Variadic function types require `extern c fn` |
-| Type | `Box[i32]` | yes | Generic type arguments |
-| Type | `Box[]` | no | Empty type arguments rejected |
-| Type | `Box<i32>` | no | `<>` are not generic delimiters |
-| Type | `foo.Box[i32]` | yes | Dot selector, resolved by base kind |
+| Type | `Box<i32>` | yes | Generic type arguments |
+| Type | `Box<>` | no | Empty type arguments rejected |
+| Type | `Box[i32]` | no | `[]` is reserved for array, slice, index, pattern, attribute, and origin syntax |
+| Type | `foo.Box<i32>` | yes | Dot selector, resolved by base kind |
 | Type | `foo.bar.Box` | no | Multi-module expression-style paths are not part of M2 |
-| Type | `foo::Box[i32]` | no | Selectors use `.`, not `::` |
+| Type | `foo::Box<i32>` | no | Selectors use `.`, not `::` |
 | Expr | `arr[i]` | yes | Index expression |
 | Expr | `arr[l:r]` | yes | Borrowed slice from array or slice |
 | Expr | `arr[:r]` | yes | Omitted start defaults to zero |
@@ -78,7 +78,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `let op: fn(i32) -> i32 = f; op(1)` | yes | Function name as value and indirect call |
 | Expr | `let op: unsafe fn(*const i32) -> i32 = f; unsafe { op(p) }` | yes | Unsafe function value call fenced by unsafe block |
 | Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
-| Expr | `id[i32](1)` | yes | Explicit generic function call |
+| Expr | `id<i32>(1)` | yes | Explicit generic function call |
 | Expr | `id::[i32](1)` | no | Selectors use `.`, not `::` |
 | Expr | `(1, true)` | yes | Tuple literal, type inferred from elements unless expected type is present |
 | Expr | `(1,)` | yes | One-element tuple literal uses a trailing comma |
@@ -86,7 +86,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `pair.0` | yes | Anonymous tuple elements are accessed by numeric field syntax |
 | Expr | `pair.first` where `pair` is a tuple | no | Use a named struct for named field access |
 | Expr | `Point { x: 1 }` | yes | Struct literal |
-| Expr | `Box[i32] { value: 1 }` | yes | Generic struct literal |
+| Expr | `Box<i32> { value: 1 }` | yes | Generic struct literal |
 | Expr | `[1, 2, 3]` | yes | Array literal |
 | Expr | `[0; 4]` | yes | Array repeat literal |
 | Expr | `unsafe { *p }` | yes | Tail expression result; creates unsafe context |
@@ -96,7 +96,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `let r: &mut i32 = &mut value; *r = 1;` | yes | Mutable reference requires a writable place |
 | Expr | `let r: &mut i32 = &mut value;` where `value` is `let` | no | `&mut` requires writable storage |
 | Expr | `let p: *mut i32 = &mut value;` | no | `&mut` is safe reference syntax, not raw pointer syntax |
-| Expr | `ptrcast[T](p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
+| Expr | `ptrcast<T>(p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
 | Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]const u8` / `[]mut u8` |
 | Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `str`; failure returns empty `str` |
 | Expr | `text[i]` where `text` is `str` | no | Use checked byte-range slicing; scalar/grapheme APIs are deferred |

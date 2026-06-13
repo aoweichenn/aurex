@@ -202,11 +202,11 @@ fn(i32, i32) -> i32
 unsafe fn(*const i32) -> i32
 extern c fn(*const u8, ...) -> i32
 unsafe extern c fn(*const u8) -> i32
-Box[i32]
-Pair[i32, bool]
-foo.Box[i32]
+Box<i32>
+Pair<i32, bool>
+foo.Box<i32>
 core.mem.File
-core.mem.Box[i32]
+core.mem.Box<i32>
 ```
 
 Rules:
@@ -279,7 +279,7 @@ Rules:
 - A module may export type and value members, but the same exported name cannot
   appear in both domains.
 - Enum cases are type members. They are not inserted into the ordinary value
-  namespace, so `some(1)` is rejected and `Option[i32].some(1)` is required.
+  namespace, so `some(1)` is rejected and `Option<i32>.some(1)` is required.
 - A type member name cannot be reused by an enum case and an associated
   function on the same type.
 - A local or parameter name cannot shadow an import alias, visible root module
@@ -371,7 +371,7 @@ struct Point {
     pub y: i32;
 }
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
@@ -408,7 +408,7 @@ enum Token {
     eof,
 }
 
-enum Option[T] {
+enum Option<T> {
     some(T),
     none,
 }
@@ -443,7 +443,7 @@ MethodDecl
 Current semantic rules require the resolved impl target to be a named struct,
 enum, or opaque struct type. Generic impl blocks are supported when every impl
 generic parameter appears in the impl target type, for example
-`impl[T] Box[T] { ... }`. Method-local generic parameters that are independent
+`impl<T> Box<T> { ... }`. Method-local generic parameters that are independent
 of the impl target are still rejected by M2 semantic analysis.
 
 ## 9. Statements
@@ -543,22 +543,17 @@ array[start:]
 array[:]
 text[start:end]
 function(arg)
-generic_fn[T](arg)
+generic_fn<T>(arg)
 expr?
 ```
 
 Parser note: postfix expressions are stored as explicit compact AST nodes.
-Bracket syntax is classified in the parser by conservative syntactic
-guardrails: type-only arguments and generic call/type-literal continuations
-emit `generic_apply`; selector continuations emit `generic_apply` only for
-type-shaped bases and arguments, preserving value selectors such as
-`items[index].field`; colon syntax emits `slice`; remaining value syntax emits
-`index`. In M2.1 a type-shaped selector base or bare type argument is
-syntactic: it begins with an uppercase identifier or uses a type-only form such
-as a primitive, pointer, reference, tuple, slice, array, or function type.
-Lowercase `name[index].field` is always parsed as value indexing followed by a
-field selector. Later stages consume those nodes directly instead of running any
-second raw-chain lowering step.
+Bracket syntax is no longer a generic surface. `[]` emits `index` or `slice`
+only. Generic suffixes use `<...>` and emit `generic_apply` only when the
+balanced closing `>` is followed by `(`, `{`, or `.`. This rule does not inspect
+identifier casing, type-shaped heuristics, semantic symbol tables, whitespace,
+comments, or line breaks. Later stages consume those nodes directly instead of
+running any second raw-chain lowering step.
 
 The postfix `?` operator is accepted only for structurally recognized
 result-like and option-like enums. A result-like enum must have exactly
@@ -596,7 +591,7 @@ Struct literals:
 
 ```aurex
 Point { x: 1, y: 2 }
-Pair[i32, bool] { first: 1, second: true }
+Pair<i32, bool> { first: 1, second: true }
 remote.Point { x: 1, y: 2 }
 ```
 
@@ -681,22 +676,22 @@ an ownership/resource model.
 The following operations require an unsafe context:
 
 - Raw pointer dereference with unary `*`.
-- `ptrcast[T](p)`.
-- `bitcast[T](x)`.
-- `ptrat[T](addr)`.
+- `ptrcast<T>(p)`.
+- `bitcast<T>(x)`.
+- `ptrat<T>(addr)`.
 - `strraw(data, len)`.
 - Calling an `unsafe fn` or a value whose type is `unsafe fn(...) -> T` /
   `unsafe extern c fn(...) -> T`.
 
 Safe operations include address-of `&place`, `ptraddr(p_or_ref)`, `strptr(s)`,
-`strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof[T]`,
-`alignof[T]`, and checked numeric `cast[T](x)`.
+`strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof<T>`,
+`alignof<T>`, and checked numeric `cast<T>(x)`.
 
 `&place` always creates `&T`; `&mut place` always creates `&mut T` and requires
 a writable place. Address-of does not silently become a raw pointer in
 initializers, calls, returns, struct literals, or any other expected-type
 context. Code that needs a raw pointer address must use the explicit
-`ptraddr(...)` / `ptrat[T](...)` raw-pointer boundary. Unary `*` on a safe
+`ptraddr(...)` / `ptrat<T>(...)` raw-pointer boundary. Unary `*` on a safe
 reference is a safe load or place projection; unary `*` on a raw pointer remains
 unsafe-only.
 
@@ -763,14 +758,14 @@ ExplicitEnumCasePattern
   = NamedType "." Identifier [ PayloadBindings ] ;
 
 NamedType
-  = Identifier { "." Identifier } [ "[" Type { "," Type } [ "," ] "]" ] ;
+  = Identifier { "." Identifier } [ "<" Type { "," Type } [ "," ] ">" ] ;
 ```
 
 Rules:
 
 - A bare identifier pattern is always a binding. Bare enum case patterns such
   as `some(v)` are rejected.
-- Enum case patterns are either explicit `Type.case` / `Type[Args].case` or
+- Enum case patterns are either explicit `Type.case` / `Type<Args>.case` or
   inferred shorthand `.case` from the matched enum type.
 - Constant patterns use `const NAME` and currently match integer and bool
   constants only.
@@ -801,13 +796,13 @@ Rules:
 
 ```ebnf
 GenericParams
-  = "[" GenericParam { "," GenericParam } [ "," ] "]" ;
+  = "<" GenericParam { "," GenericParam } [ "," ] ">" ;
 
 GenericParam
   = Identifier ;
 
 GenericTypeArgs
-  = "[" Type { "," Type } [ "," ] "]" ;
+  = "<" Type { "," Type } [ "," ] ">" ;
 
 ExplicitGenericCall
   = SelectorExpr GenericTypeArgs "(" [ ArgumentList ] ")" ;
@@ -828,25 +823,24 @@ Supported generic positions:
 
 | Syntax position | M2 support | Notes |
 | --- | ---: | --- |
-| `struct Name[T]` | yes | Basic generic struct |
-| `fn name[T]` | yes | Normal non-C non-prototype function |
-| `Name[T]` type arguments | yes | Type context |
-| `Name[T] { ... }` | yes | Generic struct literal |
-| `name[T](...)` | yes | Explicit generic function call |
-| `type Alias[T]` | yes | Structural generic type alias |
-| `enum E[T]` | yes | Generic ADT enum |
-| `impl[T] Type[T]` | yes | Impl generics must appear in the impl target |
+| `struct Name<T>` | yes | Basic generic struct |
+| `fn name<T>` | yes | Normal non-C non-prototype function |
+| `Name<T>` type arguments | yes | Type context |
+| `Name<T> { ... }` | yes | Generic struct literal |
+| `name<T>(...)` | yes | Explicit generic function call |
+| `type Alias<T>` | yes | Structural generic type alias |
+| `enum E<T>` | yes | Generic ADT enum |
+| `impl<T> Type<T>` | yes | Impl generics must appear in the impl target |
 | method-local generics | no | Generic parameters independent of the impl target are not supported |
 | generic bounds | no | Not part of M2 |
 | `where T: Eq + Hash` | yes | Built-in non-resource capabilities only |
-| `<>` generics | no | Aurex uses `[]` |
+| `[]` generics | no | `[]` is reserved for arrays, slices, indexes, patterns, attributes, and origins |
 
-Postfix brackets are emitted as explicit parser AST nodes. Type-only arguments
-and generic call/type-literal continuations emit `generic_apply`, colon syntax
-emits `slice`, and the remaining value-shaped form emits `index`. Selector
-continuations only force `generic_apply` for type-shaped bases and arguments, so
-`Type[T].case` stays a type selector while `items[index].field` stays value
-indexing. Explicit generic calls use `name[T](...)` or `module.name[T](...)`.
+Postfix brackets are emitted as explicit parser AST nodes for value operations:
+colon syntax emits `slice`, and the remaining value-shaped form emits `index`.
+Generic suffixes use `<...>` and emit `generic_apply`; `Type<T>.case` stays a
+type selector while `items[index].field` stays value indexing. Explicit generic
+calls use `name<T>(...)` or `module.name<T>(...)`.
 
 The M2 `where` clause is deliberately small. `Sized`, `Eq`, `Ord`, and `Hash`
 are built-in non-resource capability predicates used for type checking and
@@ -862,15 +856,15 @@ Examples:
 []i32
 [N]i32
 [1 + 2]i32
-Box[]
-Box<i32>
+Box<>
+Box[i32]
 ()
 let () = value;
 foo::bar
 foo::bar::Baz
-fn add[T: Add](a: T, b: T) -> T { return a; }
-fn foo[T]() where T: Copy {}
-impl Box { fn id[T](self: *const Box, value: T) -> T { return value; } }
+fn add<T: Add>(a: T, b: T) -> T { return a; }
+fn foo<T>() where T: Copy {}
+impl Box { fn id<T>(self: *const Box, value: T) -> T { return value; } }
 id::[i32](1)
 for x in values {}
 ```

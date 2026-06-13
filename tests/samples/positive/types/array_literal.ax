@@ -10,9 +10,9 @@ fn main() -> i32 {
     let bytes: [4]u8 = [1, 2, 3, 4];
     let inferred = [10, 20, 30];
     let buffer: Buffer = Buffer { data: [4, 3, 2, 1] };
-    return cast[i32](bytes[0]) +
-        cast[i32](TABLE[1]) +
+    return cast<i32>(bytes[0]) +
+        cast<i32>(TABLE[1]) +
         inferred[2] +
-        cast[i32](buffer.data[3]) -
+        cast<i32>(buffer.data[3]) -
         34;
 }

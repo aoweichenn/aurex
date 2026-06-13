@@ -1,21 +1,21 @@
 module generic_raw_pointer_method_reference_receiver_rejected;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-impl[T] Box[T] {
-    fn get(self: &Box[T]) -> T {
+impl<T> Box<T> {
+    fn get(self: &Box<T>) -> T {
         return self.value;
     }
 }
 
-fn as_ptr(value: &Box[i32]) -> *const Box[i32] {
-    return unsafe { ptrat[*const Box[i32]](ptraddr(value)) };
+fn as_ptr(value: &Box<i32>) -> *const Box<i32> {
+    return unsafe { ptrat<*const Box<i32>>(ptraddr(value)) };
 }
 
 fn main() -> i32 {
-    let box: Box[i32] = Box[i32] { value: 7 };
-    let ptr: *const Box[i32] = as_ptr(&box);
+    let box: Box<i32> = Box<i32> { value: 7 };
+    let ptr: *const Box<i32> = as_ptr(&box);
     return ptr.get();
 }

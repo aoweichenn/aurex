@@ -16,7 +16,7 @@ source-principal path 下的 expected-type projection 和 direct supertrait meth
 固定 owning dyn、dynamic Drop dispatch 和 allocator policy 的 future boundary；
 `m15_const_generic_design_gate_baseline()` 固定 typed scalar const parameter、canonical const value、generic
 instance const arg key 和 `[N]T` array length 集成路线。M16 已把这条 const generic 路线落成 parser/AST/query/sema
-check-only：用户可写 `const N: usize`、mixed generic args、`ArrayView[i32, 4]`、`len[i32, 4]` 和 `[N]T`。
+check-only：用户可写 `const N: usize`、mixed generic args、`ArrayView<i32, 4>`、`len<i32, 4>` 和 `[N]T`。
 M16 不实现标准库、不实现 owning dyn runtime、不实现 `Box<dyn Trait>`、不生成 dynamic Drop dispatch，也不做
 generic const arithmetic、const where predicate、associated const、dyn const equality dispatch 或 unresolved
 const-param array runtime ABI lowering。
@@ -37,7 +37,7 @@ const-param array runtime ABI lowering。
 - 基础类型、struct、ADT-style enum、显式 C-like/repr enum、generic struct/function/enum/type alias、owner generic impl 和 `where` capability / trait predicate。
 - nominal static trait、显式 `impl Trait for Type`、static trait method dispatch、第一版 associated type model 和
   trait default method body。
-- borrowed dyn trait view：`&dyn Trait` / `&mut dyn Trait`、`dyn Trait[Assoc = Type]`、checked vtable witness、
+- borrowed dyn trait view：`&dyn Trait` / `&mut dyn Trait`、`dyn Trait<Assoc = Type>`、checked vtable witness、
   IR/backend indirect dispatch。
 - direct supertrait declaration 和 borrowed dyn supertrait upcast runtime：`trait Child: Parent`、checked
   `TraitSupertraitEdgeFact`、`TraitObjectUpcastCoercionKey`、`DynUpcastAbiDescriptor`、`trait_object_upcast` IR、
@@ -48,13 +48,13 @@ const-param array runtime ABI lowering。
   M11c 已支持 `dyn (A + B)` borrowed composition annotation/coercion，M11d 已支持显式 runtime projection，M11e
   已把 runtime projection facts 接入 query/cache/tooling/verifier release closure，M12a/M12b 已支持并收口唯一
   principal method direct composition dispatch，M13a 已固定 `borrowed_composition_supertrait_projection` 设计门禁，
-  M13c/M13d 已支持并收口 `dynproject[Child, Parent](view)` 这类 borrowed composition-to-supertrait 显式投影
+  M13c/M13d 已支持并收口 `dynproject<Child, Parent>(view)` 这类 borrowed composition-to-supertrait 显式投影
   runtime lowering；M14 已支持唯一 path 的 `let parent: &dyn Parent = view;` 和 `view.parent()`。
 - M15 design/query facts：`m15_dyn_advanced_design_gate_baseline()` 固定 owning dyn / dynamic Drop /
   allocator policy 的后续边界；`m15_const_generic_design_gate_baseline()` 固定 const generic 后续实现必须走
   typed scalar const param、canonical const value key、generic instance const arg key 和 `[N]T` array length
   integration，不允许用 display text 或 `TypeHandle` placeholder 偷代 const argument identity。
-- M16 const generic check-only：`const N: usize`、mixed `ArrayView[i32, 4]` / `len[i32, 4]` generic arguments、
+- M16 const generic check-only：`const N: usize`、mixed `ArrayView<i32, 4>` / `len<i32, 4>` generic arguments、
   const argument fingerprint、`GenericInstanceKey::const_args`、const param environment binding 和 `[N]T` array
   length identity 已落地；const parameter type 当前只接受 integer / bool / char 标量。
 - pattern matching、guard、or-pattern。

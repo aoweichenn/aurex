@@ -1,7 +1,7 @@
 module index_void_pointer;
 
 fn main() -> i32 {
-    let pointer: *mut void = ptrat[*mut void](0);
+    let pointer: *mut void = ptrat<*mut void>(0);
     let value = pointer[0];
     return 0;
 }

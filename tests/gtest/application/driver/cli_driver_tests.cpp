@@ -49,8 +49,8 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE =
     "pub struct Box { pub value: Count; }\n"
     "pub enum Mode: u8 { fast = 1, slow = 2, }\n"
     "impl Box { pub fn read(self: &Box) -> Count { return self.value; } }\n"
-    "fn id[T](value: T) -> T { return value; }\n"
-    "fn main() -> i32 { let box: Box = Box { value: id[Count](0) }; return box.read(); }\n";
+    "fn id<T>(value: T) -> T { return value; }\n"
+    "fn main() -> i32 { let box: Box = Box { value: id<Count>(0) }; return box.read(); }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_COMMENT_ONLY_SOURCE =
     "module incremental_cache_driver;\n"
     "// comment-only edit should preserve lossy token and parse query results\n"
@@ -58,16 +58,16 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_COMMENT_ONLY_SOURCE =
     "pub struct Box { pub value: Count; }\n"
     "pub enum Mode: u8 { fast = 1, slow = 2, }\n"
     "impl Box { pub fn read(self: &Box) -> Count { return self.value; } }\n"
-    "fn id[T](value: T) -> T { return value; }\n"
-    "fn main() -> i32 { let box: Box = Box { value: id[Count](0) }; return box.read(); }\n";
+    "fn id<T>(value: T) -> T { return value; }\n"
+    "fn main() -> i32 { let box: Box = Box { value: id<Count>(0) }; return box.read(); }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE =
     "module incremental_cache_driver;\n"
     "pub type Count = i32;\n"
     "pub struct Box { pub value: Count; }\n"
     "pub enum Mode: u8 { fast = 1, slow = 2, }\n"
     "impl Box { pub fn read(self: &Box) -> Count { return self.value; } }\n"
-    "fn id[T](value: T) -> T { return value; }\n"
-    "fn main() -> i32 { let box: Box = Box { value: id[Count](1) }; return box.read(); }\n";
+    "fn id<T>(value: T) -> T { return value; }\n"
+    "fn main() -> i32 { let box: Box = Box { value: id<Count>(1) }; return box.read(); }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_INVALID_SOURCE =
     "module incremental_cache_driver;\nfn main() -> i32 { return ; }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_ROOT_SOURCE =
@@ -410,7 +410,8 @@ struct CacheTestQueryResultFingerprint {
     constexpr std::size_t CACHE_TEST_HEX_CHARS_PER_BYTE = 2U;
     std::string encoded;
     encoded.reserve(value.size() * CACHE_TEST_HEX_CHARS_PER_BYTE);
-    for (const unsigned char byte : value) {
+    for (const char raw_byte : value) {
+        const auto byte = static_cast<unsigned int>(static_cast<unsigned char>(raw_byte));
         encoded.push_back(DIGITS[byte >> HIGH_NIBBLE_SHIFT]);
         encoded.push_back(DIGITS[byte & LOW_NIBBLE_MASK]);
     }
@@ -2527,8 +2528,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencySchedule
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_QUERY_SCHEDULE_SOURCE =
         "module incremental_cache_query_schedule;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[i32](7); }\n";
+        "fn id<T>(value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id<i32>(7); }\n";
 
     driver::clear_file_cache();
 
@@ -3057,8 +3058,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericBodyRowsButSkipsLowerI
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_GENERIC_BODY_SOURCE =
         "module incremental_cache_generic_body;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[i32](7); }\n";
+        "fn id<T>(value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id<i32>(7); }\n";
 
     driver::clear_file_cache();
 

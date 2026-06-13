@@ -1,7 +1,7 @@
 module mut_to_const_pointer;
 
 fn as_mut_ptr(value: &mut i32) -> *mut i32 {
-    return unsafe { ptrat[*mut i32](ptraddr(value)) };
+    return unsafe { ptrat<*mut i32>(ptraddr(value)) };
 }
 
 fn accept(ptr: *const i32) -> i32 {

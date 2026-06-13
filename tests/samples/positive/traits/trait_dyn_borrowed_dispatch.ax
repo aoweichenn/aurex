@@ -49,7 +49,7 @@ impl Accumulate for Counter {
     }
 }
 
-fn score(source: &dyn Source[Item = i32]) -> i32 {
+fn score(source: &dyn Source<Item = i32>) -> i32 {
     return source.bonus() + source.read();
 }
 

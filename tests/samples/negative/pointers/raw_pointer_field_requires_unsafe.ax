@@ -5,7 +5,7 @@ struct Pair {
 }
 
 fn as_const_pair_ptr(value: &Pair) -> *const Pair {
-    return unsafe { ptrat[*const Pair](ptraddr(value)) };
+    return unsafe { ptrat<*const Pair>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

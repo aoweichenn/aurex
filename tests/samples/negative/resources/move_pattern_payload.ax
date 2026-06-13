@@ -1,22 +1,22 @@
 module move_pattern_payload;
 
-enum Option[T] {
+enum Option<T> {
     some(T),
     none,
 }
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-fn unwrap[T](value: Option[T], fallback: T) -> T {
+fn unwrap<T>(value: Option<T>, fallback: T) -> T {
     return match value {
         .some(inner) => inner,
         .none => fallback,
     };
 }
 
-fn unwrap_box[T](box: Box[T]) -> T {
+fn unwrap_box<T>(box: Box<T>) -> T {
     let Box { value } = box;
     return value;
 }

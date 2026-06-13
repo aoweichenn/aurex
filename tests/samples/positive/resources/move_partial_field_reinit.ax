@@ -1,19 +1,19 @@
 module move_partial_field_reinit;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
     tag: i32;
 }
 
-fn replace_value[T](box: Box[T], replacement: T) -> Box[T] {
-    var current: Box[T] = box;
+fn replace_value<T>(box: Box<T>, replacement: T) -> Box<T> {
+    var current: Box<T> = box;
     let moved: T = current.value;
     current.value = replacement;
     return current;
 }
 
 fn main() -> i32 {
-    let first: Box[i32] = Box[i32] { value: 40, tag: 2 };
-    let second: Box[i32] = replace_value(first, 41);
+    let first: Box<i32> = Box<i32> { value: 40, tag: 2 };
+    let second: Box<i32> = replace_value(first, 41);
     return second.value + second.tag - 43;
 }

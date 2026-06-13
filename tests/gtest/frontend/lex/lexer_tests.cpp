@@ -187,7 +187,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors)
         "  let suffix_value: usize = 42usize;\n"
         "  let leading_dot: f32 = .5f32;\n"
         "  let trailing_dot: f64 = 1.;\n"
-        "  let span_value: text.SpanU8 = text.span_u8(c\"hi\", cast[usize](2));\n"
+        "  let span_value: text.SpanU8 = text.span_u8(c\"hi\", cast<usize>(2));\n"
         "  let copied_value: i32 = i8_value;\n"
         "  let try_token: i32 = 1?;\n"
         "  extern c fn printf(format: *const u8, ...) -> i32;\n"

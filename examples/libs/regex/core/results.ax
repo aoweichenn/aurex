@@ -67,7 +67,7 @@ pub fn reset_captures(captures: &mut t.Captures, status: t.RegexStatus) -> void 
 }
 
 pub fn destroy_captures(captures: &mut t.Captures) -> void {
-    alloc.free_typed[t.CaptureSpan](captures.spans);
+    alloc.free_typed<t.CaptureSpan>(captures.spans);
     captures.matched = false;
     captures.start = 0usize;
     captures.end = 0usize;
@@ -81,11 +81,11 @@ fn ensure_capture_capacity(captures: &mut t.Captures, needed: usize) -> bool {
     if captures.spans != null && captures.span_capacity >= needed {
         return true;
     }
-    let spans: *mut t.CaptureSpan = alloc.alloc_zeroed[t.CaptureSpan](needed, sizeof[t.CaptureSpan]);
+    let spans: *mut t.CaptureSpan = alloc.alloc_zeroed<t.CaptureSpan>(needed, sizeof<t.CaptureSpan>);
     if spans == null {
         return false;
     }
-    alloc.free_typed[t.CaptureSpan](captures.spans);
+    alloc.free_typed<t.CaptureSpan>(captures.spans);
     captures.spans = spans;
     captures.span_capacity = needed;
     return true;
@@ -116,7 +116,7 @@ pub fn capture_name(compiled: &t.Regex, index: usize) -> str {
         return "";
     }
     let ptr: *const u8 = unsafe {
-        ptrat[*const u8](ptraddr(strptr(compiled.pattern)) + name_start)
+        ptrat<*const u8>(ptraddr(strptr(compiled.pattern)) + name_start)
     };
     return unsafe { strraw(ptr, name_len) };
 }

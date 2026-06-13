@@ -1,6 +1,6 @@
 module empty_generic_params_fn;
 
-fn f[]() -> i32 {
+fn f<>() -> i32 {
     return 0;
 }
 

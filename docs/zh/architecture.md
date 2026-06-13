@@ -50,7 +50,7 @@
   选为 borrowed composition-to-supertrait explicit projection，并固定 `m13a_dyn_advanced_design_gate_baseline`
   query gate；该主线组合已有 `principal_set_metadata_v1` 与 `supertrait_vptr_metadata_v1`，不新增 runtime
   metadata。M14 已在唯一 source-principal path 下打开 expected-type composition-to-supertrait projection 和 direct supertrait method dispatch；M13b 已把该主线的 frontend/query/sema check-only
-  子集落成 `dynproject[SourcePrincipal, TargetSupertrait](view)`，记录
+  子集落成 `dynproject<SourcePrincipal, TargetSupertrait>(view)`，记录
   `CompositionProjectionFact{kind=composition_to_supertrait}` 和 `supertrait_projections` query summary；M13c 已将其
   lowering 为 `trait_object_composition_project` + `trait_object_upcast`，复用已有 principal-set metadata 和
   supertrait vptr metadata；M13d 新增 `FunctionDynAbiFacts::composition_supertrait_chains`、lower-IR fingerprint

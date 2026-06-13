@@ -7,7 +7,7 @@ struct Pair {
 }
 
 fn as_count_ptr(value: &mut Count) -> *mut Count {
-    return unsafe { ptrat[*mut Count](ptraddr(value)) };
+    return unsafe { ptrat<*mut Count>(ptraddr(value)) };
 }
 
 fn make_count() {

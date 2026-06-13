@@ -18,7 +18,7 @@ fn takes(value: i32, pair: Pair) -> i32 {
     return value;
 }
 
-fn id[T](value: T) -> T {
+fn id<T>(value: T) -> T {
     return value;
 }
 
@@ -49,13 +49,13 @@ fn main() -> i32 {
     let bad_payload_field = Payload.item;
     let bad_payload_arity = Payload.item(1, 2);
     let addr_bad = ptraddr(1);
-    let from_bad = ptrat[i32](true);
-    let bad_sizeof_void: usize = sizeof[void];
+    let from_bad = ptrat<i32>(true);
+    let bad_sizeof_void: usize = sizeof<void>;
     let bad_strptr = strptr(1);
     let bad_strblen = strblen(1);
-    let bad_strraw_data = strraw(1, cast[usize](1));
+    let bad_strraw_data = strraw(1, cast<usize>(1));
     let bad_strraw_len = strraw(c"bytes", true);
-    let bad_generic_apply = id[i32];
+    let bad_generic_apply = id<i32>;
     let bad_array_unknown = [missing_name];
     let bad_array_storage = [touch()];
     let bad_if_void = if true { touch() } else { touch() };

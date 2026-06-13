@@ -2,5 +2,5 @@ module literal_suffix_type_mismatch;
 
 fn main() -> i32 {
     let value: u8 = 1i32;
-    return cast[i32](value);
+    return cast<i32>(value);
 }

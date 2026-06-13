@@ -1,12 +1,12 @@
 module move_borrow_block_assignment_alias_after_move;
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
-fn inspect[T](value: &T) -> void {
+fn inspect<T>(value: &T) -> void {
 }
 
-fn duplicate[T](value: T) -> void {
+fn duplicate<T>(value: T) -> void {
     let borrowed: &T = {
         var alias: &T = &value;
         alias = &value;

@@ -5,7 +5,7 @@ extern c {
 }
 
 fn bad() -> void {
-    let handle: *mut Handle = ptrat[*mut Handle](0);
+    let handle: *mut Handle = ptrat<*mut Handle>(0);
     return *handle;
 }
 

@@ -5,7 +5,7 @@ struct Box {
 }
 
 impl Box {
-    fn set[T](self: &mut Box, value: T) -> i32 {
+    fn set<T>(self: &mut Box, value: T) -> i32 {
         self.value = 2;
         return 1;
     }
@@ -14,5 +14,5 @@ impl Box {
 fn main() -> i32 {
     let box: Box = Box { value: 1 };
     let shared: &Box = &box;
-    return shared.set[i32](1);
+    return shared.set<i32>(1);
 }

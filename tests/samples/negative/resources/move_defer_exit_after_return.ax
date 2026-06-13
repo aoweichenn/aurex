@@ -1,9 +1,9 @@
 module move_defer_exit_after_return;
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
-fn duplicate[T](value: T) -> T {
+fn duplicate<T>(value: T) -> T {
     defer consume(value);
     return value;
 }

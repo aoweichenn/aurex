@@ -1,18 +1,18 @@
 module move_borrow_aggregate_alias_after_move;
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
-fn inspect[T](value: &T) -> void {
+fn inspect<T>(value: &T) -> void {
 }
 
-struct BorrowPair[T] {
+struct BorrowPair<T> {
     borrowed: &T;
     tag: i32;
 }
 
-fn duplicate[T](value: T) -> void {
-    let pair: BorrowPair[T] = BorrowPair[T] { borrowed: &value, tag: 1 };
+fn duplicate<T>(value: T) -> void {
+    let pair: BorrowPair<T> = BorrowPair<T> { borrowed: &value, tag: 1 };
     consume(value);
     inspect(pair.borrowed);
 }

@@ -591,10 +591,10 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     EXPECT_TRUE(sema::is_valid(signature.semantic_key));
     ASSERT_EQ(signature.generic_args.size(), 1U);
     EXPECT_TRUE(checked.types.same(signature.generic_args.front(), checked.types.builtin(sema::BuiltinType::i32)));
-    EXPECT_EQ(sema::function_display_name(checked.types, signature), "id[i32]");
+    EXPECT_EQ(sema::function_display_name(checked.types, signature), "id<i32>");
     EXPECT_TRUE(checked.functions.contains(signature.semantic_key));
     EXPECT_EQ(checked.functions.at(signature.semantic_key).generic_instance_key, instance.generic_instance_key);
-    EXPECT_NE(sema::dump_checked_module(checked).find("id[i32]"), std::string::npos);
+    EXPECT_NE(sema::dump_checked_module(checked).find("id<i32>"), std::string::npos);
     const sema::GenericFunctionInstanceBodyView body_view =
         checked.generic_function_instance_body_view(analyzer.ctx_.module, 0);
     EXPECT_TRUE(sema::is_valid(body_view));
@@ -1270,7 +1270,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     EXPECT_EQ(
         generic_box->generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
     EXPECT_EQ(checked.types.get(generic_box->type).name, "generic_type_display.Box");
-    EXPECT_EQ(checked.types.display_name(generic_box->type), "generic_type_display.Box[i32]");
+    EXPECT_EQ(checked.types.display_name(generic_box->type), "generic_type_display.Box<i32>");
 
     ASSERT_EQ(checked.generic_enum_instances.size(), 1U);
     const sema::GenericEnumInstanceInfo& generic_maybe_instance = checked.generic_enum_instances.front();
@@ -1278,7 +1278,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     ASSERT_EQ(generic_maybe_instance.generic_instance_key.type_args.size(), 1U);
     EXPECT_EQ(generic_maybe_instance.generic_instance_key.type_args.front(),
         query::canonical_builtin(query::BuiltinTypeKey::i32));
-    EXPECT_EQ(checked.types.display_name(generic_maybe_instance.type), "generic_type_display.Maybe[i32]");
+    EXPECT_EQ(checked.types.display_name(generic_maybe_instance.type), "generic_type_display.Maybe<i32>");
 
     const sema::EnumCaseInfo* generic_some = nullptr;
     const sema::EnumCaseInfo* generic_none = nullptr;
@@ -1295,7 +1295,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     EXPECT_EQ(generic_some->enum_name, "Maybe");
     EXPECT_EQ(generic_some->generic_instance_key, generic_maybe_instance.generic_instance_key);
     EXPECT_EQ(generic_none->generic_instance_key, generic_maybe_instance.generic_instance_key);
-    EXPECT_EQ(checked.types.display_name(generic_some->type), "generic_type_display.Maybe[i32]");
+    EXPECT_EQ(checked.types.display_name(generic_some->type), "generic_type_display.Maybe<i32>");
     EXPECT_EQ(generic_some->name.view().find("[i32]"), std::string::npos);
 
     ASSERT_EQ(checked.generic_type_alias_instances.size(), 1U);
@@ -1304,11 +1304,11 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     ASSERT_EQ(alias_instance.generic_instance_key.type_args.size(), 1U);
     EXPECT_EQ(
         alias_instance.generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
-    EXPECT_EQ(checked.types.display_name(alias_instance.resolved_type), "generic_type_display.Box[i32]");
+    EXPECT_EQ(checked.types.display_name(alias_instance.resolved_type), "generic_type_display.Box<i32>");
 
     const std::string checked_dump = sema::dump_checked_module(checked);
-    EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
-    EXPECT_NE(checked_dump.find("case Maybe[i32]_some"), std::string::npos);
+    EXPECT_NE(checked_dump.find("struct priv Box<i32>"), std::string::npos);
+    EXPECT_NE(checked_dump.find("case Maybe<i32>_some"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxConstGenericStructInstancesCarryConstArgs)
@@ -1379,7 +1379,7 @@ TEST(CoreUnit, SemanticWhiteBoxConstGenericStructInstancesCarryConstArgs)
     ASSERT_EQ(generic_view->generic_instance_key.const_args.size(), 1U);
     EXPECT_NE(query::debug_string(generic_view->generic_instance_key.const_args.front()),
         query::debug_string(query::StableFingerprint128{}));
-    EXPECT_EQ(checked.types.display_name(generic_view->type), "const_generic_struct.ArrayView[i32]");
+    EXPECT_EQ(checked.types.display_name(generic_view->type), "const_generic_struct.ArrayView<i32>");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxConstGenericFunctionBodyUsesConstParamArrayLength)
@@ -1497,13 +1497,13 @@ TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsForwardedParamTypeMismatch)
 {
     const std::string output = analyze_const_generic_source_failure(
         "module const_generic_forward_mismatch;\n"
-        "struct Target[T, const N: usize] {\n"
+        "struct Target<T, const N: usize> {\n"
         "    value: T;\n"
         "}\n"
-        "struct Forward[T, const B: bool] {\n"
-        "    target: Target[T, B];\n"
+        "struct Forward<T, const B: bool> {\n"
+        "    target: Target<T, B>;\n"
         "}\n"
-        "fn use(value: Forward[i32, true]) -> i32 {\n"
+        "fn use(value: Forward<i32, true>) -> i32 {\n"
         "    return 0;\n"
         "}\n");
 

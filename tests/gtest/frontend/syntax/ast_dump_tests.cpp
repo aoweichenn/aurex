@@ -2066,7 +2066,7 @@ TEST(CoreUnit, AstDumpPrintsOriginGenericParamsAndReferenceOrigins)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "item #0 priv fn view[T, origin data]",
+            "item #0 priv fn view<T, origin data>",
             "return &mut[data] T",
         });
 }
@@ -2127,9 +2127,9 @@ TEST(CoreUnit, AstDumpPrintsConstGenericParamsArgumentsAndArrayLengths)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "item #0 priv struct ArrayView[T, const N: usize]",
+            "item #0 priv struct ArrayView<T, const N: usize>",
             "field priv value : [N]T",
-            "param value : ArrayView[i32, 4]",
+            "param value : ArrayView<i32, 4>",
             "return usize",
         });
 }
@@ -2490,18 +2490,18 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
             "priv import core.mem",
             "expr #1 float_literal `1.0`",
             "expr #2 call",
-            "expr #3 generic_apply[&mut pkg.Scoped, unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool]",
+            "expr #3 generic_apply<&mut pkg.Scoped, unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool>",
             "expr #4 field .fd",
             "expr #5 index",
             "expr #6 slice",
-            "expr #7 struct_literal pkg.Box[i32, bool]",
+            "expr #7 struct_literal pkg.Box<i32, bool>",
             "expr #8 struct_literal <selector>",
             "condition_pattern (x, y)",
             "expr #10 strvalid",
             "expr #11 strfromutf8",
             "expr #12 try_expr",
             "stmt #0 for_range item",
-            "item #0 priv fn dumped[T, U] where T: copy + drop, U: fmt",
+            "item #0 priv fn dumped<T, U> where T: copy + drop, U: fmt",
             "return unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool",
             "case wrapped(&mut pkg.Scoped)",
             "const LIMIT | Option.some(x, y)",

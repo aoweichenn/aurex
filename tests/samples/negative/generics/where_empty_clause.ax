@@ -1,6 +1,6 @@
 module where_empty_clause;
 
-fn id[T](value: T) -> T where {
+fn id<T>(value: T) -> T where {
     return value;
 }
 

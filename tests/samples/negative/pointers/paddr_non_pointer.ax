@@ -1,6 +1,6 @@
 module paddr_non_pointer;
 
 fn main() -> i32 {
-    let value: i32 = ptrat[i32](0);
+    let value: i32 = ptrat<i32>(0);
     return value;
 }

@@ -302,7 +302,7 @@ TEST(CoreUnit, DynTraitCompositionAssociatedEqualityMergeDetectsConflicts)
         "module dyn_trait_composition_assoc_conflict_whitebox;\n"
         "trait Source { type Item; fn item(self: &Self) -> Self.Item; }\n"
         "trait Sink { type Item; fn put(self: &Self, value: Self.Item) -> i32; }\n"
-        "fn render(view: &dyn (Source[Item = i32] + Sink[Item = bool])) -> i32 { return 0; }\n"
+        "fn render(view: &dyn (Source<Item = i32> + Sink<Item = bool>)) -> i32 { return 0; }\n"
         "fn main() -> i32 { return 0; }\n",
         "dyn trait composition associated type `Item` has conflicting equality constraints");
 
@@ -315,7 +315,7 @@ TEST(CoreUnit, DynTraitCompositionAssociatedEqualityMergeDetectsConflicts)
         "impl Sink for File { type Item = i32; fn put(self: &File, value: i32) -> i32 { return value; } }\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 1 };\n"
-        "  let view: &dyn (Sink[Item = i32] + Source[Item = i32]) = &file;\n"
+        "  let view: &dyn (Sink<Item = i32> + Source<Item = i32>) = &file;\n"
         "  return 0;\n"
         "}\n");
     ASSERT_EQ(checked.principal_set_composition_facts.associated_equality_merges.size(), 1U);
@@ -425,7 +425,7 @@ TEST(CoreUnit, DynTraitCompositionDirectAssociatedReturnUsesSelectedPrincipalEqu
         "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 1; } }\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 9 };\n"
-        "  let view: &dyn (Debug + Source[Item = i32]) = &file;\n"
+        "  let view: &dyn (Debug + Source<Item = i32>) = &file;\n"
         "  return view.item();\n"
         "}\n";
 
@@ -437,8 +437,8 @@ TEST(CoreUnit, DynTraitCompositionDirectAssociatedReturnUsesSelectedPrincipalEqu
     const std::string receiver_display = checked.types.display_name(call.receiver_type);
     EXPECT_NE(receiver_display.find("&dyn ("), std::string::npos) << receiver_display;
     EXPECT_NE(receiver_display.find("Debug"), std::string::npos) << receiver_display;
-    EXPECT_NE(receiver_display.find("Source[Item = i32]"), std::string::npos) << receiver_display;
-    EXPECT_EQ(checked.types.display_name(call.dispatch_receiver_type), "dyn Source[Item = i32]");
+    EXPECT_NE(receiver_display.find("Source<Item = i32>"), std::string::npos) << receiver_display;
+    EXPECT_EQ(checked.types.display_name(call.dispatch_receiver_type), "dyn Source<Item = i32>");
     EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
     EXPECT_EQ(call.receiver_access, sema::ReceiverAccessKind::shared);
 
@@ -452,7 +452,7 @@ TEST(CoreUnit, DynTraitCompositionDirectAssociatedReturnUsesSelectedPrincipalEqu
             continue;
         }
         ++direct_projection_count;
-        EXPECT_EQ(projection.target_view_name, "dyn Source[Item = i32]");
+        EXPECT_EQ(projection.target_view_name, "dyn Source<Item = i32>");
     }
     EXPECT_EQ(direct_projection_count, 1U);
 
@@ -460,9 +460,9 @@ TEST(CoreUnit, DynTraitCompositionDirectAssociatedReturnUsesSelectedPrincipalEqu
     expect_contains_all(dump,
         {
             "trait_call #0 vtable_slot dyn (",
-            "Source[Item = i32]",
+            "Source<Item = i32>",
             ".item -> i32",
-            "dispatch_receiver=dyn Source[Item = i32]",
+            "dispatch_receiver=dyn Source<Item = i32>",
             "receiver_access=shared auto_borrow=false two_phase=false",
         });
 }

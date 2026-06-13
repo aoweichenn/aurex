@@ -5,7 +5,7 @@ struct Pair {
     second: i32;
 }
 
-fn same[T](left: T, right: T) -> bool where T: Eq {
+fn same<T>(left: T, right: T) -> bool where T: Eq {
     return left == right;
 }
 

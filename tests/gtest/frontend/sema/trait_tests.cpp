@@ -123,11 +123,11 @@ void expect_negative_trait_sample(const std::string_view filename, const std::st
 TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
 {
     const std::string_view source = "module trait_registry_whitebox;\n"
-                                    "pub trait Reader[T] {\n"
+                                    "pub trait Reader<T> {\n"
                                     "  fn read(self: &Self, value: T) -> i32;\n"
                                     "}\n"
                                     "struct File { handle: i32; }\n"
-                                    "impl Reader[i32] for File {\n"
+                                    "impl Reader<i32> for File {\n"
                                     "  fn read(self: &File, value: i32) -> i32 {\n"
                                     "    return value;\n"
                                     "  }\n"
@@ -157,10 +157,10 @@ TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
     expect_contains_all(dump,
         {
             "traits 1",
-            "trait Reader[T0] params=1 associated_types=0 requirements=1",
+            "trait Reader<T0> params=1 associated_types=0 requirements=1",
             "requirement read(&Self, T) -> i32",
             "trait_impls 1",
-            "impl Reader[i32] for trait_registry_whitebox.File associated_types=0 methods=1",
+            "impl Reader<i32> for trait_registry_whitebox.File associated_types=0 methods=1",
         });
 
     sema::CheckedModule copied = checked;
@@ -312,7 +312,7 @@ TEST(CoreUnit, DropSemaRejectsUnsupportedDestructorSurfaces)
         {
             "module drop_generic_impl_whitebox;\n"
             "struct File { fd: i32; }\n"
-            "impl[T] Drop for File {\n"
+            "impl<T> Drop for File {\n"
             "  fn drop(self: deinit File) -> void {}\n"
             "}\n"
             "fn main() -> void {}\n",
@@ -369,7 +369,7 @@ TEST(CoreUnit, DropSemaRejectsUnsupportedDestructorSurfaces)
         {
             "module drop_type_args_surface_whitebox;\n"
             "struct File { fd: i32; }\n"
-            "impl Drop[i32] for File {\n"
+            "impl Drop<i32> for File {\n"
             "  fn drop(self: deinit File) -> void {}\n"
             "}\n"
             "fn main() -> void {}\n",
@@ -509,7 +509,7 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
     const std::string_view source = "module trait_registry_composite_whitebox;\n"
                                     "struct Token { value: i32; }\n"
                                     "enum Mode { fast, slow }\n"
-                                    "pub trait Shape[T] {\n"
+                                    "pub trait Shape<T> {\n"
                                     "  fn ptr(self: *const Self, value: *mut T) -> *const T;\n"
                                     "  fn slice(self: &Self, values: []const T) -> T;\n"
                                     "  fn pair(self: &Self, value: (Self, T)) -> T;\n"
@@ -517,7 +517,7 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
                                     "  fn concrete(self: &Self, token: Token, mode: Mode) -> Token;\n"
                                     "}\n"
                                     "struct Box { value: i32; }\n"
-                                    "impl Shape[i32] for Box {\n"
+                                    "impl Shape<i32> for Box {\n"
                                     "  fn ptr(self: *const Box, value: *mut i32) -> *const i32 { return null; }\n"
                                     "  fn slice(self: &Box, values: []const i32) -> i32 { return values[0]; }\n"
                                     "  fn pair(self: &Box, value: (Box, i32)) -> i32 {\n"
@@ -538,14 +538,14 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait Shape[T0] params=1 associated_types=0 requirements=5",
+            "trait Shape<T0> params=1 associated_types=0 requirements=5",
             "requirement ptr(*const Self, *mut T) -> *const T",
             "requirement slice(&Self, []const T) -> T",
             "requirement pair(&Self, (Self, T)) -> T",
             "requirement callback(&Self, fn(T) -> T) -> T",
             "requirement concrete(&Self, trait_registry_composite_whitebox.Token, "
             "trait_registry_composite_whitebox.Mode) -> trait_registry_composite_whitebox.Token",
-            "impl Shape[i32] for trait_registry_composite_whitebox.Box associated_types=0 methods=5",
+            "impl Shape<i32> for trait_registry_composite_whitebox.Box associated_types=0 methods=5",
         });
 }
 
@@ -591,15 +591,15 @@ TEST(CoreUnit, TraitPredicatesLowerWhereBoundsAndValidateGenericCandidates)
                                     "impl Reader for File {\n"
                                     "  fn read(self: &File) -> i32 { return self.value; }\n"
                                     "}\n"
-                                    "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+                                    "fn use_reader<T>(value: T) -> i32 where T: Reader {\n"
                                     "  return 0;\n"
                                     "}\n"
-                                    "fn forward_reader[T](value: T) -> i32 where T: Reader {\n"
-                                    "  return use_reader[T](value);\n"
+                                    "fn forward_reader<T>(value: T) -> i32 where T: Reader {\n"
+                                    "  return use_reader<T>(value);\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let file = File { value: 7 };\n"
-                                    "  return forward_reader[File](file);\n"
+                                    "  return forward_reader<File>(file);\n"
                                     "}\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
@@ -639,12 +639,12 @@ TEST(CoreUnit, TraitPredicatesRejectUnsatisfiedGenericArguments)
                                     "impl Reader for File {\n"
                                     "  fn read(self: &File) -> i32 { return self.value; }\n"
                                     "}\n"
-                                    "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+                                    "fn use_reader<T>(value: T) -> i32 where T: Reader {\n"
                                     "  return 0;\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let other = Other { value: 9 };\n"
-                                    "  return use_reader[Other](other);\n"
+                                    "  return use_reader<Other>(other);\n"
                                     "}\n";
 
     expect_trait_source_diagnostic(
@@ -659,12 +659,12 @@ TEST(CoreUnit, TraitPredicatesLowerBuiltinAndDeclaredBoundsTogether)
                                     "impl Reader for Flag {\n"
                                     "  fn read(self: &Flag) -> i32 { return 1; }\n"
                                     "}\n"
-                                    "fn use_flag[T](value: T) -> i32 where T: Eq + Reader {\n"
+                                    "fn use_flag<T>(value: T) -> i32 where T: Eq + Reader {\n"
                                     "  return 0;\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let flag: Flag = Flag.yes;\n"
-                                    "  return use_flag[Flag](flag);\n"
+                                    "  return use_flag<Flag>(flag);\n"
                                     "}\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
@@ -696,12 +696,12 @@ TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
                                     "impl Reader for File {\n"
                                     "  fn read(self: &File) -> i32 { return self.value; }\n"
                                     "}\n"
-                                    "fn use_reader[T](value: &T) -> i32 where T: Reader {\n"
+                                    "fn use_reader<T>(value: &T) -> i32 where T: Reader {\n"
                                     "  return value.read();\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let file = File { value: 7 };\n"
-                                    "  return use_reader[File](&file);\n"
+                                    "  return use_reader<File>(&file);\n"
                                     "}\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
@@ -748,12 +748,12 @@ TEST(CoreUnit, TraitAssociatedTypesRecordProjectionEqualitiesAndDispatch)
                                     "  type Item = i32;\n"
                                     "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
                                     "}\n"
-                                    "fn use_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                    "fn use_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {\n"
                                     "  return value.get();\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let bytes = Bytes { value: 5 };\n"
-                                    "  return use_i32[Bytes](&bytes);\n"
+                                    "  return use_i32<Bytes>(&bytes);\n"
                                     "}\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
@@ -814,7 +814,7 @@ TEST(CoreUnit, TraitAssociatedTypeEqualityNormalizesGenericProjectionTypes)
                                     "trait Source { type Item; }\n"
                                     "struct Bytes { value: i32; }\n"
                                     "impl Source for Bytes { type Item = i32; }\n"
-                                    "fn project[T](value: T) -> T.Item where T: Source[Item = i32] {\n"
+                                    "fn project<T>(value: T) -> T.Item where T: Source<Item = i32> {\n"
                                     "  return 1;\n"
                                     "}\n"
                                     "fn main() -> i32 {\n"
@@ -840,7 +840,7 @@ TEST(CoreUnit, TraitAssociatedProjectionStaysAbstractWithoutEquality)
                                     "  type Item;\n"
                                     "  fn get(self: &Self) -> Self.Item;\n"
                                     "}\n"
-                                    "fn project[T](value: &T) -> T.Item where T: Source {\n"
+                                    "fn project<T>(value: &T) -> T.Item where T: Source {\n"
                                     "  return value.get();\n"
                                     "}\n"
                                     "fn main() -> i32 { return 0; }\n";
@@ -907,7 +907,7 @@ TEST(CoreUnit, TraitAssociatedTypeEqualityAcceptsDifferentProjection)
                                     "  type Item;\n"
                                     "  type Error;\n"
                                     "}\n"
-                                    "fn project[T](value: T) -> i32 where T: Source[Item = T.Error] {\n"
+                                    "fn project<T>(value: T) -> i32 where T: Source<Item = T.Error> {\n"
                                     "  return 0;\n"
                                     "}\n"
                                     "fn main() -> i32 { return 0; }\n";
@@ -965,13 +965,13 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_self_generic_whitebox;\n"
-            "trait Reader[Self] { fn read(self: &Self) -> i32; }\n"
+            "trait Reader<Self> { fn read(self: &Self) -> i32; }\n"
             "fn main() -> i32 { return 0; }\n",
             "duplicate generic parameter `Self`",
         },
         {
             "module trait_requirement_generic_whitebox;\n"
-            "trait Reader { fn read[T](self: &Self, value: T) -> i32; }\n"
+            "trait Reader { fn read<T>(self: &Self, value: T) -> i32; }\n"
             "fn main() -> i32 { return 0; }\n",
             "method-local generic parameters are not supported",
         },
@@ -983,9 +983,9 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_requirement_array_param_whitebox;\n"
-            "trait Reader[T] { fn read(self: &Self, values: [2]T) -> T; }\n"
+            "trait Reader<T> { fn read(self: &Self, values: [2]T) -> T; }\n"
             "struct File { value: i32; }\n"
-            "impl Reader[i32] for File {\n"
+            "impl Reader<i32> for File {\n"
             "  fn read(self: &File, values: [2]i32) -> i32 { return values[0]; }\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -995,7 +995,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "module trait_impl_generic_whitebox;\n"
             "trait Reader { fn read(self: &Self) -> i32; }\n"
             "struct File { value: i32; }\n"
-            "impl[T] Reader for File {\n"
+            "impl<T> Reader for File {\n"
             "  fn read(self: &File) -> i32 { return 0; }\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1022,7 +1022,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_generic_arity_missing_whitebox;\n"
-            "trait Reader[T] { fn read(self: &Self, value: T) -> i32; }\n"
+            "trait Reader<T> { fn read(self: &Self, value: T) -> i32; }\n"
             "struct File { value: i32; }\n"
             "impl Reader for File {\n"
             "  fn read(self: &File, value: i32) -> i32 { return value; }\n"
@@ -1032,9 +1032,9 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_generic_arity_mismatch_whitebox;\n"
-            "trait Reader[A, B] { fn read(self: &Self, value: A) -> B; }\n"
+            "trait Reader<A, B> { fn read(self: &Self, value: A) -> B; }\n"
             "struct File { value: i32; }\n"
-            "impl Reader[i32] for File {\n"
+            "impl Reader<i32> for File {\n"
             "  fn read(self: &File, value: i32) -> i32 { return value; }\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1044,7 +1044,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "module trait_type_args_on_plain_whitebox;\n"
             "trait Reader { fn read(self: &Self) -> i32; }\n"
             "struct File { value: i32; }\n"
-            "impl Reader[i32] for File {\n"
+            "impl Reader<i32> for File {\n"
             "  fn read(self: &File) -> i32 { return 0; }\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1134,7 +1134,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_predicate_duplicate_bound_whitebox;\n"
             "trait Reader { fn read(self: &Self) -> i32; }\n"
-            "fn use_reader[T](value: T) -> i32 where T: Reader + Reader {\n"
+            "fn use_reader<T>(value: T) -> i32 where T: Reader + Reader {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1142,8 +1142,8 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_predicate_generic_arity_whitebox;\n"
-            "trait Needs[T] {}\n"
-            "fn use_needs[U](value: U) -> i32 where U: Needs {\n"
+            "trait Needs<T> {}\n"
+            "fn use_needs<U>(value: U) -> i32 where U: Needs {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1152,11 +1152,11 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_predicate_forward_missing_bound_whitebox;\n"
             "trait Reader { fn read(self: &Self) -> i32; }\n"
-            "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+            "fn use_reader<T>(value: T) -> i32 where T: Reader {\n"
             "  return 0;\n"
             "}\n"
-            "fn forward_reader[T](value: T) -> i32 {\n"
-            "  return use_reader[T](value);\n"
+            "fn forward_reader<T>(value: T) -> i32 {\n"
+            "  return use_reader<T>(value);\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
             "does not satisfy trait predicate `Reader`",
@@ -1173,7 +1173,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_associated_type_generic_unsupported_whitebox;\n"
             "trait Source {\n"
-            "  type Item[T];\n"
+            "  type Item<T>;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
             "generic associated types are not supported",
@@ -1200,7 +1200,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "trait Source { type Item; }\n"
             "struct Bytes { value: i32; }\n"
             "impl Source for Bytes {\n"
-            "  type Item[T] = i32;\n"
+            "  type Item<T> = i32;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
             "generic associated types are not supported",
@@ -1254,7 +1254,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_associated_type_unknown_equality_whitebox;\n"
             "trait Source { type Item; }\n"
-            "fn use_source[T](value: T) -> i32 where T: Source[Missing = i32] {\n"
+            "fn use_source<T>(value: T) -> i32 where T: Source<Missing = i32> {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1263,7 +1263,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_associated_type_duplicate_equality_whitebox;\n"
             "trait Source { type Item; }\n"
-            "fn use_source[T](value: T) -> i32 where T: Source[Item = i32, Item = i32] {\n"
+            "fn use_source<T>(value: T) -> i32 where T: Source<Item = i32, Item = i32> {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1271,7 +1271,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_associated_type_builtin_equality_whitebox;\n"
-            "fn use_eq[T](value: T) -> i32 where T: Eq[Item = i32] {\n"
+            "fn use_eq<T>(value: T) -> i32 where T: Eq<Item = i32> {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1280,7 +1280,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_associated_type_missing_bound_whitebox;\n"
             "trait Source { type Item; }\n"
-            "fn use_item[T](value: T) -> T.Item {\n"
+            "fn use_item<T>(value: T) -> T.Item {\n"
             "  return value;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1288,7 +1288,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         },
         {
             "module trait_associated_type_unknown_projection_whitebox;\n"
-            "fn use_item[T](value: T) -> T.Item {\n"
+            "fn use_item<T>(value: T) -> T.Item {\n"
             "  return value;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1298,7 +1298,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "module trait_associated_type_ambiguous_projection_whitebox;\n"
             "trait SourceA { type Item; }\n"
             "trait SourceB { type Item; }\n"
-            "fn use_item[T](value: T) -> T.Item where T: SourceA + SourceB {\n"
+            "fn use_item<T>(value: T) -> T.Item where T: SourceA + SourceB {\n"
             "  return value;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1307,7 +1307,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
         {
             "module trait_associated_type_projection_cycle_whitebox;\n"
             "trait Source { type Item; }\n"
-            "fn use_item[T](value: T) -> i32 where T: Source[Item = T.Item] {\n"
+            "fn use_item<T>(value: T) -> i32 where T: Source<Item = T.Item> {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
@@ -1318,12 +1318,12 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "trait Source { type Item; }\n"
             "struct Bytes { value: i32; }\n"
             "impl Source for Bytes { type Item = u8; }\n"
-            "fn use_i32[T](value: T) -> i32 where T: Source[Item = i32] {\n"
+            "fn use_i32<T>(value: T) -> i32 where T: Source<Item = i32> {\n"
             "  return 0;\n"
             "}\n"
             "fn main() -> i32 {\n"
             "  let bytes = Bytes { value: 1 };\n"
-            "  return use_i32[Bytes](bytes);\n"
+            "  return use_i32<Bytes>(bytes);\n"
             "}\n",
             "trait associated type equality is not satisfied: Source for "
             "trait_associated_type_equality_unsatisfied_whitebox.Bytes.Item expected i32, got u8",
@@ -1630,7 +1630,7 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
                                     "  type Item;\n"
                                     "  fn get(self: &Self) -> Self.Item;\n"
                                     "}\n"
-                                    "trait Adapter[T] where T: Source[Item = i32] {\n"
+                                    "trait Adapter<T> where T: Source<Item = i32> {\n"
                                     "  fn value(self: &Self, input: &T) -> i32 {\n"
                                     "    return input.get();\n"
                                     "  }\n"
@@ -1641,7 +1641,7 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
                                     "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
                                     "}\n"
                                     "struct Box { value: i32; }\n"
-                                    "impl Adapter[Bytes] for Box {}\n"
+                                    "impl Adapter<Bytes> for Box {}\n"
                                     "fn main() -> i32 {\n"
                                     "  let box = Box { value: 0 };\n"
                                     "  let bytes = Bytes { value: 9 };\n"
@@ -1705,11 +1705,11 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait priv Adapter[T0] params=1 associated_types=0 requirements=1",
+            "trait priv Adapter<T0> params=1 associated_types=0 requirements=1",
             "requirement value(&Self, &T) -> i32 default",
             "T: Source origin=where",
-            "Self: Adapter[T] origin=trait_self",
-            "impl Adapter[trait_default_method_generic_where.Bytes] for trait_default_method_generic_where.Box "
+            "Self: Adapter<T> origin=trait_self",
+            "impl Adapter<trait_default_method_generic_where.Bytes> for trait_default_method_generic_where.Box "
             "associated_types=0 methods=1",
             "method value requirement=0 origin=trait_default",
             "param_env T.get -> i32",

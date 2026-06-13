@@ -107,10 +107,9 @@ PatternCaseNameTable& PatternCaseNameTable::operator=(const PatternCaseNameTable
     return *this;
 }
 
-PatternCaseNameTable::PatternCaseNameTable(PatternCaseNameTable&& other) noexcept
-    : arena_(std::move(other.arena_)), names_(std::move(other.names_))
+PatternCaseNameTable::PatternCaseNameTable(PatternCaseNameTable&& other) noexcept : PatternCaseNameTable()
 {
-    other.names_ = Map{};
+    this->swap(other);
 }
 
 PatternCaseNameTable& PatternCaseNameTable::operator=(PatternCaseNameTable&& other) noexcept
@@ -288,27 +287,9 @@ GenericSideTables& GenericSideTables::operator=(const GenericSideTables& other)
     return *this;
 }
 
-GenericSideTables::GenericSideTables(GenericSideTables&& other) noexcept
-    : arena_(std::move(other.arena_)), analysis_arena_(std::move(other.analysis_arena_)), sparse(other.sparse),
-      local_dense(other.local_dense), expr_span(other.expr_span), pattern_span(other.pattern_span),
-      type_span(other.type_span), stmt_span(other.stmt_span), layout(other.layout),
-      expr_node_ids(std::move(other.expr_node_ids)), pattern_node_ids(std::move(other.pattern_node_ids)),
-      type_node_ids(std::move(other.type_node_ids)), stmt_node_ids(std::move(other.stmt_node_ids)),
-      expr_intrinsic_types(std::move(other.expr_intrinsic_types)), expr_types(std::move(other.expr_types)),
-      expr_expected_types(std::move(other.expr_expected_types)),
-      expr_owned_use_modes(std::move(other.expr_owned_use_modes)), expr_c_name_ids(std::move(other.expr_c_name_ids)),
-      pattern_c_name_ids(std::move(other.pattern_c_name_ids)),
-      syntax_type_handles(std::move(other.syntax_type_handles)), stmt_local_types(std::move(other.stmt_local_types)),
-      sparse_expr_intrinsic_types(std::move(other.sparse_expr_intrinsic_types)),
-      sparse_expr_types(std::move(other.sparse_expr_types)),
-      sparse_expr_expected_types(std::move(other.sparse_expr_expected_types)),
-      sparse_expr_owned_use_modes(std::move(other.sparse_expr_owned_use_modes)),
-      sparse_expr_c_name_ids(std::move(other.sparse_expr_c_name_ids)),
-      sparse_pattern_c_name_ids(std::move(other.sparse_pattern_c_name_ids)),
-      pattern_case_name_ids(std::move(other.pattern_case_name_ids)),
-      sparse_syntax_type_handles(std::move(other.sparse_syntax_type_handles)),
-      sparse_stmt_local_types(std::move(other.sparse_stmt_local_types)), sparse_fallbacks(other.sparse_fallbacks)
+GenericSideTables::GenericSideTables(GenericSideTables&& other) noexcept : GenericSideTables()
 {
+    this->swap(other);
 }
 
 GenericSideTables& GenericSideTables::operator=(GenericSideTables&& other) noexcept
@@ -641,54 +622,9 @@ CheckedModule& CheckedModule::operator=(const CheckedModule& other)
     return *this;
 }
 
-CheckedModule::CheckedModule(CheckedModule&& other) noexcept
-    : arena_(std::move(other.arena_)), analysis_arena_(std::move(other.analysis_arena_)),
-      c_names(std::move(other.c_names)), types(std::move(other.types)),
-      expr_intrinsic_types(std::move(other.expr_intrinsic_types)), expr_types(std::move(other.expr_types)),
-      expr_expected_types(std::move(other.expr_expected_types)),
-      expr_owned_use_modes(std::move(other.expr_owned_use_modes)), expr_c_name_ids(std::move(other.expr_c_name_ids)),
-      pattern_c_name_ids(std::move(other.pattern_c_name_ids)),
-      pattern_case_name_ids(std::move(other.pattern_case_name_ids)),
-      syntax_type_handles(std::move(other.syntax_type_handles)), stmt_local_types(std::move(other.stmt_local_types)),
-      item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
-      lambdas(std::move(other.lambdas)),
-      functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
-      derived_capabilities_by_type(std::move(other.derived_capabilities_by_type)),
-      type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
-      trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
-      trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
-      trait_method_calls(std::move(other.trait_method_calls)), function_calls(std::move(other.function_calls)),
-      trait_object_method_slots(std::move(other.trait_object_method_slots)),
-      trait_object_callability(std::move(other.trait_object_callability)),
-      vtable_layouts(std::move(other.vtable_layouts)),
-      trait_object_coercions(std::move(other.trait_object_coercions)),
-      trait_supertrait_edges(std::move(other.trait_supertrait_edges)),
-      trait_object_upcast_coercions(std::move(other.trait_object_upcast_coercions)),
-      principal_set_composition_facts(std::move(other.principal_set_composition_facts)),
-      trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
-      function_call_by_expr(std::move(other.function_call_by_expr)),
-      borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
-      move_rejection_facts(std::move(other.move_rejection_facts)),
-      lifetime_origin_params(std::move(other.lifetime_origin_params)),
-      reference_origin_facts(std::move(other.reference_origin_facts)),
-      type_lifetime_infos(std::move(other.type_lifetime_infos)),
-      generic_lifetime_predicates(std::move(other.generic_lifetime_predicates)),
-      lifetime_facts(std::move(other.lifetime_facts)),
-      dropck_facts(std::move(other.dropck_facts)),
-      destructors(std::move(other.destructors)),
-      body_flow_graphs(std::move(other.body_flow_graphs)),
-      place_state_facts(std::move(other.place_state_facts)), body_loan_checks(std::move(other.body_loan_checks)),
-      param_envs(std::move(other.param_envs)),
-      generic_template_signatures(std::move(other.generic_template_signatures)),
-      generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
-      generic_enum_instances(std::move(other.generic_enum_instances)),
-      generic_type_alias_instances(std::move(other.generic_type_alias_instances)),
-      generic_function_instances(std::move(other.generic_function_instances)),
-      trait_default_method_instances(std::move(other.trait_default_method_instances)),
-      normalized_ast(other.normalized_ast)
+CheckedModule::CheckedModule(CheckedModule&& other) noexcept : CheckedModule()
 {
-    this->rebind_interned_texts(&other.c_names, this->c_names);
-    this->rebind_generic_instance_layouts();
+    this->swap(other);
 }
 
 CheckedModule& CheckedModule::operator=(CheckedModule&& other) noexcept
@@ -2602,7 +2538,7 @@ void append_part_origin(std::ostringstream& out, const bool show_parts, const ba
     static_cast<void>(checked);
     std::string display = std::string(trait.name);
     if (!trait.generic_params.empty()) {
-        display.push_back('[');
+        display.push_back('<');
         for (base::usize index = 0; index < trait.generic_params.size(); ++index) {
             if (index > 0) {
                 display.append(", ");
@@ -2610,7 +2546,7 @@ void append_part_origin(std::ostringstream& out, const bool show_parts, const ba
             display.push_back('T');
             display += std::to_string(index);
         }
-        display.push_back(']');
+        display.push_back('>');
     }
     return display;
 }

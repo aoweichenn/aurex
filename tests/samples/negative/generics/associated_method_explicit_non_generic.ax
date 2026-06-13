@@ -11,5 +11,5 @@ impl Box {
 }
 
 fn main() -> i32 {
-    return Box.read[i32]();
+    return Box.read<i32>();
 }

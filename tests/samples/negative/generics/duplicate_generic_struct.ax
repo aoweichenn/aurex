@@ -1,10 +1,10 @@
 module duplicate_generic_struct;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-struct Box[U] {
+struct Box<U> {
     value: U;
 }
 

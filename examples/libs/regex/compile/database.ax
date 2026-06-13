@@ -61,7 +61,7 @@ pub fn serialize_regex(compiled: &t.Regex, out: *mut u8, out_capacity: usize) ->
     }
     let required: usize = regex_database_bytes(compiled);
     var cursor: usize = 0usize;
-    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     write_regex_magic(out, out_capacity, cursor_ptr);
     write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
     write_u8(out, out_capacity, cursor_ptr, compiled.mode);
@@ -100,7 +100,7 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     }
     let required: usize = database_bytes(compiled);
     var cursor: usize = 0usize;
-    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     write_set_magic(out, out_capacity, cursor_ptr);
     write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
     write_u8(out, out_capacity, cursor_ptr, compiled.mode);
@@ -145,7 +145,7 @@ pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
         return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
     }
     var cursor: usize = MAGIC_BYTES;
-    let header_cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let header_cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     let version: u8 = read_u8(data, len, header_cursor_ptr);
     if version != DATABASE_VERSION {
         return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
@@ -207,10 +207,10 @@ pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
         copy_database_bytes(data, cursor, compiled.owned_pattern, pattern_len);
         cursor += pattern_len;
     }
-    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     var state: usize = 0usize;
     while state < state_len {
-        if !read_state(data, len, cursor_ptr, unsafe { ptrat[*mut t.State](ptraddr(compiled.states) + state * sizeof[t.State]) }) {
+        if !read_state(data, len, cursor_ptr, unsafe { ptrat<*mut t.State>(ptraddr(compiled.states) + state * sizeof<t.State>) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
@@ -218,7 +218,7 @@ pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
     }
     var range: usize = 0usize;
     while range < range_len {
-        if !read_range(data, len, cursor_ptr, unsafe { ptrat[*mut t.ClassRange](ptraddr(compiled.ranges) + range * sizeof[t.ClassRange]) }) {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range * sizeof<t.ClassRange>) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
@@ -226,7 +226,7 @@ pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
     }
     var capture: usize = 0usize;
     while capture < capture_len {
-        if !read_capture(data, len, cursor_ptr, unsafe { ptrat[*mut t.CaptureInfo](ptraddr(compiled.captures) + capture * sizeof[t.CaptureInfo]) }) {
+        if !read_capture(data, len, cursor_ptr, unsafe { ptrat<*mut t.CaptureInfo>(ptraddr(compiled.captures) + capture * sizeof<t.CaptureInfo>) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
@@ -246,7 +246,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
         return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
     }
     var cursor: usize = MAGIC_BYTES;
-    let header_cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let header_cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     let version: u8 = read_u8(data, len, header_cursor_ptr);
     if version != DATABASE_VERSION {
         return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
@@ -319,10 +319,10 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     }
     compiled.start = start;
     compiled.literal_max_byte_len = literal_max_byte_len;
-    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
     var state: usize = 0usize;
     while state < state_len {
-        if !read_state(data, len, cursor_ptr, unsafe { ptrat[*mut t.State](ptraddr(compiled.states) + state * sizeof[t.State]) }) {
+        if !read_state(data, len, cursor_ptr, unsafe { ptrat<*mut t.State>(ptraddr(compiled.states) + state * sizeof<t.State>) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
@@ -330,7 +330,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     }
     var range: usize = 0usize;
     while range < range_len {
-        if !read_range(data, len, cursor_ptr, unsafe { ptrat[*mut t.ClassRange](ptraddr(compiled.ranges) + range * sizeof[t.ClassRange]) }) {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range * sizeof<t.ClassRange>) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
@@ -338,7 +338,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     }
     var node: usize = 0usize;
     while node < literal_node_len {
-        if !read_literal_node(data, len, cursor_ptr, unsafe { ptrat[*mut t.SetLiteralNode](ptraddr(compiled.literal_nodes) + node * sizeof[t.SetLiteralNode]) }) {
+        if !read_literal_node(data, len, cursor_ptr, unsafe { ptrat<*mut t.SetLiteralNode>(ptraddr(compiled.literal_nodes) + node * sizeof<t.SetLiteralNode>) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
@@ -346,7 +346,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     }
     var terminal: usize = 0usize;
     while terminal < literal_terminal_len {
-        if !read_literal_terminal(data, len, cursor_ptr, unsafe { ptrat[*mut t.SetLiteralTerminal](ptraddr(compiled.literal_terminals) + terminal * sizeof[t.SetLiteralTerminal]) }) {
+        if !read_literal_terminal(data, len, cursor_ptr, unsafe { ptrat<*mut t.SetLiteralTerminal>(ptraddr(compiled.literal_terminals) + terminal * sizeof<t.SetLiteralTerminal>) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
@@ -490,7 +490,7 @@ fn write_usize(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: usi
     var offset: usize = 0usize;
     while offset < USIZE_BYTES {
         let shift: usize = offset * BYTE_BITS;
-        write_u8(out, out_capacity, cursor, cast[u8]((value >> shift) & BYTE_MASK));
+        write_u8(out, out_capacity, cursor, cast<u8>((value >> shift) & BYTE_MASK));
         offset += 1usize;
     }
 }
@@ -514,7 +514,7 @@ fn read_usize(data: *const u8, len: usize, cursor: usize) -> ReadUsize {
     var offset: usize = 0usize;
     while offset < USIZE_BYTES {
         let shift: usize = offset * BYTE_BITS;
-        value = value | (cast[usize](unsafe { data[cursor + offset] }) << shift);
+        value = value | (cast<usize>(unsafe { data[cursor + offset] }) << shift);
         offset += 1usize;
     }
     return ReadUsize { value: value, next: cursor + USIZE_BYTES, valid: true };
@@ -862,36 +862,36 @@ fn allocate_regex(
     var owned_pattern: *mut u8 = null;
     var pattern: str = "";
     if pattern_len > 0usize {
-        owned_pattern = alloc.alloc_zeroed[u8](pattern_len, sizeof[u8]);
+        owned_pattern = alloc.alloc_zeroed<u8>(pattern_len, sizeof<u8>);
         if owned_pattern == null {
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
-        pattern = unsafe { strraw(ptrcast[*const u8](owned_pattern), pattern_len) };
+        pattern = unsafe { strraw(ptrcast<*const u8>(owned_pattern), pattern_len) };
     }
     var states: *mut t.State = null;
     var ranges: *mut t.ClassRange = null;
     var captures: *mut t.CaptureInfo = null;
     if state_len > 0usize {
-        states = alloc.alloc_zeroed[t.State](state_len, sizeof[t.State]);
+        states = alloc.alloc_zeroed<t.State>(state_len, sizeof<t.State>);
         if states == null {
             alloc.free_bytes(owned_pattern);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
     if range_len > 0usize {
-        ranges = alloc.alloc_zeroed[t.ClassRange](range_len, sizeof[t.ClassRange]);
+        ranges = alloc.alloc_zeroed<t.ClassRange>(range_len, sizeof<t.ClassRange>);
         if ranges == null {
             alloc.free_bytes(owned_pattern);
-            alloc.free_typed[t.State](states);
+            alloc.free_typed<t.State>(states);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
     if capture_len > 0usize {
-        captures = alloc.alloc_zeroed[t.CaptureInfo](capture_len, sizeof[t.CaptureInfo]);
+        captures = alloc.alloc_zeroed<t.CaptureInfo>(capture_len, sizeof<t.CaptureInfo>);
         if captures == null {
             alloc.free_bytes(owned_pattern);
-            alloc.free_typed[t.State](states);
-            alloc.free_typed[t.ClassRange](ranges);
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
@@ -931,32 +931,32 @@ fn allocate_set(
     var literal_nodes: *mut t.SetLiteralNode = null;
     var literal_terminals: *mut t.SetLiteralTerminal = null;
     if state_len > 0usize {
-        states = alloc.alloc_zeroed[t.State](state_len, sizeof[t.State]);
+        states = alloc.alloc_zeroed<t.State>(state_len, sizeof<t.State>);
         if states == null {
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if range_len > 0usize {
-        ranges = alloc.alloc_zeroed[t.ClassRange](range_len, sizeof[t.ClassRange]);
+        ranges = alloc.alloc_zeroed<t.ClassRange>(range_len, sizeof<t.ClassRange>);
         if ranges == null {
-            alloc.free_typed[t.State](states);
+            alloc.free_typed<t.State>(states);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if literal_node_len > 0usize {
-        literal_nodes = alloc.alloc_zeroed[t.SetLiteralNode](literal_node_len, sizeof[t.SetLiteralNode]);
+        literal_nodes = alloc.alloc_zeroed<t.SetLiteralNode>(literal_node_len, sizeof<t.SetLiteralNode>);
         if literal_nodes == null {
-            alloc.free_typed[t.State](states);
-            alloc.free_typed[t.ClassRange](ranges);
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if literal_terminal_len > 0usize {
-        literal_terminals = alloc.alloc_zeroed[t.SetLiteralTerminal](literal_terminal_len, sizeof[t.SetLiteralTerminal]);
+        literal_terminals = alloc.alloc_zeroed<t.SetLiteralTerminal>(literal_terminal_len, sizeof<t.SetLiteralTerminal>);
         if literal_terminals == null {
-            alloc.free_typed[t.State](states);
-            alloc.free_typed[t.ClassRange](ranges);
-            alloc.free_typed[t.SetLiteralNode](literal_nodes);
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
+            alloc.free_typed<t.SetLiteralNode>(literal_nodes);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
@@ -1028,9 +1028,9 @@ fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
 
 fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
     alloc.free_bytes(compiled.owned_pattern);
-    alloc.free_typed[t.State](compiled.states);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
-    alloc.free_typed[t.CaptureInfo](compiled.captures);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.CaptureInfo>(compiled.captures);
     compiled.pattern = "";
     compiled.owned_pattern = null;
     compiled.states = null;
@@ -1045,10 +1045,10 @@ fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
 }
 
 fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
-    alloc.free_typed[t.State](compiled.states);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
-    alloc.free_typed[t.SetLiteralNode](compiled.literal_nodes);
-    alloc.free_typed[t.SetLiteralTerminal](compiled.literal_terminals);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.SetLiteralNode>(compiled.literal_nodes);
+    alloc.free_typed<t.SetLiteralTerminal>(compiled.literal_terminals);
     compiled.states = null;
     compiled.ranges = null;
     compiled.literal_nodes = null;

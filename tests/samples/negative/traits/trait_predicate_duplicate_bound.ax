@@ -4,7 +4,7 @@ trait Reader {
     fn read(self: &Self) -> i32;
 }
 
-fn use_reader[T](value: T) -> i32 where T: Reader + Reader {
+fn use_reader<T>(value: T) -> i32 where T: Reader + Reader {
     return 0;
 }
 

@@ -4,12 +4,12 @@ trait Reader {
     fn read(self: &Self) -> i32;
 }
 
-fn use_reader[T](value: T) -> i32 where T: Reader {
+fn use_reader<T>(value: T) -> i32 where T: Reader {
     return 0;
 }
 
-fn forward_reader[T](value: T) -> i32 {
-    return use_reader[T](value);
+fn forward_reader<T>(value: T) -> i32 {
+    return use_reader<T>(value);
 }
 
 fn main() -> i32 {

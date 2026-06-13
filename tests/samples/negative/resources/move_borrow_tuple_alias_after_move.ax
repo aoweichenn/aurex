@@ -1,12 +1,12 @@
 module move_borrow_tuple_alias_after_move;
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
-fn inspect_pair[T](value: (&T, &T)) -> void {
+fn inspect_pair<T>(value: (&T, &T)) -> void {
 }
 
-fn duplicate[T](value: T) -> void {
+fn duplicate<T>(value: T) -> void {
     let borrowed: (&T, &T) = (&value, &value);
     consume(value);
     inspect_pair(borrowed);

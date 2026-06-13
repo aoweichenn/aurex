@@ -97,7 +97,8 @@ struct LosslessTopLevelMatch {
 [[nodiscard]] base::u64 lossless_stable_mix_text(base::u64 hash, const std::string_view text) noexcept
 {
     hash = lossless_stable_mix_u64(hash, LOSSLESS_STABLE_HASH_TEXT_MARKER);
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned char>(raw_byte);
         hash ^= static_cast<base::u64>(byte);
         hash *= LOSSLESS_STABLE_HASH_PRIME;
     }
@@ -534,7 +535,8 @@ private:
 
 void append_escaped_text(std::ostringstream& out, const std::string_view text)
 {
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned char>(raw_byte);
         switch (byte) {
             case LOSSLESS_DUMP_TEXT_QUOTE:
                 out << LOSSLESS_DUMP_ESCAPE << LOSSLESS_DUMP_TEXT_QUOTE;

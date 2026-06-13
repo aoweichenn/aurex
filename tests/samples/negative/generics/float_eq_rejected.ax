@@ -1,9 +1,9 @@
 module float_eq_rejected;
 
-fn accept_eq[T](value: T) -> i32 where T: Eq {
+fn accept_eq<T>(value: T) -> i32 where T: Eq {
     return 1;
 }
 
 fn main() -> i32 {
-    return accept_eq(cast[f64](1));
+    return accept_eq(cast<f64>(1));
 }

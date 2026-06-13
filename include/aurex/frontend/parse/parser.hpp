@@ -40,12 +40,19 @@ private:
     [[nodiscard]] bool check_visibility_use_prefix() const noexcept;
     [[nodiscard]] bool check_import_or_use_decl_prefix() const noexcept;
     [[nodiscard]] const syntax::Token& peek_at(base::usize offset) const noexcept;
-    [[nodiscard]] base::usize mark() const noexcept;
-    void rewind(base::usize position) noexcept;
+    [[nodiscard]] TokenCursorMark mark() const noexcept;
+    void rewind(TokenCursorMark mark) noexcept;
     bool match(syntax::TokenKind kind) noexcept;
+    [[nodiscard]] bool check_generic_left_angle() const noexcept;
+    bool match_generic_left_angle() noexcept;
+    [[nodiscard]] bool check_generic_right_angle() const noexcept;
+    bool match_generic_right_angle() noexcept;
     const syntax::Token& advance() noexcept;
     [[nodiscard]] bool check_contextual_c_keyword() const noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
+    const syntax::Token& expect_generic_left_angle_recovered(std::string message, RecoveryContext context);
+    const syntax::Token& expect_generic_right_angle_recovered_after(
+        std::string message, RecoveryContext context, const syntax::Token& opening);
     const syntax::Token& expect_contextual_c_keyword(std::string message);
     const syntax::Token& expect_contextual_c_keyword_recovered(std::string message, RecoveryContext context);
     const syntax::Token& expect_recovered(syntax::TokenKind kind, std::string message, RecoveryContext context);

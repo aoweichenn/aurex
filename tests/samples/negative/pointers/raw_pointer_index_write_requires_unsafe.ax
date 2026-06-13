@@ -1,7 +1,7 @@
 module raw_pointer_index_write_requires_unsafe;
 
 fn as_mut_ptr(value: &mut i32) -> *mut i32 {
-    return unsafe { ptrat[*mut i32](ptraddr(value)) };
+    return unsafe { ptrat<*mut i32>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

@@ -64,7 +64,8 @@ enum class ProfileStageMetadataProfileField {
 void write_json_escaped(std::ostream& out, const std::string_view text)
 {
     out << PROFILE_JSON_QUOTE;
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned int>(static_cast<unsigned char>(raw_byte));
         switch (byte) {
             case PROFILE_JSON_QUOTE:
                 out << "\\\"";

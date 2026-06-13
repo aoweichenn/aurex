@@ -31,7 +31,7 @@ fn set_first(pair: &mut Pair, replacement: i32) -> void {
     pair.first = replacement;
 }
 
-fn id_ref[T](value: &T) -> &T {
+fn id_ref<T>(value: &T) -> &T {
     return value;
 }
 

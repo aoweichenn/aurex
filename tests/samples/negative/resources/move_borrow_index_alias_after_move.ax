@@ -1,12 +1,12 @@
 module move_borrow_index_alias_after_move;
 
-fn consume[T](values: [1]T) -> void {
+fn consume<T>(values: [1]T) -> void {
 }
 
-fn inspect[T](value: &T) -> void {
+fn inspect<T>(value: &T) -> void {
 }
 
-fn duplicate[T](values: [1]T) -> void {
+fn duplicate<T>(values: [1]T) -> void {
     let borrowed: &T = &values[0];
     consume(values);
     inspect(borrowed);

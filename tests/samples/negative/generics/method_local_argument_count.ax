@@ -5,7 +5,7 @@ struct Box {
 }
 
 impl Box {
-    fn id[T](self: &Box, value: T) -> T {
+    fn id<T>(self: &Box, value: T) -> T {
         return value;
     }
 }

@@ -1,7 +1,7 @@
 module raw_pointer_index_requires_unsafe;
 
 fn as_const_ptr(value: &i32) -> *const i32 {
-    return unsafe { ptrat[*const i32](ptraddr(value)) };
+    return unsafe { ptrat<*const i32>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

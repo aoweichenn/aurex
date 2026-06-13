@@ -52,10 +52,10 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
 {
     const syntax::Token& begin = this->previous();
     const std::string name{begin.text()};
-    this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
+    const syntax::Token& type_begin = this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
     [[maybe_unused]] const syntax::Token& type_end =
-        this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
+        this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name), type_begin);
     this->expect_builtin_arg_list_start(parser_builtin_expr_start_message(name));
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_expr_end_message(name));
@@ -67,9 +67,9 @@ syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind
 {
     const syntax::Token& begin = this->previous();
     const std::string name{begin.text()};
-    this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
+    const syntax::Token& type_begin = this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
-    const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
+    const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name), type_begin);
 
     return this->session_.module.push_cast_like_expr(
         kind, this->merge(begin.range, end.range), type, syntax::INVALID_EXPR_ID);
@@ -89,10 +89,11 @@ syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context)
 syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context)
 {
     const syntax::Token& begin = this->previous();
-    this->expect_builtin_type_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_START));
+    const syntax::Token& type_begin =
+        this->expect_builtin_type_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_START));
     const syntax::TypeId type = this->parse_type();
     [[maybe_unused]] const syntax::Token& type_end =
-        this->expect_builtin_type_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_END));
+        this->expect_builtin_type_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_END), type_begin);
     this->expect_builtin_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRAT_START));
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_END));
@@ -161,9 +162,9 @@ void BuiltinExprParser::expect_builtin_arg_list_start(std::string message)
     this->expect_recovered(TokenKind::l_paren, std::move(message), RecoveryContext::builtin_argument_list_start);
 }
 
-void BuiltinExprParser::expect_builtin_type_arg_list_start(std::string message)
+const syntax::Token& BuiltinExprParser::expect_builtin_type_arg_list_start(std::string message)
 {
-    this->expect_recovered(TokenKind::l_bracket, std::move(message), RecoveryContext::builtin_argument_list_start);
+    return this->expect_generic_left_angle_recovered(std::move(message), RecoveryContext::builtin_argument_list_start);
 }
 
 void BuiltinExprParser::recover_builtin_arg_separator(std::string message)
@@ -189,9 +190,11 @@ const syntax::Token& BuiltinExprParser::expect_builtin_arg_list_end(std::string 
     return this->expect_recovered(TokenKind::r_paren, std::move(message), RecoveryContext::builtin_argument);
 }
 
-const syntax::Token& BuiltinExprParser::expect_builtin_type_arg_list_end(std::string message)
+const syntax::Token& BuiltinExprParser::expect_builtin_type_arg_list_end(
+    std::string message, const syntax::Token& opening)
 {
-    return this->expect_recovered(TokenKind::r_bracket, std::move(message), RecoveryContext::array_type_length);
+    return this->expect_generic_right_angle_recovered_after(
+        std::move(message), RecoveryContext::generic_type_argument, opening);
 }
 
 } // namespace aurex::parse

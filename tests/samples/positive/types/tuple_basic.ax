@@ -4,12 +4,12 @@ fn make_pair(value: i32) -> (i32, bool) {
     return (value, value > 0);
 }
 
-fn first[T, U](pair: (T, U)) -> T where T: Copy, U: Copy {
+fn first<T, U>(pair: (T, U)) -> T where T: Copy, U: Copy {
     let (left, _) = pair;
     return left;
 }
 
-fn second[T, U](pair: (T, U)) -> U where T: Copy, U: Copy {
+fn second<T, U>(pair: (T, U)) -> U where T: Copy, U: Copy {
     let (_, right) = pair;
     return right;
 }
@@ -19,7 +19,7 @@ fn inc(value: i32) -> i32 {
 }
 
 fn as_const_ptr(value: &i32) -> *const i32 {
-    return unsafe { ptrat[*const i32](ptraddr(value)) };
+    return unsafe { ptrat<*const i32>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

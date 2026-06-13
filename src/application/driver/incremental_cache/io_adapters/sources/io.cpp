@@ -31,7 +31,8 @@ namespace {
 void append_hex_string(std::ostream& out, const std::string_view value)
 {
     static constexpr char DIGITS[] = "0123456789abcdef";
-    for (const unsigned char byte : value) {
+    for (const char raw_byte : value) {
+        const auto byte = static_cast<unsigned int>(static_cast<unsigned char>(raw_byte));
         out << DIGITS[byte >> INCREMENTAL_CACHE_HEX_BYTE_SHIFT] << DIGITS[byte & INCREMENTAL_CACHE_HEX_LOW_MASK];
     }
 }

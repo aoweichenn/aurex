@@ -3,12 +3,9 @@
 #include <aurex/frontend/parse/parser_part_base.hpp>
 
 #include <optional>
-#include <span>
-#include <string_view>
+#include <vector>
 
 namespace aurex::parse {
-
-struct BracketSuffixDecision;
 
 class PostfixExprParser final : private ParserPartBase {
 public:
@@ -19,28 +16,21 @@ public:
     [[nodiscard]] syntax::ExprId parse_postfix(ExprContext context);
 
 private:
-    struct BracketArg {
-        syntax::ExprId expr = syntax::INVALID_EXPR_ID;
-        syntax::TypeId type = syntax::INVALID_TYPE_ID;
+    struct GenericSuffixArgs {
+        syntax::AstArenaVector<syntax::TypeId> type_args;
+        syntax::AstArenaVector<syntax::GenericArgDecl> generic_args;
         base::SourceRange range{};
     };
 
     [[nodiscard]] std::optional<syntax::ExprId> parse_next_suffix(syntax::ExprId base, ExprContext context);
     [[nodiscard]] syntax::ExprId parse_bracket_suffix(syntax::ExprId base, ExprContext context);
-    [[nodiscard]] BracketArg parse_bracket_arg(ExprContext context);
-    [[nodiscard]] bool bracket_arg_starts_type_only() const noexcept;
-    [[nodiscard]] bool bracket_args_contain_type_only(std::span<const BracketArg> args) const noexcept;
-    [[nodiscard]] bool bracket_args_are_type_like(std::span<const BracketArg> args) const;
-    [[nodiscard]] bool bracket_arg_expr_is_type_like(syntax::ExprId expr) const;
-    [[nodiscard]] BracketSuffixDecision classify_bracket_suffix(
-        syntax::ExprId base, std::span<const BracketArg> args, bool has_type_only_arg, ExprContext context) const;
-    [[nodiscard]] std::optional<syntax::AstArenaVector<syntax::TypeId>> bracket_args_to_type_args(
-        std::span<const BracketArg> args, bool report_errors);
-    [[nodiscard]] std::optional<syntax::GenericApplyExprPayload> bracket_args_to_generic_apply_payload(
-        syntax::ExprId callee, std::span<const BracketArg> args, bool report_errors);
-    [[nodiscard]] syntax::TypeId bracket_arg_expr_to_type(syntax::ExprId expr, bool report_errors);
-    [[nodiscard]] syntax::TypeId append_type_selector(
-        syntax::TypeId base, std::string_view name, const base::SourceRange& range, bool report_errors);
+    [[nodiscard]] std::optional<syntax::ExprId> parse_angle_generic_suffix(
+        syntax::ExprId base, ExprContext context);
+    [[nodiscard]] bool angle_generic_suffix_has_valid_continuation(ExprContext context) const noexcept;
+    [[nodiscard]] GenericSuffixArgs parse_angle_generic_args(const syntax::Token& opening);
+    [[nodiscard]] syntax::GenericArgDecl parse_angle_generic_arg();
+    [[nodiscard]] syntax::ExprId parse_const_generic_expr_atom(std::string message);
+    [[nodiscard]] bool recover_angle_generic_arg_separator() const;
     [[nodiscard]] bool recover_bracket_arg_separator();
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId base);
     [[nodiscard]] syntax::ExprId parse_numeric_tuple_field_suffix(

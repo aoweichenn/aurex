@@ -82,7 +82,7 @@ cmake --build "${BUILD_DIR}" --parallel "${COVERAGE_BUILD_JOBS}"
 rm -rf "${PROFILE_DIR}" "${ENTRYPOINT_PROFILE_DIR}" "${COVERAGE_DIR}/html" "${COVERAGE_DIR}/entrypoint-html"
 mkdir -p "${PROFILE_DIR}" "${ENTRYPOINT_PROFILE_DIR}"
 
-LLVM_PROFILE_FILE="${PROFILE_DIR}/aurex-%m-%p.profraw" \
+LLVM_PROFILE_FILE="${PROFILE_DIR}/aurex-%p.profraw" \
     ctest --test-dir "${BUILD_DIR}" --output-on-failure "$@"
 
 collect_profraw_files "${PROFILE_DIR}" "test suite"
@@ -139,7 +139,7 @@ if [[ ! -x "${ENTRYPOINT_OBJECT}" ]]; then
     printf 'coverage failed: missing entrypoint coverage object: %s\n' "${ENTRYPOINT_OBJECT}" >&2
     exit 1
 fi
-LLVM_PROFILE_FILE="${ENTRYPOINT_PROFILE_DIR}/aurexc-%m-%p.profraw" \
+LLVM_PROFILE_FILE="${ENTRYPOINT_PROFILE_DIR}/aurexc-%p.profraw" \
     "${ENTRYPOINT_OBJECT}" --help >/dev/null
 collect_profraw_files "${ENTRYPOINT_PROFILE_DIR}" "aurexc entrypoint"
 "${LLVM_PROFDATA}" merge -sparse "${PROFRAW_FILES[@]}" -o "${ENTRYPOINT_PROFDATA}"

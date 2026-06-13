@@ -18,13 +18,13 @@ impl Reader for File {
     }
 }
 
-fn is_zero[T](value: &T) -> bool where T: Reader {
+fn is_zero<T>(value: &T) -> bool where T: Reader {
     return value.is_empty();
 }
 
 fn main() -> i32 {
     let file = File { value: 0 };
-    if is_zero[File](&file) {
+    if is_zero<File>(&file) {
         return 0;
     }
     return 1;

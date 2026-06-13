@@ -12,5 +12,5 @@ impl Box {
 
 fn main() -> i32 {
     let box: Box = Box { value: 1 };
-    return box.read[i32]();
+    return box.read<i32>();
 }

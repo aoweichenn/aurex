@@ -11,7 +11,7 @@ fn consume_copy(value: i32) -> void {
     }
 }
 
-fn discard_generic[T](value: T) -> void {
+fn discard_generic<T>(value: T) -> void {
     let borrowed: &T = &value;
     if ptraddr(borrowed) == 0usize {
         return;
@@ -23,7 +23,7 @@ fn discard_generic[T](value: T) -> void {
     return;
 }
 
-fn exercise[T](value: T, replacement: T, flag: bool) -> T {
+fn exercise<T>(value: T, replacement: T, flag: bool) -> T {
     var total: i32 = 0;
     if flag && true {
         total += 1;
@@ -78,11 +78,11 @@ fn exercise[T](value: T, replacement: T, flag: bool) -> T {
     };
 
     let borrowed: &T = &value;
-    let raw: *const T = unsafe { ptrat[*const T](ptraddr(borrowed)) };
-    let casted: *const T = unsafe { ptrcast[*const T](raw) };
-    let recast: *const T = unsafe { bitcast[*const T](casted) };
+    let raw: *const T = unsafe { ptrat<*const T>(ptraddr(borrowed)) };
+    let casted: *const T = unsafe { ptrcast<*const T>(raw) };
+    let recast: *const T = unsafe { bitcast<*const T>(casted) };
     let raw_addr: usize = unsafe { ptraddr(recast) };
-    let casted_addr: i32 = cast[i32](raw_addr != 0usize);
+    let casted_addr: i32 = cast<i32>(raw_addr != 0usize);
 
     var current: T = value;
     let mutable_borrow: &mut T = &mut current;
@@ -109,6 +109,6 @@ fn exercise[T](value: T, replacement: T, flag: bool) -> T {
 }
 
 fn main() -> i32 {
-    discard_generic[i32](0);
-    return exercise[i32](1, 2, true) - 2;
+    discard_generic<i32>(0);
+    return exercise<i32>(1, 2, true) - 2;
 }

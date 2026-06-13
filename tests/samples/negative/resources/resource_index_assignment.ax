@@ -1,6 +1,6 @@
 module resource_index_assignment;
 
-fn overwrite[T](values: []mut T, replacement: T) -> void {
+fn overwrite<T>(values: []mut T, replacement: T) -> void {
     values[0] = replacement;
 }
 

@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include <frontend/parse/support/private/bracket_suffix_classifier.hpp>
-#include <frontend/parse/support/private/type_arg_expr_converter.hpp>
 #include <frontend/parse/recovery/private/parser_recovery_sets.hpp>
 
 namespace aurex::test {
@@ -128,97 +126,6 @@ public:
     using parse::ParserPartRangeReader::type_range_or;
 };
 
-class TypeArgExprConverterProbe final {
-public:
-    explicit TypeArgExprConverterProbe(parse::Parser& parser) noexcept
-        : reader_(parser), converter_(parser), classifier_(parser)
-    {
-    }
-
-    [[nodiscard]] syntax::AstModule& module() const noexcept
-    {
-        return this->reader_.module();
-    }
-
-    [[nodiscard]] bool type_like(const syntax::ExprId expr)
-    {
-        return this->classifier_.arg_expr_is_type_like(expr);
-    }
-
-    [[nodiscard]] syntax::TypeId convert_type_arg(const syntax::ExprId expr, const bool report_errors)
-    {
-        return this->converter_.convert(expr, report_errors);
-    }
-
-    [[nodiscard]] syntax::TypeId append_selector(
-        const syntax::TypeId base, const std::string_view name, const bool report_errors)
-    {
-        return this->converter_.append_selector(base, name, base::SourceRange{}, report_errors);
-    }
-
-private:
-    ParserPartRangeReaderProbe reader_;
-    parse::TypeArgExprConverter converter_;
-    parse::BracketSuffixClassifier classifier_;
-};
-
-class BracketSuffixClassifierProbe final {
-public:
-    explicit BracketSuffixClassifierProbe(parse::Parser& parser) noexcept : reader_(parser), classifier_(parser)
-    {
-    }
-
-    [[nodiscard]] syntax::AstModule& module() const noexcept
-    {
-        return this->reader_.module();
-    }
-
-    [[nodiscard]] bool arg_starts_type_only() const noexcept
-    {
-        return this->classifier_.arg_starts_type_only();
-    }
-
-    [[nodiscard]] bool arg_expr_is_type_like(const syntax::ExprId expr) const
-    {
-        return this->classifier_.arg_expr_is_type_like(expr);
-    }
-
-    [[nodiscard]] parse::BracketSuffixDecision classify_after_expr(parse::BracketSuffixClassificationInput input) const
-    {
-        return this->classifier_.classify_after_expr(input);
-    }
-
-    [[nodiscard]] parse::BracketSuffixDecision classify_empty_suffix() const noexcept
-    {
-        return this->classifier_.classify_empty_suffix();
-    }
-
-private:
-    ParserPartRangeReaderProbe reader_;
-    parse::BracketSuffixClassifier classifier_;
-};
-
-[[nodiscard]] std::vector<syntax::Token> probe_tokens(std::string_view text = "module probe;")
-{
-    std::vector<syntax::Token> tokens;
-    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0, 0}, text);
-    return tokens;
-}
-
-[[nodiscard]] std::vector<syntax::Token> classifier_probe_tokens(
-    std::initializer_list<syntax::TokenKind> leading_tokens)
-{
-    std::vector<syntax::Token> tokens;
-    tokens.reserve(leading_tokens.size() + 1U);
-    base::u32 offset = 0;
-    for (const syntax::TokenKind kind : leading_tokens) {
-        tokens.emplace_back(kind, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, offset, 1}, "x");
-        ++offset;
-    }
-    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, offset, 0}, "");
-    return tokens;
-}
-
 } // namespace
 
 TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
@@ -241,7 +148,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
     EXPECT_TRUE(cursor.check_next(syntax::TokenKind::eof));
     EXPECT_EQ(cursor.peek_at(0U).kind, syntax::TokenKind::identifier);
     EXPECT_EQ(cursor.peek_at(2U).kind, syntax::TokenKind::eof);
-    const base::usize cursor_mark = cursor.mark();
+    const parse::TokenCursorMark cursor_mark = cursor.mark();
     EXPECT_TRUE(cursor.match(syntax::TokenKind::identifier));
     EXPECT_EQ(cursor.previous().kind, syntax::TokenKind::identifier);
     EXPECT_TRUE(cursor.is_eof());
@@ -252,6 +159,33 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
     cursor.rewind(99U);
     EXPECT_EQ(cursor.position(), 1U);
     EXPECT_EQ(cursor.peek().kind, syntax::TokenKind::eof);
+
+    const std::array<syntax::Token, 4> generic_close_tokens{
+        syntax::Token{syntax::TokenKind::identifier, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0U, 5U}, "value"},
+        syntax::Token{syntax::TokenKind::greater_greater_equal,
+            base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 5U, 8U}, ">>="},
+        syntax::Token{syntax::TokenKind::identifier, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 8U, 12U}, "next"},
+        syntax::Token{syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 12U, 12U}, ""},
+    };
+    parse::TokenCursor generic_close_cursor{std::span<const syntax::Token>{generic_close_tokens}};
+    EXPECT_TRUE(generic_close_cursor.match(syntax::TokenKind::identifier));
+    EXPECT_TRUE(generic_close_cursor.match_generic_right_angle());
+    EXPECT_EQ(generic_close_cursor.previous().kind, syntax::TokenKind::greater);
+    EXPECT_TRUE(generic_close_cursor.match_generic_right_angle());
+    EXPECT_EQ(generic_close_cursor.previous().kind, syntax::TokenKind::greater);
+    EXPECT_TRUE(generic_close_cursor.match(syntax::TokenKind::equal));
+    EXPECT_TRUE(generic_close_cursor.match(syntax::TokenKind::identifier));
+
+    const std::array<syntax::Token, 3> generic_open_tokens{
+        syntax::Token{syntax::TokenKind::less_equal, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0U, 2U}, "<="},
+        syntax::Token{syntax::TokenKind::identifier, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 2U, 6U}, "next"},
+        syntax::Token{syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 6U, 6U}, ""},
+    };
+    parse::TokenCursor generic_open_cursor{std::span<const syntax::Token>{generic_open_tokens}};
+    EXPECT_TRUE(generic_open_cursor.match_generic_left_angle());
+    EXPECT_EQ(generic_open_cursor.previous().kind, syntax::TokenKind::less);
+    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::equal));
+    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::identifier));
 
     constexpr std::string_view source =
         "module parser.dump;\n"
@@ -311,10 +245,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "    if i == 1 { continue; } else { break; }\n"
         "  }\n"
         "  defer puts(c\"cleanup\");\n"
-        "  let p: *mut i32 = unsafe { ptrat[*mut i32](ptraddr(argv)) };\n"
+        "  let p: *mut i32 = unsafe { ptrat<*mut i32>(ptraddr(argv)) };\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
-        "  let size: usize = sizeof[*mut i32];\n"
+        "  let size: usize = sizeof<*mut i32>;\n"
         "  let data: *const u8 = strptr(s);\n"
         "  let len: usize = strblen(s);\n"
         "  let raw: str = unsafe { strraw(data, len) };\n"
@@ -327,8 +261,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
         "  let reps: [2]u8 = [b'a'; 2];\n"
-        "  let a: i32 = cast[i32](argc) + unsafe { bitcast[i32](argc) } + alignof[*mut i32];\n"
-        "  let q: *mut i32 = unsafe { ptrcast[*mut i32](p) };\n"
+        "  let a: i32 = cast<i32>(argc) + unsafe { bitcast<i32>(argc) } + alignof<*mut i32>;\n"
+        "  let q: *mut i32 = unsafe { ptrcast<*mut i32>(p) };\n"
         "  let make_text: UnsafeText = unchecked_string;\n"
         "  let from_fn_ptr: str = unsafe { make_text(data, len) };\n"
         "  let idx: u8 = argv[0][0];\n"
@@ -427,7 +361,7 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
         "  let raw: str = unsafe { strraw(strptr(\"abc\"), strblen(\"abc\")) };\n"
         "  let slice = values[0:2];\n"
         "  let idx = values[1];\n"
-        "  let computed = -input + callee(pair.left, idx) * cast[i32](sizeof[*const i32]);\n"
+        "  let computed = -input + callee(pair.left, idx) * cast<i32>(sizeof<*const i32>);\n"
         "  return if flag { computed } else { pair.right };\n"
         "}\n";
 
@@ -597,7 +531,7 @@ TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
 TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
 {
     constexpr std::string_view source = "module parser.traits;\n"
-                                        "pub trait Reader[T] where T: Sized {\n"
+                                        "pub trait Reader<T> where T: Sized {\n"
                                         "  type Item;\n"
                                         "  fn read(self: &mut Self, buf: []mut u8) -> Self.Item;\n"
                                         "  pub fn size(self: &Self) -> usize;\n"
@@ -605,7 +539,7 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
                                         "  unsafe fn flush(self: &mut Self) -> void;\n"
                                         "}\n"
                                         "struct File { handle: i32; }\n"
-                                        "impl Reader[File] for File {\n"
+                                        "impl Reader<File> for File {\n"
                                         "  type Item = usize;\n"
                                         "  fn read(self: &mut File, buf: []mut u8) -> usize {\n"
                                         "    return 0;\n"
@@ -692,17 +626,17 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "pub trait Reader[T] where T: Sized",
+            "pub trait Reader<T> where T: Sized",
             "pub type_alias Item",
             "pub fn read prototype",
             "return Self.Item",
             "pub fn size prototype",
             "pub fn default_size trait_default",
             "pub fn flush unsafe prototype",
-            "impl Reader[File] for File",
-            "pub type_alias Item for File in Reader[File]",
+            "impl Reader<File> for File",
+            "pub type_alias Item for File in Reader<File>",
             "alias usize",
-            "pub fn read for File in Reader[File]",
+            "pub fn read for File in Reader<File>",
     });
 }
 
@@ -1436,8 +1370,8 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring)
 TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations)
 {
     constexpr std::string_view source = "module parser.qualified_types;\n"
-                                        "type FileBox = core.mem.Box[core.mem.File];\n"
-                                        "fn use(file: core.mem.File) -> core.mem.Box[core.mem.File] {\n"
+                                        "type FileBox = core.mem.Box<core.mem.File>;\n"
+                                        "fn use(file: core.mem.File) -> core.mem.Box<core.mem.File> {\n"
                                         "  return file;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -1468,9 +1402,9 @@ TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "alias core.mem.Box[core.mem.File]",
+            "alias core.mem.Box<core.mem.File>",
             "param file : core.mem.File",
-            "return core.mem.Box[core.mem.File]",
+            "return core.mem.Box<core.mem.File>",
         });
 }
 
@@ -1480,9 +1414,9 @@ TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
         "module parser.dyn_traits;\n"
         "type DrawRef = &dyn Draw;\n"
         "type DrawMutRef = &mut dyn Draw;\n"
-        "type IterRef = &dyn core.iter.Iterator[i32, Item = i32, Error = bool];\n"
+        "type IterRef = &dyn core.iter.Iterator<i32, Item = i32, Error = bool>;\n"
         "type DrawDebugRef = &dyn (Draw + Debug);\n"
-        "type QualifiedCompositionRef = &dyn (core.draw.Draw + core.iter.Iterator[i32, Item = i32]);\n"
+        "type QualifiedCompositionRef = &dyn (core.draw.Draw + core.iter.Iterator<i32, Item = i32>);\n"
         "fn render(drawable: &dyn Draw) -> i32 { return 0; }\n";
     const syntax::AstModule module = parse_success(source);
 
@@ -1581,9 +1515,9 @@ TEST(CoreUnit, ParserAcceptsDynTraitTypeAnnotations)
         {
             "alias &dyn Draw",
             "alias &mut dyn Draw",
-            "alias &dyn core.iter.Iterator[i32, Item = i32, Error = bool]",
+            "alias &dyn core.iter.Iterator<i32, Item = i32, Error = bool>",
             "alias &dyn (Draw + Debug)",
-            "alias &dyn (core.draw.Draw + core.iter.Iterator[i32, Item = i32])",
+            "alias &dyn (core.draw.Draw + core.iter.Iterator<i32, Item = i32>)",
             "param drawable : &dyn Draw",
         });
 }
@@ -1650,19 +1584,19 @@ TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse)
 TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace)
 {
     constexpr std::string_view source = "module parser.generic_enum_case_patterns;\n"
-                                        "enum Option[T] { some(T), none }\n"
-                                        "fn main(opt: Option[i32]) -> i32 {\n"
+                                        "enum Option<T> { some(T), none }\n"
+                                        "fn main(opt: Option<i32>) -> i32 {\n"
                                         "  return match opt {\n"
-                                        "    Option[i32].some(value) => value,\n"
-                                        "    Option[i32].none => 0,\n"
+                                        "    Option<i32>.some(value) => value,\n"
+                                        "    Option<i32>.none => 0,\n"
                                         "  };\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "Option[i32].some(value)",
-            "Option[i32].none",
+            "Option<i32>.some(value)",
+            "Option<i32>.none",
         });
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -1704,50 +1638,50 @@ TEST(CoreUnit, ParserAcceptsQualifiedGenericExplicitEnumCasePattern)
 {
     constexpr std::string_view source =
         "module parser.qualified_generic_enum_case_patterns;\n"
-        "enum Option[T] { some(T), none }\n"
-        "fn main(opt: parser.qualified_generic_enum_case_patterns.Option[i32]) -> i32 {\n"
+        "enum Option<T> { some(T), none }\n"
+        "fn main(opt: parser.qualified_generic_enum_case_patterns.Option<i32>) -> i32 {\n"
         "  return match opt {\n"
-        "    parser.qualified_generic_enum_case_patterns.Option[i32].some(value) => value,\n"
-        "    parser.qualified_generic_enum_case_patterns.Option[i32].none => 0,\n"
+        "    parser.qualified_generic_enum_case_patterns.Option<i32>.some(value) => value,\n"
+        "    parser.qualified_generic_enum_case_patterns.Option<i32>.none => 0,\n"
         "  };\n"
         "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "parser.qualified_generic_enum_case_patterns.Option[i32].some(value)",
-            "parser.qualified_generic_enum_case_patterns.Option[i32].none",
+            "parser.qualified_generic_enum_case_patterns.Option<i32>.some(value)",
+            "parser.qualified_generic_enum_case_patterns.Option<i32>.none",
         });
 }
 
 TEST(CoreUnit, ParserRecoversMalformedExplicitEnumCasePatternTypeArgs)
 {
     expect_parse_error("module parser.malformed_explicit_enum_case_pattern;\n"
-                       "enum Option[T] { some(T), none }\n"
-                       "fn main(opt: Option[i32]) -> i32 {\n"
+                       "enum Option<T> { some(T), none }\n"
+                       "fn main(opt: Option<i32>) -> i32 {\n"
                        "  return match opt {\n"
-                       "    Option[].some(value) => value,\n"
-                       "    Option[i32].none => 0,\n"
+                       "    Option<>.some(value) => value,\n"
+                       "    Option<i32>.none => 0,\n"
                        "  };\n"
                        "}\n",
         "expected generic type argument");
     expect_parse_error("module parser.missing_explicit_enum_case_dot;\n"
-                       "enum Option[T] { some(T), none }\n"
-                       "fn main(opt: Option[i32]) -> i32 {\n"
+                       "enum Option<T> { some(T), none }\n"
+                       "fn main(opt: Option<i32>) -> i32 {\n"
                        "  return match opt {\n"
-                       "    Option[i32] => 0,\n"
+                       "    Option<i32> => 0,\n"
                        "  };\n"
                        "}\n",
         "expected '.' before enum case pattern name");
     expect_parse_error("module parser.malformed_explicit_enum_case_args;\n"
-                       "enum Pair[A, B] { some(A, B), none }\n"
-                       "fn main(opt: Pair[i32, i32]) -> i32 {\n"
+                       "enum Pair<A, B> { some(A, B), none }\n"
+                       "fn main(opt: Pair<i32, i32>) -> i32 {\n"
                        "  return match opt {\n"
-                       "    Pair[i32 @ i32].some(left, right) => left + right,\n"
-                       "    Pair[i32, i32].none => 0,\n"
+                       "    Pair<i32 @ i32>.some(left, right) => left + right,\n"
+                       "    Pair<i32, i32>.none => 0,\n"
                        "  };\n"
                        "}\n",
-        "expected ',' or ']' after generic type argument");
+        "expected ',' or '>' after generic type argument");
 }
 
 TEST(CoreUnit, ParserRejectsBareEnumCasePatternButRecoversAsBinding)
@@ -1854,7 +1788,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
                                         "type SizedA = [4usize]i32;\n"
                                         "type SizedB = [0b10u8]u8;\n"
                                         "type BadSize = [18446744073709551616]i32;\n"
-                                        "type BadGeneric = Pair[i32 +, bool];\n"
+                                        "type BadGeneric = Pair<i32 +, bool>;\n"
                                         "type BadTuple = (i32, bool +, u8);\n"
                                         "type BadFnA = fn(..., i32) -> i32;\n"
                                         "type BadFnB = fn(i32, ..., bool) -> i32;\n"
@@ -1866,7 +1800,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
                                         "  let bad_array = [1 ->, 2];\n"
                                         "  let bad_literal = (1, true ->, 2);\n"
                                         "  let (a, b +, c) = (1, 2, 3);\n"
-                                        "  let bad_apply = value[i32 +, bool](1);\n"
+                                        "  let bad_apply = value<i32 +, bool>(1);\n"
                                         "  let bad_payload = match value { .some() => 0, .some(name,) => 1, _ => 2 };\n"
                                         "  return value;\n"
                                         "}\n";
@@ -1889,7 +1823,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
     expect_contains(messages, "array length literal is out of range");
     expect_contains(messages, "expected array repeat count");
     expect_contains(messages, "expected payload binding name");
-    expect_contains(messages, "expected ',' or ']' after generic type argument");
+    expect_contains(messages, "expected ',' or '>' after generic type argument");
     expect_contains(messages, "expected ',' or ')' after tuple type element");
     expect_contains(messages, "expected ',' or ')' after tuple element");
     expect_contains(messages, "expected ',' or ')' after tuple pattern element");
@@ -2498,7 +2432,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
     constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID{19};
     constexpr std::string_view source = "module parser.builtin_arg_recovery;\n"
                                         "fn recovered(argc: i32) -> i32 {\n"
-                                        "  let value = cast[i32 @](argc);\n"
+                                        "  let value = cast<i32 @>(argc);\n"
                                         "  let broken = ;\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -2518,7 +2452,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ']' after cast type");
+    expect_contains(messages, "expected '>' after cast type");
     expect_contains(messages, "expected expression");
 }
 
@@ -2680,7 +2614,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters)
     constexpr std::string_view source = "module parser.expression_delimiter_recovery;\n"
                                         "fn recovered(values: *mut i32) -> i32 {\n"
                                         "  let grouped = (1 @);\n"
-                                        "  let indexed = values[0 @];\n"
+                                        "  let indexed = values[0 @;\n"
                                         "  let builtin = ptraddr(values @);\n"
                                         "  let called = id(1 @);\n"
                                         "  let broken = ;\n"
@@ -2709,7 +2643,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters)
             || (diagnostic.category == DiagnosticCategory::parser && diagnostic.code == DiagnosticCode::parser_note);
     }
     expect_contains(messages, "expected ')' after expression");
-    expect_contains(messages, "expected ',' or ']' after generic type argument");
+    expect_contains(messages, "expected ']' after index");
     expect_contains(messages, "expected ')' after ptraddr argument");
     expect_contains(messages, "expected ',' or ')' after argument");
     expect_contains(messages, "opening delimiter is here");
@@ -2843,20 +2777,20 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators)
 TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators)
 {
     expect_parse_error("module parser.generic_bound_recovery;\n"
-                       "struct Box[T: Copy] { value: T; }\n",
+                       "struct Box<T: Copy> { value: T; }\n",
         "generic bounds are not part of M2 syntax");
     expect_parse_error("module parser.generic_param_recovery;\n"
-                       "fn id[T U](value: T) -> T { return value; }\n",
-        "expected ',' or ']' after generic parameter");
+                       "fn id<T U>(value: T) -> T { return value; }\n",
+        "expected ',' or '>' after generic parameter");
     expect_parse_error("module parser.generic_type_arg_recovery;\n"
-                       "type Bad = Pair[i32 bool];\n",
-        "expected ',' or ']' after generic type argument");
+                       "type Bad = Pair<i32 bool>;\n",
+        "expected ',' or '>' after generic type argument");
     expect_parse_error("module parser.dyn_trait_empty_arg_recovery;\n"
-                       "type Bad = &dyn Draw[];\n",
+                       "type Bad = &dyn Draw<>;\n",
         "expected generic type argument");
     expect_parse_error("module parser.dyn_trait_arg_recovery;\n"
-                       "type Bad = &dyn Draw[i32 Item = i32];\n",
-        "expected ',' or ']' after generic type argument");
+                       "type Bad = &dyn Draw<i32 Item = i32>;\n",
+        "expected ',' or '>' after generic type argument");
     expect_parse_error("module parser.dyn_trait_composition_empty_recovery;\n"
                        "type Bad = &dyn ();\n",
         "expected type");
@@ -2867,12 +2801,12 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators)
                        "type Bad = &dyn (Draw +);\n",
         "expected type");
     expect_parse_error("module parser.generic_expr_arg_recovery;\n"
-                       "fn main() -> i32 { return id[i32 bool](1); }\n",
-        "expected ',' or ']' after generic type argument");
+                       "fn main() -> i32 { return id<i32 bool>(1); }\n",
+        "expected ',' or '>' after generic type argument");
     expect_parse_error(
         "module parser.generic_struct_literal_arg_recovery;\n"
-        "fn main() -> i32 { let value = Pair[i32 bool] { first: 1, second: true }; return value.first; }\n",
-        "expected ',' or ']' after generic type argument");
+        "fn main() -> i32 { let value = Pair<i32 bool> { first: 1, second: true }; return value.first; }\n",
+        "expected ',' or '>' after generic type argument");
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators)
@@ -2919,8 +2853,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
                                         "}\n"
                                         "fn opened @(a: i32) -> i32 { return a; }\n"
                                         "fn recovered(value: i32) -> i32 {\n"
-                                        "  let casted = cast @[i32](value);\n"
-                                        "  let broken_builtin = ptrat @[*mut i32](casted);\n"
+                                        "  let casted = cast @<i32>(value);\n"
+                                        "  let broken_builtin = ptrat @<*mut i32>(casted);\n"
                                         "  let broken = ;\n"
                                         "  return casted;\n"
                                         "}\n";
@@ -2942,8 +2876,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
     }
     expect_contains(messages, "expected '(' after function decorator");
     expect_contains(messages, "expected '(' after function name");
-    expect_contains(messages, "expected '[' after cast builtin");
-    expect_contains(messages, "expected '[' after ptrat");
+    expect_contains(messages, "expected '<' after cast builtin");
+    expect_contains(messages, "expected '<' after ptrat");
     expect_contains(messages, "expected expression");
 }
 
@@ -3212,10 +3146,10 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedGenericTypeArgumentsWithoutCrashing
 {
     std::string source = "module parser.deep_generic_type_nesting;\ntype Deep = ";
     for (base::usize depth = 0; depth < PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH; ++depth) {
-        source += "Box[";
+        source += "Box<";
     }
     source += "i32";
-    source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, ']');
+    source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, '>');
     source += ";\n";
 
     expect_parse_error(source, "type nesting exceeds M2 parser limit");
@@ -3271,10 +3205,10 @@ TEST(CoreUnit, ParserParsesReferenceOriginQualifiersWithoutStealingArrayOrSliceR
 {
     constexpr std::string_view source =
         "module parser.reference_origins;\n"
-        "struct View[T, origin data] {\n"
+        "struct View<T, origin data> {\n"
         "  item: &[data] T;\n"
         "}\n"
-        "fn choose[T, origin left, origin right](lhs: &[left] T, rhs: &[right] T) -> &[left | right] T;\n"
+        "fn choose<T, origin left, origin right>(lhs: &[left] T, rhs: &[right] T) -> &[left | right] T;\n"
         "fn array_ref(value: &[16]u8) -> &[]const u8;\n";
     const syntax::AstModule module = parse_success(source);
 
@@ -3319,7 +3253,7 @@ TEST(CoreUnit, ParserParsesReferenceOriginQualifiersWithoutStealingArrayOrSliceR
 TEST(CoreUnit, ParserReportsUnsupportedOriginGenericBounds)
 {
     expect_parse_diagnostic("module parser.origin_bound;\n"
-                            "fn view[origin data: Borrow](value: &[data] i32) -> &[data] i32;\n",
+                            "fn view<origin data: Borrow>(value: &[data] i32) -> &[data] i32;\n",
         "generic bounds are not part of M2 syntax");
 }
 
@@ -3839,7 +3773,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
     expect_true_all(parse::detail::token_ends_generic_type_argument,
         {
             TokenKind::comma,
-            TokenKind::r_bracket,
+            TokenKind::greater,
+            TokenKind::greater_equal,
+            TokenKind::greater_greater,
+            TokenKind::greater_greater_equal,
             TokenKind::r_paren,
             TokenKind::l_brace,
             TokenKind::r_brace,
@@ -3850,7 +3787,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
     expect_true_all(parse::detail::token_ends_generic_parameter,
         {
             TokenKind::comma,
-            TokenKind::r_bracket,
+            TokenKind::greater,
+            TokenKind::greater_equal,
+            TokenKind::greater_greater,
+            TokenKind::greater_greater_equal,
             TokenKind::l_paren,
             TokenKind::l_brace,
             TokenKind::r_brace,
@@ -3945,7 +3885,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
                                         "  let text: str = \"hello\";\n"
                                         "  let data: *const u8 = strptr(text);\n"
                                         "  let len: usize = strblen(text);\n"
-                                        "  let broken_cast: i32 = cast[i32](1 @);\n"
+                                        "  let broken_cast: i32 = cast<i32>(1 @);\n"
                                         "  let broken_str: str = strraw(data len);\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -3973,28 +3913,28 @@ TEST(CoreUnit, ParserM2GenericSyntax)
 {
     constexpr std::string_view source =
         "module parser.generics;\n"
-        "type Alias[T] = T;\n"
+        "type Alias<T> = T;\n"
         "#[derive(Copy, Eq, Hash)]\n"
-        "struct Box[T] { value: T; }\n"
-        "struct Pair[A, B] { first: A; second: B; }\n"
-        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
-        "type Unary[T] = fn(T) -> T;\n"
+        "struct Box<T> { value: T; }\n"
+        "struct Pair<A, B> { first: A; second: B; }\n"
+        "enum Maybe<T>: u8 { some(T) = 1, none = 2, }\n"
+        "type Unary<T> = fn(T) -> T;\n"
         "extern c { fn cfunc(value: i32, ...) -> i32; }\n"
-        "fn id[T](x: T) -> T { return x; }\n"
-        "fn keep_fn[T](value: Unary[T]) -> Unary[T] { return id[Unary[T]](value); }\n"
-        "fn keep_ref[T](value: &T) -> &T { return id[&T](value); }\n"
-        "fn keep_mut_ref[T](value: &mut T) -> &mut T { return id[&mut T](value); }\n"
-        "fn keep_tuple[T](value: (T, (bool, i32))) -> (T, (bool, i32)) {\n"
-        "  return id[(T, (bool, i32))](value);\n"
+        "fn id<T>(x: T) -> T { return x; }\n"
+        "fn keep_fn<T>(value: Unary<T>) -> Unary<T> { return id<Unary<T>>(value); }\n"
+        "fn keep_ref<T>(value: &T) -> &T { return id<&T>(value); }\n"
+        "fn keep_mut_ref<T>(value: &mut T) -> &mut T { return id<&mut T>(value); }\n"
+        "fn keep_tuple<T>(value: (T, (bool, i32))) -> (T, (bool, i32)) {\n"
+        "  return id<(T, (bool, i32))>(value);\n"
         "}\n"
-        "fn fn_arg(value: fn(i32) -> i32) -> fn(i32) -> i32 { return id[fn(i32) -> i32](value); }\n"
-        "fn unsafe_arg(value: unsafe fn() -> i32) -> unsafe fn() -> i32 { return id[unsafe fn() -> i32](value); }\n"
+        "fn fn_arg(value: fn(i32) -> i32) -> fn(i32) -> i32 { return id<fn(i32) -> i32>(value); }\n"
+        "fn unsafe_arg(value: unsafe fn() -> i32) -> unsafe fn() -> i32 { return id<unsafe fn() -> i32>(value); }\n"
         "fn extern_arg(value: extern c fn(i32, ...) -> i32) -> extern c fn(i32, ...) -> i32 {\n"
-        "  return id[extern c fn(i32, ...) -> i32](value);\n"
+        "  return id<extern c fn(i32, ...) -> i32>(value);\n"
         "}\n"
         "fn main() -> i32 {\n"
-        "  let a: Box[i32] = Box[i32] { value: id[i32](1) };\n"
-        "  let p: Pair[i32, bool] = Pair[i32, bool] { first: a.value, second: true };\n"
+        "  let a: Box<i32> = Box<i32> { value: id<i32>(1) };\n"
+        "  let p: Pair<i32, bool> = Pair<i32, bool> { first: a.value, second: true };\n"
         "  let values: [1]i32 = [1];\n"
         "  let f = values[0];\n"
         "  return p.first;\n"
@@ -4004,29 +3944,29 @@ TEST(CoreUnit, ParserM2GenericSyntax)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "type_alias Alias[T]",
+            "type_alias Alias<T>",
             "alias T",
-            "struct Box[T] #[derive(Copy, Eq, Hash)]",
+            "struct Box<T> #[derive(Copy, Eq, Hash)]",
             "field priv value : T",
-            "struct Pair[A, B]",
-            "enum Maybe[T]",
+            "struct Pair<A, B>",
+            "enum Maybe<T>",
             "case some(T) = 1",
-            "type_alias Unary[T]",
-            "fn id[T]",
-            "fn keep_fn[T]",
-            "fn keep_ref[T]",
-            "fn keep_mut_ref[T]",
-            "fn keep_tuple[T]",
+            "type_alias Unary<T>",
+            "fn id<T>",
+            "fn keep_fn<T>",
+            "fn keep_ref<T>",
+            "fn keep_mut_ref<T>",
+            "fn keep_tuple<T>",
             "param x : T",
             "return T",
-            "Box[i32]",
-            "Pair[i32, bool]",
-            "Unary[T]",
-            "generic_apply[Unary[T]]",
-            "generic_apply[&T]",
-            "generic_apply[&mut T]",
-            "generic_apply[(T, (bool, i32))]",
-            "generic_apply[i32]",
+            "Box<i32>",
+            "Pair<i32, bool>",
+            "Unary<T>",
+            "generic_apply<Unary<T>>",
+            "generic_apply<&T>",
+            "generic_apply<&mut T>",
+            "generic_apply<(T, (bool, i32))>",
+            "generic_apply<i32>",
         });
 }
 
@@ -4034,22 +3974,22 @@ TEST(CoreUnit, ParserParsesM16ConstGenericParametersArgumentsAndArrayLengths)
 {
     constexpr std::string_view source =
         "module parser.const_generics;\n"
-        "struct ArrayView[T, const N: usize] { value: T; }\n"
-        "fn len[T, const N: usize](value: [N]T) -> usize { return N; }\n"
+        "struct ArrayView<T, const N: usize> { value: T; }\n"
+        "fn len<T, const N: usize>(value: [N]T) -> usize { return N; }\n"
         "fn main() -> usize {\n"
-        "  let value: ArrayView[i32, 4] = ArrayView[i32, 4] { value: 1 };\n"
-        "  return len[i32, 4]([1]);\n"
+        "  let value: ArrayView<i32, 4> = ArrayView<i32, 4> { value: 1 };\n"
+        "  return len<i32, 4>([1]);\n"
         "}\n";
 
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "struct ArrayView[T, const N: usize]",
-            "fn len[T, const N: usize]",
+            "struct ArrayView<T, const N: usize>",
+            "fn len<T, const N: usize>",
             "param value : [N]T",
-            "ArrayView[i32, 4]",
-            "generic_apply[i32, 4]",
+            "ArrayView<i32, 4>",
+            "generic_apply<i32, 4>",
         });
 
     const syntax::ItemNode* const view = find_item(module, "ArrayView");
@@ -4180,9 +4120,9 @@ TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex)
 TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField)
 {
     constexpr std::string_view source = "module parser.generic_selector;\n"
-                                        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
-                                        "fn make_some[T](value: T) -> Maybe[T] {\n"
-                                        "  return Maybe[T].some(value);\n"
+                                        "enum Maybe<T>: u8 { some(T) = 1, none = 2, }\n"
+                                        "fn make_some<T>(value: T) -> Maybe<T> {\n"
+                                        "  return Maybe<T>.some(value);\n"
                                         "}\n";
 
     const syntax::AstModule module = parse_success(source);
@@ -4211,18 +4151,18 @@ TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField)
     ASSERT_EQ(apply->type_args.size(), 1U);
 }
 
-TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract)
+TEST(CoreUnit, ParserUsesSquareBracketsOnlyForIndexAndAngleBracketsForGenerics)
 {
     constexpr std::string_view source = "module parser.bracket_contract;\n"
-                                        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
-                                        "struct Box[T] { value: T; }\n"
-                                        "fn id[T](value: T) -> T { return value; }\n"
+                                        "enum Maybe<T>: u8 { some(T) = 1, none = 2, }\n"
+                                        "struct Box<T> { value: T; }\n"
+                                        "fn id<T>(value: T) -> T { return value; }\n"
                                         "fn main() -> i32 {\n"
-                                        "  let boxes: [1]Box[i32] = [Box[i32] { value: 1 }];\n"
+                                        "  let boxes: [1]Box<i32> = [Box<i32> { value: 1 }];\n"
                                         "  let value: usize = 0;\n"
                                         "  let picked = boxes[value].value;\n"
-                                        "  let made = Maybe[i32].some(id[i32](picked));\n"
-                                        "  let nested: Box[Maybe[i32]] = Box[Maybe[i32]] { value: made };\n"
+                                        "  let made = Maybe<i32>.some(id<i32>(picked));\n"
+                                        "  let nested: Box<Maybe<i32>> = Box<Maybe<i32>> { value: made };\n"
                                         "  return picked;\n"
                                         "}\n";
 
@@ -4231,8 +4171,8 @@ TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract)
     expect_contains_all(ast,
         {
             "index",
-            "generic_apply[i32]",
-            "generic_apply[Maybe[i32]]",
+            "generic_apply<i32>",
+            "generic_apply<Maybe<i32>>",
             " .some",
         });
 
@@ -4263,15 +4203,15 @@ TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract)
     ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
 }
 
-TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs)
+TEST(CoreUnit, ParserParsesNestedGenericSelectorsAndVoidTypeArgs)
 {
-    constexpr std::string_view source = "module parser.bracket_postfix_edges;\n"
-                                        "struct Inner[T] { value: T; }\n"
-                                        "struct Outer[T] { value: T; }\n"
-                                        "fn wrap[T](value: i32) -> i32 { return value; }\n"
+    constexpr std::string_view source = "module parser.angle_postfix_edges;\n"
+                                        "struct Inner<T> { value: T; }\n"
+                                        "struct Outer<T> { value: T; }\n"
+                                        "fn wrap<T>(value: i32) -> i32 { return value; }\n"
                                         "fn main() -> i32 {\n"
-                                        "  let selected = Outer[Inner[i32]].make;\n"
-                                        "  let ignored = wrap[void](0);\n"
+                                        "  let selected = Outer<Inner<i32>>.make;\n"
+                                        "  let ignored = wrap<void>(0);\n"
                                         "  return ignored;\n"
                                         "}\n";
 
@@ -4279,8 +4219,8 @@ TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs)
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "generic_apply[Inner[i32]]",
-            "generic_apply[void]",
+            "generic_apply<Inner<i32>>",
+            "generic_apply<void>",
             " .make",
         });
 
@@ -4315,16 +4255,16 @@ TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs)
 TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage)
 {
     std::string source = "module parser.deep_selector_generic_arg;\n"
-                         "fn id[T](value: i32) -> i32 { return value; }\n"
-                         "fn main() -> i32 { return id[A";
+                         "fn id<T>(value: i32) -> i32 { return value; }\n"
+                         "fn main() -> i32 { return id<A";
     for (base::usize depth = 0; depth < PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH; ++depth) {
         source += ".B";
     }
-    source += "](0); }\n";
+    source += ">(0); }\n";
 
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains(ast, "generic_apply[A.B.B.B.B.B.B.B.B.B.B]");
+    expect_contains(ast, "generic_apply<A.B.B.B.B.B.B.B.B.B.B>");
 
     const syntax::ItemNode* const main = find_item(module, "main");
     ASSERT_NE(main, nullptr);
@@ -4347,184 +4287,115 @@ TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage)
     EXPECT_EQ(type.name, "B");
 }
 
-TEST(CoreUnit, TypeArgExprConverterRejectsInvalidTypeLikeExpressions)
+TEST(CoreUnit, ParserParsesWhitespaceInsensitiveAngleGenericCalls)
 {
-    std::vector<syntax::Token> tokens = probe_tokens();
-    DiagnosticSink diagnostics;
-    parse::Parser parser(tokens, diagnostics);
-    TypeArgExprConverterProbe probe(parser);
-    syntax::AstModule& module = probe.module();
+    constexpr std::string_view source = "module parser.angle_generic_whitespace;\n"
+                                        "fn id<T>(value: T) -> T { return value; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  return id < i32 > (1);\n"
+                                        "}\n";
 
-    const syntax::ExprId empty_name = module.push_name_expr({}, "");
-    const syntax::ExprId invalid_generic =
-        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId>{});
-    const syntax::ExprId number = module.push_literal_expr(syntax::ExprKind::integer_literal, {}, "1");
-    const syntax::ExprId invalid_field = module.push_field_expr({}, syntax::INVALID_EXPR_ID, "Thing");
-    const syntax::ExprId invalid_apply_callee =
-        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId>{});
-    const syntax::ExprId invalid_unary =
-        module.push_unary_expr(syntax::ExprKind::unary, {}, syntax::UnaryOp::numeric_negate, number);
-    const syntax::ExprId invalid_type_unary =
-        module.push_unary_expr(syntax::ExprKind::unary, {}, syntax::UnaryOp::address_of, syntax::INVALID_EXPR_ID);
-
-    EXPECT_FALSE(probe.type_like(syntax::INVALID_EXPR_ID));
-    EXPECT_FALSE(probe.type_like(empty_name));
-    EXPECT_FALSE(probe.type_like(invalid_generic));
-    EXPECT_FALSE(probe.type_like(invalid_unary));
-    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(syntax::INVALID_EXPR_ID, false)));
-    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(number, false)));
-    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_field, false)));
-    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_apply_callee, false)));
-    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_type_unary, false)));
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "generic_apply<i32>");
 }
 
-TEST(CoreUnit, BracketSuffixClassifierOwnsTypeArgumentContextDecisions)
+TEST(CoreUnit, ParserParsesNestedAngleGenericClosers)
 {
-    std::vector<syntax::Token> tokens = classifier_probe_tokens({syntax::TokenKind::l_paren});
-    DiagnosticSink diagnostics;
-    parse::Parser parser(tokens, diagnostics);
-    BracketSuffixClassifierProbe probe(parser);
-    syntax::AstModule& module = probe.module();
+    constexpr std::string_view source = "module parser.angle_generic_nested_closers;\n"
+                                        "struct Box<T> { value: T; }\n"
+                                        "fn make<T>(value: T) -> T { return value; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let nested: Box<Box<i32>> = Box<Box<i32>> { value: Box<i32> { value: 1 } };\n"
+                                        "  return make<Box<i32>>(nested.value).value;\n"
+                                        "}\n";
 
-    const syntax::ExprId value = module.push_name_expr({}, "Value");
-    const syntax::ExprId lower_value = module.push_name_expr({}, "value");
-    const std::array<syntax::ExprId, 1> type_like_args{value};
-    const std::array<syntax::ExprId, 1> expr_like_args{lower_value};
-
-    const parse::BracketSuffixDecision generic_call = probe.classify_after_expr(parse::BracketSuffixClassificationInput{
-        .base = value,
-        .has_type_only_arg = false,
-        .args_are_type_like = true,
-        .context = parse::ExprContext::normal,
-    });
-    EXPECT_EQ(generic_call.kind, parse::BracketSuffixKind::generic_apply);
-    EXPECT_FALSE(generic_call.report_type_arg_errors);
-    EXPECT_TRUE(generic_call.base_is_type_like);
-    EXPECT_TRUE(generic_call.args_are_type_like);
-
-    const parse::BracketSuffixDecision rejected_call =
-        probe.classify_after_expr(parse::BracketSuffixClassificationInput{
-            .base = lower_value,
-            .has_type_only_arg = false,
-            .args_are_type_like = false,
-            .context = parse::ExprContext::normal,
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "Box<Box<i32>>",
+            "generic_apply<Box<i32>>",
         });
-    EXPECT_EQ(rejected_call.kind, parse::BracketSuffixKind::generic_apply);
-    EXPECT_TRUE(rejected_call.report_type_arg_errors);
-    EXPECT_FALSE(rejected_call.base_is_type_like);
-    EXPECT_FALSE(rejected_call.args_are_type_like);
-
-    EXPECT_TRUE(probe.arg_expr_is_type_like(type_like_args.front()));
-    EXPECT_FALSE(probe.arg_expr_is_type_like(expr_like_args.front()));
 }
 
-TEST(CoreUnit, BracketSuffixClassifierKeepsIndexWhenSelectorIsValueLike)
+TEST(CoreUnit, ParserSplitsMaximalMunchGenericClosersInTypeContext)
 {
-    std::vector<syntax::Token> tokens = classifier_probe_tokens({syntax::TokenKind::dot});
-    DiagnosticSink diagnostics;
-    parse::Parser parser(tokens, diagnostics);
-    BracketSuffixClassifierProbe probe(parser);
-    syntax::AstModule& module = probe.module();
+    constexpr std::string_view source = "module parser.angle_generic_maximal_munch_closers;\n"
+                                        "struct Box<T> { value: T; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let single: Box<i32>=Box<i32> { value: 1 };\n"
+                                        "  let nested: Box<Box<i32>>=Box<Box<i32>> { value: single };\n"
+                                        "  return nested.value.value;\n"
+                                        "}\n";
 
-    const syntax::ExprId value = module.push_name_expr({}, "value");
-    const parse::BracketSuffixDecision decision = probe.classify_after_expr(parse::BracketSuffixClassificationInput{
-        .base = value,
-        .has_type_only_arg = false,
-        .args_are_type_like = false,
-        .context = parse::ExprContext::normal,
-    });
-    EXPECT_EQ(decision.kind, parse::BracketSuffixKind::index);
-    EXPECT_FALSE(decision.report_type_arg_errors);
-    EXPECT_FALSE(decision.base_is_type_like);
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "Box<i32>",
+            "Box<Box<i32>>",
+        });
 }
 
-TEST(CoreUnit, BracketSuffixClassifierRecognizesTypeOnlyStartsAndEmptyGenericContinuations)
+TEST(CoreUnit, ParserDoesNotTreatSquareBracketSuffixAsGenericApply)
 {
-    std::vector<syntax::Token> tokens = classifier_probe_tokens({});
-    DiagnosticSink diagnostics;
-    parse::Parser parser(tokens, diagnostics);
-    BracketSuffixClassifierProbe probe(parser);
+    constexpr std::string_view source = "module parser.square_bracket_is_index;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let values: [1]i32 = [1];\n"
+                                        "  return values[0];\n"
+                                        "}\n";
 
-    const parse::BracketSuffixDecision empty_index = probe.classify_empty_suffix();
-    EXPECT_EQ(empty_index.kind, parse::BracketSuffixKind::index);
-
-    std::vector<syntax::Token> generic_tokens = classifier_probe_tokens({syntax::TokenKind::l_paren});
-    DiagnosticSink generic_diagnostics;
-    parse::Parser generic_parser(generic_tokens, generic_diagnostics);
-    BracketSuffixClassifierProbe generic_probe(generic_parser);
-    const parse::BracketSuffixDecision empty_generic = generic_probe.classify_empty_suffix();
-    EXPECT_EQ(empty_generic.kind, parse::BracketSuffixKind::generic_apply);
-
-    std::vector<syntax::Token> type_tokens = classifier_probe_tokens({syntax::TokenKind::kw_i32});
-    DiagnosticSink type_diagnostics;
-    parse::Parser type_parser(type_tokens, type_diagnostics);
-    BracketSuffixClassifierProbe type_probe(type_parser);
-    EXPECT_TRUE(type_probe.arg_starts_type_only());
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "index");
+    EXPECT_EQ(ast.find("generic_apply"), std::string::npos);
 }
 
-TEST(CoreUnit, TypeArgExprConverterConvertsScopedNamesAndRejectsBadSelectors)
+TEST(CoreUnit, ParserKeepsAngleComparisonsOutOfGenericSuffixes)
 {
-    std::vector<syntax::Token> tokens = probe_tokens();
-    DiagnosticSink diagnostics;
-    parse::Parser parser(tokens, diagnostics);
-    TypeArgExprConverterProbe probe(parser);
-    syntax::AstModule& module = probe.module();
+    expect_parse_diagnostic("module parser.angle_comparison_not_generic;\n"
+                            "fn main(a: i32, b: i32, c: i32) -> bool {\n"
+                            "  return a < b > c;\n"
+                            "}\n",
+        "comparison operators are non-associative");
+}
 
-    const syntax::ExprId scoped_name = module.push_name_expr({}, "pkg", {}, "Thing");
-    const syntax::TypeId scoped_type = probe.convert_type_arg(scoped_name, true);
-    ASSERT_TRUE(syntax::is_valid(scoped_type));
-    const syntax::TypeNode& scoped = module.types[scoped_type.value];
-    ASSERT_EQ(scoped.scope_parts.size(), 1U);
-    EXPECT_EQ(scoped.scope_parts.front(), "pkg");
-    EXPECT_EQ(scoped.name, "Thing");
+TEST(CoreUnit, ParserKeepsLessEqualComparisonOutOfGenericSuffixes)
+{
+    constexpr std::string_view source = "module parser.less_equal_comparison_not_generic;\n"
+                                        "fn main(a: i32, b: i32) -> bool {\n"
+                                        "  return a<=b;\n"
+                                        "}\n";
 
-    syntax::TypeNode applied_base;
-    applied_base.kind = syntax::TypeKind::named;
-    applied_base.name = "Box";
-    applied_base.type_args = {scoped_type};
-    const syntax::TypeId applied_base_id = module.push_type(applied_base);
-    EXPECT_FALSE(syntax::is_valid(probe.append_selector(applied_base_id, "Inner", true)));
-    EXPECT_TRUE(diagnostics.has_error());
-
-    syntax::TypeNode scoped_base;
-    scoped_base.kind = syntax::TypeKind::named;
-    scoped_base.scope_name = "pkg";
-    scoped_base.name = "Outer";
-    const syntax::TypeId scoped_base_id = module.push_type(scoped_base);
-    const syntax::TypeId selector_id = probe.append_selector(scoped_base_id, "Inner", true);
-    ASSERT_TRUE(syntax::is_valid(selector_id));
-    const syntax::TypeNode& selector = module.types[selector_id.value];
-    const std::vector<std::string_view> expected_scope_parts{"pkg", "Outer"};
-    EXPECT_EQ(selector.scope_parts, expected_scope_parts);
-    EXPECT_EQ(selector.scope_name, "pkg");
-    EXPECT_EQ(selector.name, "Inner");
-
-    EXPECT_FALSE(syntax::is_valid(probe.append_selector(syntax::INVALID_TYPE_ID, "Inner", false)));
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    EXPECT_EQ(ast.find("generic_apply"), std::string::npos);
 }
 
 TEST(CoreUnit, ParserRejectsEmptyGenericLists)
 {
     expect_parse_error("module parser.empty_generic_fn;\n"
-                       "fn f[]() -> i32 { return 0; }\n",
+                       "fn f<>() -> i32 { return 0; }\n",
         "expected generic type parameter");
     expect_parse_error("module parser.empty_generic_struct;\n"
-                       "struct Box[] { value: i32; }\n",
+                       "struct Box<> { value: i32; }\n",
         "expected generic type parameter");
     expect_parse_error("module parser.empty_type_args;\n"
-                       "struct Box[T] { value: T; }\n"
-                       "fn main() -> i32 { let value: Box[] = Box[i32] { value: 1 }; return value.value; }\n",
+                       "struct Box<T> { value: T; }\n"
+                       "fn main() -> i32 { let value: Box<> = Box<i32> { value: 1 }; return value.value; }\n",
         "expected generic type argument");
     expect_parse_error("module parser.empty_generic_call;\n"
-                       "fn id[T](value: T) -> T { return value; }\n"
-                       "fn main() -> i32 { return id[](1); }\n",
+                       "fn id<T>(value: T) -> T { return value; }\n"
+                       "fn main() -> i32 { return id<>(1); }\n",
         "expected generic type argument");
     expect_parse_error("module parser.empty_struct_literal_args;\n"
-                       "struct Box[T] { value: T; }\n"
-                       "fn main() -> i32 { let value = Box[] { value: 1 }; return value.value; }\n",
+                       "struct Box<T> { value: T; }\n"
+                       "fn main() -> i32 { let value = Box<> { value: 1 }; return value.value; }\n",
         "expected generic type argument");
     expect_parse_error("module parser.empty_index_args;\n"
                        "fn main() -> i32 { let values: [1]i32 = [1]; return values[]; }\n",
-        "expected generic type argument");
+        "expected expression");
     expect_parse_error("module parser.multi_index_args;\n"
                        "fn main() -> i32 { let values: [2]i32 = [1, 2]; return values[0, 1]; }\n",
         "index expression expects one argument");
@@ -4533,35 +4404,35 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
         "expected expression");
     {
         const syntax::AstModule module = parse_success("module parser.literal_generic_arg;\n"
-                                                       "fn id[T](value: T) -> T { return value; }\n"
-                                                       "fn main() -> i32 { return id[1](1); }\n");
-        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[1]"), std::string::npos);
+                                                       "fn id<T>(value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { return id<1>(1); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply<1>"), std::string::npos);
     }
     {
-        const syntax::AstModule module = parse_success("module parser.parenthesized_generic_arg;\n"
-                                                       "fn id[T](value: T) -> T { return value; }\n"
-                                                       "fn main() -> i32 { return id[(1)](1); }\n");
-        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[1]"), std::string::npos);
+        const syntax::AstModule module = parse_success("module parser.bool_generic_arg;\n"
+                                                       "fn id<T>(value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { return id<true>(1); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply<true>"), std::string::npos);
     }
     {
-        const syntax::AstModule module = parse_success("module parser.unary_expr_generic_arg;\n"
-                                                       "fn id[T](value: T) -> T { return value; }\n"
-                                                       "fn main() -> i32 { let value = 1; return id[-value](value); }\n");
-        EXPECT_NE(syntax::dump_ast(module).find("generic_apply[<const-expr>]"), std::string::npos);
+        const syntax::AstModule module = parse_success("module parser.char_generic_arg;\n"
+                                                       "fn id<T>(value: T) -> T { return value; }\n"
+                                                       "fn main() -> i32 { return id<'x'>(1); }\n");
+        EXPECT_NE(syntax::dump_ast(module).find("generic_apply<'x'>"), std::string::npos);
     }
     expect_parse_diagnostic("module parser.invalid_selected_generic_arg;\n"
-                            "struct Box[T] { value: T; }\n"
-                            "fn id[T](value: i32) -> i32 { return value; }\n"
-                            "fn main() -> i32 { return id[Box[i32].Inner](1); }\n",
-        "expected generic type argument");
+                            "struct Box<T> { value: T; }\n"
+                            "fn id<T>(value: i32) -> i32 { return value; }\n"
+                            "fn main() -> i32 { return id<Box<i32>.Inner>(1); }\n",
+        "expected ',' or '>' after generic type argument");
     expect_parse_diagnostic("module parser.parenthesized_generic_arg_eof;\n"
-                            "fn id[T](value: T) -> T { return value; }\n"
-                            "fn main() -> i32 { return id[(i32,\n",
+                            "fn id<T>(value: T) -> T { return value; }\n"
+                            "fn main() -> i32 { return id<(i32,\n",
         "expected expression");
-    expect_parse_diagnostic("module parser.generic_arg_separator_reaches_bracket;\n"
-                            "fn id[T](value: i32) -> i32 { return value; }\n"
-                            "fn main() -> i32 { return id[A B](1); }\n",
-        "expected ',' or ']' after generic type argument");
+    expect_parse_diagnostic("module parser.generic_arg_separator_reaches_angle;\n"
+                            "fn id<T>(value: i32) -> i32 { return value; }\n"
+                            "fn main() -> i32 { return id<A B>(1); }\n",
+        "expected ',' or '>' after generic type argument");
     expect_parse_diagnostic("module parser.struct_field_separator_reaches_comma;\n"
                             "struct Box { a: i32; b: i32; }\n"
                             "fn main() -> i32 { let box = Box { a: 1 @, b: 2 }; return box.a; }\n",
@@ -4571,18 +4442,23 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
         "expected ',' or '}' after match arm");
 }
 
-TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax)
+TEST(CoreUnit, ParserRejectsLegacyBracketGenericSyntax)
 {
-    expect_parse_error("module parser.legacy_angle_generic_params;\n"
-                       "fn id<T>(x: T) -> T { return x; }\n",
-        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
-    expect_parse_error("module parser.legacy_angle_type_args;\n"
-                       "struct Pair[A, B] { first: A; second: B; }\n"
-                       "type Bad = Pair<i32, bool>;\n",
-        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
-    expect_parse_error("module parser.legacy_angle_dyn_trait_args;\n"
-                       "type Bad = &dyn Draw<i32>;\n",
-        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
+    constexpr std::string_view message =
+        "generic parameters and type arguments use '<...>'; '[' and ']' are reserved";
+    expect_parse_error("module parser.legacy_bracket_generic_params;\n"
+                       "fn id[T](x: T) -> T { return x; }\n",
+        message);
+    expect_parse_error("module parser.legacy_bracket_type_args;\n"
+                       "struct Pair<A, B> { first: A; second: B; }\n"
+                       "type Bad = Pair[i32, bool];\n",
+        message);
+    expect_parse_error("module parser.legacy_bracket_dyn_trait_args;\n"
+                       "type Bad = &dyn Draw[i32];\n",
+        message);
+    expect_parse_error("module parser.legacy_bracket_associated_trait_args;\n"
+                       "type Bad = &dyn Iterator[Item = i32];\n",
+        message);
 }
 
 TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
@@ -4591,7 +4467,7 @@ TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
                        "fn main() -> i32 { return vis::answer; }\n",
         "Aurex selectors use '.', not '::'");
     expect_parse_error("module parser.legacy_scope_generic_call;\n"
-                       "fn id[T](x: T) -> T { return x; }\n"
+                       "fn id<T>(x: T) -> T { return x; }\n"
                        "fn main() -> i32 { return id::[i32](1); }\n",
         "Aurex selectors use '.', not '::'");
 }
@@ -4600,7 +4476,7 @@ TEST(CoreUnit, ParserParsesWhereCapabilityClauses)
 {
     syntax::AstModule module =
         parse_success("module parser.where_clause;\n"
-                      "fn id[T](value: T) -> T where T: Eq + Iterator[Item = i32, Error = bool] { return value; }\n");
+                      "fn id<T>(value: T) -> T where T: Eq + Iterator<Item = i32, Error = bool> { return value; }\n");
     const syntax::ItemNode* id = find_item(module, "id");
     ASSERT_NE(id, nullptr);
     ASSERT_EQ(id->where_constraints.size(), 1U);
@@ -4617,16 +4493,16 @@ TEST(CoreUnit, ParserParsesWhereCapabilityClauses)
     EXPECT_EQ(associated_constraints[1].name, "Error");
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains(ast, "where T: Eq + Iterator[Item = i32, Error = bool]");
+    expect_contains(ast, "where T: Eq + Iterator<Item = i32, Error = bool>");
 }
 
 TEST(CoreUnit, ParserParsesAssociatedTypeConstraintSeparatorEdges)
 {
     const syntax::AstModule module =
         parse_success("module parser.where_associated_edges;\n"
-                      "fn empty[T](value: T) -> T where T: Iterator[] { return value; }\n"
-                      "fn trailing[T](value: T) -> T where T: Iterator[Item = i32,] { return value; }\n"
-                      "fn pair[T, U](left: T, right: U) -> T where T: Iterator[Item = i32], U: Eq {\n"
+                      "fn empty<T>(value: T) -> T where T: Iterator<> { return value; }\n"
+                      "fn trailing<T>(value: T) -> T where T: Iterator<Item = i32,> { return value; }\n"
+                      "fn pair<T, U>(left: T, right: U) -> T where T: Iterator<Item = i32>, U: Eq {\n"
                       "  return left;\n"
                       "}\n");
 
@@ -4658,33 +4534,33 @@ TEST(CoreUnit, ParserParsesAssociatedTypeConstraintSeparatorEdges)
     expect_contains_all(ast,
         {
             "where T: Iterator",
-            "where T: Iterator[Item = i32]",
-            "where T: Iterator[Item = i32], U: Eq",
+            "where T: Iterator<Item = i32>",
+            "where T: Iterator<Item = i32>, U: Eq",
         });
 }
 
 TEST(CoreUnit, ParserRecoversMalformedAssociatedTypeConstraints)
 {
     expect_parse_diagnostic("module parser.bad_where_associated_constraint;\n"
-                            "fn recovered[T](value: T) -> T where T: Iterator[Item = i32 Error bool] {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator<Item = i32 Error bool> {\n"
                             "  return value;\n"
                             "}\n",
-        "expected ',' or ']' after associated type constraint");
+        "expected ',' or '>' after associated type constraint");
     expect_parse_diagnostic("module parser.bad_where_associated_equal;\n"
-                            "fn recovered[T](value: T) -> T where T: Iterator[Item i32] {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator<Item i32> {\n"
                             "  return value;\n"
                             "}\n",
         "expected '=' in associated type constraint");
     expect_parse_diagnostic("module parser.bad_where_associated_name;\n"
-                            "fn recovered[T](value: T) -> T where T: Iterator[= i32] {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator<= i32> {\n"
                             "  return value;\n"
                             "}\n",
         "expected associated type constraint name");
     expect_parse_diagnostic("module parser.bad_where_associated_recovered_comma;\n"
-                            "fn recovered[T](value: T) -> T where T: Iterator[Item = i32 @, Error = bool] {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator<Item = i32 @, Error = bool> {\n"
                             "  return value;\n"
                             "}\n",
-        "expected ',' or ']' after associated type constraint");
+        "expected ',' or '>' after associated type constraint");
 }
 
 } // namespace aurex::test

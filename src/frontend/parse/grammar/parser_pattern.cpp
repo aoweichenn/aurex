@@ -135,7 +135,7 @@ syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& f
         this->consume_bare_enum_case_payload_recovery(first, pattern.range);
         return this->session_.module.push_pattern(std::move(pattern));
     }
-    if (this->check(TokenKind::dot) || this->check(TokenKind::l_bracket)) {
+    if (this->check(TokenKind::dot) || this->check_generic_left_angle() || this->check(TokenKind::l_bracket)) {
         return this->parse_explicit_enum_case_pattern(first);
     }
 
@@ -164,7 +164,24 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
         return this->session_.module.push_pattern(std::move(pattern));
     };
 
-    if (this->match(TokenKind::l_bracket)) {
+    const auto consume_legacy_bracket_type_args = [&]() -> syntax::Token {
+        const syntax::Token& generic_begin =
+            this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
+        this->report_at(generic_begin, std::string(PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED));
+        while (!this->is_eof()) {
+            if (this->match(TokenKind::r_bracket)) {
+                return this->previous();
+            }
+            if (this->check(TokenKind::dot) || this->check(TokenKind::fat_arrow) || this->check(TokenKind::comma)
+                || this->check(TokenKind::r_brace)) {
+                return generic_begin;
+            }
+            this->advance();
+        }
+        return generic_begin;
+    };
+
+    if (this->match_generic_left_angle()) {
         const syntax::Token& generic_begin = this->previous();
         std::vector<syntax::TypeId> type_args;
         this->parse_pattern_generic_type_args(type_args);
@@ -183,10 +200,20 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
         return make_pattern(enum_type, case_name);
     }
+    if (this->check(TokenKind::l_bracket)) {
+        const syntax::Token generic_end = consume_legacy_bracket_type_args();
+        const syntax::TypeId enum_type =
+            this->push_explicit_enum_case_type(parts, parts.size(), {}, this->merge(first.range, generic_end.range));
+        if (this->match(TokenKind::dot)) {
+            const syntax::Token& case_name =
+                this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+            return make_pattern(enum_type, case_name);
+        }
+    }
 
     while (this->match(TokenKind::dot)) {
         parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT)));
-        if (this->match(TokenKind::l_bracket)) {
+        if (this->match_generic_left_angle()) {
             const syntax::Token& generic_begin = this->previous();
             std::vector<syntax::TypeId> type_args;
             this->parse_pattern_generic_type_args(type_args);
@@ -204,6 +231,16 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             const syntax::Token& case_name =
                 this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
             return make_pattern(enum_type, case_name);
+        }
+        if (this->check(TokenKind::l_bracket)) {
+            const syntax::Token generic_end = consume_legacy_bracket_type_args();
+            const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
+                parts, parts.size(), {}, this->merge(parts.front().range, generic_end.range));
+            if (this->match(TokenKind::dot)) {
+                const syntax::Token& case_name =
+                    this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+                return make_pattern(enum_type, case_name);
+            }
         }
     }
 
@@ -437,12 +474,12 @@ bool PatternParser::recover_struct_pattern_separator() const
 
 bool PatternParser::recover_generic_type_arg_separator() const
 {
-    if (this->check(TokenKind::r_bracket)) {
+    if (this->check_generic_right_angle()) {
         return false;
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
 
     this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
@@ -451,7 +488,7 @@ bool PatternParser::recover_generic_type_arg_separator() const
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
     this->reset_panic();
     return false;
@@ -469,11 +506,11 @@ bool PatternParser::match_slice_rest_marker() const
 
 void PatternParser::parse_pattern_generic_type_args(std::vector<syntax::TypeId>& args)
 {
-    if (this->check(TokenKind::r_bracket)) {
+    if (this->check_generic_right_angle()) {
         this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         return;
     }
-    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+    while (!this->is_eof() && !this->check_generic_right_angle()) {
         args.push_back(this->parse_type());
         this->reset_panic();
         if (!this->recover_generic_type_arg_separator()) {
@@ -521,8 +558,8 @@ void PatternParser::consume_bare_enum_case_payload_recovery(const syntax::Token&
 
 const syntax::Token& PatternParser::expect_generic_type_args_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered_after(TokenKind::r_bracket, std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-        RecoveryContext::generic_type_argument, opening);
+    return this->expect_generic_right_angle_recovered_after(
+        std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, opening);
 }
 
 const syntax::Token& PatternParser::expect_tuple_pattern_end(const syntax::Token& opening) const

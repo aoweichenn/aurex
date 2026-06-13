@@ -579,25 +579,25 @@ void append_generic_args_label(std::ostringstream& out, const AstModule& module,
     const std::span<const GenericArgDecl> generic_args, const std::span<const TypeId> type_args)
 {
     if (!generic_args.empty()) {
-        out << "[";
+        out << "<";
         for (base::usize i = 0; i < generic_args.size(); ++i) {
             if (i != 0) {
                 out << ", ";
             }
             append_generic_arg_label(out, module, generic_args[i]);
         }
-        out << "]";
+        out << ">";
         return;
     }
     if (!type_args.empty()) {
-        out << "[";
+        out << "<";
         for (base::usize i = 0; i < type_args.size(); ++i) {
             if (i != 0) {
                 out << ", ";
             }
             out << type_label(module, type_args[i]);
         }
-        out << "]";
+        out << ">";
     }
 }
 
@@ -645,7 +645,7 @@ std::string type_label(const AstModule& module, const TypeId id)
                 out << type.name;
                 if (!type.generic_args.empty() || !type.type_args.empty()
                     || !type.associated_type_constraints.empty()) {
-                    out << "[";
+                    out << "<";
                     bool first = true;
                     if (!type.generic_args.empty()) {
                         for (const GenericArgDecl& arg : type.generic_args) {
@@ -671,7 +671,7 @@ std::string type_label(const AstModule& module, const TypeId id)
                         first = false;
                         out << constraint.name << " = " << type_label(module, constraint.value_type);
                     }
-                    out << "]";
+                    out << ">";
                 }
             }
             break;
@@ -770,7 +770,7 @@ std::string dyn_trait_principal_label(const AstModule& module, const TypeId id)
     }
     out << type.name;
     if (!type.generic_args.empty() || !type.type_args.empty() || !type.associated_type_constraints.empty()) {
-        out << "[";
+        out << "<";
         bool first = true;
         if (!type.generic_args.empty()) {
             for (const GenericArgDecl& arg : type.generic_args) {
@@ -796,7 +796,7 @@ std::string dyn_trait_principal_label(const AstModule& module, const TypeId id)
             first = false;
             out << constraint.name << " = " << type_label(module, constraint.value_type);
         }
-        out << "]";
+        out << ">";
     }
     return out.str();
 }
@@ -1339,7 +1339,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (!item.name.empty()) {
         out << " " << item.name;
         if (!item.generic_params.empty()) {
-            out << "[";
+            out << "<";
             for (base::usize i = 0; i < item.generic_params.size(); ++i) {
                 if (i != 0) {
                     out << ", ";
@@ -1354,7 +1354,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
                     out << ": " << type_label(module, item.generic_params[i].const_type);
                 }
             }
-            out << "]";
+            out << ">";
         }
     }
     if (item.kind == ItemKind::impl_block && is_valid(item.trait_type) && is_valid(item.impl_type)) {
@@ -1389,7 +1389,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
                 out << constraint.capability_names[capability];
                 if (capability < constraint.capability_associated_constraints.size()
                     && !constraint.capability_associated_constraints[capability].empty()) {
-                    out << "[";
+                    out << "<";
                     const std::vector<AssociatedTypeConstraintDecl>& associated_constraints =
                         constraint.capability_associated_constraints[capability];
                     for (base::usize associated = 0; associated < associated_constraints.size(); ++associated) {
@@ -1399,7 +1399,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
                         out << associated_constraints[associated].name << " = "
                             << type_label(module, associated_constraints[associated].value_type);
                     }
-                    out << "]";
+                    out << ">";
                 }
             }
         }

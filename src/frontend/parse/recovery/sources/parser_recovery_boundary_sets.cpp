@@ -114,7 +114,10 @@ bool token_ends_generic_type_argument(const TokenKind kind) noexcept
 {
     switch (kind) {
         case TokenKind::comma:
-        case TokenKind::r_bracket:
+        case TokenKind::greater:
+        case TokenKind::greater_equal:
+        case TokenKind::greater_greater:
+        case TokenKind::greater_greater_equal:
         case TokenKind::r_paren:
         case TokenKind::l_brace:
         case TokenKind::r_brace:
@@ -129,7 +132,10 @@ bool token_ends_generic_parameter(const TokenKind kind) noexcept
 {
     switch (kind) {
         case TokenKind::comma:
-        case TokenKind::r_bracket:
+        case TokenKind::greater:
+        case TokenKind::greater_equal:
+        case TokenKind::greater_greater:
+        case TokenKind::greater_greater_equal:
         case TokenKind::l_paren:
         case TokenKind::l_brace:
         case TokenKind::r_brace:

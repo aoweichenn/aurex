@@ -3,5 +3,5 @@ module negative_unsigned_expression;
 fn main() -> i32 {
     let one: u32 = 1;
     let wrapped: u32 = -one;
-    return cast[i32](wrapped);
+    return cast<i32>(wrapped);
 }

@@ -12,7 +12,7 @@ impl Box {
 }
 
 fn as_mut_ptr(value: &mut Box) -> *mut Box {
-    return unsafe { ptrat[*mut Box](ptraddr(value)) };
+    return unsafe { ptrat<*mut Box>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

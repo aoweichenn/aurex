@@ -1,15 +1,15 @@
 module move_partial_field;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
     tag: i32;
 }
 
-fn unwrap[T](box: Box[T]) -> T {
+fn unwrap<T>(box: Box<T>) -> T {
     return box.value;
 }
 
 fn main() -> i32 {
-    let wrapped: Box[i32] = Box[i32] { value: 41, tag: 1 };
+    let wrapped: Box<i32> = Box<i32> { value: 41, tag: 1 };
     return unwrap(wrapped) + 1 - 42;
 }

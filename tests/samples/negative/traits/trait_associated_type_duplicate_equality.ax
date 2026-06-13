@@ -4,7 +4,7 @@ trait Source {
     type Item;
 }
 
-fn use_source[T](value: T) -> i32 where T: Source[Item = i32, Item = i32] {
+fn use_source<T>(value: T) -> i32 where T: Source<Item = i32, Item = i32> {
     return 0;
 }
 

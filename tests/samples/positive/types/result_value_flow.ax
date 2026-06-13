@@ -24,7 +24,7 @@ fn option_owner_is_some_ref(value: *const OptionOwner) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = unsafe { ptrcast[*const u8](value) };
+    let tag: *const u8 = unsafe { ptrcast<*const u8>(value) };
     return unsafe { *tag } == OPTION_TAG_SOME;
 }
 
@@ -32,7 +32,7 @@ fn option_owner_is_none_ref(value: *const OptionOwner) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = unsafe { ptrcast[*const u8](value) };
+    let tag: *const u8 = unsafe { ptrcast<*const u8>(value) };
     return unsafe { *tag } == OPTION_TAG_NONE;
 }
 
@@ -40,7 +40,7 @@ fn result_owner_i32_is_ok_ref(value: *const ResultOwnerI32) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = unsafe { ptrcast[*const u8](value) };
+    let tag: *const u8 = unsafe { ptrcast<*const u8>(value) };
     return unsafe { *tag } == RESULT_TAG_OK;
 }
 
@@ -48,7 +48,7 @@ fn result_owner_i32_is_err_ref(value: *const ResultOwnerI32) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = unsafe { ptrcast[*const u8](value) };
+    let tag: *const u8 = unsafe { ptrcast<*const u8>(value) };
     return unsafe { *tag } == RESULT_TAG_ERR;
 }
 

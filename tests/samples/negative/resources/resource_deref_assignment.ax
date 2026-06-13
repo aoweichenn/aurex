@@ -1,6 +1,6 @@
 module resource_deref_assignment;
 
-fn overwrite[T](slot: &mut T, replacement: T) -> void {
+fn overwrite<T>(slot: &mut T, replacement: T) -> void {
     *slot = replacement;
 }
 

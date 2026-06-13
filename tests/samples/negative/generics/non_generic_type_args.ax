@@ -5,6 +5,6 @@ struct Plain {
 }
 
 fn main() -> i32 {
-    let value: Plain[i32] = Plain[i32] { value: 1 };
+    let value: Plain<i32> = Plain<i32> { value: 1 };
     return value.value;
 }

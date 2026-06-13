@@ -553,7 +553,8 @@ struct JsonSlice {
 void lsp_append_json_escaped(std::string& out, const std::string_view text)
 {
     out.push_back(LSP_JSON_QUOTE);
-    for (const unsigned char ch : text) {
+    for (const char raw_ch : text) {
+        const auto ch = static_cast<unsigned char>(raw_ch);
         switch (ch) {
             case LSP_JSON_QUOTE:
                 out.append("\\\"");

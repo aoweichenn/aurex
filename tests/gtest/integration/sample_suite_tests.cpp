@@ -53,7 +53,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"array_slice_bounds_order", "array constant slice start exceeds end"},
     {"bare_enum_case_constructor", "unknown function: some"},
     {"bare_enum_case_pattern",
-        "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'"},
+        "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type<Args>.case'"},
     {"chained_comparison", "comparison operators are non-associative"},
     {"chained_equality", "comparison operators are non-associative"},
     {"const_pattern_enum_value", "enum match pattern must be an enum case or wildcard"},

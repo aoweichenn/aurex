@@ -1,10 +1,10 @@
 module resource_field_assignment;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-fn overwrite[T](box: &mut Box[T], replacement: T) -> void {
+fn overwrite<T>(box: &mut Box<T>, replacement: T) -> void {
     box.value = replacement;
 }
 

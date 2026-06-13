@@ -8,7 +8,7 @@ trait SourceB {
     type Item;
 }
 
-fn use_item[T](value: T) -> T.Item where T: SourceA + SourceB {
+fn use_item<T>(value: T) -> T.Item where T: SourceA + SourceB {
     return value;
 }
 

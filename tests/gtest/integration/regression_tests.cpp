@@ -283,7 +283,7 @@ TEST_F(AurexIntegrationTest, DiagnosticDeclarationQualityRegressions)
 
     const fs::path unknown_where_param = write_source_file(tmp_root() / "diagnostic_unknown_where_param.ax",
         "module diagnostic_unknown_where_param;\n"
-        "fn id[T](value: T) -> T where U: Eq { return value; }\n"
+        "fn id<T>(value: T) -> T where U: Eq { return value; }\n"
         "fn main() -> i32 { return id(1); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_where_param)).output,
         "where constraint references unknown generic parameter `U`");
@@ -313,7 +313,7 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions)
         "module overflow;\n"
         "fn main() -> i32 {\n"
         "  let value: u8 = 300;\n"
-        "  return cast[i32](value);\n"
+        "  return cast<i32>(value);\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(overflow)).output, "initializer type does not match declared type");
@@ -429,7 +429,7 @@ TEST_F(AurexIntegrationTest, M2SafeReferences)
         {
             "fn priv read -> i32",
             "fn priv write -> void",
-            "fn priv id_ref[i32] -> &i32",
+            "fn priv id_ref<i32> -> &i32",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(positive)).output;
@@ -617,12 +617,12 @@ TEST_F(AurexIntegrationTest, SliceRegressions)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(slice_generic)).output;
     expect_contains_all(checked,
         {
-            "first[i32] -> i32",
+            "first<i32> -> i32",
         });
     const std::string generic_ir = require_success(aurexc() + " --emit=ir " + q(slice_generic)).output;
     expect_contains_all(generic_ir,
         {
-            "fn first[i32](values: []const i32)",
+            "fn first<i32>(values: []const i32)",
             "[]mut i32",
         });
 
@@ -664,8 +664,8 @@ TEST_F(AurexIntegrationTest, TupleRegressions)
     expect_contains_all(checked,
         {
             "fn priv make_pair -> (i32, bool)",
-            "fn priv first[i32,bool] -> i32",
-            "fn priv second[i32,bool] -> bool",
+            "fn priv first<i32,bool> -> i32",
+            "fn priv second<i32,bool> -> bool",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(tuple_basic)).output;
@@ -855,28 +855,28 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "struct priv Box[i32]",
-            "struct priv Pair[i32,bool]",
-            "id[i32] -> i32",
-            "id[bool] -> bool",
-            "make_pair[i32,bool]",
-            "make_box[basic_m2.Pair[i32,bool]]",
-            "unwrap[i32]",
-            "same_ptr[i32]",
-            "first[i32,bool]",
-            "struct priv Box[basic_m2.Pair[i32,bool]]",
+            "struct priv Box<i32>",
+            "struct priv Pair<i32,bool>",
+            "id<i32> -> i32",
+            "id<bool> -> bool",
+            "make_pair<i32,bool>",
+            "make_box<basic_m2.Pair<i32,bool>>",
+            "unwrap<i32>",
+            "same_ptr<i32>",
+            "first<i32,bool>",
+            "struct priv Box<basic_m2.Pair<i32,bool>>",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir,
         {
-            "fn id[i32](x: i32)",
-            "fn id[bool](x: bool)",
-            "fn make_pair[i32,bool](a: i32, b: bool)",
-            "fn make_box[basic_m2.Pair[i32,bool]](value: basic_m2.Pair[i32,bool])",
-            "fn unwrap[i32](box: basic_m2.Box[i32])",
-            "fn same_ptr[i32](value: *const i32)",
-            "fn first[i32,bool](p: basic_m2.Pair[i32,bool])",
+            "fn id<i32>(x: i32)",
+            "fn id<bool>(x: bool)",
+            "fn make_pair<i32,bool>(a: i32, b: bool)",
+            "fn make_box<basic_m2.Pair<i32,bool>>(value: basic_m2.Pair<i32,bool>)",
+            "fn unwrap<i32>(box: basic_m2.Box<i32>)",
+            "fn same_ptr<i32>(value: *const i32)",
+            "fn first<i32,bool>(p: basic_m2.Pair<i32,bool>)",
         });
 
     const fs::path binary = test_bin_root() / "basic_m2_generics";
@@ -936,7 +936,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "expression_index_not_generic_call.ax")))
             .output,
-        "expects a type argument");
+        "explicit generic calls use '<...>'");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_bound_rejected_m2.ax"))).output,
         "generic bounds are not part of M2 syntax");
@@ -949,15 +949,15 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
         "duplicate type definition");
     const fs::path duplicate_generic_enum = write_source_file(tmp_root() / "duplicate_generic_enum.ax",
         "module duplicate_generic_enum;\n"
-        "enum Maybe[T] { none }\n"
-        "enum Maybe[T] { some(T) }\n"
+        "enum Maybe<T> { none }\n"
+        "enum Maybe<T> { some(T) }\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(duplicate_generic_enum)).output, "duplicate type definition");
     const fs::path duplicate_generic_alias = write_source_file(tmp_root() / "duplicate_generic_alias.ax",
         "module duplicate_generic_alias;\n"
-        "type Ptr[T] = *const T;\n"
-        "type Ptr[T] = *mut T;\n"
+        "type Ptr<T> = *const T;\n"
+        "type Ptr<T> = *mut T;\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(duplicate_generic_alias)).output, "duplicate type definition");
@@ -1067,28 +1067,28 @@ TEST_F(AurexIntegrationTest, M2GenericWhereEnumAliasAndImplRegressions)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "same[i32] -> bool",
-            "lower[i32] -> bool",
-            "hashable[i32] -> i32",
-            "unwrap_or[i32]",
+            "same<i32> -> bool",
+            "lower<i32> -> bool",
+            "hashable<i32> -> i32",
+            "unwrap_or<i32>",
             "use_result -> i32",
-            "read_sized_ptr[i32]",
-            "case Option[i32]_some",
-            "case Result[i32,i32]_ok",
-            "method constraints_enum_alias_impl_m2.Box[i32].get[i32] -> i32",
-            "method constraints_enum_alias_impl_m2.Box[i32].same_value[i32] -> bool",
+            "read_sized_ptr<i32>",
+            "case Option<i32>_some",
+            "case Result<i32,i32>_ok",
+            "method constraints_enum_alias_impl_m2.Box<i32>.get<i32> -> i32",
+            "method constraints_enum_alias_impl_m2.Box<i32>.same_value<i32> -> bool",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir,
         {
-            "fn same[i32](left: i32, right: i32)",
-            "fn lower[i32](left: i32, right: i32)",
-            "fn hashable[i32](value: i32)",
-            "fn unwrap_or[i32](value: constraints_enum_alias_impl_m2.Option[i32], fallback: i32)",
-            "fn get[i32](self: &constraints_enum_alias_impl_m2.Box[i32])",
-            "fn same_value[i32](self: &constraints_enum_alias_impl_m2.Box[i32], other: "
-            "&constraints_enum_alias_impl_m2.Box[i32])",
+            "fn same<i32>(left: i32, right: i32)",
+            "fn lower<i32>(left: i32, right: i32)",
+            "fn hashable<i32>(value: i32)",
+            "fn unwrap_or<i32>(value: constraints_enum_alias_impl_m2.Option<i32>, fallback: i32)",
+            "fn get<i32>(self: &constraints_enum_alias_impl_m2.Box<i32>)",
+            "fn same_value<i32>(self: &constraints_enum_alias_impl_m2.Box<i32>, other: "
+            "&constraints_enum_alias_impl_m2.Box<i32>)",
         });
 
     const fs::path binary = test_bin_root() / "constraints_enum_alias_impl_m2";
@@ -1100,40 +1100,40 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
 {
     const fs::path library = write_source_file(tmp_root() / "generic_ext.ax",
         "module generic_ext;\n"
-        "pub enum Maybe[T] { some(T), none }\n"
-        "pub type Ptr[T] = *const T;\n"
-        "pub fn hashable[T](value: T) -> i32 where T: Hash { return 1; }\n");
+        "pub enum Maybe<T> { some(T), none }\n"
+        "pub type Ptr<T> = *const T;\n"
+        "pub fn hashable<T>(value: T) -> i32 where T: Hash { return 1; }\n");
     static_cast<void>(library);
 
     const fs::path source = write_source_file(tmp_root() / "generic_import_main.ax",
         "module generic_import_main;\n"
         "import generic_ext as g;\n"
-        "fn unwrap(value: g.Maybe[i32]) -> i32 {\n"
+        "fn unwrap(value: g.Maybe<i32>) -> i32 {\n"
         "  return match value { .some(inner) => inner, .none => 0 };\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 3;\n"
-        "  let ptr: g.Ptr[i32] = unsafe { ptrat[g.Ptr[i32]](ptraddr(&value)) };\n"
-        "  let maybe: g.Maybe[i32] = g.Maybe[i32].some(39);\n"
+        "  let ptr: g.Ptr<i32> = unsafe { ptrat<g.Ptr<i32>>(ptraddr(&value)) };\n"
+        "  let maybe: g.Maybe<i32> = g.Maybe<i32>.some(39);\n"
         "  if ptraddr(ptr) == 0usize { return 1; }\n"
-        "  return g.hashable[i32](value) + unwrap(maybe) - 40;\n"
+        "  return g.hashable<i32>(value) + unwrap(maybe) - 40;\n"
         "}\n");
 
     const std::string checked =
         require_success(aurexc() + " --emit=checked -I " + q(tmp_root()) + " " + q(source)).output;
     expect_contains_all(checked,
         {
-            "generic_ext.Maybe[i32]",
-            "case Maybe[i32]_some",
-            "hashable[i32] -> i32",
+            "generic_ext.Maybe<i32>",
+            "case Maybe<i32>_some",
+            "hashable<i32> -> i32",
         });
 
     const fs::path enum_a = write_source_file(tmp_root() / "generic_enum_a.ax",
         "module generic_enum_a;\n"
-        "pub enum Maybe[T] { none }\n");
+        "pub enum Maybe<T> { none }\n");
     const fs::path enum_b = write_source_file(tmp_root() / "generic_enum_b.ax",
         "module generic_enum_b;\n"
-        "pub enum Maybe[T] { none }\n");
+        "pub enum Maybe<T> { none }\n");
     static_cast<void>(enum_a);
     static_cast<void>(enum_b);
     const fs::path ambiguous_enum = write_source_file(tmp_root() / "generic_enum_ambiguous.ax",
@@ -1141,7 +1141,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
         "import generic_enum_a;\n"
         "import generic_enum_b;\n"
         "fn main() -> i32 {\n"
-        "  let value: Maybe[i32] = Maybe[i32].none;\n"
+        "  let value: Maybe<i32> = Maybe<i32>.none;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_enum)).output,
@@ -1155,7 +1155,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
         "module generic_enum_selector_ambiguous;\n"
         "import generic_enum_facade as facade;\n"
         "fn main() -> i32 {\n"
-        "  let value: facade.Maybe[i32] = facade.Maybe[i32].none;\n"
+        "  let value: facade.Maybe<i32> = facade.Maybe<i32>.none;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(
@@ -1164,10 +1164,10 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
 
     const fs::path alias_a = write_source_file(tmp_root() / "generic_alias_a.ax",
         "module generic_alias_a;\n"
-        "pub type Ptr[T] = *const T;\n");
+        "pub type Ptr<T> = *const T;\n");
     const fs::path alias_b = write_source_file(tmp_root() / "generic_alias_b.ax",
         "module generic_alias_b;\n"
-        "pub type Ptr[T] = *const T;\n");
+        "pub type Ptr<T> = *const T;\n");
     static_cast<void>(alias_a);
     static_cast<void>(alias_b);
     const fs::path ambiguous_alias = write_source_file(tmp_root() / "generic_alias_ambiguous.ax",
@@ -1176,7 +1176,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
         "import generic_alias_b;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: Ptr[i32] = null;\n"
+        "  let ptr: Ptr<i32> = null;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_alias)).output,
@@ -1191,7 +1191,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions)
         "import generic_alias_facade as facade;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: facade.Ptr[i32] = null;\n"
+        "  let ptr: facade.Ptr<i32> = null;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(
@@ -1204,27 +1204,27 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
     const fs::path source = write_source_file(tmp_root() / "generic_capability_concrete_types.ax",
         "module generic_capability_concrete_types;\n"
         "enum Flag { no, yes }\n"
-        "struct Box[T] { value: T; }\n"
-        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
-        "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
-        "fn same[T](left: T, right: T) -> i32 where T: Eq {\n"
+        "struct Box<T> { value: T; }\n"
+        "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn accept_hash<T>(value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn same<T>(left: T, right: T) -> i32 where T: Eq {\n"
         "  if left == right { return 1; }\n"
         "  return 0;\n"
         "}\n"
-        "fn less_than[T](left: T, right: T) -> i32 where T: Ord {\n"
+        "fn less_than<T>(left: T, right: T) -> i32 where T: Ord {\n"
         "  if left < right { return 1; }\n"
         "  return 0;\n"
         "}\n"
-        "impl[T] Box[T] {\n"
-        "  fn get(self: &Box[T]) -> T where T: Copy { return self.value; }\n"
+        "impl<T> Box<T> {\n"
+        "  fn get(self: &Box<T>) -> T where T: Copy { return self.value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  var left: i32 = 1;\n"
         "  var right: i32 = 2;\n"
-        "  let left_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&left)) };\n"
-        "  let right_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&right)) };\n"
+        "  let left_ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&left)) };\n"
+        "  let right_ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&right)) };\n"
         "  let flag: Flag = Flag.yes;\n"
-        "  let box: Box[i32] = Box[i32] { value: 1 };\n"
+        "  let box: Box<i32> = Box<i32> { value: 1 };\n"
         "  return accept_eq(true) + accept_eq('\\u{03BB}') +\n"
         "    accept_eq(left_ptr) + accept_eq(flag) +\n"
         "    accept_hash(true) + accept_hash('\\u{03BB}') + accept_hash(left) + accept_hash(right_ptr) +\n"
@@ -1234,43 +1234,43 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "accept_eq[bool] -> i32",
-            "accept_eq[char] -> i32",
-            "accept_eq[*const i32] -> i32",
-            "accept_eq[generic_capability_concrete_types.Flag] -> i32",
-            "accept_hash[bool] -> i32",
-            "accept_hash[char] -> i32",
-            "accept_hash[i32] -> i32",
-            "accept_hash[*const i32] -> i32",
-            "same[generic_capability_concrete_types.Flag] -> i32",
-            "less_than[i32] -> i32",
-            "method generic_capability_concrete_types.Box[i32].get[i32] -> i32",
+            "accept_eq<bool> -> i32",
+            "accept_eq<char> -> i32",
+            "accept_eq<*const i32> -> i32",
+            "accept_eq<generic_capability_concrete_types.Flag> -> i32",
+            "accept_hash<bool> -> i32",
+            "accept_hash<char> -> i32",
+            "accept_hash<i32> -> i32",
+            "accept_hash<*const i32> -> i32",
+            "same<generic_capability_concrete_types.Flag> -> i32",
+            "less_than<i32> -> i32",
+            "method generic_capability_concrete_types.Box<i32>.get<i32> -> i32",
         });
 
     const fs::path float_eq = write_source_file(tmp_root() / "generic_float_eq_rejected.ax",
         "module generic_float_eq_rejected;\n"
-        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
         "fn main() -> i32 {\n"
-        "  return accept_eq(cast[f64](1));\n"
+        "  return accept_eq(cast<f64>(1));\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(float_eq)).output, "type f64 does not satisfy capability `Eq`");
 
     const fs::path float_ord = write_source_file(tmp_root() / "generic_float_ord_rejected.ax",
         "module generic_float_ord_rejected;\n"
-        "fn less_than[T](left: T, right: T) -> i32 where T: Ord {\n"
+        "fn less_than<T>(left: T, right: T) -> i32 where T: Ord {\n"
         "  if left < right { return 1; }\n"
         "  return 0;\n"
         "}\n"
         "fn main() -> i32 {\n"
-        "  return less_than(cast[f64](1), cast[f64](2));\n"
+        "  return less_than(cast<f64>(1), cast<f64>(2));\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(float_ord)).output, "type f64 does not satisfy capability `Ord`");
 
     const fs::path reference_eq = write_source_file(tmp_root() / "generic_reference_eq_rejected.ax",
         "module generic_reference_eq_rejected;\n"
-        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
         "fn main() -> i32 {\n"
         "  var value: i32 = 1;\n"
         "  let ref: &i32 = &value;\n"
@@ -1281,7 +1281,7 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
 
     const fs::path reference_hash = write_source_file(tmp_root() / "generic_reference_hash_rejected.ax",
         "module generic_reference_hash_rejected;\n"
-        "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn accept_hash<T>(value: T) -> i32 where T: Hash { return 1; }\n"
         "fn main() -> i32 {\n"
         "  var value: i32 = 1;\n"
         "  let ref: &i32 = &value;\n"
@@ -1293,7 +1293,7 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
     const fs::path enum_hash = write_source_file(tmp_root() / "generic_enum_hash_rejected.ax",
         "module generic_enum_hash_rejected;\n"
         "enum Flag { no, yes }\n"
-        "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn accept_hash<T>(value: T) -> i32 where T: Hash { return 1; }\n"
         "fn main() -> i32 {\n"
         "  let flag: Flag = Flag.yes;\n"
         "  return accept_hash(flag);\n"
@@ -1311,12 +1311,12 @@ TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityRegressions)
         "#[derive(Eq, Hash)]\n"
         "enum MaybeKey { some(Key), none }\n"
         "#[derive(Eq, Hash)]\n"
-        "struct Box[T] where T: Eq + Hash { value: T; }\n"
-        "fn accept_eq_hash[T](value: T) -> i32 where T: Eq + Hash { return 1; }\n"
-        "fn accept_copy[T](value: T) -> i32 where T: Copy { return 1; }\n"
+        "struct Box<T> where T: Eq + Hash { value: T; }\n"
+        "fn accept_eq_hash<T>(value: T) -> i32 where T: Eq + Hash { return 1; }\n"
+        "fn accept_copy<T>(value: T) -> i32 where T: Copy { return 1; }\n"
         "fn main() -> i32 {\n"
         "  let key = Key { value: 1 };\n"
-        "  let boxed = Box[Key] { value: key };\n"
+        "  let boxed = Box<Key> { value: key };\n"
         "  let maybe = MaybeKey.some(key);\n"
         "  return accept_eq_hash(key) + accept_eq_hash(boxed) + accept_eq_hash(maybe) + accept_copy(key) - 4;\n"
         "}\n");
@@ -1325,13 +1325,13 @@ TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityRegressions)
     expect_contains_all(checked,
         {
             "struct priv Key derives=Copy,Eq,Hash",
-            "struct priv Box[derive_capability_regressions.Key] derives=Eq,Hash",
+            "struct priv Box<derive_capability_regressions.Key> derives=Eq,Hash",
             "case MaybeKey_some : derive_capability_regressions.MaybeKey"
             "(derive_capability_regressions.Key) derives=Eq,Hash",
-            "accept_eq_hash[derive_capability_regressions.Key] -> i32",
-            "accept_eq_hash[derive_capability_regressions.Box[derive_capability_regressions.Key]] -> i32",
-            "accept_eq_hash[derive_capability_regressions.MaybeKey] -> i32",
-            "accept_copy[derive_capability_regressions.Key] -> i32",
+            "accept_eq_hash<derive_capability_regressions.Key> -> i32",
+            "accept_eq_hash<derive_capability_regressions.Box<derive_capability_regressions.Key>> -> i32",
+            "accept_eq_hash<derive_capability_regressions.MaybeKey> -> i32",
+            "accept_copy<derive_capability_regressions.Key> -> i32",
         });
 }
 
@@ -1401,10 +1401,10 @@ TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityDiagnostics)
     const fs::path generic_unsatisfied = write_source_file(tmp_root() / "derive_generic_unsatisfied.ax",
         "module derive_generic_unsatisfied;\n"
         "#[derive(Eq)]\n"
-        "struct Box[T] { value: T; }\n"
-        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "struct Box<T> { value: T; }\n"
+        "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
         "fn main() -> i32 {\n"
-        "  let value = Box[f64] { value: cast[f64](1) };\n"
+        "  let value = Box<f64> { value: cast<f64>(1) };\n"
         "  return accept_eq(value);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_unsatisfied)).output,
@@ -1415,33 +1415,33 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
 {
     const fs::path source = write_source_file(tmp_root() / "generic_impl_nested_owner.ax",
         "module generic_impl_nested_owner;\n"
-        "type Unary[T] = fn(T) -> T;\n"
-        "struct Box[T] { value: T; }\n"
+        "type Unary<T> = fn(T) -> T;\n"
+        "struct Box<T> { value: T; }\n"
         "fn id_i32(value: i32) -> i32 { return value; }\n"
-        "impl[T] Box[*const T] {\n"
-        "  fn ptr_marker(self: &Box[*const T]) -> i32 { return 1; }\n"
+        "impl<T> Box<*const T> {\n"
+        "  fn ptr_marker(self: &Box<*const T>) -> i32 { return 1; }\n"
         "}\n"
-        "impl[T] Box[[]const T] {\n"
-        "  fn slice_marker(self: &Box[[]const T]) -> i32 { return 2; }\n"
+        "impl<T> Box<[]const T> {\n"
+        "  fn slice_marker(self: &Box<[]const T>) -> i32 { return 2; }\n"
         "}\n"
-        "impl[T] Box[[4]T] {\n"
-        "  fn array_marker(self: &Box[[4]T]) -> i32 { return 3; }\n"
+        "impl<T> Box<[4]T> {\n"
+        "  fn array_marker(self: &Box<[4]T>) -> i32 { return 3; }\n"
         "}\n"
-        "impl[T] Box[(T, bool)] {\n"
-        "  fn tuple_marker(self: &Box[(T, bool)]) -> i32 { return 4; }\n"
+        "impl<T> Box<(T, bool)> {\n"
+        "  fn tuple_marker(self: &Box<(T, bool)>) -> i32 { return 4; }\n"
         "}\n"
-        "impl[T] Box[Unary[T]] {\n"
-        "  fn fn_marker(self: &Box[Unary[T]]) -> i32 { return 5; }\n"
+        "impl<T> Box<Unary<T>> {\n"
+        "  fn fn_marker(self: &Box<Unary<T>>) -> i32 { return 5; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr_box: Box[*const i32] = Box[*const i32] { value: unsafe { ptrat[*const i32](ptraddr(&value)) } };\n"
+        "  let ptr_box: Box<*const i32> = Box<*const i32> { value: unsafe { ptrat<*const i32>(ptraddr(&value)) } };\n"
         "  let array: [4]i32 = [1, 2, 3, 4];\n"
         "  let slice: []const i32 = array[:];\n"
-        "  let slice_box: Box[[]const i32] = Box[[]const i32] { value: slice };\n"
-        "  let array_box: Box[[4]i32] = Box[[4]i32] { value: array };\n"
-        "  let tuple_box: Box[(i32, bool)] = Box[(i32, bool)] { value: (1, true) };\n"
-        "  let fn_box: Box[Unary[i32]] = Box[Unary[i32]] { value: id_i32 };\n"
+        "  let slice_box: Box<[]const i32> = Box<[]const i32> { value: slice };\n"
+        "  let array_box: Box<[4]i32> = Box<[4]i32> { value: array };\n"
+        "  let tuple_box: Box<(i32, bool)> = Box<(i32, bool)> { value: (1, true) };\n"
+        "  let fn_box: Box<Unary<i32>> = Box<Unary<i32>> { value: id_i32 };\n"
         "  return ptr_box.ptr_marker() + slice_box.slice_marker() + array_box.array_marker() + "
         "tuple_box.tuple_marker() + fn_box.fn_marker() - 15;\n"
         "}\n");
@@ -1449,11 +1449,11 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "method generic_impl_nested_owner.Box[*const i32].ptr_marker[i32] -> i32",
-            "method generic_impl_nested_owner.Box[[]const i32].slice_marker[i32] -> i32",
-            "method generic_impl_nested_owner.Box[[4]i32].array_marker[i32] -> i32",
-            "method generic_impl_nested_owner.Box[(i32, bool)].tuple_marker[i32] -> i32",
-            "method generic_impl_nested_owner.Box[fn(i32) -> i32].fn_marker[i32] -> i32",
+            "method generic_impl_nested_owner.Box<*const i32>.ptr_marker<i32> -> i32",
+            "method generic_impl_nested_owner.Box<[]const i32>.slice_marker<i32> -> i32",
+            "method generic_impl_nested_owner.Box<[4]i32>.array_marker<i32> -> i32",
+            "method generic_impl_nested_owner.Box<(i32, bool)>.tuple_marker<i32> -> i32",
+            "method generic_impl_nested_owner.Box<fn(i32) -> i32>.fn_marker<i32> -> i32",
         });
 }
 
@@ -1461,34 +1461,34 @@ TEST_F(AurexIntegrationTest, M2NestedGenericInstantiationRegressions)
 {
     const fs::path source = write_source_file(tmp_root() / "nested_m2_generics.ax",
         "module nested_m2_generics;\n"
-        "struct Holder[T] { value: T; }\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn make_holder[T](value: T) -> Holder[T] {\n"
-        "  return Holder[T] { value: id(value) };\n"
+        "struct Holder<T> { value: T; }\n"
+        "fn id<T>(value: T) -> T { return value; }\n"
+        "fn make_holder<T>(value: T) -> Holder<T> {\n"
+        "  return Holder<T> { value: id(value) };\n"
         "}\n"
-        "fn unwrap_holder[T](holder: Holder[T]) -> T {\n"
+        "fn unwrap_holder<T>(holder: Holder<T>) -> T {\n"
         "  return id(holder.value);\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let holder = make_holder(7);\n"
-        "  return unwrap_holder(holder) - id[i32](7);\n"
+        "  return unwrap_holder(holder) - id<i32>(7);\n"
         "}\n");
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "id[i32] -> i32",
-            "make_holder[i32]",
-            "unwrap_holder[i32]",
-            "Holder[i32]",
+            "id<i32> -> i32",
+            "make_holder<i32>",
+            "unwrap_holder<i32>",
+            "Holder<i32>",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir,
         {
-            "fn id[i32](value: i32)",
-            "fn make_holder[i32](value: i32)",
-            "fn unwrap_holder[i32]",
+            "fn id<i32>(value: i32)",
+            "fn make_holder<i32>(value: i32)",
+            "fn unwrap_holder<i32>",
         });
 
     const fs::path binary = test_bin_root() / "nested_m2_generics";
@@ -1502,49 +1502,49 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     fs::create_directories(import_dir);
     static_cast<void>(write_source_file(import_dir / "generic_a.ax",
         "module generic_a;\n"
-        "pub struct RemoteBox[T] { pub value: T; }\n"
-        "priv struct SecretBox[T] { pub value: T; }\n"
-        "pub enum RemoteMaybe[T] { none }\n"
-        "priv enum SecretMaybe[T] { none }\n"
-        "pub type RemotePtr[T] = *const T;\n"
-        "priv type SecretPtr[T] = *const T;\n"
-        "pub fn remote_id[T](value: T) -> T { return value; }\n"
-        "priv fn secret_id[T](value: T) -> T { return value; }\n"
-        "pub fn make_box[T](value: T) -> RemoteBox[T] {\n"
-        "  return RemoteBox[T] { value: value };\n"
+        "pub struct RemoteBox<T> { pub value: T; }\n"
+        "priv struct SecretBox<T> { pub value: T; }\n"
+        "pub enum RemoteMaybe<T> { none }\n"
+        "priv enum SecretMaybe<T> { none }\n"
+        "pub type RemotePtr<T> = *const T;\n"
+        "priv type SecretPtr<T> = *const T;\n"
+        "pub fn remote_id<T>(value: T) -> T { return value; }\n"
+        "priv fn secret_id<T>(value: T) -> T { return value; }\n"
+        "pub fn make_box<T>(value: T) -> RemoteBox<T> {\n"
+        "  return RemoteBox<T> { value: value };\n"
         "}\n"));
     static_cast<void>(write_source_file(import_dir / "generic_b.ax",
         "module generic_b;\n"
-        "pub struct RemoteBox[T] { pub value: T; }\n"
-        "pub fn remote_id[T](value: T) -> T { return value; }\n"));
+        "pub struct RemoteBox<T> { pub value: T; }\n"
+        "pub fn remote_id<T>(value: T) -> T { return value; }\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_owner.ax",
         "module generic_method_owner;\n"
-        "pub struct Box[T] { pub value: T; }\n"));
+        "pub struct Box<T> { pub value: T; }\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_ext_a.ax",
         "module generic_method_ext_a;\n"
         "import generic_method_owner as owner;\n"
-        "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
+        "impl<T> owner.Box<T> {\n"
+        "  pub fn read(self: &owner.Box<T>) -> T where T: Copy { return self.value; }\n"
         "}\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_ext_b.ax",
         "module generic_method_ext_b;\n"
         "import generic_method_owner as owner;\n"
-        "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
+        "impl<T> owner.Box<T> {\n"
+        "  pub fn read(self: &owner.Box<T>) -> T where T: Copy { return self.value; }\n"
         "}\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_ext_private.ax",
         "module generic_method_ext_private;\n"
         "import generic_method_owner as owner;\n"
-        "impl[T] owner.Box[T] {\n"
-        "  priv fn hidden(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
+        "impl<T> owner.Box<T> {\n"
+        "  priv fn hidden(self: &owner.Box<T>) -> T where T: Copy { return self.value; }\n"
         "}\n"));
 
     const fs::path use_imported = write_source_file(tmp_root() / "use_imported_generics.ax",
         "module use_imported_generics;\n"
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let box: ga.RemoteBox[i32] = ga.make_box[i32](ga.remote_id(5));\n"
-        "  let ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&box.value)) };\n"
+        "  let box: ga.RemoteBox<i32> = ga.make_box<i32>(ga.remote_id(5));\n"
+        "  let ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&box.value)) };\n"
         "  return ga.remote_id(unsafe { *ptr }) - 5;\n"
         "}\n");
     require_success(aurexc() + " -I " + q(import_dir) + " --check " + q(use_imported));
@@ -1553,23 +1553,23 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module imported_checked_generics;\n"
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let box: ga.RemoteBox[i32] = ga.make_box(9);\n"
+        "  let box: ga.RemoteBox<i32> = ga.make_box(9);\n"
         "  return ga.remote_id(box.value) - 9;\n"
         "}\n");
     const std::string checked =
         require_success(aurexc() + " -I " + q(import_dir) + " --emit=checked " + q(imported_checked_source)).output;
     expect_contains_all(checked,
         {
-            "RemoteBox[i32]",
-            "remote_id[i32]",
-            "make_box[i32]",
+            "RemoteBox<i32>",
+            "remote_id<i32>",
+            "make_box<i32>",
         });
 
     const fs::path private_generic_type = write_source_file(tmp_root() / "private_generic_type.ax",
         "module private_generic_type;\n"
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let box: ga.SecretBox[i32] = ga.SecretBox[i32] { value: 1 };\n"
+        "  let box: ga.SecretBox<i32> = ga.SecretBox<i32> { value: 1 };\n"
         "  return box.value;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_type)).output,
@@ -1578,7 +1578,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module private_generic_enum;\n"
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let value: ga.SecretMaybe[i32] = ga.SecretMaybe[i32].none;\n"
+        "  let value: ga.SecretMaybe<i32> = ga.SecretMaybe<i32>.none;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_enum)).output,
@@ -1588,7 +1588,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: ga.SecretPtr[i32] = null;\n"
+        "  let ptr: ga.SecretPtr<i32> = null;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_alias)).output,
@@ -1598,7 +1598,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
             "module unqualified_private_generic_enum;\n"
             "import generic_a;\n"
             "fn main() -> i32 {\n"
-            "  let value: SecretMaybe[i32] = SecretMaybe[i32].none;\n"
+            "  let value: SecretMaybe<i32> = SecretMaybe<i32>.none;\n"
             "  return 0;\n"
             "}\n");
     expect_contains(
@@ -1610,7 +1610,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
             "import generic_a;\n"
             "fn main() -> i32 {\n"
             "  let value: i32 = 1;\n"
-            "  let ptr: SecretPtr[i32] = null;\n"
+            "  let ptr: SecretPtr<i32> = null;\n"
             "  return 0;\n"
             "}\n");
     expect_contains(
@@ -1620,7 +1620,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path private_generic_fn = write_source_file(tmp_root() / "private_generic_fn.ax",
         "module private_generic_fn;\n"
         "import generic_a as ga;\n"
-        "fn main() -> i32 { return ga.secret_id[i32](1); }\n");
+        "fn main() -> i32 { return ga.secret_id<i32>(1); }\n");
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_fn)).output,
         "generic function is private: generic_a.secret_id");
 
@@ -1629,7 +1629,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "import generic_a;\n"
         "import generic_b;\n"
         "fn main() -> i32 {\n"
-        "  let box: RemoteBox[i32] = RemoteBox[i32] { value: 1 };\n"
+        "  let box: RemoteBox<i32> = RemoteBox<i32> { value: 1 };\n"
         "  return remote_id(box.value);\n"
         "}\n");
     const std::string ambiguous_output =
@@ -1645,7 +1645,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module ambiguous_generic_selector;\n"
         "import generic_facade as facade;\n"
         "fn main() -> i32 {\n"
-        "  let box: facade.RemoteBox[i32] = facade.RemoteBox[i32] { value: 1 };\n"
+        "  let box: facade.RemoteBox<i32> = facade.RemoteBox<i32> { value: 1 };\n"
         "  return facade.remote_id(box.value);\n"
         "}\n");
     const std::string selector_ambiguous_output =
@@ -1659,7 +1659,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "import generic_method_ext_a;\n"
         "import generic_method_ext_b;\n"
         "fn main() -> i32 {\n"
-        "  let box: owner.Box[i32] = owner.Box[i32] { value: 1 };\n"
+        "  let box: owner.Box<i32> = owner.Box<i32> { value: 1 };\n"
         "  return box.read();\n"
         "}\n");
     expect_contains(
@@ -1671,7 +1671,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "import generic_method_owner as owner;\n"
         "import generic_method_ext_private;\n"
         "fn main() -> i32 {\n"
-        "  let box: owner.Box[i32] = owner.Box[i32] { value: 1 };\n"
+        "  let box: owner.Box<i32> = owner.Box<i32> { value: 1 };\n"
         "  return box.hidden();\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_method)).output,
@@ -1681,7 +1681,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module unqualified_private_generics;\n"
         "import generic_a;\n"
         "fn main() -> i32 {\n"
-        "  let box: SecretBox[i32] = SecretBox[i32] { value: 1 };\n"
+        "  let box: SecretBox<i32> = SecretBox<i32> { value: 1 };\n"
         "  return box.value;\n"
         "}\n");
     const std::string unqualified_private_output =
@@ -1691,80 +1691,80 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path unqualified_private_generic_fn = write_source_file(tmp_root() / "unqualified_private_generic_fn.ax",
         "module unqualified_private_generic_fn;\n"
         "import generic_a;\n"
-        "fn main() -> i32 { return secret_id[i32](1); }\n");
+        "fn main() -> i32 { return secret_id<i32>(1); }\n");
     expect_contains(
         require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(unqualified_private_generic_fn)).output,
         "unknown generic function: secret_id");
 
     const fs::path generic_inference_edges = write_source_file(tmp_root() / "generic_inference_edges.ax",
         "module generic_inference_edges;\n"
-        "struct Box[T] { value: T; }\n"
-        "struct ArrayBox[T] { data: [2]T; }\n"
-        "fn pick[T](lhs: T, rhs: T) -> T { return lhs; }\n"
-        "fn ptr_id[T](value: *const T) -> *const T { return value; }\n"
-        "fn array_ptr_id[T](value: *mut [2]T) -> *mut [2]T { return value; }\n"
+        "struct Box<T> { value: T; }\n"
+        "struct ArrayBox<T> { data: [2]T; }\n"
+        "fn pick<T>(lhs: T, rhs: T) -> T { return lhs; }\n"
+        "fn ptr_id<T>(value: *const T) -> *const T { return value; }\n"
+        "fn array_ptr_id<T>(value: *mut [2]T) -> *mut [2]T { return value; }\n"
         "fn main() -> i32 {\n"
-        "  let b: Box[i32] = Box[i32] { value: 1 };\n"
-        "  let chosen: Box[i32] = pick(b, Box[i32] { value: 2 });\n"
-        "  let ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&chosen.value)) };\n"
+        "  let b: Box<i32> = Box<i32> { value: 1 };\n"
+        "  let chosen: Box<i32> = pick(b, Box<i32> { value: 2 });\n"
+        "  let ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&chosen.value)) };\n"
         "  let same_ptr = ptr_id(ptr);\n"
         "  let values: *mut [2]i32 = null;\n"
         "  let same_values = array_ptr_id(values);\n"
-        "  let size: usize = sizeof[ArrayBox[i32]];\n"
-        "  return unsafe { *same_ptr } + unsafe { (*same_values)[0] } + cast[i32](size) - 9;\n"
+        "  let size: usize = sizeof<ArrayBox<i32>>;\n"
+        "  return unsafe { *same_ptr } + unsafe { (*same_values)[0] } + cast<i32>(size) - 9;\n"
         "}\n");
     require_success(aurexc() + " --check " + q(generic_inference_edges));
 
     const fs::path generic_placeholder_edges = write_source_file(tmp_root() / "generic_placeholder_edges.ax",
         "module generic_placeholder_edges;\n"
-        "type Unary[T] = fn(T) -> T;\n"
-        "struct Box[T] { value: T; }\n"
-        "fn id[T](value: T) -> T { return value; }\n"
+        "type Unary<T> = fn(T) -> T;\n"
+        "struct Box<T> { value: T; }\n"
+        "fn id<T>(value: T) -> T { return value; }\n"
         "fn id_i32(value: i32) -> i32 { return value; }\n"
-        "fn ptr_box[T](value: *const T) -> Box[*const T] {\n"
-        "  return Box[*const T] { value: id[*const T](value) };\n"
+        "fn ptr_box<T>(value: *const T) -> Box<*const T> {\n"
+        "  return Box<*const T> { value: id<*const T>(value) };\n"
         "}\n"
-        "fn array_ptr_box[T](value: *mut [2]T) -> Box[*mut [2]T] {\n"
-        "  return Box[*mut [2]T] { value: id[*mut [2]T](value) };\n"
+        "fn array_ptr_box<T>(value: *mut [2]T) -> Box<*mut [2]T> {\n"
+        "  return Box<*mut [2]T> { value: id<*mut [2]T>(value) };\n"
         "}\n"
-        "fn slice_box[T](value: []const T) -> Box[[]const T] {\n"
-        "  return Box[[]const T] { value: id[[]const T](value) };\n"
+        "fn slice_box<T>(value: []const T) -> Box<[]const T> {\n"
+        "  return Box<[]const T> { value: id<[]const T>(value) };\n"
         "}\n"
-        "fn function_box[T](value: Unary[T]) -> Box[Unary[T]] {\n"
-        "  return Box[Unary[T]] { value: id[Unary[T]](value) };\n"
+        "fn function_box<T>(value: Unary<T>) -> Box<Unary<T>> {\n"
+        "  return Box<Unary<T>> { value: id<Unary<T>>(value) };\n"
         "}\n"
-        "fn tuple_box[T](value: (T, bool)) -> Box[(T, bool)] {\n"
-        "  return Box[(T, bool)] { value: id[(T, bool)](value) };\n"
+        "fn tuple_box<T>(value: (T, bool)) -> Box<(T, bool)> {\n"
+        "  return Box<(T, bool)> { value: id<(T, bool)>(value) };\n"
         "}\n"
-        "fn wrap_ptr[U](value: *const U) -> Box[*const U] {\n"
-        "  return ptr_box[U](value);\n"
+        "fn wrap_ptr<U>(value: *const U) -> Box<*const U> {\n"
+        "  return ptr_box<U>(value);\n"
         "}\n"
-        "fn wrap_array[V](value: *mut [2]V) -> Box[*mut [2]V] {\n"
-        "  return array_ptr_box[V](value);\n"
+        "fn wrap_array<V>(value: *mut [2]V) -> Box<*mut [2]V> {\n"
+        "  return array_ptr_box<V>(value);\n"
         "}\n"
-        "fn wrap_slice[W](value: []const W) -> Box[[]const W] {\n"
-        "  return slice_box[W](value);\n"
+        "fn wrap_slice<W>(value: []const W) -> Box<[]const W> {\n"
+        "  return slice_box<W>(value);\n"
         "}\n"
-        "fn wrap_function[X](value: Unary[X]) -> Box[Unary[X]] {\n"
-        "  return function_box[X](value);\n"
+        "fn wrap_function<X>(value: Unary<X>) -> Box<Unary<X>> {\n"
+        "  return function_box<X>(value);\n"
         "}\n"
-        "fn wrap_tuple[Y](value: (Y, bool)) -> Box[(Y, bool)] {\n"
-        "  return tuple_box[Y](value);\n"
+        "fn wrap_tuple<Y>(value: (Y, bool)) -> Box<(Y, bool)> {\n"
+        "  return tuple_box<Y>(value);\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let ptr: *const i32 = null;\n"
         "  let boxed = wrap_ptr(ptr);\n"
         "  let values: *mut [2]i32 = null;\n"
         "  let array_boxed = wrap_array(values);\n"
-        "  let size: usize = sizeof[Box[*const i32]] + sizeof[Box[*mut [2]i32]];\n"
-        "  return cast[i32](size) - cast[i32](sizeof[Box[*const i32]] + sizeof[Box[*mut [2]i32]]);\n"
+        "  let size: usize = sizeof<Box<*const i32>> + sizeof<Box<*mut [2]i32>>;\n"
+        "  return cast<i32>(size) - cast<i32>(sizeof<Box<*const i32>> + sizeof<Box<*mut [2]i32>>);\n"
         "}\n");
     require_success(aurexc() + " --check " + q(generic_placeholder_edges));
 
     const fs::path missing_visible_generic_type = write_source_file(tmp_root() / "missing_visible_generic_type.ax",
         "module missing_visible_generic_type;\n"
         "fn main() -> i32 {\n"
-        "  let value: Missing[i32] = Missing[i32] { value: 1 };\n"
+        "  let value: Missing<i32> = Missing<i32> { value: 1 };\n"
         "  return 0;\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_visible_generic_type)).output,
@@ -1774,7 +1774,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module missing_qualified_generic_type;\n"
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let value: ga.Missing[i32] = ga.Missing[i32] { value: 1 };\n"
+        "  let value: ga.Missing<i32> = ga.Missing<i32> { value: 1 };\n"
         "  return 0;\n"
         "}\n");
     expect_contains(
@@ -1783,17 +1783,17 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path missing_visible_generic_fn = write_source_file(tmp_root() / "missing_visible_generic_fn.ax",
         "module missing_visible_generic_fn;\n"
-        "fn main() -> i32 { return missing[i32](1); }\n");
+        "fn main() -> i32 { return missing<i32>(1); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_visible_generic_fn)).output,
         "unknown generic function: missing");
 
     const fs::path invalid_generic_type_arg = write_source_file(tmp_root() / "invalid_generic_type_arg.ax",
         "module invalid_generic_type_arg;\n"
-        "struct Box[T] { value: T; }\n"
-        "fn id[T](value: T) -> T { return value; }\n"
+        "struct Box<T> { value: T; }\n"
+        "fn id<T>(value: T) -> T { return value; }\n"
         "fn main() -> i32 {\n"
-        "  let value: Box[Missing] = Box[Missing] { value: 1 };\n"
-        "  return id[Missing](1);\n"
+        "  let value: Box<Missing> = Box<Missing> { value: 1 };\n"
+        "  return id<Missing>(1);\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(invalid_generic_type_arg)).output, "unknown type: Missing");
@@ -1801,35 +1801,35 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path missing_qualified_generic_fn = write_source_file(tmp_root() / "missing_qualified_generic_fn.ax",
         "module missing_qualified_generic_fn;\n"
         "import generic_a as ga;\n"
-        "fn main() -> i32 { return ga.missing[i32](1); }\n");
+        "fn main() -> i32 { return ga.missing<i32>(1); }\n");
     expect_contains(
         require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(missing_qualified_generic_fn)).output,
         "unknown generic function in module generic_a: missing");
 
     const fs::path generic_struct_duplicate_field = write_source_file(tmp_root() / "generic_struct_duplicate_field.ax",
         "module generic_struct_duplicate_field;\n"
-        "struct Bad[T] { value: T; value: T; }\n"
+        "struct Bad<T> { value: T; value: T; }\n"
         "fn main() -> i32 {\n"
-        "  let size: usize = sizeof[Bad[i32]];\n"
-        "  return cast[i32](size);\n"
+        "  let size: usize = sizeof<Bad<i32>>;\n"
+        "  return cast<i32>(size);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_struct_duplicate_field)).output,
         "duplicate struct field: value");
 
     const fs::path generic_struct_invalid_field = write_source_file(tmp_root() / "generic_struct_invalid_field.ax",
         "module generic_struct_invalid_field;\n"
-        "struct Bad[T] { value: void; }\n"
+        "struct Bad<T> { value: void; }\n"
         "fn main() -> i32 {\n"
-        "  let size: usize = sizeof[Bad[i32]];\n"
-        "  return cast[i32](size);\n"
+        "  let size: usize = sizeof<Bad<i32>>;\n"
+        "  return cast<i32>(size);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_struct_invalid_field)).output,
         "field type is not valid storage");
 
     const fs::path generic_impl_missing_target = write_source_file(tmp_root() / "generic_impl_missing_target.ax",
         "module generic_impl_missing_target;\n"
-        "impl[T] Missing[T] {\n"
-        "  fn value(self: &Missing[T]) -> T { return self.value; }\n"
+        "impl<T> Missing<T> {\n"
+        "  fn value(self: &Missing<T>) -> T { return self.value; }\n"
         "}\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_impl_missing_target)).output,
@@ -1839,9 +1839,9 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         write_source_file(tmp_root() / "generic_struct_where_unsatisfied.ax",
             "module generic_struct_where_unsatisfied;\n"
             "struct Pair { first: i32; second: i32; }\n"
-            "struct EqBox[T] where T: Eq { value: T; }\n"
+            "struct EqBox<T> where T: Eq { value: T; }\n"
             "fn main() -> i32 {\n"
-            "  let value: EqBox[Pair] = EqBox[Pair] { value: Pair { first: 1, second: 2 } };\n"
+            "  let value: EqBox<Pair> = EqBox<Pair> { value: Pair { first: 1, second: 2 } };\n"
             "  return 0;\n"
             "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_struct_where_unsatisfied)).output,
@@ -1849,9 +1849,9 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path invalid_generic_enum_arg = write_source_file(tmp_root() / "invalid_generic_enum_arg.ax",
         "module invalid_generic_enum_arg;\n"
-        "enum Maybe[T] { none }\n"
+        "enum Maybe<T> { none }\n"
         "fn main() -> i32 {\n"
-        "  let value: Maybe[Missing] = Maybe[Missing].none;\n"
+        "  let value: Maybe<Missing> = Maybe<Missing>.none;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(
@@ -1859,9 +1859,9 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path invalid_generic_alias_arg = write_source_file(tmp_root() / "invalid_generic_alias_arg.ax",
         "module invalid_generic_alias_arg;\n"
-        "type Ptr[T] = *const T;\n"
+        "type Ptr<T> = *const T;\n"
         "fn main() -> i32 {\n"
-        "  let value: Ptr[Missing] = null;\n"
+        "  let value: Ptr<Missing> = null;\n"
         "  return 0;\n"
         "}\n");
     expect_contains(
@@ -1869,7 +1869,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path mismatched_inference = write_source_file(tmp_root() / "mismatched_inference.ax",
         "module mismatched_inference;\n"
-        "fn pick[T](lhs: T, rhs: T) -> T { return lhs; }\n"
+        "fn pick<T>(lhs: T, rhs: T) -> T { return lhs; }\n"
         "fn main() -> i32 { return pick(1, true); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatched_inference)).output,
         "cannot infer generic type argument for call to pick");
@@ -1877,7 +1877,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path pointer_inference_mutability_mismatch =
         write_source_file(tmp_root() / "pointer_inference_mutability_mismatch.ax",
             "module pointer_inference_mutability_mismatch;\n"
-            "fn ptr_id[T](value: *mut T) -> *mut T { return value; }\n"
+            "fn ptr_id<T>(value: *mut T) -> *mut T { return value; }\n"
             "fn main() -> i32 {\n"
             "  let ptr: *const i32 = null;\n"
             "  let same = ptr_id(ptr);\n"
@@ -1889,7 +1889,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path reference_inference_mutability_mismatch =
         write_source_file(tmp_root() / "reference_inference_mutability_mismatch.ax",
             "module reference_inference_mutability_mismatch;\n"
-            "fn ref_id[T](value: &mut T) -> &mut T { return value; }\n"
+            "fn ref_id<T>(value: &mut T) -> &mut T { return value; }\n"
             "fn main() -> i32 {\n"
             "  var value: i32 = 1;\n"
             "  let shared: &i32 = &value;\n"
@@ -1902,7 +1902,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path slice_inference_mutability_mismatch =
         write_source_file(tmp_root() / "slice_inference_mutability_mismatch.ax",
             "module slice_inference_mutability_mismatch;\n"
-            "fn slice_id[T](value: []mut T) -> []mut T { return value; }\n"
+            "fn slice_id<T>(value: []mut T) -> []mut T { return value; }\n"
             "fn main() -> i32 {\n"
             "  let values: [2]i32 = [1, 2];\n"
             "  let slice: []const i32 = values[:];\n"
@@ -1914,7 +1914,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path array_inference_count_mismatch = write_source_file(tmp_root() / "array_inference_count_mismatch.ax",
         "module array_inference_count_mismatch;\n"
-        "fn array_ptr_id[T](value: *mut [2]T) -> *mut [2]T { return value; }\n"
+        "fn array_ptr_id<T>(value: *mut [2]T) -> *mut [2]T { return value; }\n"
         "fn main() -> i32 {\n"
         "  let values: *mut [3]i32 = null;\n"
         "  let same = array_ptr_id(values);\n"
@@ -1925,7 +1925,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path builtin_inference_mismatch = write_source_file(tmp_root() / "builtin_inference_mismatch.ax",
         "module builtin_inference_mismatch;\n"
-        "fn require_i32[T](value: i32, payload: T) -> T { return payload; }\n"
+        "fn require_i32<T>(value: i32, payload: T) -> T { return payload; }\n"
         "fn main() -> i32 { return require_i32(true, 1); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(builtin_inference_mismatch)).output,
         "cannot infer generic type argument for call to require_i32");
@@ -1933,17 +1933,17 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path struct_origin_inference_mismatch =
         write_source_file(tmp_root() / "struct_origin_inference_mismatch.ax",
             "module struct_origin_inference_mismatch;\n"
-            "struct Box[T] { value: T; }\n"
-            "struct Wrap[T] { value: T; }\n"
-            "fn take_box[T](value: Box[T]) -> T { return value.value; }\n"
-            "fn main() -> i32 { return take_box(Wrap[i32] { value: 1 }); }\n");
+            "struct Box<T> { value: T; }\n"
+            "struct Wrap<T> { value: T; }\n"
+            "fn take_box<T>(value: Box<T>) -> T { return value.value; }\n"
+            "fn main() -> i32 { return take_box(Wrap<i32> { value: 1 }); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(struct_origin_inference_mismatch)).output,
         "cannot infer generic type argument for call to take_box");
 
     const fs::path function_inference_signature_mismatch =
         write_source_file(tmp_root() / "function_inference_signature_mismatch.ax",
             "module function_inference_signature_mismatch;\n"
-            "fn apply[T](callback: fn(T) -> T, value: T) -> T { return callback(value); }\n"
+            "fn apply<T>(callback: fn(T) -> T, value: T) -> T { return callback(value); }\n"
             "fn zero() -> i32 { return 1; }\n"
             "fn main() -> i32 { return apply(zero, 1); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(function_inference_signature_mismatch)).output,
@@ -1951,7 +1951,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path tuple_inference_arity_mismatch = write_source_file(tmp_root() / "tuple_inference_arity_mismatch.ax",
         "module tuple_inference_arity_mismatch;\n"
-        "fn take_pair[T](value: (T, bool)) -> T {\n"
+        "fn take_pair<T>(value: (T, bool)) -> T {\n"
         "  let (first, _) = value;\n"
         "  return first;\n"
         "}\n"
@@ -1962,20 +1962,20 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path generic_call_arity = write_source_file(tmp_root() / "generic_call_arity.ax",
         "module generic_call_arity;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
+        "fn id<T>(value: T) -> T { return value; }\n"
         "fn main() -> i32 { return id(1, 2); }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_call_arity)).output, "argument count mismatch");
 
     const fs::path generic_arity = write_source_file(tmp_root() / "generic_arity.ax",
         "module generic_arity;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[i32, bool](1); }\n");
+        "fn id<T>(value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id<i32, bool>(1); }\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_arity)).output, "too many generic arguments");
 
     const fs::path generic_prototype = write_source_file(tmp_root() / "generic_prototype.ax",
         "module generic_prototype;\n"
-        "fn id[T](value: T) -> T;\n"
+        "fn id<T>(value: T) -> T;\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_prototype)).output,
         "generic functions with C ABI or prototypes are not supported by M2 semantic analysis");
@@ -1983,7 +1983,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
     const fs::path generic_export = write_source_file(tmp_root() / "generic_export.ax",
         "module generic_export;\n"
         "@name(\"id\")\n"
-        "export c fn id[T](value: T) -> T { return value; }\n"
+        "export c fn id<T>(value: T) -> T { return value; }\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_export)).output,
         "generic functions with C ABI or prototypes are not supported by M2 semantic analysis");
@@ -1992,21 +1992,21 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module generic_method;\n"
         "struct Box { value: i32; }\n"
         "impl Box {\n"
-        "  fn keep[T](value: T) -> T { return value; }\n"
-        "  fn id[T](self: &Box, value: T) -> T { return value; }\n"
+        "  fn keep<T>(value: T) -> T { return value; }\n"
+        "  fn id<T>(self: &Box, value: T) -> T { return value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let box: Box = Box { value: 1 };\n"
         "  let box_ref: &Box = &box;\n"
-        "  let flag: bool = box.id[bool](true);\n"
-        "  if flag { return box.id(41) + box_ref.id[i32](1) + Box.keep[i32](1); }\n"
+        "  let flag: bool = box.id<bool>(true);\n"
+        "  if flag { return box.id(41) + box_ref.id<i32>(1) + Box.keep<i32>(1); }\n"
         "  return 1;\n"
         "}\n");
     expect_contains_all(require_success(aurexc() + " --emit=checked " + q(generic_method)).output,
         {
-            "method generic_method.Box.keep[i32] -> i32",
-            "method generic_method.Box.id[bool] -> bool",
-            "method generic_method.Box.id[i32] -> i32",
+            "method generic_method.Box.keep<i32> -> i32",
+            "method generic_method.Box.id<bool> -> bool",
+            "method generic_method.Box.id<i32> -> i32",
             "receiver_access=shared auto_borrow=false two_phase=false",
         });
 
@@ -2018,18 +2018,18 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "}\n"
         "fn main() -> i32 {\n"
         "  let box: Box = Box { value: 1 };\n"
-        "  return box.read[i32]();\n"
+        "  return box.read<i32>();\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_method_call)).output,
         "method generic_method_call.Box.read is not generic");
 
     const fs::path generic_return_inference = write_source_file(tmp_root() / "generic_return_inference.ax",
         "module generic_return_inference;\n"
-        "fn identity[T](value: T) { return value; }\n"
+        "fn identity<T>(value: T) { return value; }\n"
         "fn main() -> i32 { return identity(1); }\n");
     const std::string inferred_return_checked =
         require_success(aurexc() + " --emit=checked " + q(generic_return_inference)).output;
-    expect_contains(inferred_return_checked, "identity[i32] -> i32");
+    expect_contains(inferred_return_checked, "identity<i32> -> i32");
 }
 
 } // namespace aurex::test

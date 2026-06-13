@@ -1,6 +1,6 @@
 module generic_body_return_unknown;
 
-fn make[T]() -> T {
+fn make<T>() -> T {
     return 0;
 }
 

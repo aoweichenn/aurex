@@ -1,6 +1,6 @@
 module empty_generic_params_struct;
 
-struct Box[] {
+struct Box<> {
     value: i32;
 }
 

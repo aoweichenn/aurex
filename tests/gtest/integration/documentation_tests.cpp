@@ -1466,7 +1466,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "docs/zh/progress.md", "M13c Borrowed Composition-To-Supertrait IR / Backend Runtime 已完成");
     expect_document_contains(
         "docs/zh/progress.md", "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only 已完成");
-    expect_document_contains("docs/zh/progress.md", "dynproject[SourcePrincipal, TargetSupertrait](view)");
+    expect_document_contains("docs/zh/progress.md", "dynproject<SourcePrincipal, TargetSupertrait>(view)");
     expect_document_contains("docs/zh/progress.md", "CompositionProjectionFact{kind=composition_to_supertrait}");
     expect_document_contains("docs/zh/progress.md", "M13a Advanced Dyn Remaining Policy Design Baseline 已完成");
     expect_document_contains("docs/zh/progress.md", "m13a_dyn_advanced_design_gate_baseline()");
@@ -1697,8 +1697,8 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M13b Borrowed Composition-To-Supertrait Frontend / Query / Sema Check-Only");
     expect_document_contains("docs/zh/language-manual.md", "m13a_dyn_advanced_design_gate_baseline");
     expect_document_contains("docs/zh/language-manual.md", "composes_existing_metadata_policies");
-    expect_document_contains("docs/zh/language-manual.md", "dynproject[SourcePrincipal, TargetSupertrait](view)");
-    expect_document_contains("docs/zh/language-manual.md", "dynproject[Child, Parent](view)");
+    expect_document_contains("docs/zh/language-manual.md", "dynproject<SourcePrincipal, TargetSupertrait>(view)");
+    expect_document_contains("docs/zh/language-manual.md", "dynproject<Child, Parent>(view)");
     expect_document_contains("docs/zh/language-manual.md", "BorrowedDynViewPathFact");
     expect_document_contains("docs/zh/language-manual.md", "let parent: &dyn Parent = view");
     expect_document_contains("docs/zh/language-manual.md", "view.parent()");
@@ -1715,7 +1715,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "查询 M20d runtime lowering ABI design closure gate");
     expect_document_contains(
         "docs/zh/language-manual.md", "GenericParam  = Identifier | \"const\" Identifier \":\" Type | \"origin\" Identifier");
-    expect_document_contains("docs/zh/language-manual.md", "ArrayView[i32, 4]");
+    expect_document_contains("docs/zh/language-manual.md", "ArrayView<i32, 4>");
     expect_document_contains("docs/zh/language-manual.md", "转发时必须和目标 const parameter type 一致");
     expect_document_contains("docs/zh/language-manual.md", "M12b direct composition dispatch release closure");
     expect_document_contains("docs/zh/language-manual.md", "dyn (Draw + Debug)");
@@ -1738,13 +1738,13 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M20c 新增 `m20c_owned_dyn_drop_allocator_identity_gate_baseline()`");
     expect_document_contains("docs/zh/usage.md",
         "M20d 新增 `m20d_owned_dyn_runtime_lowering_abi_gate_baseline()`");
-    expect_document_contains("docs/zh/usage.md", "ArrayView[i32, 4]");
+    expect_document_contains("docs/zh/usage.md", "ArrayView<i32, 4>");
     expect_document_contains("docs/zh/usage.md", "转发时必须和目标 const parameter type 一致");
     expect_document_contains("docs/zh/usage.md", "BorrowedDynViewPathFact{use=method_dispatch}");
     expect_document_contains("docs/zh/usage.md", "m13a_dyn_advanced_design_gate_baseline");
     expect_document_contains("docs/zh/usage.md", "score_direct");
     expect_document_contains("docs/zh/usage.md", "score_supertrait");
-    expect_document_contains("docs/zh/usage.md", "dynproject[Render, Draw](view)");
+    expect_document_contains("docs/zh/usage.md", "dynproject<Render, Draw>(view)");
     expect_document_contains("docs/zh/usage.md", "composition_metadata=principal_set_metadata_v1");
 
     expect_document_contains("docs/zh/m11-advanced-dyn-design.md",
@@ -1849,7 +1849,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
         "M13d 已完成 query/cache/tooling");
     expect_document_contains("docs/zh/m13-advanced-dyn-design.md", "composition_supertrait_chains");
     expect_document_contains("docs/zh/m13-advanced-dyn-design.md",
-        "dynproject[SourcePrincipal, TargetSupertrait](view)");
+        "dynproject<SourcePrincipal, TargetSupertrait>(view)");
     expect_document_contains("docs/zh/m13-advanced-dyn-design.md",
         "trait_object_composition_project` +");
     expect_document_contains("docs/zh/m13-advanced-dyn-design.md",
@@ -1899,7 +1899,7 @@ TEST_F(AurexIntegrationTest, M11AdvancedDynDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m16-const-generic-check-only-release.md",
         "GenericInstanceKey::const_args");
     expect_document_contains("docs/zh/m16-const-generic-check-only-release.md",
-        "struct ArrayView[T, const N: usize]");
+        "struct ArrayView<T, const N: usize>");
     expect_document_contains("docs/zh/m16-const-generic-check-only-release.md",
         "转发时必须和目标 const parameter type 一致");
     expect_document_contains("docs/zh/m16-const-generic-check-only-release.md",

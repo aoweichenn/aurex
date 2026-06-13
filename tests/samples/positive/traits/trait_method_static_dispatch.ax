@@ -14,11 +14,11 @@ impl Reader for File {
     }
 }
 
-fn use_reader[T](value: &T) -> i32 where T: Reader {
+fn use_reader<T>(value: &T) -> i32 where T: Reader {
     return value.read();
 }
 
 fn main() -> i32 {
     let file = File { value: 42 };
-    return use_reader[File](&file) - 42;
+    return use_reader<File>(&file) - 42;
 }

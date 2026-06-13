@@ -9,27 +9,27 @@ to test.
 Not part of M2 syntax or semantics:
 
 ```aurex
-fn add[T: Add](a: T, b: T) -> T {
+fn add<T: Add>(a: T, b: T) -> T {
     return a;
 }
 
-fn copy[T](value: T) -> T where T: Copy {
+fn copy<T>(value: T) -> T where T: Copy {
     return value;
 }
 
 impl Box {
-    fn id[T](self: *const Box, value: T) -> T {
+    fn id<T>(self: *const Box, value: T) -> T {
         return value;
     }
 }
 ```
 
-M2 uses `[]` for generic parameters and arguments. Legacy angle-bracket generic
-forms are rejected because `<` and `>` are comparison tokens, not generic
-delimiters.
+M2 uses `<...>` for generic parameters and arguments. Legacy `[]` generic
+forms are rejected because `[` and `]` are reserved for arrays, slices, indexes,
+patterns, attributes, and origins.
 
 Generic structs, generic enums, generic type aliases, generic functions, and
-`impl[T] Box[T]`-style owner generics are supported. Inline bounds (`T: Add`),
+`impl<T> Box<T>`-style owner generics are supported. Inline bounds (`T: Add`),
 resource capabilities such as `Copy` / `Drop`, method-local generic parameters,
 and generic C ABI/prototype functions are not supported by M2 semantic
 analysis.
@@ -45,7 +45,8 @@ Not part of M2:
 [1 + 2]i32
 []i32
 [-1]i32
-Box[]
+Box<>
+Box[i32]
 foo::bar
 foo::bar::Baz
 fn(i32, ...) -> i32
@@ -109,7 +110,7 @@ let value = {
 
 Rules:
 
-- Explicit generic calls use `id[i32](1)`. The old `id::[i32](1)` spelling is
+- Explicit generic calls use `id<i32>(1)`. The old `id::[i32](1)` spelling is
   rejected.
 - Tuple literals use `(a, b)` or `(a,)`. Empty tuple literal `()` is rejected.
 - `str` has checked byte-range slicing with `text[l:r]`, but single-index
@@ -141,7 +142,7 @@ Rules:
 
 - Wildcard imports are rejected; use module imports with aliases.
 - Bare enum case patterns are rejected. Use `.case` when the matched enum type
-  is known, or `Type.case` / `Type[Args].case` for an explicit enum case
+  is known, or `Type.case` / `Type<Args>.case` for an explicit enum case
   pattern.
 - Bare identifiers in patterns always introduce bindings.
 - Import aliases are module-domain names and cannot be shadowed by locals or

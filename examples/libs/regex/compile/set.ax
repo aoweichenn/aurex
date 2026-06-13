@@ -36,10 +36,10 @@ pub fn compile_set_bytes_with_options(patterns: []const str, options: t.RegexOpt
 }
 
 pub fn destroy_set(compiled: &mut t.RegexSet) -> void {
-    alloc.free_typed[t.State](compiled.states);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
-    alloc.free_typed[t.SetLiteralNode](compiled.literal_nodes);
-    alloc.free_typed[t.SetLiteralTerminal](compiled.literal_terminals);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.SetLiteralNode>(compiled.literal_nodes);
+    alloc.free_typed<t.SetLiteralTerminal>(compiled.literal_terminals);
     compiled.mode = t.MODE_TEXT;
     compiled.options = t.default_options();
     compiled.states = null;
@@ -68,10 +68,10 @@ pub fn range_count(compiled: &t.RegexSet) -> usize {
 }
 
 pub fn program_bytes(compiled: &t.RegexSet) -> usize {
-    return compiled.state_capacity * sizeof[t.State]
-        + compiled.range_capacity * sizeof[t.ClassRange]
-        + compiled.literal_node_len * sizeof[t.SetLiteralNode]
-        + compiled.literal_terminal_len * sizeof[t.SetLiteralTerminal];
+    return compiled.state_capacity * sizeof<t.State>
+        + compiled.range_capacity * sizeof<t.ClassRange>
+        + compiled.literal_node_len * sizeof<t.SetLiteralNode>
+        + compiled.literal_terminal_len * sizeof<t.SetLiteralTerminal>;
 }
 
 fn compile_set_with_mode(patterns: []const str, mode: u8, options: t.RegexOptions) -> t.RegexSet {
@@ -196,25 +196,25 @@ fn compile_literal_trie_set(patterns: []const str, mode: u8, total_pattern_bytes
         return compiled;
     }
     let node_capacity: usize = total_pattern_bytes + 1usize;
-    let nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed[t.SetLiteralNode](node_capacity, sizeof[t.SetLiteralNode]);
+    let nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed<t.SetLiteralNode>(node_capacity, sizeof<t.SetLiteralNode>);
     if nodes == null {
         destroy_set_storage(&mut compiled);
         return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
-    defer alloc.free_typed[t.SetLiteralNode](nodes);
-    let terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed[t.SetLiteralTerminal](pattern_count, sizeof[t.SetLiteralTerminal]);
+    defer alloc.free_typed<t.SetLiteralNode>(nodes);
+    let terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed<t.SetLiteralTerminal>(pattern_count, sizeof<t.SetLiteralTerminal>);
     if terminals == null {
         destroy_set_storage(&mut compiled);
         return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
-    defer alloc.free_typed[t.SetLiteralTerminal](terminals);
+    defer alloc.free_typed<t.SetLiteralTerminal>(terminals);
     init_literal_trie_root(nodes);
     var node_count: usize = 1usize;
     var terminal_count: usize = 0usize;
-    let node_count_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut node_count)) };
-    let terminal_count_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut terminal_count)) };
+    let node_count_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut node_count)) };
+    let terminal_count_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut terminal_count)) };
     var stats: LiteralBuildStats = LiteralBuildStats { max_byte_len: 0usize };
-    let stats_ptr: *mut LiteralBuildStats = unsafe { ptrat[*mut LiteralBuildStats](ptraddr(&mut stats)) };
+    let stats_ptr: *mut LiteralBuildStats = unsafe { ptrat<*mut LiteralBuildStats>(ptraddr(&mut stats)) };
     var pattern_id: usize = 0usize;
     while pattern_id < pattern_count {
         if !insert_literal_pattern(
@@ -301,7 +301,7 @@ fn insert_literal_pattern(
 fn literal_step_at(pattern: str, mode: u8, offset: usize) -> LiteralStep {
     if mode == t.MODE_BYTES {
         return LiteralStep {
-            value: cast[usize](ascii.byte_at(pattern, offset)),
+            value: cast<usize>(ascii.byte_at(pattern, offset)),
             next: offset + 1usize,
             valid: true,
         };
@@ -385,11 +385,11 @@ fn add_literal_terminal(
 }
 
 fn build_literal_automaton(nodes: *mut t.SetLiteralNode, node_count: usize) -> bool {
-    let queue: *mut usize = alloc.alloc_zeroed[usize](node_count, sizeof[usize]);
+    let queue: *mut usize = alloc.alloc_zeroed<usize>(node_count, sizeof<usize>);
     if queue == null {
         return false;
     }
-    defer alloc.free_typed[usize](queue);
+    defer alloc.free_typed<usize>(queue);
 
     var head: usize = 0usize;
     var tail: usize = 0usize;
@@ -466,19 +466,19 @@ fn install_literal_automaton(
     terminal_count: usize,
     max_byte_len: usize
 ) -> bool {
-    let owned_nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed[t.SetLiteralNode](node_count, sizeof[t.SetLiteralNode]);
+    let owned_nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed<t.SetLiteralNode>(node_count, sizeof<t.SetLiteralNode>);
     if owned_nodes == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;
     }
-    let owned_terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed[t.SetLiteralTerminal](terminal_count, sizeof[t.SetLiteralTerminal]);
+    let owned_terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed<t.SetLiteralTerminal>(terminal_count, sizeof<t.SetLiteralTerminal>);
     if owned_terminals == null {
-        alloc.free_typed[t.SetLiteralNode](owned_nodes);
+        alloc.free_typed<t.SetLiteralNode>(owned_nodes);
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;
     }
-    alloc.copy_items[t.SetLiteralNode](owned_nodes, nodes, node_count);
-    alloc.copy_items[t.SetLiteralTerminal](owned_terminals, terminals, terminal_count);
+    alloc.copy_items<t.SetLiteralNode>(owned_nodes, nodes, node_count);
+    alloc.copy_items<t.SetLiteralTerminal>(owned_terminals, terminals, terminal_count);
     compiled.literal_nodes = owned_nodes;
     compiled.literal_node_len = node_count;
     compiled.literal_terminals = owned_terminals;
@@ -494,12 +494,12 @@ fn emit_literal_trie_program(
     terminals: *mut t.SetLiteralTerminal
 ) -> void {
     var remaining: usize = node_count;
-    let entry_states: *mut usize = alloc.alloc_zeroed[usize](node_count, sizeof[usize]);
+    let entry_states: *mut usize = alloc.alloc_zeroed<usize>(node_count, sizeof<usize>);
     if entry_states == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return;
     }
-    defer alloc.free_typed[usize](entry_states);
+    defer alloc.free_typed<usize>(entry_states);
     while remaining > 0usize {
         remaining -= 1usize;
         let entry: usize = emit_literal_trie_node(compiled, nodes, entry_states, remaining, terminals);
@@ -617,13 +617,13 @@ fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize, option
     if range_capacity > options.max_range_capacity {
         range_capacity = options.max_range_capacity;
     }
-    let states: *mut t.State = alloc.alloc_zeroed[t.State](state_capacity, sizeof[t.State]);
+    let states: *mut t.State = alloc.alloc_zeroed<t.State>(state_capacity, sizeof<t.State>);
     if states == null {
         return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
-    let ranges: *mut t.ClassRange = alloc.alloc_zeroed[t.ClassRange](range_capacity, sizeof[t.ClassRange]);
+    let ranges: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(range_capacity, sizeof<t.ClassRange>);
     if ranges == null {
-        alloc.free_typed[t.State](states);
+        alloc.free_typed<t.State>(states);
         return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
     return t.RegexSet {
@@ -670,19 +670,19 @@ fn empty_set(pattern_count: usize, mode: u8, options: t.RegexOptions, status: t.
 }
 
 fn destroy_regex(compiled: &mut t.Regex) -> void {
-    alloc.free_typed[t.State](compiled.states);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
-    alloc.free_typed[t.CaptureInfo](compiled.captures);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.CaptureInfo>(compiled.captures);
     compiled.states = null;
     compiled.ranges = null;
     compiled.captures = null;
 }
 
 fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
-    alloc.free_typed[t.State](compiled.states);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
-    alloc.free_typed[t.SetLiteralNode](compiled.literal_nodes);
-    alloc.free_typed[t.SetLiteralTerminal](compiled.literal_terminals);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.SetLiteralNode>(compiled.literal_nodes);
+    alloc.free_typed<t.SetLiteralTerminal>(compiled.literal_terminals);
     compiled.states = null;
     compiled.ranges = null;
     compiled.literal_nodes = null;
@@ -804,13 +804,13 @@ fn ensure_state_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     if next_capacity > compiled.options.max_state_capacity {
         next_capacity = compiled.options.max_state_capacity;
     }
-    let next: *mut t.State = alloc.alloc_zeroed[t.State](next_capacity, sizeof[t.State]);
+    let next: *mut t.State = alloc.alloc_zeroed<t.State>(next_capacity, sizeof<t.State>);
     if next == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;
     }
-    alloc.copy_items[t.State](next, compiled.states, compiled.state_len);
-    alloc.free_typed[t.State](compiled.states);
+    alloc.copy_items<t.State>(next, compiled.states, compiled.state_len);
+    alloc.free_typed<t.State>(compiled.states);
     compiled.states = next;
     compiled.state_capacity = next_capacity;
     return true;
@@ -832,13 +832,13 @@ fn ensure_range_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     if next_capacity > compiled.options.max_range_capacity {
         next_capacity = compiled.options.max_range_capacity;
     }
-    let next: *mut t.ClassRange = alloc.alloc_zeroed[t.ClassRange](next_capacity, sizeof[t.ClassRange]);
+    let next: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(next_capacity, sizeof<t.ClassRange>);
     if next == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;
     }
-    alloc.copy_items[t.ClassRange](next, compiled.ranges, compiled.range_len);
-    alloc.free_typed[t.ClassRange](compiled.ranges);
+    alloc.copy_items<t.ClassRange>(next, compiled.ranges, compiled.range_len);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
     compiled.ranges = next;
     compiled.range_capacity = next_capacity;
     return true;

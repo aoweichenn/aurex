@@ -167,7 +167,7 @@ TEST(CoreUnit, StatementSemaCoversStorageEscapeGuardExpressionShapes)
         "  some(i32) = 1,\n"
         "  none = 2,\n"
         "}\n"
-        "fn id[T](value: T) -> T where T: Copy {\n"
+        "fn id<T>(value: T) -> T where T: Copy {\n"
         "  return value;\n"
         "}\n"
         "fn inc(value: i32) -> i32 {\n"
@@ -190,20 +190,20 @@ TEST(CoreUnit, StatementSemaCoversStorageEscapeGuardExpressionShapes)
         "    op: inc,\n"
         "  };\n"
         "  let values: [2]i32 = [input, 1];\n"
-        "  let ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&cell.value)) };\n"
-        "  let erased: *const void = unsafe { ptrcast[*const void](ptr) };\n"
-        "  cell.value = id[i32](cell.value);\n"
+        "  let ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&cell.value)) };\n"
+        "  let erased: *const void = unsafe { ptrcast<*const void>(ptr) };\n"
+        "  cell.value = id<i32>(cell.value);\n"
         "  cell.value = if flag { input } else { 0 };\n"
         "  cell.value = { let tmp: i32 = input + 1; tmp };\n"
         "  cell.value = [input, 1][0];\n"
         "  cell.pair = (input, 2);\n"
         "  cell.leaf = Leaf { value: input, other: 2 };\n"
-        "  cell.ptr = unsafe { ptrcast[*const i32](erased) };\n"
-        "  cell.value = unsafe { bitcast[i32](cast[u32](input)) };\n"
+        "  cell.ptr = unsafe { ptrcast<*const i32>(erased) };\n"
+        "  cell.value = unsafe { bitcast<i32>(cast<u32>(input)) };\n"
         "  cell.value = values[0];\n"
-        "  cell.value = cast[i32](input);\n"
-        "  cell.size = sizeof[i32];\n"
-        "  cell.size = alignof[Leaf];\n"
+        "  cell.value = cast<i32>(input);\n"
+        "  cell.size = sizeof<i32>;\n"
+        "  cell.size = alignof<Leaf>;\n"
         "  cell.value = match choose(input, flag) {\n"
         "    .some(found) => found,\n"
         "    .none => 0,\n"
@@ -238,10 +238,10 @@ TEST(CoreUnit, StatementSemaCoversStorageEscapeGuardStatementTraversalShapes)
         "fn update(limit: i32, input: i32, flag: bool) -> ResultI32I32 {\n"
         "  var cell: Cell = Cell { value: 0 };\n"
         "  var local: i32 = 0;\n"
-        "  var ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&local)) };\n"
+        "  var ptr: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&local)) };\n"
         "  cell.value = fallible(input)?;\n"
         "  local = id(input);\n"
-        "  ptr = unsafe { ptrat[*const i32](ptraddr(&local)) };\n"
+        "  ptr = unsafe { ptrat<*const i32>(ptraddr(&local)) };\n"
         "  if flag {\n"
         "    local = local + 1;\n"
         "  } else if input > 0 {\n"
@@ -383,7 +383,6 @@ TEST(CoreUnit, StatementSemaCoversForRangeAndCompoundAssignmentDiagnostics)
     };
 
     for (const auto& [source, diagnostic] : cases) {
-        SCOPED_TRACE(source);
         expect_statement_diagnostic(source, diagnostic);
     }
 }

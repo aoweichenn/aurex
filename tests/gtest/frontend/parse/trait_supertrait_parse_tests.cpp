@@ -106,8 +106,8 @@ TEST(CoreUnit, TraitSupertraitParserKeepsSupertraitsBeforeWhereConstraints)
     const syntax::AstModule module = parse_supertrait_source(
         "module trait_supertrait_parse_generic;\n"
         "trait Sized {}\n"
-        "trait Parent[T] {}\n"
-        "trait Child[T]: Parent[T] where T: Sized {}\n");
+        "trait Parent<T> {}\n"
+        "trait Child<T>: Parent<T> where T: Sized {}\n");
 
     const syntax::ItemNode* const child = find_item(module, "Child");
     ASSERT_NE(child, nullptr);
@@ -119,7 +119,7 @@ TEST(CoreUnit, TraitSupertraitParserKeepsSupertraitsBeforeWhereConstraints)
     EXPECT_EQ(module.types[parent.type_args.front().value].name, "T");
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains(ast, "trait Child[T] : Parent[T]");
+    expect_contains(ast, "trait Child<T> : Parent<T>");
     expect_contains(ast, "where T: Sized");
 }
 

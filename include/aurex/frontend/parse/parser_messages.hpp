@@ -206,10 +206,10 @@ inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_EQUAL
     "expected '=' in associated type constraint";
 
 inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_SEPARATOR =
-    "expected ',' or ']' after associated type constraint";
+    "expected ',' or '>' after associated type constraint";
 
 inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END =
-    "expected ']' after associated type constraints";
+    "expected '>' after associated type constraints";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPL_END = "expected '}' after impl block";
 
@@ -244,11 +244,11 @@ inline constexpr std::string_view PARSER_EXPECT_CONST_GENERIC_PARAMETER_COLON =
 inline constexpr std::string_view PARSER_EXPECT_CONST_GENERIC_PARAMETER_TYPE =
     "expected const generic parameter type";
 
-inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expected ']' after generic parameter list";
+inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expected '>' after generic parameter list";
 
-inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or ']' after generic parameter";
+inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or '>' after generic parameter";
 
-inline constexpr std::string_view PARSER_EXPECT_LEGACY_GENERIC_BEGIN = "expected '<'";
+inline constexpr std::string_view PARSER_EXPECT_LEGACY_GENERIC_BEGIN = "expected '['";
 
 inline constexpr std::string_view PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED = "generic bounds are not part of M2 syntax";
 
@@ -262,14 +262,14 @@ inline constexpr std::string_view PARSER_EXPECT_WHERE_CAPABILITY = "expected cap
 inline constexpr std::string_view PARSER_EXPECT_WHERE_SEPARATOR =
     "expected ',' or declaration body after where constraint";
 
-inline constexpr std::string_view PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED =
-    "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters";
+inline constexpr std::string_view PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED =
+    "generic parameters and type arguments use '<...>'; '[' and ']' are reserved for arrays, slices, indexes, attributes, and origins";
 
 inline constexpr std::string_view PARSER_M2_RANGE_FOR_ONLY_RANGE =
     "M2 range-for only supports range(...); generic iteration is not part of M2 syntax";
 
 inline constexpr std::string_view PARSER_M2_EXPLICIT_GENERIC_CALL_SYNTAX =
-    "explicit generic calls use '[...]', for example id[i32](...)";
+    "explicit generic calls use '<...>', for example id<i32>(...)";
 
 inline constexpr std::string_view PARSER_DOT_ONLY_SELECTOR = "Aurex selectors use '.', not '::'";
 
@@ -398,7 +398,7 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_ARGUMENT =
     "expected generic type or const argument";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR =
-    "expected ',' or ']' after generic type argument";
+    "expected ',' or '>' after generic type argument";
 
 inline constexpr std::string_view PARSER_EXPECT_STRUCT_LITERAL_FIELD = "expected field name in struct literal";
 
@@ -442,13 +442,16 @@ inline constexpr std::string_view PARSER_PATTERN_NESTING_LIMIT = "pattern nestin
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_SCOPE = "expected callee before generic type arguments";
 
-inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_START = "expected '[' before generic type arguments";
+inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_START = "expected '<' before generic type arguments";
 
-inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGS_END = "expected ']' after generic type arguments";
+inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGS_END = "expected '>' after generic type arguments";
 
 inline constexpr std::string_view PARSER_EXPECT_FIELD_AFTER_DOT = "expected field name after '.'";
 
 inline constexpr std::string_view PARSER_EXPECT_INDEX_END = "expected ']' after index";
+
+inline constexpr std::string_view PARSER_EXPECT_INDEX_ARGUMENT_SEPARATOR =
+    "expected ',' or ']' after index argument";
 
 inline constexpr std::string_view PARSER_INDEX_EXPECTS_ONE_ARGUMENT = "index expression expects one argument";
 
@@ -526,7 +529,7 @@ inline constexpr std::string_view PARSER_EXPECT_ASSIGNMENT_TERMINATOR = "expecte
 inline constexpr std::string_view PARSER_EXPECT_MATCH_PATTERN = "expected match pattern";
 
 inline constexpr std::string_view PARSER_BARE_ENUM_CASE_PATTERN_UNSUPPORTED =
-    "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'";
+    "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type<Args>.case'";
 
 inline constexpr std::string_view PARSER_EXPECT_ENUM_CASE_PATTERN_DOT = "expected '.' before enum case pattern name";
 
@@ -565,9 +568,9 @@ inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRADDR_START = "expecte
 
 inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRADDR_END = "expected ')' after ptraddr argument";
 
-inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRAT_TYPE_START = "expected '[' after ptrat";
+inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRAT_TYPE_START = "expected '<' after ptrat";
 
-inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRAT_TYPE_END = "expected ']' after ptrat type";
+inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRAT_TYPE_END = "expected '>' after ptrat type";
 
 inline constexpr std::string_view PARSER_EXPECT_BUILTIN_PTRAT_START = "expected '(' after ptrat address";
 
@@ -579,11 +582,11 @@ inline constexpr std::string_view PARSER_EXPECT_BUILTIN_STRRAW_DATA_SEPARATOR = 
 
 inline constexpr std::string_view PARSER_EXPECT_BUILTIN_STRRAW_END = "expected ')' after strraw length";
 
-inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_START_PREFIX = "expected '[' after ";
+inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_START_PREFIX = "expected '<' after ";
 
 inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_START_SUFFIX = " builtin";
 
-inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_END_PREFIX = "expected ']' after ";
+inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_END_PREFIX = "expected '>' after ";
 
 inline constexpr std::string_view PARSER_EXPECT_BUILTIN_TYPE_END_SUFFIX = " type";
 

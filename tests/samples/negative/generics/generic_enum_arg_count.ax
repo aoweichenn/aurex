@@ -1,11 +1,11 @@
 module generic_enum_arg_count;
 
-enum Option[T] {
+enum Option<T> {
     some(T),
     none,
 }
 
 fn main() -> i32 {
-    let value: Option[i32, bool] = Option[i32, bool].none;
+    let value: Option<i32, bool> = Option<i32, bool>.none;
     return 0;
 }

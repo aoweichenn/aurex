@@ -1,6 +1,6 @@
 module reference_does_not_satisfy_eq;
 
-fn accept_eq[T](value: T) -> i32 where T: Eq {
+fn accept_eq<T>(value: T) -> i32 where T: Eq {
     return 1;
 }
 

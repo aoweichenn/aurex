@@ -41,12 +41,12 @@ constexpr std::string_view IDE_TOOLING_TRAIT_SOURCE = "module ide.traits;\n"
                                                       "  type Item = i32;\n"
                                                       "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
                                                       "}\n"
-                                                      "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                      "fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {\n"
                                                       "  return value.get();\n"
                                                       "}\n"
                                                       "fn main() -> i32 {\n"
                                                       "  let bytes = Bytes { value: 7 };\n"
-                                                      "  return read_i32[Bytes](&bytes) - 7;\n"
+                                                      "  return read_i32<Bytes>(&bytes) - 7;\n"
                                                       "}\n";
 
 constexpr std::string_view IDE_TOOLING_TRAIT_DEFAULT_SOURCE = "module ide.trait_defaults;\n"
@@ -784,7 +784,7 @@ TEST(CoreUnit, IdeToolingProjectsDynTraitCompositionSupertraitChainFactsAndHover
         "  fn debug(self: &File) -> i32 { return self.value + 2; }\n"
         "}\n"
         "fn score(combo: &dyn (Child + Debug)) -> i32 {\n"
-        "  let parent: &dyn Parent = dynproject[Child, Parent](combo);\n"
+        "  let parent: &dyn Parent = dynproject<Child, Parent>(combo);\n"
         "  return parent.parent();\n"
         "}\n"
         "fn main() -> i32 {\n"
@@ -1128,7 +1128,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
 TEST(CoreUnit, IdeToolingHoverExposesMoveOnlyNeedsDropResources)
 {
     constexpr std::string_view SOURCE = "module ide.resources;\n"
-                                        "fn hold[T](value: T) {\n"
+                                        "fn hold<T>(value: T) {\n"
                                         "}\n";
     const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(SOURCE));
     ASSERT_TRUE(snapshot.checked_semantics);
@@ -1389,8 +1389,8 @@ TEST(CoreUnit, IdeToolingClassifiesLexicalSemanticTokenSurface)
     }};
 
     for (const ExpectedToken& expected : EXPECTED_TOKENS) {
-        SCOPED_TRACE(std::string(expected.text));
-        EXPECT_TRUE(has_semantic_token(tokens, expected.text, expected.token_type));
+        EXPECT_TRUE(has_semantic_token(tokens, expected.text, expected.token_type))
+            << "missing semantic token " << expected.text << " of type " << expected.token_type;
     }
 }
 
@@ -1415,7 +1415,7 @@ TEST(CoreUnit, IdeToolingExposesM4TraitFactsForWp7)
         return item.kind == "struct" || item.kind == "function";
     }));
 
-    const base::usize trait_use_offset = IDE_TOOLING_TRAIT_SOURCE.find("Source[Item");
+    const base::usize trait_use_offset = IDE_TOOLING_TRAIT_SOURCE.find("Source<Item");
     ASSERT_NE(trait_use_offset, std::string_view::npos);
     const std::optional<tooling::IdeDefinition> trait_definition =
         tooling::definition_at_offset(snapshot, trait_use_offset);
@@ -1622,7 +1622,7 @@ TEST(CoreUnit, IdeToolingExposesCheckedPartOriginsForTemplatesAliasesAndEnumCase
     constexpr std::string_view source = "module ide.more_parts;\n"
                                         "type Count = i32;\n"
                                         "enum Mode: u8 { fast = 1, slow = 2 }\n"
-                                        "struct Box[T] { value: T; }\n"
+                                        "struct Box<T> { value: T; }\n"
                                         "fn keep(value: Count) -> Count { return value; }\n";
     tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.parsed);
@@ -1652,7 +1652,7 @@ TEST(CoreUnit, IdeToolingExposesCheckedPartOriginsForTemplatesAliasesAndEnumCase
     EXPECT_EQ(enum_case_definition->kind, "enum_case");
     EXPECT_EQ(enum_case_definition->part_index, IDE_TOOLING_ENUM_CASE_PART_INDEX);
 
-    const base::usize template_offset = source.find("Box[T]");
+    const base::usize template_offset = source.find("Box<T>");
     ASSERT_NE(template_offset, std::string_view::npos);
     const std::optional<tooling::IdeDefinition> template_definition =
         tooling::definition_at_offset(snapshot, template_offset);
@@ -1863,12 +1863,12 @@ TEST(CoreUnit, IdeToolingReportsTraitCandidateDiagnosticsForWp7)
                                                  "  type Item = bool;\n"
                                                  "  fn get(self: &Bytes) -> bool { return self.value; }\n"
                                                  "}\n"
-                                                 "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                 "fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {\n"
                                                  "  return value.get();\n"
                                                  "}\n"
                                                  "fn main() -> i32 {\n"
                                                  "  let bytes = Bytes { value: true };\n"
-                                                 "  return read_i32[Bytes](&bytes);\n"
+                                                 "  return read_i32<Bytes>(&bytes);\n"
                                                  "}\n";
     const tooling::IdeSnapshot equality_snapshot = tooling::build_ide_snapshot(request_for(equality_source));
     EXPECT_TRUE(equality_snapshot.has_errors);
@@ -1893,12 +1893,12 @@ TEST(CoreUnit, IdeToolingReportsTraitCandidateDiagnosticsForWp7)
                                                  "  type Item = i32;\n"
                                                  "  fn get(self: &Text) -> i32 { return self.value; }\n"
                                                  "}\n"
-                                                 "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                 "fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {\n"
                                                  "  return value.get();\n"
                                                  "}\n"
                                                  "fn main() -> i32 {\n"
                                                  "  let bytes = Bytes { value: 1 };\n"
-                                                 "  return read_i32[Bytes](&bytes);\n"
+                                                 "  return read_i32<Bytes>(&bytes);\n"
                                                  "}\n";
     const tooling::IdeSnapshot rejected_snapshot = tooling::build_ide_snapshot(request_for(rejected_source));
     EXPECT_TRUE(rejected_snapshot.has_errors);

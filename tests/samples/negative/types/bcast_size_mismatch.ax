@@ -1,6 +1,6 @@
 module bcast_size_mismatch;
 
 fn main() -> i32 {
-    let value: u64 = bitcast[u64](cast[u32](1));
-    return cast[i32](value);
+    let value: u64 = bitcast<u64>(cast<u32>(1));
+    return cast<i32>(value);
 }

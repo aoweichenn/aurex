@@ -105,28 +105,30 @@ syntax::ItemId ItemParser::parse_fn_decl(
 std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params()
 {
     std::vector<syntax::GenericParamDecl> params;
-    if (this->check(TokenKind::less)) {
-        this->reject_legacy_angle_generic_params();
+    if (this->check(TokenKind::l_bracket)) {
+        this->reject_legacy_bracket_generic_params();
         return params;
     }
-    if (!this->match(TokenKind::l_bracket)) {
+    if (!this->check_generic_left_angle()) {
         return params;
     }
-    if (this->check(TokenKind::r_bracket)) {
+    this->match_generic_left_angle();
+    const syntax::Token& begin = this->previous();
+    if (this->check_generic_right_angle()) {
         this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_PARAMETER));
     }
     this->parse_generic_params(params);
-    this->expect_recovered(
-        TokenKind::r_bracket, std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END), RecoveryContext::generic_parameter);
+    this->expect_generic_right_angle_recovered_after(
+        std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END), RecoveryContext::generic_parameter, begin);
     return params;
 }
 
-void ItemParser::reject_legacy_angle_generic_params() const
+void ItemParser::reject_legacy_bracket_generic_params() const
 {
-    const syntax::Token& begin = this->expect(TokenKind::less, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
-    this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
+    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
+    this->report_at(begin, std::string(PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
-        if (this->match(TokenKind::greater)) {
+        if (this->match(TokenKind::r_bracket)) {
             this->reset_panic();
             return;
         }
@@ -141,7 +143,7 @@ void ItemParser::reject_legacy_angle_generic_params() const
 
 void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params)
 {
-    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+    while (!this->is_eof() && !this->check_generic_right_angle()) {
         if (std::optional<syntax::GenericParamDecl> param = this->parse_generic_param()) {
             params.push_back(param.value());
         }
@@ -205,12 +207,12 @@ std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param()
 
 bool ItemParser::recover_generic_param_separator() const
 {
-    if (this->check(TokenKind::r_bracket)) {
+    if (this->check_generic_right_angle()) {
         return false;
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
 
     this->report_here(std::string(PARSER_EXPECT_GENERIC_PARAM_SEPARATOR));
@@ -219,7 +221,7 @@ bool ItemParser::recover_generic_param_separator() const
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
     this->reset_panic();
     return false;
@@ -450,7 +452,7 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_CAPABILITY));
         std::vector<syntax::AssociatedTypeConstraintDecl> associated_constraints;
         if (capability.kind == TokenKind::identifier) {
-            if (this->check(TokenKind::l_bracket)) {
+            if (this->check_generic_left_angle()) {
                 associated_constraints = this->parse_associated_type_constraints();
             }
             constraint.capability_names.push_back(capability.text());
@@ -465,10 +467,10 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
 
 std::vector<syntax::AssociatedTypeConstraintDecl> ItemParser::parse_associated_type_constraints()
 {
-    const syntax::Token& begin =
-        this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END));
+    const syntax::Token& begin = this->expect_generic_left_angle_recovered(
+        std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END), RecoveryContext::generic_type_argument);
     std::vector<syntax::AssociatedTypeConstraintDecl> constraints;
-    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+    while (!this->is_eof() && !this->check_generic_right_angle()) {
         if (std::optional<syntax::AssociatedTypeConstraintDecl> constraint = this->parse_associated_type_constraint()) {
             constraints.push_back(constraint.value());
         }
@@ -477,7 +479,7 @@ std::vector<syntax::AssociatedTypeConstraintDecl> ItemParser::parse_associated_t
             break;
         }
     }
-    static_cast<void>(this->expect_recovered_after(TokenKind::r_bracket,
+    static_cast<void>(this->expect_generic_right_angle_recovered_after(
         std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END), RecoveryContext::generic_type_argument, begin));
     return constraints;
 }
@@ -502,12 +504,12 @@ std::optional<syntax::AssociatedTypeConstraintDecl> ItemParser::parse_associated
 
 bool ItemParser::recover_associated_type_constraint_separator() const
 {
-    if (this->check(TokenKind::r_bracket)) {
+    if (this->check_generic_right_angle()) {
         return false;
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
 
     this->report_here(std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_SEPARATOR));
@@ -516,7 +518,7 @@ bool ItemParser::recover_associated_type_constraint_separator() const
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        return !this->check(TokenKind::r_bracket);
+        return !this->check_generic_right_angle();
     }
     this->reset_panic();
     return false;

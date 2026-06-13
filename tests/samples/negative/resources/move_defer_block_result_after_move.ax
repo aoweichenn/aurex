@@ -1,9 +1,9 @@
 module move_defer_block_result_after_move;
 
-fn consume[T](value: T) -> void {
+fn consume<T>(value: T) -> void {
 }
 
-fn return_then_defer[T](value: T) -> T {
+fn return_then_defer<T>(value: T) -> T {
     return {
         defer consume(value);
         value

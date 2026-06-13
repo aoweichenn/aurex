@@ -1,6 +1,6 @@
 module reference_hash_rejected;
 
-fn accept_hash[T](value: T) -> i32 where T: Hash {
+fn accept_hash<T>(value: T) -> i32 where T: Hash {
     return 1;
 }
 

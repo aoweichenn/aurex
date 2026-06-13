@@ -222,30 +222,30 @@ TEST(CoreUnit, DynTraitUpcastRecordsTransitiveGenericPath)
 {
     const sema::CheckedModule checked = analyze_dyn_upcast_source(
         "module dyn_trait_upcast_generic_transitive_whitebox;\n"
-        "trait Parent[T] { fn parent(self: &Self, value: T) -> T; }\n"
-        "trait Mid[T]: Parent[T] { fn mid(self: &Self) -> i32; }\n"
-        "trait Child[T]: Mid[T] { fn child(self: &Self) -> i32; }\n"
+        "trait Parent<T> { fn parent(self: &Self, value: T) -> T; }\n"
+        "trait Mid<T>: Parent<T> { fn mid(self: &Self) -> i32; }\n"
+        "trait Child<T>: Mid<T> { fn child(self: &Self) -> i32; }\n"
         "struct File { value: i32; }\n"
-        "impl Parent[i32] for File { fn parent(self: &File, value: i32) -> i32 { return value; } }\n"
-        "impl Mid[i32] for File { fn mid(self: &File) -> i32 { return self.value; } }\n"
-        "impl Child[i32] for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Parent<i32> for File { fn parent(self: &File, value: i32) -> i32 { return value; } }\n"
+        "impl Mid<i32> for File { fn mid(self: &File) -> i32 { return self.value; } }\n"
+        "impl Child<i32> for File { fn child(self: &File) -> i32 { return self.value + 1; } }\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 7 };\n"
-        "  let child: &dyn Child[i32] = &file;\n"
-        "  let parent: &dyn Parent[i32] = child;\n"
+        "  let child: &dyn Child<i32> = &file;\n"
+        "  let parent: &dyn Parent<i32> = child;\n"
         "  return 0;\n"
         "}\n");
 
     ASSERT_EQ(checked.trait_object_upcast_coercions.size(), 1U);
     const sema::TraitObjectUpcastCoercionFact& upcast = checked.trait_object_upcast_coercions.front();
-    EXPECT_EQ(checked.types.display_name(upcast.source_reference_type), "&dyn Child[i32]");
-    EXPECT_EQ(checked.types.display_name(upcast.target_reference_type), "&dyn Parent[i32]");
+    EXPECT_EQ(checked.types.display_name(upcast.source_reference_type), "&dyn Child<i32>");
+    EXPECT_EQ(checked.types.display_name(upcast.target_reference_type), "&dyn Parent<i32>");
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
             "Child -> Parent ordinal=0 depth=2",
             "args=[T]",
-            "&dyn Child[i32] -> &dyn Parent[i32]",
+            "&dyn Child<i32> -> &dyn Parent<i32>",
         });
 }
 
@@ -288,15 +288,15 @@ TEST(CoreUnit, DynTraitUpcastRejectsGenericTargetMismatch)
 {
     expect_dyn_upcast_diagnostic(
         "module dyn_trait_upcast_generic_mismatch_reject_whitebox;\n"
-        "trait Parent[T] { fn parent(self: &Self, value: T) -> T; }\n"
-        "trait Child[T]: Parent[T] { fn child(self: &Self) -> i32; }\n"
+        "trait Parent<T> { fn parent(self: &Self, value: T) -> T; }\n"
+        "trait Child<T>: Parent<T> { fn child(self: &Self) -> i32; }\n"
         "struct File { value: i32; }\n"
-        "impl Parent[i32] for File { fn parent(self: &File, value: i32) -> i32 { return value; } }\n"
-        "impl Child[i32] for File { fn child(self: &File) -> i32 { return self.value; } }\n"
+        "impl Parent<i32> for File { fn parent(self: &File, value: i32) -> i32 { return value; } }\n"
+        "impl Child<i32> for File { fn child(self: &File) -> i32 { return self.value; } }\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 7 };\n"
-        "  let child: &dyn Child[i32] = &file;\n"
-        "  let parent: &dyn Parent[bool] = child;\n"
+        "  let child: &dyn Child<i32> = &file;\n"
+        "  let parent: &dyn Parent<bool> = child;\n"
         "  return 0;\n"
         "}\n",
         "initializer type does not match declared type");

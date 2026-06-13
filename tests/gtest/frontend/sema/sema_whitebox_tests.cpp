@@ -622,7 +622,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     instance.key = sema::FunctionLookupKey{
         module_id(0).value,
         sema::SEMA_LOOKUP_INVALID_KEY_PART,
-        checked.intern_c_name("f[i32]"),
+        checked.intern_c_name("f<i32>"),
     };
     instance.item = syntax::ItemId{0};
     instance.body = syntax::StmtId{2};
@@ -698,6 +698,38 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(
         checked_move_assigned.generic_type_alias_instances.front().generic_instance_key, checked_generic_instance_key);
 }
+
+TEST(CoreUnit, SemanticWhiteBoxCheckedModuleMoveLeavesSourceDestructibleAfterTarget)
+{
+    std::optional<sema::CheckedModule> source(std::in_place);
+    const base::usize layout_index =
+        source->append_generic_side_table_layout(sema::GenericSideTableLocalLayoutView{
+            sema::GenericNodeSpan{4U, 3U},
+            {},
+            {},
+            {},
+        });
+    ASSERT_EQ(layout_index, 0U);
+    const sema::GenericSideTableLayout* const layout = source->generic_side_table_layout(layout_index);
+    ASSERT_NE(layout, nullptr);
+
+    sema::TraitDefaultMethodInstanceInfo instance;
+    instance.signature = source->make_function_signature();
+    instance.side_table_layout_index = layout_index;
+    instance.side_tables.configure_local_dense(*layout);
+    source->trait_default_method_instances.push_back(std::move(instance));
+    ASSERT_EQ(source->trait_default_method_instances.size(), 1U);
+
+    {
+        sema::CheckedModule moved(std::move(*source));
+        ASSERT_EQ(moved.trait_default_method_instances.size(), 1U);
+        ASSERT_EQ(moved.generic_side_table_layouts.size(), 1U);
+        EXPECT_EQ(
+            moved.trait_default_method_instances.front().side_tables.layout, &moved.generic_side_table_layouts.front());
+    }
+    source.reset();
+}
+
 TEST(CoreUnit, SemanticWhiteBoxCheckedModuleIndexesCallBindingsByExpr)
 {
     constexpr base::u32 SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR = 7U;

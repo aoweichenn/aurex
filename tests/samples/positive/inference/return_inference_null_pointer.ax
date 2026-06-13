@@ -1,7 +1,7 @@
 module return_inference_null_pointer;
 
 fn as_const_ptr(value: &i32) -> *const i32 {
-    return unsafe { ptrat[*const i32](ptraddr(value)) };
+    return unsafe { ptrat<*const i32>(ptraddr(value)) };
 }
 
 fn null_first(flag: bool, value: &i32) {

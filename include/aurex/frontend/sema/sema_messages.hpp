@@ -415,10 +415,10 @@ inline constexpr std::string_view SEMA_MOVE_TRY_PAYLOAD_UNSUPPORTED =
 }
 
 inline constexpr std::string_view SEMA_EXPLICIT_GENERIC_CALL_SYNTAX =
-    "explicit generic calls use '[...]', for example id[i32](...)";
+    "explicit generic calls use '<...>', for example id<i32>(...)";
 
 inline constexpr std::string_view SEMA_CALLEE_FUNCTION_NAME =
-    "callee must be a function value; explicit generic calls use '[...]', for example id[i32](...)";
+    "callee must be a function value; explicit generic calls use '<...>', for example id<i32>(...)";
 
 inline constexpr std::string_view SEMA_DYNPROJECT_TYPE_ARGUMENT_COUNT =
     "dynproject requires exactly two type arguments";

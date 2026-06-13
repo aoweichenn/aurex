@@ -1,10 +1,10 @@
-# Angle Bracket Generics：泛型从 `[]` 迁移到 `<...>`
+# Angle Bracket Generics：泛型统一改为 `<...>`
 
 日期：2026-06-13
-状态：语法修正优化第一手改动设计稿
+状态：语法修正优化第一批落地设计记录
 关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P0 `[]` 过载和 P0 大小写启发式影响 parsing
 
-本文固定 Aurex 泛型语法的第一项修正方向：把泛型参数、泛型实参、associated type equality 和泛型表达式调用从当前 `[]` 表面迁移到 C++ 风格的 `<...>` 表面。
+本文固定 Aurex 泛型语法的第一项修正：泛型参数、泛型实参、associated type equality、type-operand builtin 和泛型表达式调用统一使用 C++ 风格的 `<...>` 表面。
 
 这里采用的是 C++ 泛型写法的可读外形，不采用 C++ template 的历史语义包袱。Aurex 仍保持自己的泛型、trait/capability、where constraint、associated type 和 const generic 语义。
 
@@ -50,7 +50,7 @@ let xs: Vec<Box<i32>> = make_vec<Box<i32>>();
 let y: Result<Vec<i32>, Error> = parse(input);
 ```
 
-当前 `[]` 泛型写法进入迁移期：
+旧 `[]` 泛型写法不保留兼容入口。第一批修改直接删除 `[]` 的泛型职责，下面这些写法只作为 legacy syntax 诊断输入：
 
 ```aurex
 Box[T]
@@ -60,17 +60,17 @@ cast[i32](x)
 sizeof[*mut Pair]
 ```
 
-目标写法：
+当前唯一合法写法：
 
 ```aurex
 Box<T>
 fn f<T>(x: T) -> T
 Source<Item = i32>
 cast<i32>(x)
-sizeof<*mut Pair>()
+sizeof<*mut Pair>
 ```
 
-`sizeof<*mut Pair>()` 带 `()` 是有意设计：表达式层泛型调用统一成 `callee<Args...>(...)`，parser 更简单，formatter 也更稳定。后续若 builtin 降级为 intrinsic namespace，可自然变成：
+`sizeof<T>` / `alignof<T>` 当前保持 builtin type operand 形态，不追加 `()`；`cast<T>(x)`、`ptrat<T>(addr)`、`ptrcast<T>(p)`、`bitcast<T>(x)` 是带 value argument 的 builtin call。后续若 builtin 降级为 intrinsic namespace，可自然变成：
 
 ```aurex
 intrinsic.sizeof<*mut Pair>()
@@ -282,9 +282,9 @@ Vec<Box<i32> >
 
 实现建议：不要为此破坏 lexer maximal munch。应在 token cursor 或 parser helper 层提供 `consume_generic_right_angle()` 之类的能力，在泛型上下文里消费或拆分 `greater`、`greater_greater`、`greater_equal`、`greater_greater_equal`。普通表达式上下文仍把 `>>` 当 shift operator。
 
-### 规则 7：复杂 const generic 表达式必须括起来
+### 规则 7：const generic 第一批只支持 atom
 
-简单 const generic 保持直接写：
+第一批 const generic 保持当前 M16 check-only 子集：const argument 只接受 integer / bool / char scalar literal，或当前 generic context 中同类型 const parameter name。
 
 ```aurex
 struct Array<T, const N: usize> {
@@ -295,7 +295,7 @@ let xs: Array<i32, 4>;
 let ys: Array<i32, N>;
 ```
 
-复杂 const 表达式必须显式加括号，避免和 `>` / `>>` 关闭泛型冲突：
+复杂 const 表达式不属于第一批落地范围，下面写法是后续设计候选，不是当前可用语法：
 
 ```aurex
 Array<i32, (N >> 1)>
@@ -307,7 +307,7 @@ Array<i32, (N >> 1)>
 Array<i32, const { N >> 1 }>
 ```
 
-当前设计建议先采用“atom 直接写，复杂表达式加括号”的最小规则。
+后续若打开 generic const arithmetic，再单独设计 `>` / `>>` 与 const expression 的恢复、诊断和 formatter 规则。
 
 ## 语法草案
 
@@ -315,10 +315,10 @@ Array<i32, const { N >> 1 }>
 
 ```text
 GenericParams        = "<" GenericParam ("," GenericParam)* ","? ">"
-GenericParam         = Identifier | "const" Identifier ":" Type
+GenericParam         = Identifier | "const" Identifier ":" Type | "origin" Identifier
 
 GenericArgs          = "<" GenericArg ("," GenericArg)* ","? ">"
-GenericArg           = Type | ConstGenericAtom | "(" ConstExpr ")"
+GenericArg           = Type | ConstGenericAtom
 ConstGenericAtom     = IntegerLiteral | "true" | "false" | CharLiteral | Identifier
 
 NamedType            = TypePath GenericArgs?
@@ -332,54 +332,32 @@ GenericContinuation  = "(" | "{" | "."
 
 `ExprPath` 表示 identifier、qualified path、member path 或其它明确按名字寻址的 callee/path。泛型实参绑定的是名字，不绑定任意 runtime expression；如果未来需要支持更宽的 callable expression generic instantiation，必须单独设计，不能靠空格区分。
 
-## 迁移计划
+## 第一批落地策略
 
-### 阶段 1：支持 `<...>`，保留 `[]` 但诊断
+### 直接切换，不保留双语法
 
-同时支持：
+本批不做“新旧两套语法同时可用”的中间态。parser 只接受：
 
 ```aurex
 Box<T>
-Box[T]
+fn f<T>(...)
+impl<T> Box<T> { ... }
+trait Source<T> { ... }
+foo<T>(bar)
 ```
 
-但旧写法发迁移诊断：
+旧 `[]` 泛型写法只进入 focused legacy diagnostic：
 
 ```text
 generic arguments should use '<...>'; replace Box[T] with Box<T>
-```
-
-对函数泛型：
-
-```text
 generic parameters should use '<...>'; replace fn f[T] with fn f<T>
-```
-
-对 associated type equality：
-
-```text
 associated type constraints should use '<...>'; replace Source[Item = i32] with Source<Item = i32>
 ```
-
-### 阶段 2：删除表达式 `[]` 泛型后缀
 
 `foo[bar]` 只解析为 index/slice。泛型函数调用只能写：
 
 ```aurex
 foo<T>(bar)
-```
-
-这一步应删除 bracket suffix classifier 中 generic apply 分支和 type-like 大小写启发式。
-
-### 阶段 3：删除类型和声明中的 `[]` 泛型
-
-删除：
-
-```aurex
-Box[T]
-fn f[T](...)
-impl[T] ...
-trait Source[T] ...
 ```
 
 保留 `[]` 给 array / slice / index / literal / pattern / attribute / origin 等非泛型用途。
@@ -478,15 +456,20 @@ let b: Vec<Vec<Vec<i32>>> = value;
 let c: Vec<i32>=make_vec();
 ```
 
-const generic：
+const generic 当前子集：
 
 ```aurex
 let a: Array<i32, N> = value;
 let b: Array<i32, 4> = value;
-let c: Array<i32, (N >> 1)> = value;
 ```
 
-旧语法迁移诊断：
+复杂 const generic 表达式暂不属于第一批：
+
+```aurex
+let c: Array<i32, (N >> 1)> = value; // future, not first batch
+```
+
+旧语法诊断：
 
 ```aurex
 struct Box[T] { value: T; }

@@ -1,7 +1,7 @@
 # Aurex M14 Borrowed Dyn View Path Inference Release Baseline
 
 M14 已完成 borrowed dyn view path inference / dispatch release。它把 M13 已经落地的
-`dynproject[SourcePrincipal, TargetSupertrait](view)` runtime chain 扩展为两类受限隐式路径：
+`dynproject<SourcePrincipal, TargetSupertrait>(view)` runtime chain 扩展为两类受限隐式路径：
 
 - expected-type borrowed projection：当上下文明确需要 `&dyn Parent`，而 source 是
   `&dyn (Child + Debug)`，并且只有一个 principal 能沿 checked supertrait path 到达 `Parent` 时，可以写
@@ -32,7 +32,7 @@ fn score(view: &dyn (Child + Debug)) -> i32 {
 
 `view.parent()` 的语义不是把 composition flatten 成一个大 vtable，也不是动态搜索所有 parent。它只在
 principal set 中找到唯一可证明的 source principal，然后生成与显式
-`dynproject[Child, Parent](view)` 相同的 runtime chain。
+`dynproject<Child, Parent>(view)` 相同的 runtime chain。
 
 ## Query / Tooling Facts
 
@@ -84,7 +84,7 @@ resolution 视角。
 M14 validation 覆盖：
 
 - query fact enum、validation、summary、dump 和 fingerprint drift。
-- explicit `dynproject[...]` path 的 `BorrowedDynViewPathFact{use=explicit_projection}`。
+- explicit `dynproject<...>` path 的 `BorrowedDynViewPathFact{use=explicit_projection}`。
 - expected-type projection 的 `BorrowedDynViewPathFact{use=expected_type_projection}`。
 - direct supertrait method dispatch 的 `BorrowedDynViewPathFact{use=method_dispatch}`。
 - ambiguous composition-supertrait dispatch negative case。

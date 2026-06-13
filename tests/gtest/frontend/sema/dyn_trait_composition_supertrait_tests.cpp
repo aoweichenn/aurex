@@ -46,7 +46,7 @@ TEST(CoreUnit, DynTraitCompositionProjectsBorrowedViewToSupertraitExplicitly)
         "module dyn_trait_composition_supertrait_projection_whitebox;\n"
         + std::string(composition_supertrait_source())
         + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-          "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+          "  let parent: &dyn Parent = dynproject<Child, Parent>(view);\n"
           "  return parent.parent();\n"
           "}\n"
           "fn main() -> i32 {\n"
@@ -107,7 +107,7 @@ TEST(CoreUnit, DynTraitCompositionProjectsMutableViewToMutableSupertrait)
         "impl Child for File { fn child(self: &mut File) -> i32 { return self.value + 1; } }\n"
         "impl Debug for File { fn debug(self: &mut File) -> i32 { return self.value + 2; } }\n"
         "fn score(view: &mut dyn (Child + Debug)) -> i32 {\n"
-        "  let parent: &mut dyn Parent = dynproject[Child, Parent](view);\n"
+        "  let parent: &mut dyn Parent = dynproject<Child, Parent>(view);\n"
         "  return parent.parent();\n"
         "}\n"
         "fn main() -> i32 {\n"
@@ -139,7 +139,7 @@ TEST(CoreUnit, DynTraitCompositionAllowsMutableProjectionToSharedSupertraitConte
         "module dyn_trait_composition_mut_to_shared_supertrait_projection_whitebox;\n"
         + std::string(composition_supertrait_source())
         + "fn score(view: &mut dyn (Child + Debug)) -> i32 {\n"
-          "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+          "  let parent: &dyn Parent = dynproject<Child, Parent>(view);\n"
           "  return parent.parent();\n"
           "}\n"
           "fn main() -> i32 {\n"
@@ -169,22 +169,22 @@ TEST(CoreUnit, DynTraitCompositionProjectsGenericTransitiveSupertraitExplicitly)
 {
     const std::string_view source =
         "module dyn_trait_composition_generic_supertrait_projection_whitebox;\n"
-        "trait Parent[T] { fn parent(self: &Self, value: T) -> T; }\n"
-        "trait Mid[T]: Parent[T] { fn mid(self: &Self) -> i32; }\n"
-        "trait Child[T]: Mid[T] { fn child(self: &Self) -> i32; }\n"
+        "trait Parent<T> { fn parent(self: &Self, value: T) -> T; }\n"
+        "trait Mid<T>: Parent<T> { fn mid(self: &Self) -> i32; }\n"
+        "trait Child<T>: Mid<T> { fn child(self: &Self) -> i32; }\n"
         "trait Debug { fn debug(self: &Self) -> i32; }\n"
         "struct File { value: i32; }\n"
-        "impl Parent[i32] for File { fn parent(self: &File, value: i32) -> i32 { return value + self.value; } }\n"
-        "impl Mid[i32] for File { fn mid(self: &File) -> i32 { return self.value + 1; } }\n"
-        "impl Child[i32] for File { fn child(self: &File) -> i32 { return self.value + 2; } }\n"
+        "impl Parent<i32> for File { fn parent(self: &File, value: i32) -> i32 { return value + self.value; } }\n"
+        "impl Mid<i32> for File { fn mid(self: &File) -> i32 { return self.value + 1; } }\n"
+        "impl Child<i32> for File { fn child(self: &File) -> i32 { return self.value + 2; } }\n"
         "impl Debug for File { fn debug(self: &File) -> i32 { return self.value + 3; } }\n"
-        "fn score(view: &dyn (Child[i32] + Debug)) -> i32 {\n"
-        "  let parent: &dyn Parent[i32] = dynproject[Child[i32], Parent[i32]](view);\n"
+        "fn score(view: &dyn (Child<i32> + Debug)) -> i32 {\n"
+        "  let parent: &dyn Parent<i32> = dynproject<Child<i32>, Parent<i32>>(view);\n"
         "  return parent.parent(5);\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let file: File = File { value: 7 };\n"
-        "  let view: &dyn (Debug + Child[i32]) = &file;\n"
+        "  let view: &dyn (Debug + Child<i32>) = &file;\n"
         "  return score(view);\n"
         "}\n";
 
@@ -193,13 +193,13 @@ TEST(CoreUnit, DynTraitCompositionProjectsGenericTransitiveSupertraitExplicitly)
         composition_supertrait_projections(checked);
     ASSERT_EQ(projections.size(), 1U);
     EXPECT_EQ(projections.front()->borrow_kind, query::DynBorrowKind::shared);
-    EXPECT_EQ(projections.front()->target_view_name, "dyn Parent[i32]");
+    EXPECT_EQ(projections.front()->target_view_name, "dyn Parent<i32>");
     EXPECT_EQ(checked.principal_set_composition_facts.summary.borrowed_view_path_count, 1U);
     ASSERT_EQ(checked.trait_method_calls.size(), 1U);
     const sema::TraitMethodCallBinding& call = checked.trait_method_calls.front();
     EXPECT_EQ(call.method_name.view(), "parent");
     EXPECT_EQ(call.dispatch, sema::TraitMethodDispatchKind::vtable_slot);
-    EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Parent[i32]");
+    EXPECT_EQ(checked.types.display_name(call.receiver_type), "&dyn Parent<i32>");
     EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
     EXPECT_TRUE(query::is_valid(checked.principal_set_composition_facts));
 }
@@ -332,7 +332,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_type_arity_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[Child](view);\n"
+              "  let parent: &dyn Parent = dynproject<Child>(view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject requires exactly two type arguments",
@@ -341,7 +341,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_arg_arity_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[Child, Parent](view, view);\n"
+              "  let parent: &dyn Parent = dynproject<Child, Parent>(view, view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject requires exactly one argument",
@@ -350,7 +350,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_source_not_trait_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[File, Parent](view);\n"
+              "  let parent: &dyn Parent = dynproject<File, Parent>(view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject source must be a dyn trait principal",
@@ -359,7 +359,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_target_not_trait_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[Child, File](view);\n"
+              "  let parent: &dyn Parent = dynproject<Child, File>(view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject target must be a dyn trait supertrait",
@@ -368,7 +368,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_arg_not_composition_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn Child) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[Child, Parent](view);\n"
+              "  let parent: &dyn Parent = dynproject<Child, Parent>(view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject argument must be a borrowed dyn trait composition",
@@ -378,7 +378,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             + std::string(composition_supertrait_source())
             + "trait Other { fn other(self: &Self) -> i32; }\n"
               "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let parent: &dyn Parent = dynproject[Other, Parent](view);\n"
+              "  let parent: &dyn Parent = dynproject<Other, Parent>(view);\n"
               "  return parent.parent();\n"
               "}\n",
             "dynproject source principal is not in the composition",
@@ -387,7 +387,7 @@ TEST(CoreUnit, DynTraitCompositionRejectsInvalidSupertraitProjectionForms)
             "module dyn_trait_composition_dynproject_target_not_supertrait_reject_whitebox;\n"
             + std::string(composition_supertrait_source())
             + "fn score(view: &dyn (Child + Debug)) -> i32 {\n"
-              "  let debug: &dyn Debug = dynproject[Child, Debug](view);\n"
+              "  let debug: &dyn Debug = dynproject<Child, Debug>(view);\n"
               "  return debug.debug();\n"
               "}\n",
             "dynproject target is not a supertrait of the selected source principal",

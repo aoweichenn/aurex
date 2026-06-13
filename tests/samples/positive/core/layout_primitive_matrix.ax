@@ -1,25 +1,25 @@
 module layout_primitive_matrix;
 
 fn main() -> i32 {
-    if sizeof[i8] != cast[usize](1) || alignof[i8] != cast[usize](1) {
+    if sizeof<i8> != cast<usize>(1) || alignof<i8> != cast<usize>(1) {
         return 1;
     }
-    if sizeof[i16] != cast[usize](2) || alignof[i16] != cast[usize](2) {
+    if sizeof<i16> != cast<usize>(2) || alignof<i16> != cast<usize>(2) {
         return 2;
     }
-    if sizeof[i64] != cast[usize](8) || alignof[i64] != cast[usize](8) {
+    if sizeof<i64> != cast<usize>(8) || alignof<i64> != cast<usize>(8) {
         return 3;
     }
-    if sizeof[isize] != sizeof[usize] || alignof[isize] != alignof[usize] {
+    if sizeof<isize> != sizeof<usize> || alignof<isize> != alignof<usize> {
         return 4;
     }
-    if sizeof[f32] != cast[usize](4) || alignof[f32] != cast[usize](4) {
+    if sizeof<f32> != cast<usize>(4) || alignof<f32> != cast<usize>(4) {
         return 5;
     }
-    if sizeof[f64] != cast[usize](8) || alignof[f64] != cast[usize](8) {
+    if sizeof<f64> != cast<usize>(8) || alignof<f64> != cast<usize>(8) {
         return 6;
     }
-    if sizeof[str] != cast[usize](16) || alignof[str] != cast[usize](8) {
+    if sizeof<str> != cast<usize>(16) || alignof<str> != cast<usize>(8) {
         return 7;
     }
     return 0;

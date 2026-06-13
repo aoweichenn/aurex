@@ -40,12 +40,12 @@ fn same_text(left: str, right: str) -> bool {
 }
 
 fn buffer_text(buffer: &mut [64]u8, len: usize) -> str {
-    let ptr: *const u8 = unsafe { ptrcast[*const u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+    let ptr: *const u8 = unsafe { ptrcast<*const u8>(ptrat<*mut [64]u8>(ptraddr(buffer))) };
     return unsafe { strraw(ptr, len) };
 }
 
 fn buffer_ptr(buffer: &mut [64]u8) -> *mut u8 {
-    return unsafe { ptrcast[*mut u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+    return unsafe { ptrcast<*mut u8>(ptrat<*mut [64]u8>(ptraddr(buffer))) };
 }
 
 fn require_true(code: i32, value: bool) -> i32 {

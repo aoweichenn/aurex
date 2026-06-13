@@ -5,7 +5,7 @@ struct Bag {
 }
 
 fn as_ptr(value: &Bag) -> *const Bag {
-    return unsafe { ptrat[*const Bag](ptraddr(value)) };
+    return unsafe { ptrat<*const Bag>(ptraddr(value)) };
 }
 
 fn main() -> i32 {

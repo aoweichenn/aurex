@@ -1,6 +1,6 @@
 module where_unknown_param;
 
-fn id[T](value: T) -> T where U: Eq {
+fn id<T>(value: T) -> T where U: Eq {
     return value;
 }
 

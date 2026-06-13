@@ -1,6 +1,6 @@
 module where_unknown_capability;
 
-fn same[T](left: T, right: T) -> bool where T: Comparable {
+fn same<T>(left: T, right: T) -> bool where T: Comparable {
     return left == right;
 }
 

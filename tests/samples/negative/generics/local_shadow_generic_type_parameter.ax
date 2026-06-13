@@ -1,6 +1,6 @@
 module local_shadow_generic_type_parameter;
 
-fn id[T](value: T) -> T {
+fn id<T>(value: T) -> T {
     let T = value;
     return T;
 }

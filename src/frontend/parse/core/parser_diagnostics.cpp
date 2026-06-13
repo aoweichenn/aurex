@@ -31,6 +31,48 @@ const syntax::Token& Parser::expect(const TokenKind kind, std::string message)
     return fallback;
 }
 
+const syntax::Token& Parser::expect_generic_left_angle_recovered(std::string message, const RecoveryContext context)
+{
+    if (this->match_generic_left_angle()) {
+        return this->previous();
+    }
+
+    this->report_here(std::move(message));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->match_generic_left_angle()) {
+        const syntax::Token& token = this->previous();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
+    static const syntax::Token fallback{};
+    return fallback;
+}
+
+const syntax::Token& Parser::expect_generic_right_angle_recovered_after(
+    std::string message, const RecoveryContext context, const syntax::Token& opening)
+{
+    if (this->match_generic_right_angle()) {
+        return this->previous();
+    }
+
+    this->report_here(std::move(message));
+    this->report_note_at(opening, std::string(PARSER_OPENING_DELIMITER_NOTE));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->match_generic_right_angle()) {
+        const syntax::Token& token = this->previous();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
+    static const syntax::Token fallback{};
+    return fallback;
+}
+
 const syntax::Token& Parser::expect_contextual_c_keyword(std::string message)
 {
     if (this->check_contextual_c_keyword()) {

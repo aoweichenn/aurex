@@ -69,7 +69,8 @@ fs::path write_import_test_source(const fs::path& path, const std::string_view t
 
     std::string encoded;
     encoded.reserve(bytes.size() * HEX_CHARS_PER_BYTE);
-    for (const unsigned char byte : bytes) {
+    for (const char raw_byte : bytes) {
+        const auto byte = static_cast<unsigned int>(static_cast<unsigned char>(raw_byte));
         encoded.push_back(HEX_DIGITS[byte >> HIGH_NIBBLE_SHIFT]);
         encoded.push_back(HEX_DIGITS[byte & LOW_NIBBLE_MASK]);
     }
@@ -184,7 +185,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes
         "}\n"
         "pub fn compute(seed: i32) -> i32 {\n"
         "  let box: Box = Box { value: seed };\n"
-        "  let values: [3]i32 = [box.value, id(seed + 1), cast[i32](2)];\n"
+        "  let values: [3]i32 = [box.value, id(seed + 1), cast<i32>(2)];\n"
         "  let view: []const i32 = values[:];\n"
         "  let selected: Maybe = Maybe.some(view[0]);\n"
         "  let block_value: i32 = { let local = choose(selected); local };\n"

@@ -450,7 +450,7 @@ TEST(CoreUnit, SemanticWhiteBoxCheckedDumpCoversPrimaryOnlyAndTemplateNamespaces
     trait_checked.trait_impls.emplace(trait_impl.key, std::move(trait_impl));
 
     const std::string trait_dump = sema::dump_checked_module(trait_checked);
-    EXPECT_NE(trait_dump.find("trait priv Reader[T0, T1] params=2 associated_types=1 requirements=1 @part=1"),
+    EXPECT_NE(trait_dump.find("trait priv Reader<T0, T1> params=2 associated_types=1 requirements=1 @part=1"),
         std::string::npos);
     EXPECT_NE(trait_dump.find("assoc_type Item"), std::string::npos);
     EXPECT_NE(

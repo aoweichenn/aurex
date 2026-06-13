@@ -1,6 +1,6 @@
 module where_drop_resource_capability;
 
-fn id[T](value: T) -> T where T: Drop {
+fn id<T>(value: T) -> T where T: Drop {
     return value;
 }
 

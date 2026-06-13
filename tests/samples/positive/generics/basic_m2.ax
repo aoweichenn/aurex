@@ -1,59 +1,59 @@
 module basic_m2;
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-struct Pair[A, B] {
+struct Pair<A, B> {
     first: A;
     second: B;
 }
 
-fn id[T](x: T) -> T {
+fn id<T>(x: T) -> T {
     return x;
 }
 
-fn first[A, B](p: Pair[A, B]) -> A where A: Copy {
+fn first<A, B>(p: Pair<A, B>) -> A where A: Copy {
     return p.first;
 }
 
-fn make_box[T](value: T) -> Box[T] {
-    return Box[T] { value: value };
+fn make_box<T>(value: T) -> Box<T> {
+    return Box<T> { value: value };
 }
 
-fn unwrap[T](box: Box[T]) -> T where T: Copy {
+fn unwrap<T>(box: Box<T>) -> T where T: Copy {
     return box.value;
 }
 
-fn const_ptr[T](value: &T) -> *const T {
-    return unsafe { ptrat[*const T](ptraddr(value)) };
+fn const_ptr<T>(value: &T) -> *const T {
+    return unsafe { ptrat<*const T>(ptraddr(value)) };
 }
 
-fn same_ptr[T](value: *const T) -> *const T {
+fn same_ptr<T>(value: *const T) -> *const T {
     return value;
 }
 
-fn make_pair[A, B](a: A, b: B) -> Pair[A, B] {
-    return Pair[A, B] {
+fn make_pair<A, B>(a: A, b: B) -> Pair<A, B> {
+    return Pair<A, B> {
         first: a,
         second: b,
     };
 }
 
 fn main() -> i32 {
-    let a: Box[i32] = Box[i32] { value: 1 };
-    let p: Pair[i32, bool] = Pair[i32, bool] {
+    let a: Box<i32> = Box<i32> { value: 1 };
+    let p: Pair<i32, bool> = Pair<i32, bool> {
         first: id(41),
-        second: id[bool](true),
+        second: id<bool>(true),
     };
-    let nested: Box[Pair[i32, bool]] = make_box(p);
+    let nested: Box<Pair<i32, bool>> = make_box(p);
     let q = make_pair(1, false);
-    let unwrapped = unwrap(Box[i32] { value: 2 });
+    let unwrapped = unwrap(Box<i32> { value: 2 });
     let value_ptr = same_ptr(const_ptr(&a.value));
     var mutable_value: i32 = 3;
     let mutable_value_ptr = same_ptr(const_ptr(&mutable_value));
     if first(p) == 41 && q.first == 1 && a.value == 1 && nested.value.second && unwrapped == 2 && unsafe { *value_ptr } == 1 && unsafe { *mutable_value_ptr } == 3 {
-        return id[i32](0);
+        return id<i32>(0);
     }
     return 1;
 }

@@ -4,13 +4,10 @@
 #include <aurex/frontend/parse/recovery.hpp>
 
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
-
-#include <frontend/parse/support/private/bracket_suffix_classifier.hpp>
-#include <frontend/parse/support/private/type_arg_expr_converter.hpp>
+#include <vector>
 
 namespace aurex::parse {
 
@@ -22,6 +19,8 @@ constexpr base::usize PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH = 1;
 constexpr char PARSER_TUPLE_FIELD_DOT = '.';
 constexpr char PARSER_TUPLE_FIELD_FIRST_DIGIT = '0';
 constexpr char PARSER_TUPLE_FIELD_LAST_DIGIT = '9';
+constexpr int PARSER_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH = 1;
+constexpr int PARSER_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH = 2;
 
 [[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept
 {
@@ -36,6 +35,14 @@ constexpr char PARSER_TUPLE_FIELD_LAST_DIGIT = '9';
         }
     }
     return true;
+}
+
+[[nodiscard]] bool token_continues_generic_apply_suffix(const TokenKind kind, const ExprContext context) noexcept
+{
+    if (kind == TokenKind::l_paren || kind == TokenKind::dot) {
+        return true;
+    }
+    return context == ExprContext::normal && kind == TokenKind::l_brace;
 }
 
 } // namespace
@@ -54,6 +61,11 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(const syntax:
 {
     if (context == ExprContext::normal && this->check(TokenKind::l_brace)) {
         return this->parse_struct_literal_suffix(base, context);
+    }
+    if (this->check_generic_left_angle()) {
+        if (std::optional<syntax::ExprId> generic = this->parse_angle_generic_suffix(base, context)) {
+            return generic.value();
+        }
     }
     if (this->match(TokenKind::l_bracket)) {
         return this->parse_bracket_suffix(base, context);
@@ -87,35 +99,20 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(const syntax:
 syntax::ExprId PostfixExprParser::parse_bracket_suffix(const syntax::ExprId base, const ExprContext context)
 {
     const syntax::Token& begin = this->previous();
-    syntax::AstArenaVector<BracketArg> args = this->session_.module.make_expr_list<BracketArg>();
 
     if (this->check(TokenKind::r_bracket)) {
-        this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
+        this->report_here(std::string(PARSER_EXPECT_EXPRESSION));
         const syntax::Token& end = this->expect_index_suffix_end(begin);
         const base::SourceRange range = this->merge(begin.range, end.range);
-        const BracketSuffixDecision decision = BracketSuffixClassifier(this->parser_).classify_empty_suffix();
-        if (decision.kind == BracketSuffixKind::generic_apply) {
-            syntax::GenericApplyExprPayload payload;
-            payload.callee = base;
-            payload.type_args = this->session_.module.make_expr_list<syntax::TypeId>();
-            payload.generic_args = this->session_.module.make_expr_list<syntax::GenericArgDecl>();
-            return this->session_.module.push_generic_apply_expr(
-                this->merge(this->expr_range_or(base, range), range), std::move(payload));
-        }
         return this->session_.module.push_index_expr(
             this->merge(this->expr_range_or(base, range), range), base, syntax::INVALID_EXPR_ID);
     }
 
-    BracketArg first;
+    syntax::ExprId first = syntax::INVALID_EXPR_ID;
     if (!this->check(TokenKind::colon)) {
-        first = this->parse_bracket_arg(context);
+        first = this->parse_expr(context);
     }
     if (this->match(TokenKind::colon)) {
-        const BracketSuffixDecision decision =
-            BracketSuffixClassifier(this->parser_).classify_slice_suffix(syntax::is_valid(first.type));
-        if (decision.has_type_only_arg) {
-            this->report_here(std::string(PARSER_EXPECT_EXPRESSION));
-        }
         syntax::ExprId end_expr = syntax::INVALID_EXPR_ID;
         if (!this->check(TokenKind::r_bracket)) {
             end_expr = this->parse_expr(context);
@@ -123,40 +120,24 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(const syntax::ExprId base
         const syntax::Token& end = this->expect_slice_suffix_end(begin);
         const base::SourceRange range = this->merge(begin.range, end.range);
         return this->session_.module.push_slice_expr(
-            this->merge(this->expr_range_or(base, range), range), base, first.expr, end_expr);
+            this->merge(this->expr_range_or(base, range), range), base, first, end_expr);
     }
 
+    std::vector<syntax::ExprId> args;
     args.push_back(first);
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
         if (!this->recover_bracket_arg_separator()) {
             break;
         }
-        args.push_back(this->parse_bracket_arg(context));
+        args.push_back(this->parse_expr(context));
     }
 
     const syntax::Token& end = this->expect_index_suffix_end(begin);
     const base::SourceRange bracket_range = this->merge(begin.range, end.range);
     const base::SourceRange range = this->merge(this->expr_range_or(base, bracket_range), bracket_range);
-    const bool has_type_only_arg = this->bracket_args_contain_type_only(args);
-    const BracketSuffixDecision decision = this->classify_bracket_suffix(base, args, has_type_only_arg, context);
-    if (decision.kind == BracketSuffixKind::generic_apply) {
-        std::optional<syntax::GenericApplyExprPayload> payload =
-            this->bracket_args_to_generic_apply_payload(base, args, decision.report_type_arg_errors);
-        if (payload.has_value()) {
-            return this->session_.module.push_generic_apply_expr(range, std::move(payload.value()));
-        }
-        if (decision.report_type_arg_errors) {
-            syntax::GenericApplyExprPayload empty_payload;
-            empty_payload.callee = base;
-            empty_payload.type_args = this->session_.module.make_expr_list<syntax::TypeId>();
-            empty_payload.generic_args = this->session_.module.make_expr_list<syntax::GenericArgDecl>();
-            return this->session_.module.push_generic_apply_expr(range, std::move(empty_payload));
-        }
-    }
-
     syntax::ExprId index = syntax::INVALID_EXPR_ID;
     if (!args.empty()) {
-        index = args.front().expr;
+        index = args.front();
     }
     if (args.size() > 1) {
         this->session_.diagnostics.report_at(
@@ -165,150 +146,166 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(const syntax::ExprId base
     return this->session_.module.push_index_expr(range, base, index);
 }
 
-PostfixExprParser::BracketArg PostfixExprParser::parse_bracket_arg(const ExprContext context)
+std::optional<syntax::ExprId> PostfixExprParser::parse_angle_generic_suffix(
+    const syntax::ExprId base, const ExprContext context)
 {
-    if (this->bracket_arg_starts_type_only()) {
-        const syntax::TypeId type = this->parse_type();
-        return BracketArg{
-            syntax::INVALID_EXPR_ID,
-            type,
-            this->type_range_or(type, this->previous().range),
-        };
+    if (!this->angle_generic_suffix_has_valid_continuation(context)) {
+        return std::nullopt;
     }
 
-    const syntax::ExprId expr = this->parse_expr(context);
-    return BracketArg{
-        expr,
-        syntax::INVALID_TYPE_ID,
-        this->expr_range_or(expr, this->previous().range),
-    };
+    const syntax::Token& begin = this->expect_generic_left_angle_recovered(
+        std::string(PARSER_EXPECT_GENERIC_APPLY_START), RecoveryContext::generic_type_argument);
+    GenericSuffixArgs args = this->parse_angle_generic_args(begin);
+    const syntax::Token& end = this->expect_generic_right_angle_recovered_after(
+        std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, begin);
+
+    syntax::GenericApplyExprPayload payload;
+    payload.callee = base;
+    payload.type_args = std::move(args.type_args);
+    payload.generic_args = std::move(args.generic_args);
+
+    const base::SourceRange suffix_range = this->merge(begin.range, end.range);
+    return this->session_.module.push_generic_apply_expr(
+        this->merge(this->expr_range_or(base, suffix_range), suffix_range), std::move(payload));
 }
 
-bool PostfixExprParser::bracket_arg_starts_type_only() const noexcept
+bool PostfixExprParser::angle_generic_suffix_has_valid_continuation(const ExprContext context) const noexcept
 {
-    return BracketSuffixClassifier(this->parser_).arg_starts_type_only();
-}
-
-bool PostfixExprParser::bracket_args_contain_type_only(const std::span<const BracketArg> args) const noexcept
-{
-    for (const BracketArg& arg : args) {
-        if (syntax::is_valid(arg.type)) {
-            return true;
+    int angle_depth = 0;
+    base::usize offset = 0;
+    while (!this->is_eof()) {
+        const syntax::Token& token = this->peek_at(offset);
+        switch (token.kind) {
+            case TokenKind::less:
+                ++angle_depth;
+                break;
+            case TokenKind::greater:
+                --angle_depth;
+                if (angle_depth == 0) {
+                    return token_continues_generic_apply_suffix(this->peek_at(offset + 1U).kind, context);
+                }
+                break;
+            case TokenKind::greater_greater:
+                if (angle_depth == PARSER_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                    return false;
+                }
+                angle_depth -= PARSER_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH;
+                if (angle_depth == 0) {
+                    return token_continues_generic_apply_suffix(this->peek_at(offset + 1U).kind, context);
+                }
+                if (angle_depth < 0) {
+                    return false;
+                }
+                break;
+            case TokenKind::greater_equal:
+                if (angle_depth == PARSER_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                    return token_continues_generic_apply_suffix(TokenKind::equal, context);
+                }
+                --angle_depth;
+                break;
+            case TokenKind::greater_greater_equal:
+                if (angle_depth == PARSER_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH) {
+                    return token_continues_generic_apply_suffix(TokenKind::equal, context);
+                }
+                return false;
+            case TokenKind::eof:
+            case TokenKind::semicolon:
+                return false;
+            default:
+                break;
         }
+        if (angle_depth <= 0) {
+            return false;
+        }
+        ++offset;
     }
     return false;
 }
 
-bool PostfixExprParser::bracket_args_are_type_like(const std::span<const BracketArg> args) const
+PostfixExprParser::GenericSuffixArgs PostfixExprParser::parse_angle_generic_args(const syntax::Token& opening)
 {
-    for (const BracketArg& arg : args) {
-        if (syntax::is_valid(arg.type)) {
-            continue;
+    GenericSuffixArgs args;
+    args.type_args = this->session_.module.make_expr_list<syntax::TypeId>();
+    args.generic_args = this->session_.module.make_expr_list<syntax::GenericArgDecl>();
+    args.range = opening.range;
+    if (this->check_generic_right_angle()) {
+        this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
+        return args;
+    }
+    while (!this->is_eof() && !this->check_generic_right_angle()) {
+        syntax::GenericArgDecl arg = this->parse_angle_generic_arg();
+        if (arg.kind == syntax::GenericArgKind::type && syntax::is_valid(arg.type)) {
+            args.type_args.push_back(arg.type);
         }
-        if (!this->bracket_arg_expr_is_type_like(arg.expr)) {
-            return false;
+        args.range = this->merge(args.range, arg.range);
+        args.generic_args.push_back(arg);
+        this->reset_panic();
+        if (!this->recover_angle_generic_arg_separator()) {
+            break;
         }
     }
-    return !args.empty();
+    return args;
 }
 
-bool PostfixExprParser::bracket_arg_expr_is_type_like(const syntax::ExprId expr) const
+syntax::GenericArgDecl PostfixExprParser::parse_angle_generic_arg()
 {
-    return BracketSuffixClassifier(this->parser_).arg_expr_is_type_like(expr);
-}
-
-BracketSuffixDecision PostfixExprParser::classify_bracket_suffix(const syntax::ExprId base,
-    const std::span<const BracketArg> args, const bool has_type_only_arg, const ExprContext context) const
-{
-    return BracketSuffixClassifier(this->parser_)
-        .classify_after_expr(BracketSuffixClassificationInput{
-            .base = base,
-            .has_type_only_arg = has_type_only_arg,
-            .args_are_type_like = this->bracket_args_are_type_like(args),
-            .context = context,
-        });
-}
-
-std::optional<syntax::AstArenaVector<syntax::TypeId>> PostfixExprParser::bracket_args_to_type_args(
-    const std::span<const BracketArg> args, const bool report_errors)
-{
-    syntax::AstArenaVector<syntax::TypeId> type_args = this->session_.module.make_expr_list<syntax::TypeId>();
-    type_args.reserve(args.size());
-    for (const BracketArg& arg : args) {
-        if (syntax::is_valid(arg.type)) {
-            type_args.push_back(arg.type);
-            continue;
-        }
-        const syntax::TypeId type = this->bracket_arg_expr_to_type(arg.expr, report_errors);
-        if (!syntax::is_valid(type)) {
-            return std::nullopt;
-        }
-        type_args.push_back(type);
+    if (this->check(TokenKind::integer_literal) || this->check(TokenKind::kw_true) || this->check(TokenKind::kw_false)
+        || this->check(TokenKind::char_literal)) {
+        const base::SourceRange range = this->peek().range;
+        return syntax::GenericArgDecl{
+            syntax::GenericArgKind::const_expr,
+            syntax::INVALID_TYPE_ID,
+            this->parse_const_generic_expr_atom(std::string(PARSER_EXPECT_GENERIC_ARGUMENT)),
+            range,
+        };
     }
-    return type_args;
+    const syntax::TypeId type = this->parse_type();
+    return syntax::GenericArgDecl{
+        syntax::GenericArgKind::type,
+        type,
+        syntax::INVALID_EXPR_ID,
+        this->type_range_or(type, this->previous().range),
+    };
 }
 
-std::optional<syntax::GenericApplyExprPayload> PostfixExprParser::bracket_args_to_generic_apply_payload(
-    const syntax::ExprId callee, const std::span<const BracketArg> args, const bool report_errors)
+syntax::ExprId PostfixExprParser::parse_const_generic_expr_atom(std::string message)
 {
-    syntax::GenericApplyExprPayload payload;
-    payload.callee = callee;
-    payload.type_args = this->session_.module.make_expr_list<syntax::TypeId>();
-    payload.generic_args = this->session_.module.make_expr_list<syntax::GenericArgDecl>();
-    payload.type_args.reserve(args.size());
-    payload.generic_args.reserve(args.size());
-    for (const BracketArg& arg : args) {
-        if (syntax::is_valid(arg.type)) {
-            payload.type_args.push_back(arg.type);
-            payload.generic_args.push_back(syntax::GenericArgDecl{
-                syntax::GenericArgKind::type,
-                arg.type,
-                syntax::INVALID_EXPR_ID,
-                arg.range,
-            });
-            continue;
-        }
-        if (this->bracket_arg_expr_is_type_like(arg.expr)) {
-            const syntax::TypeId type = this->bracket_arg_expr_to_type(arg.expr, report_errors);
-            if (!syntax::is_valid(type)) {
-                return std::nullopt;
-            }
-            payload.type_args.push_back(type);
-            payload.generic_args.push_back(syntax::GenericArgDecl{
-                syntax::GenericArgKind::type,
-                type,
-                syntax::INVALID_EXPR_ID,
-                arg.range,
-            });
-            continue;
-        }
-        if (syntax::is_valid(arg.expr)) {
-            payload.generic_args.push_back(syntax::GenericArgDecl{
-                syntax::GenericArgKind::const_expr,
-                syntax::INVALID_TYPE_ID,
-                arg.expr,
-                arg.range,
-            });
-            continue;
-        }
-        if (report_errors) {
-            this->session_.diagnostics.report_at(
-                syntax::Token{TokenKind::invalid, arg.range, {}}, std::string(PARSER_EXPECT_GENERIC_ARGUMENT));
-        }
-        return std::nullopt;
+    if (this->match(TokenKind::integer_literal)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::integer_literal, token.range, token.text());
     }
-    return payload;
+    if (this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::bool_literal, token.range, token.text());
+    }
+    if (this->match(TokenKind::char_literal)) {
+        const syntax::Token& token = this->previous();
+        return this->session_.module.push_literal_expr(syntax::ExprKind::char_literal, token.range, token.text());
+    }
+    this->report_here(std::move(message));
+    return syntax::INVALID_EXPR_ID;
 }
 
-syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(const syntax::ExprId expr, const bool report_errors)
+bool PostfixExprParser::recover_angle_generic_arg_separator() const
 {
-    return TypeArgExprConverter(this->parser_).convert(expr, report_errors);
-}
+    if (this->check_generic_right_angle()) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check_generic_right_angle();
+    }
 
-syntax::TypeId PostfixExprParser::append_type_selector(
-    const syntax::TypeId base, const std::string_view name, const base::SourceRange& range, const bool report_errors)
-{
-    return TypeArgExprConverter(this->parser_).append_selector(base, name, range, report_errors);
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
+        this->synchronize(RecoveryContext::generic_type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check_generic_right_angle();
+    }
+    this->reset_panic();
+    return false;
 }
 
 bool PostfixExprParser::recover_bracket_arg_separator()
@@ -321,9 +318,9 @@ bool PostfixExprParser::recover_bracket_arg_separator()
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
-    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
-        this->synchronize(RecoveryContext::generic_type_argument);
+    this->report_here(std::string(PARSER_EXPECT_INDEX_ARGUMENT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::index_expression)) {
+        this->synchronize(RecoveryContext::index_expression);
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();

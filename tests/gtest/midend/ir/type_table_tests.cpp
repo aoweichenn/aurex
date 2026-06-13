@@ -140,10 +140,10 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths)
     EXPECT_EQ(module.types.display_name(enum_type), "unit.Tag");
     EXPECT_EQ(module.types.display_name(opaque), "unit.Opaque");
     EXPECT_EQ(module.types.get(generic_record).name, "unit.Box");
-    EXPECT_EQ(module.types.display_name(generic_record), "unit.Box[i32]");
-    EXPECT_EQ(module.types.display_name("Box", module.types.get(generic_record).generic_args), "Box[i32]");
+    EXPECT_EQ(module.types.display_name(generic_record), "unit.Box<i32>");
+    EXPECT_EQ(module.types.display_name("Box", module.types.get(generic_record).generic_args), "Box<i32>");
     EXPECT_EQ(module.types.get(generic_enum).name, "unit.Maybe");
-    EXPECT_EQ(module.types.display_name(generic_enum), "unit.Maybe[i32]");
+    EXPECT_EQ(module.types.display_name(generic_enum), "unit.Maybe<i32>");
     EXPECT_EQ(module.types.display_name(sema::INVALID_TYPE_HANDLE), "<invalid>");
     EXPECT_EQ(module.types.c_name(sema::INVALID_TYPE_HANDLE), "void");
     EXPECT_EQ(module.types.c_name(record_type), "unit_Pair");

@@ -4,7 +4,7 @@
 状态：语法修正优化第二手改动设计稿
 关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 builtin 名字和关键字污染
 
-本文固定 Aurex 第二项语法修正方向：把当前直接暴露给用户的 builtin keyword 表面收束掉。目标不是简单把 `cast[i32](x)` 改成 `cast<i32>(x)`，那只是换括号；真正的问题是这些名字不应该全部进入语言关键字层，尤其 `strfromutf8`、`strblen`、`sliceptr`、`ptrat` 这种名字像编译器内部 helper，不像一门语言的长期用户表面。
+本文固定 Aurex 第二项语法修正方向：把当前直接暴露给用户的 builtin keyword 表面收束掉。第一批泛型修正已经把 builtin type operand 统一成 `<...>`，但这只是换括号；真正的问题是这些名字不应该全部进入语言关键字层，尤其 `strfromutf8`、`strblen`、`sliceptr`、`ptrat` 这种名字像编译器内部 helper，不像一门语言的长期用户表面。
 
 ## 现状
 
@@ -29,13 +29,13 @@ strptr strblen strvalid strfromutf8 strraw
 
 ```aurex
 let text: str = strfromutf8(bytes);
-return cast[i32](strblen(text));
+return cast<i32>(strblen(text));
 
 let addr: usize = ptraddr(&pair);
-let pair_ptr: *mut Pair = unsafe { ptrat[*mut Pair](addr) };
-let pointer_size: usize = sizeof[*mut Pair];
-let erased: *const void = unsafe { ptrcast[*const void](&pair) };
-let zero_bits: f32 = unsafe { bitcast[f32](cast[u32](0)) };
+let pair_ptr: *mut Pair = unsafe { ptrat<*mut Pair>(addr) };
+let pointer_size: usize = sizeof<*mut Pair>;
+let erased: *const void = unsafe { ptrcast<*const void>(&pair) };
+let zero_bits: f32 = unsafe { bitcast<f32>(cast<u32>(0)) };
 
 if slicelen(ascii) != 2usize {
     return 11;
@@ -100,13 +100,13 @@ intrinsic.ptr_at<*mut Pair>(addr)
 下面这些操作危险级别明显不同：
 
 ```aurex
-cast[i32](x)                 // safe numeric/bool conversion
-sizeof[T]                    // safe layout query
+cast<i32>(x)                 // safe numeric/bool conversion
+sizeof<T>                    // safe layout query
 strfromutf8(bytes)           // checked UTF-8 boundary
 ptraddr(&value)              // 低层地址观察
-ptrat[*mut T](addr)          // 从整数构造 pointer，unsafe
-ptrcast[*const void](ptr)    // pointer cast，unsafe
-bitcast[f32](bits)           // bit reinterpret，unsafe
+ptrat<*mut T>(addr)          // 从整数构造 pointer，unsafe
+ptrcast<*const void>(ptr)    // pointer cast，unsafe
+bitcast<f32>(bits)           // bit reinterpret，unsafe
 strraw(ptr, len)             // unchecked UTF-8，unsafe
 ```
 
@@ -123,13 +123,13 @@ sliceptr(bytes)
 ptrat<*mut Pair>(addr)
 ```
 
-`ptrat<*mut Pair>(addr)` 比 `ptrat[*mut Pair](addr)` 只是少了 `[]` 冲突，仍然不像稳定用户语法。
+`ptrat<*mut Pair>(addr)` 虽然已经没有 `[]` 冲突，仍然不像稳定用户语法。
 
 ## 决策
 
 ### 决策 1：safe scalar cast 改成 `as`
 
-高频 `cast[T](x)` 改为表达式 cast：
+高频 `cast<T>(x)` 改为表达式 cast：
 
 ```aurex
 let y: i32 = x as i32;
@@ -140,9 +140,9 @@ let b: bool = code as bool;
 旧写法：
 
 ```aurex
-cast[i32](x)
-cast[usize](value)
-cast[bool](code)
+cast<i32>(x)
+cast<usize>(value)
+cast<bool>(code)
 ```
 
 迁移目标：
@@ -197,9 +197,9 @@ Name GenericArgs "(" ")"
 下面这些能力不应该伪装成普通函数，也不应该占用全局 keyword：
 
 ```aurex
-ptrcast[T](p)
-bitcast[T](x)
-ptrat[T](addr)
+ptrcast<T>(p)
+bitcast<T>(x)
+ptrat<T>(addr)
 strraw(data, len)
 ```
 
@@ -299,13 +299,13 @@ str.from_utf8(bytes) -> Option<str>
 
 | 当前写法 | 目标写法 | 层级 |
 | --- | --- | --- |
-| `cast[i32](x)` | `x as i32` | safe scalar cast |
-| `sizeof[T]` | `sizeof<T>()` | safe layout query |
-| `alignof[T]` | `alignof<T>()` | safe layout query |
+| `cast<i32>(x)` | `x as i32` | safe scalar cast |
+| `sizeof<T>` | `sizeof<T>()` | safe layout query |
+| `alignof<T>` | `alignof<T>()` | safe layout query |
 | `ptraddr(p)` | `intrinsic.addr(p)` | low-level address query |
-| `ptrat[*mut T](addr)` | `intrinsic.ptr_at<*mut T>(addr)` | unsafe intrinsic |
-| `ptrcast[*const T](p)` | `intrinsic.ptr_cast<*const T>(p)` | unsafe intrinsic |
-| `bitcast[T](x)` | `intrinsic.bit_cast<T>(x)` | unsafe intrinsic |
+| `ptrat<*mut T>(addr)` | `intrinsic.ptr_at<*mut T>(addr)` | unsafe intrinsic |
+| `ptrcast<*const T>(p)` | `intrinsic.ptr_cast<*const T>(p)` | unsafe intrinsic |
+| `bitcast<T>(x)` | `intrinsic.bit_cast<T>(x)` | unsafe intrinsic |
 | `slicelen(xs)` | `xs.len()` | primitive method |
 | `sliceptr(xs)` | `xs.data()` | primitive method |
 | `strblen(s)` | `s.byte_len()` | primitive method |
@@ -465,23 +465,23 @@ intrinsic.str_from_raw(data, len)
 旧表面发迁移诊断：
 
 ```text
-cast[T](x) is deprecated; use x as T
-sizeof[T] is deprecated; use sizeof<T>()
-ptrat[T](addr) is deprecated; use intrinsic.ptr_at<T>(addr)
+cast<T>(x) is deprecated; use x as T
+sizeof<T> is deprecated; use sizeof<T>()
+ptrat<T>(addr) is deprecated; use intrinsic.ptr_at<T>(addr)
 strblen(s) is deprecated; use s.byte_len()
 ```
 
-### 阶段 2：删除 `[]` builtin type argument
+### 阶段 2：删除旧 builtin type operand 表面
 
 配合泛型迁移，删除：
 
 ```aurex
-cast[T](x)
-sizeof[T]
-alignof[T]
-ptrat[T](addr)
-ptrcast[T](p)
-bitcast[T](x)
+cast<T>(x)
+sizeof<T>
+alignof<T>
+ptrat<T>(addr)
+ptrcast<T>(p)
+bitcast<T>(x)
 ```
 
 如果迁移期还保留旧名字，也只能接受 `<...>`：
@@ -640,9 +640,9 @@ if str.is_utf8(bytes) {
 旧语法迁移诊断：
 
 ```aurex
-cast[i32](x)
-sizeof[i32]
-ptrat[*mut Pair](addr)
+cast<i32>(x)
+sizeof<i32>
+ptrat<*mut Pair>(addr)
 strblen(text)
 slicelen(bytes)
 strfromutf8(bytes)
@@ -654,7 +654,7 @@ strraw(data, len)
 这次语法修正完成后应满足：
 
 - `strblen`、`strfromutf8`、`sliceptr`、`ptrat` 等不再是长期用户语法。
-- 高频 safe cast 用 `as`，不再写 `cast[T](x)`。
+- 高频 safe cast 用 `as`，不再写 `cast<T>(x)`。
 - safe layout query 使用普通 generic call：`sizeof<T>()` / `alignof<T>()`。
 - 危险低层能力集中到 `intrinsic` namespace，并继续要求 `unsafe`。
 - slice / str projection 看起来像值的方法，而不是全局 compiler helper。

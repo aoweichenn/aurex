@@ -5,5 +5,5 @@ struct Box {
 }
 
 fn main() -> i32 {
-    return Box.missing[i32]();
+    return Box.missing<i32>();
 }

@@ -52,20 +52,20 @@ fn same_text(left: str, right: str) -> bool {
 }
 
 fn buffer_text(buffer: &mut [256]u8, len: usize) -> str {
-    let ptr: *const u8 = unsafe { ptrcast[*const u8](ptrat[*mut [256]u8](ptraddr(buffer))) };
+    let ptr: *const u8 = unsafe { ptrcast<*const u8>(ptrat<*mut [256]u8>(ptraddr(buffer))) };
     return unsafe { strraw(ptr, len) };
 }
 
 fn buffer_ptr(buffer: &mut [256]u8) -> *mut u8 {
-    return unsafe { ptrcast[*mut u8](ptrat[*mut [256]u8](ptraddr(buffer))) };
+    return unsafe { ptrcast<*mut u8>(ptrat<*mut [256]u8>(ptraddr(buffer))) };
 }
 
 fn database_ptr(buffer: &mut [4096]u8) -> *mut u8 {
-    return unsafe { ptrcast[*mut u8](ptrat[*mut [4096]u8](ptraddr(buffer))) };
+    return unsafe { ptrcast<*mut u8>(ptrat<*mut [4096]u8>(ptraddr(buffer))) };
 }
 
 fn ids_ptr(ids: &mut [8]usize) -> *mut usize {
-    return unsafe { ptrcast[*mut usize](ptrat[*mut [8]usize](ptraddr(ids))) };
+    return unsafe { ptrcast<*mut usize>(ptrat<*mut [8]usize>(ptraddr(ids))) };
 }
 
 fn ensure(code: i32, passed: bool) -> i32 {
@@ -1131,7 +1131,7 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
     }
 
     var encoded: [2048]u8 = [0u8; 2048];
-    let out: *mut u8 = unsafe { ptrcast[*mut u8](ptrat[*mut [2048]u8](ptraddr(&mut encoded))) };
+    let out: *mut u8 = unsafe { ptrcast<*mut u8>(ptrat<*mut [2048]u8>(ptraddr(&mut encoded))) };
     let database: regex.DatabaseResult = regex.serialize_set(&compiled, out, 2048usize);
     if !database.ok() {
         return CASE_SET_LITERAL_TRIE + 6 + regex.status_code(database.status);

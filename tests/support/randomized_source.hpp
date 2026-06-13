@@ -137,19 +137,19 @@ template <base::usize Size>
             return "helper_" + std::to_string(random.index(RANDOM_SOURCE_MAX_EXTRA_HELPERS)) + "("
                 + integer_literal(random) + ")";
         case 2:
-            return "cast[i32](" + integer_literal(random) + ")";
+            return "cast<i32>(" + integer_literal(random) + ")";
         case 3:
-            return "cast[i32](sizeof[" + type_name(random) + "])";
+            return "cast<i32>(sizeof<" + type_name(random) + ">)";
         case 4:
-            return "cast[i32](alignof[" + type_name(random) + "])";
+            return "cast<i32>(alignof<" + type_name(random) + ">)";
         case 5:
             return "- " + integer_literal(random);
         case 6:
             return "id(" + integer_literal(random) + ")";
         case 7:
-            return "id[i32](" + integer_literal(random) + ")";
+            return "id<i32>(" + integer_literal(random) + ")";
         case 8:
-            return "first(Holder[i32] { value: " + integer_literal(random) + " })";
+            return "first(Holder<i32> { value: " + integer_literal(random) + " })";
         default:
             return "(" + integer_literal(random) + std::string(choose(random, BINARY_OPS)) + integer_literal(random)
                 + ")";
@@ -218,7 +218,7 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
                 << i32_expr(random) << ", };\n";
             break;
         case 7:
-            out << "  let " << local << ": Holder[i32] = Holder[i32] { value: " << i32_expr(random) << " };\n"
+            out << "  let " << local << ": Holder<i32> = Holder<i32> { value: " << i32_expr(random) << " };\n"
                 << "  total += first(" << local << ");\n";
             break;
         case 8:
@@ -226,7 +226,7 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
                 << "  total += " << local << ".value;\n";
             break;
         case 9:
-            out << "  let " << local << ": Holder[bool] = Holder[bool] { value: id[bool]("
+            out << "  let " << local << ": Holder<bool> = Holder<bool> { value: id<bool>("
                 << (random.coin() ? "true" : "false") << ") };\n";
             break;
         default:
@@ -241,13 +241,13 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
     out << "module randomized.case_" << case_index << ";\n"
         << "type Count = i32;\n"
         << "struct Pair { left: i32; right: i32; }\n"
-        << "struct Holder[T] { value: T; }\n"
+        << "struct Holder<T> { value: T; }\n"
         << "enum Mode: u8 { a = 1, b = 2, }\n";
 
-    out << "fn id[T](value: T) -> T { return value; }\n"
-        << "fn first[T](holder: Holder[T]) -> T where T: Copy { return holder.value; }\n"
-        << "fn make_holder[T](value: T) -> Holder[T] {\n"
-        << "  return Holder[T] { value: id(value) };\n"
+    out << "fn id<T>(value: T) -> T { return value; }\n"
+        << "fn first<T>(holder: Holder<T>) -> T where T: Copy { return holder.value; }\n"
+        << "fn make_holder<T>(value: T) -> Holder<T> {\n"
+        << "  return Holder<T> { value: id(value) };\n"
         << "}\n";
 
     const base::usize helper_count = RANDOM_SOURCE_MIN_EXTRA_HELPERS + random.index(RANDOM_SOURCE_MAX_EXTRA_HELPERS);
@@ -268,7 +268,7 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
     for (base::usize statement = 0; statement < statement_count; ++statement) {
         append_statement(random, out, statement);
     }
-    out << "  let ptr: *mut i32 = unsafe { ptrat[*mut i32](ptraddr(&mut total)) };\n"
+    out << "  let ptr: *mut i32 = unsafe { ptrat<*mut i32>(ptraddr(&mut total)) };\n"
         << "  unsafe { *ptr = *ptr + helper_0(1); }\n"
         << "  return total - total;\n"
         << "}\n";
@@ -290,7 +290,7 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
         std::string_view{"}}}}"},
         std::string_view{"1 + * /"},
         std::string_view{"Result<Wrap<i32>>"},
-        std::string_view{"ptrcast[*mut i32]("},
+        std::string_view{"ptrcast<*mut i32>("},
         std::string_view{"for var i: i32 = 0; i <"},
         std::string_view{"pub import missing."},
         std::string_view{"extern c { fn printf(format: *const u8, ...)"},

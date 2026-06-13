@@ -146,7 +146,8 @@ void print_diagnostic_source(
 void print_json_escaped(std::ostream& out, const std::string_view text)
 {
     out << DRIVER_JSON_QUOTE;
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned int>(static_cast<unsigned char>(raw_byte));
         switch (byte) {
             case DRIVER_JSON_QUOTE:
                 out << "\\\"";

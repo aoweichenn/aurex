@@ -43,7 +43,7 @@ fn ensure(code: i32, passed: bool) -> i32 {
 }
 
 fn ids_ptr(ids: &mut [8]usize) -> *mut usize {
-    return unsafe { ptrcast[*mut usize](ptrat[*mut [8]usize](ptraddr(ids))) };
+    return unsafe { ptrcast<*mut usize>(ptrat<*mut [8]usize>(ptraddr(ids))) };
 }
 
 fn status_offset(status: regex.RegexStatus) -> i32 {
@@ -196,7 +196,7 @@ fn require_capture_pressure() -> i32 {
         iteration += 1usize;
     }
     var buffer: [128]u8 = [0; 128];
-    let out: *mut u8 = unsafe { ptrcast[*mut u8](ptrat[*mut [128]u8](ptraddr(&mut buffer))) };
+    let out: *mut u8 = unsafe { ptrcast<*mut u8>(ptrat<*mut [128]u8>(ptraddr(&mut buffer))) };
     let replaced: regex.ReplaceResult = regex.replace_all(
         &email,
         "ops@example.com root@test.net",

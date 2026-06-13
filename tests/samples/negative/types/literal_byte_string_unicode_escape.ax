@@ -2,5 +2,5 @@ module literal_byte_string_unicode_escape;
 
 fn main() -> i32 {
     let bytes: [1]u8 = b"\u{41}";
-    return cast[i32](bytes[0]);
+    return cast<i32>(bytes[0]);
 }

@@ -4,7 +4,7 @@ trait Source {
     type Item;
 }
 
-fn use_item[T](value: T) -> T.Item {
+fn use_item<T>(value: T) -> T.Item {
     return value;
 }
 

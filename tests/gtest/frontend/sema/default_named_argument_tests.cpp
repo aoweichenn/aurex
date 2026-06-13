@@ -143,9 +143,9 @@ TEST(CoreUnit, DefaultNamedArgumentSemaSupportsGenericCallNormalization)
 {
     constexpr std::string_view source =
         "module default_named_argument.generic;\n"
-        "fn choose[T](value: T, amount: i32 = 2) -> i32 { return amount; }\n"
+        "fn choose<T>(value: T, amount: i32 = 2) -> i32 { return amount; }\n"
         "fn main() -> i32 {\n"
-        "  return choose[i32](value: 3);\n"
+        "  return choose<i32>(value: 3);\n"
         "}\n";
 
     const sema::CheckedModule checked = analyze_default_named_argument_source(source);

@@ -8,7 +8,7 @@ query/cache/tooling/verifier release closure；M12a 新增无歧义 `combo.metho
 receiver-access binding、associated equality direct dispatch、direct/explicit projection 去重和 query/cache
 fingerprint drift；M13a 新增 `m13a_dyn_advanced_design_gate_baseline` query gate，选择 borrowed
 composition-to-supertrait explicit projection 作为下一条主线；M13b 新增
-`dynproject[SourcePrincipal, TargetSupertrait](view)` 显式投影并记录 `composition_to_supertrait` fact；M13c
+`dynproject<SourcePrincipal, TargetSupertrait>(view)` 显式投影并记录 `composition_to_supertrait` fact；M13c
 已把它 lowering 为 `trait_object_composition_project` + `trait_object_upcast` runtime；M13d 新增
 `composition_supertrait_chains` query/tooling/verifier release closure；M14 已支持唯一 path 的 expected-type
 projection 和 direct supertrait method dispatch。
@@ -156,7 +156,7 @@ impl Source for Bytes {
     }
 }
 
-fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
+fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {
     return value.fallback(value.get());
 }
 ```
@@ -192,11 +192,11 @@ fn main() -> i32 {
 ```
 
 `&T` / `&mut T` 可以在满足可见 nominal impl 时 coercion 到 `&dyn Trait` / `&mut dyn Trait`。运行时表示是
-`{data*, vtable*}` fat view，method call 会从 checked vtable slot 加载函数指针并间接派发。`dyn Trait[Item = i32]`
+`{data*, vtable*}` fat view，method call 会从 checked vtable slot 加载函数指针并间接派发。`dyn Trait<Item = i32>`
 这类 associated equality 已支持，trait default method slot 也可以进入 vtable。
 
 常规 sample suite 中的 `tests/samples/positive/traits/trait_dyn_borrowed_dispatch.ax` 展示了一个完整 borrowed
-dyn 用例：`&dyn Source[Item = i32]` shared dispatch、`&mut dyn Accumulate` mutable receiver 写回、default
+dyn 用例：`&dyn Source<Item = i32>` shared dispatch、`&mut dyn Accumulate` mutable receiver 写回、default
 method slot 和 associated equality 在同一个程序中运行。
 
 M10d release baseline 支持 borrowed dyn supertrait upcast runtime：`trait Child: Parent` 会进入 checked supertrait graph，
@@ -246,7 +246,7 @@ impl Render for File {
 }
 
 fn score_supertrait(view: &dyn (Render + Debug)) -> i32 {
-    let draw: &dyn Draw = dynproject[Render, Draw](view);
+    let draw: &dyn Draw = dynproject<Render, Draw>(view);
     let inferred: &dyn Draw = view;
     return view.draw() + draw.draw() + inferred.draw();
 }
@@ -269,7 +269,7 @@ direct dispatch 与显式 `let draw: &dyn Draw = view;` 混用会去重 principa
 composition projection ABI descriptor，associated equality direct call 会使用 selected principal 的 equality
 substitution。如果多个 principal 暴露同名 method，仍必须先显式投影来消除歧义。M14 后，唯一
 source-principal path 的 composition-to-supertrait expected-type projection 和 direct supertrait dispatch 也可用；
-歧义 path 仍必须写 `dynproject[...]` 来消除来源。当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、
+歧义 path 仍必须写 `dynproject<...>` 来消除来源。当前仍不实现 owning dyn、`Box<dyn Trait>`、allocator、
 标准库、dynamic Drop dispatch、bare `dyn A + B` parser syntax、specialization、default associated type、
 generic associated type、associated const 或 generic const arithmetic。
 
@@ -278,12 +278,12 @@ generic associated type、associated const 或 generic const arithmetic。
 M16 已打开 const generic frontend / query / sema check-only 子集。当前仍可以写普通 type generic 和 origin generic：
 
 ```aurex
-struct Pair[T, U] {
+struct Pair<T, U> {
     first: T;
     second: U;
 }
 
-fn view[origin data](value: &[data] i32) -> &[data] i32 {
+fn view<origin data>(value: &[data] i32) -> &[data] i32 {
     return value;
 }
 ```
@@ -291,17 +291,17 @@ fn view[origin data](value: &[data] i32) -> &[data] i32 {
 当前也可以写 typed scalar const parameter、mixed generic arguments 和 `[N]T`：
 
 ```aurex
-struct ArrayView[T, const N: usize] {
+struct ArrayView<T, const N: usize> {
     value: T;
 }
 
-fn len[T, const N: usize](value: [N]T) -> usize {
+fn len<T, const N: usize>(value: [N]T) -> usize {
     return N;
 }
 
 fn main() -> usize {
-    let value: ArrayView[i32, 4] = ArrayView[i32, 4] { value: 1 };
-    return len[i32, 4]([1]);
+    let value: ArrayView<i32, 4> = ArrayView<i32, 4> { value: 1 };
+    return len<i32, 4>([1]);
 }
 ```
 
@@ -311,7 +311,7 @@ fn main() -> usize {
 - const parameter type 只接受 integer、`bool` 和 `char` 标量类型。
 - const argument 只接受 scalar literal 或当前 generic context 中的 const parameter name；const parameter name
   转发时必须和目标 const parameter type 一致。
-- `ArrayView[i32, 4]` 与 `ArrayView[i32, 5]` 会产生不同 generic instance key；const argument 不再只是 display
+- `ArrayView<i32, 4>` 与 `ArrayView<i32, 5>` 会产生不同 generic instance key；const argument 不再只是 display
   name 文本。
 - `[N]T` 当前是 check-only array length 集成点；它会保留 const param identity 和 fingerprint，但 unresolved
   const-param array 不会 lowering 到 runtime layout。
@@ -319,7 +319,7 @@ fn main() -> usize {
 仍不支持 generic const arithmetic、`N + 1`、user function comptime evaluation、const where predicate、
 const associated value、dyn const equality、runtime const generic ABI 和 standard-library const generic API。
 
-M13c 后，`dynproject[Render, Draw](view)` 会在 sema 层检查并在 IR/backend 层运行：
+M13c 后，`dynproject<Render, Draw>(view)` 会在 sema 层检查并在 IR/backend 层运行：
 
 - `view` 是 `&dyn (Render + Debug)` / `&mut dyn (Render + Debug)` 这类 borrowed composition。
 - `Render` 是 source principal，并且存在于 composition 中。
@@ -332,7 +332,7 @@ M13d 后，`FunctionDynAbiFacts`、lower-IR query invalidation、IDE semantic fa
 串起来。M14 后，`let inferred: &dyn Draw = view;` 和 `view.draw()` 在 `Render -> Draw` 唯一路径下会复用同一条
 runtime lowering，并额外记录 `BorrowedDynViewPathFact{use=expected_type_projection}` 或
 `BorrowedDynViewPathFact{use=method_dispatch}`；如果 composition 中有多个 principal 都能到达目标 supertrait，
-sema 仍会拒绝并要求显式 `dynproject[SourcePrincipal, TargetSupertrait](view)`。
+sema 仍会拒绝并要求显式 `dynproject<SourcePrincipal, TargetSupertrait>(view)`。
 
 ## import
 

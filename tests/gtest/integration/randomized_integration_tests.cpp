@@ -33,13 +33,15 @@ TEST_F(AurexIntegrationTest, RandomizedGeneratedModulesPassDriverCheckAndIrEmiss
 {
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_LEGAL_PROGRAM_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_INTEGRATION_PROGRAM_COUNT; ++index) {
-        SCOPED_TRACE("randomized driver integration case " + std::to_string(index));
+        const std::string case_label = "randomized driver integration case " + std::to_string(index);
         const fs::path source = tmp_root() / ("randomized_" + std::to_string(index) + ".ax");
         write_source(source, randomized::legal_program(random, index));
 
-        require_compiler_success(randomized_invocation(source, driver::EmitKind::check));
-        const CommandResult ir = require_compiler_success(randomized_invocation(source, driver::EmitKind::ir));
-        expect_contains(ir.output, "fn main");
+        const CommandResult checked = run_compiler(randomized_invocation(source, driver::EmitKind::check));
+        ASSERT_EQ(checked.exit_code, 0) << case_label << "\n" << checked.output;
+        const CommandResult ir = run_compiler(randomized_invocation(source, driver::EmitKind::ir));
+        ASSERT_EQ(ir.exit_code, 0) << case_label << "\n" << ir.output;
+        EXPECT_NE(ir.output.find("fn main"), std::string::npos) << case_label << "\n" << ir.output;
     }
 }
 
@@ -47,13 +49,13 @@ TEST_F(AurexIntegrationTest, RandomizedMalformedModulesFailCleanlyThroughDriverC
 {
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_PARSER_RECOVERY_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_INTEGRATION_PROGRAM_COUNT; ++index) {
-        SCOPED_TRACE("randomized malformed driver case " + std::to_string(index));
+        const std::string case_label = "randomized malformed driver case " + std::to_string(index);
         const fs::path source = tmp_root() / ("randomized_bad_" + std::to_string(index) + ".ax");
         write_source(source, randomized::parser_recovery_source(random, index));
 
         const CommandResult result = run_compiler(randomized_invocation(source, driver::EmitKind::check));
-        EXPECT_NE(result.exit_code, 0) << result.output;
-        EXPECT_FALSE(result.output.empty());
+        EXPECT_NE(result.exit_code, 0) << case_label << "\n" << result.output;
+        EXPECT_FALSE(result.output.empty()) << case_label;
     }
 }
 

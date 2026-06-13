@@ -5,12 +5,12 @@ struct Box {
 }
 
 impl Box {
-    fn id[T](self: &Box, value: T) -> T {
+    fn id<T>(self: &Box, value: T) -> T {
         return value;
     }
 }
 
 fn main() -> i32 {
     let box: Box = Box { value: 1 };
-    return box.id[i32, bool](1);
+    return box.id<i32, bool>(1);
 }

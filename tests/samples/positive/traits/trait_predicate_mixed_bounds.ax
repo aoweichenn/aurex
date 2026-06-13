@@ -15,11 +15,11 @@ impl Reader for Flag {
     }
 }
 
-fn use_flag[T](value: T) -> i32 where T: Eq + Reader {
+fn use_flag<T>(value: T) -> i32 where T: Eq + Reader {
     return 0;
 }
 
 fn main() -> i32 {
     let flag: Flag = Flag.yes;
-    return use_flag[Flag](flag);
+    return use_flag<Flag>(flag);
 }

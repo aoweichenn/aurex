@@ -60,7 +60,7 @@ bool StmtParser::starts_local_pattern() const noexcept
     if (!this->check(TokenKind::identifier)) {
         return false;
     }
-    return this->check_next(TokenKind::l_brace) || this->check_next(TokenKind::dot)
+    return this->check_next(TokenKind::l_brace) || this->check_next(TokenKind::dot) || this->check_next(TokenKind::less)
         || this->check_next(TokenKind::l_paren);
 }
 

@@ -1,6 +1,6 @@
 module duplicate_generic_param_fn;
 
-fn id[T, T](value: T) -> T {
+fn id<T, T>(value: T) -> T {
     return value;
 }
 

@@ -328,13 +328,13 @@ TEST_F(AurexIntegrationTest, SelectiveUseReexportGenericItems)
 
     write_visibility_test_source(inner,
         "module selective_generic_inner;\n"
-        "pub struct Box[T] {\n"
+        "pub struct Box<T> {\n"
         "  pub value: T;\n"
         "}\n"
-        "pub enum Maybe[T] { some(T), none }\n"
-        "pub type BoxAlias[T] = Box[T];\n"
-        "pub fn wrap[T](value: T) -> Box[T] {\n"
-        "  return Box[T] { value: value };\n"
+        "pub enum Maybe<T> { some(T), none }\n"
+        "pub type BoxAlias<T> = Box<T>;\n"
+        "pub fn wrap<T>(value: T) -> Box<T> {\n"
+        "  return Box<T> { value: value };\n"
         "}\n");
     write_visibility_test_source(facade,
         "module selective_generic_facade;\n"
@@ -345,13 +345,13 @@ TEST_F(AurexIntegrationTest, SelectiveUseReexportGenericItems)
     write_visibility_test_source(consumer,
         "module selective_generic_consumer;\n"
         "import selective_generic_facade as facade;\n"
-        "fn unwrap(value: facade.ReMaybe[i32]) -> i32 {\n"
+        "fn unwrap(value: facade.ReMaybe<i32>) -> i32 {\n"
         "  return match value { .some(inner) => inner, .none => 0 };\n"
         "}\n"
         "fn main() -> i32 {\n"
-        "  let box: facade.ReBox[i32] = facade.re_wrap[i32](21);\n"
-        "  let alias_box: facade.ReAlias[i32] = facade.ReBox[i32] { value: box.value };\n"
-        "  let maybe: facade.ReMaybe[i32] = facade.ReMaybe[i32].some(alias_box.value);\n"
+        "  let box: facade.ReBox<i32> = facade.re_wrap<i32>(21);\n"
+        "  let alias_box: facade.ReAlias<i32> = facade.ReBox<i32> { value: box.value };\n"
+        "  let maybe: facade.ReMaybe<i32> = facade.ReMaybe<i32>.some(alias_box.value);\n"
         "  return unwrap(maybe) - 21;\n"
         "}\n");
     write_visibility_test_source(missing_args,
@@ -364,9 +364,9 @@ TEST_F(AurexIntegrationTest, SelectiveUseReexportGenericItems)
         require_success(aurexc() + " " + import_flags + " --emit=checked " + q(consumer)).output;
     expect_contains_all(checked,
         {
-            "selective_generic_inner.Box[i32]",
-            "selective_generic_inner.Maybe[i32]",
-            "fn wrap[i32] -> selective_generic_inner.Box[i32]",
+            "selective_generic_inner.Box<i32>",
+            "selective_generic_inner.Maybe<i32>",
+            "fn wrap<i32> -> selective_generic_inner.Box<i32>",
         });
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(missing_args)).output,
         "generic type ReBox requires type arguments");

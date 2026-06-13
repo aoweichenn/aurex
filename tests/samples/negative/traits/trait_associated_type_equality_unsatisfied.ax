@@ -12,11 +12,11 @@ impl Source for Bytes {
     type Item = u8;
 }
 
-fn read_i32[T](value: T) -> i32 where T: Source[Item = i32] {
+fn read_i32<T>(value: T) -> i32 where T: Source<Item = i32> {
     return 0;
 }
 
 fn main() -> i32 {
     let bytes = Bytes { value: 1 };
-    return read_i32[Bytes](bytes);
+    return read_i32<Bytes>(bytes);
 }

@@ -1,79 +1,79 @@
 module constraints_enum_alias_impl_m2;
 
-type ConstPtr[T] = *const T;
-type SizedPtr[T] where T: Sized = *const T;
+type ConstPtr<T> = *const T;
+type SizedPtr<T> where T: Sized = *const T;
 
-fn const_ptr[T](value: &T) -> *const T {
-    return unsafe { ptrat[*const T](ptraddr(value)) };
+fn const_ptr<T>(value: &T) -> *const T {
+    return unsafe { ptrat<*const T>(ptraddr(value)) };
 }
 
-enum Option[T] {
+enum Option<T> {
     some(T),
     none,
 }
 
-enum Result[T, E] {
+enum Result<T, E> {
     ok(T),
     err(E),
 }
 
-struct Box[T] {
+struct Box<T> {
     value: T;
 }
 
-impl[T] Box[T] where T: Eq + Copy {
-    fn get(self: &Box[T]) -> T {
+impl<T> Box<T> where T: Eq + Copy {
+    fn get(self: &Box<T>) -> T {
         return self.value;
     }
 
-    fn same_value(self: &Box[T], other: &Box[T]) -> bool {
+    fn same_value(self: &Box<T>, other: &Box<T>) -> bool {
         return self.value == other.value;
     }
 }
 
-fn same[T](left: T, right: T) -> bool where T: Eq {
+fn same<T>(left: T, right: T) -> bool where T: Eq {
     return left == right;
 }
 
-fn lower[T](left: T, right: T) -> bool where T: Ord {
+fn lower<T>(left: T, right: T) -> bool where T: Ord {
     return left < right;
 }
 
-fn hashable[T](value: T) -> i32 where T: Hash {
+fn hashable<T>(value: T) -> i32 where T: Hash {
     return 1;
 }
 
-fn unwrap_or[T](value: Option[T], fallback: T) -> T where T: Copy {
+fn unwrap_or<T>(value: Option<T>, fallback: T) -> T where T: Copy {
     return match value {
         .some(inner) => inner,
         .none => fallback,
     };
 }
 
-fn use_result(value: Result[i32, i32]) -> i32 {
+fn use_result(value: Result<i32, i32>) -> i32 {
     return match value {
         .ok(inner) => inner,
         .err(code) => code,
     };
 }
 
-fn read_ptr[T](value: ConstPtr[T]) -> ConstPtr[T] {
+fn read_ptr<T>(value: ConstPtr<T>) -> ConstPtr<T> {
     return value;
 }
 
-fn read_sized_ptr[T](value: SizedPtr[T]) -> SizedPtr[T] where T: Sized {
+fn read_sized_ptr<T>(value: SizedPtr<T>) -> SizedPtr<T> where T: Sized {
     return value;
 }
 
 fn main() -> i32 {
-    let boxed: Box[i32] = Box[i32] { value: 39 };
-    let other: Box[i32] = Box[i32] { value: 39 };
-    let opt: Option[i32] = Option[i32].some(boxed.get());
-    let none: Option[i32] = Option[i32].none;
-    let result: Result[i32, i32] = Result[i32, i32].ok(1);
+    let boxed: Box<i32> = Box<i32> { value: 39 };
+    let other: Box<i32> = Box<i32> { value: 39 };
+    let opt: Option<i32> = Option<i32>.some(boxed.get());
+    let none: Option<i32> = Option<i32>.none;
+    let result: Result<i32, i32> = Result<i32, i32>.ok(1);
     let value: i32 = 2;
-    let ptr: ConstPtr[i32] = read_ptr(const_ptr(&value));
-    let sized_ptr: SizedPtr[i32] = read_sized_ptr(ptr);
+    let ptr: ConstPtr<i32> = read_ptr(const_ptr(&value));
+    let sized_ptr: SizedPtr<i32> = read_sized_ptr(ptr);
     if boxed.same_value(&other) && same(1, 1) && lower(1, 2) && ptraddr(sized_ptr) != 0usize {
         return unwrap_or(opt, 0) + unwrap_or(none, 2) + use_result(result) + hashable(value) - 43;
     }

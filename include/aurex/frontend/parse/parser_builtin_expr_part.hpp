@@ -21,10 +21,11 @@ public:
 
 private:
     void expect_builtin_arg_list_start(std::string message);
-    void expect_builtin_type_arg_list_start(std::string message);
+    [[nodiscard]] const syntax::Token& expect_builtin_type_arg_list_start(std::string message);
     void recover_builtin_arg_separator(std::string message);
     [[nodiscard]] const syntax::Token& expect_builtin_arg_list_end(std::string message);
-    [[nodiscard]] const syntax::Token& expect_builtin_type_arg_list_end(std::string message);
+    [[nodiscard]] const syntax::Token& expect_builtin_type_arg_list_end(
+        std::string message, const syntax::Token& opening);
 };
 
 } // namespace aurex::parse

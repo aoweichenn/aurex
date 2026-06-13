@@ -35,7 +35,7 @@ pub fn make_box(value: i32) -> PublicBox {
     };
 }
 
-pub fn keep[T](value: T) -> T {
+pub fn keep<T>(value: T) -> T {
     return value;
 }
 

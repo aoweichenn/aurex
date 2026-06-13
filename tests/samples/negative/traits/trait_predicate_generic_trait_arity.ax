@@ -1,8 +1,8 @@
 module trait_predicate_generic_trait_arity;
 
-trait Needs[T] {}
+trait Needs<T> {}
 
-fn use_needs[U](value: U) -> i32 where U: Needs {
+fn use_needs<U>(value: U) -> i32 where U: Needs {
     return 0;
 }
 

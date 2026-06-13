@@ -13,8 +13,6 @@ target_include_directories(aurex_lex
 )
 
 add_library(aurex_parse
-    src/frontend/parse/support/sources/bracket_suffix_classifier.cpp
-    src/frontend/parse/support/sources/type_arg_expr_converter.cpp
     src/frontend/parse/core/lossless_parse.cpp
     src/frontend/parse/grammar/parser_aggregate.cpp
     src/frontend/parse/grammar/parser_block.cpp

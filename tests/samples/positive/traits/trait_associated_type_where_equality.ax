@@ -17,11 +17,11 @@ impl Source for Bytes {
     }
 }
 
-fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
+fn read_i32<T>(value: &T) -> i32 where T: Source<Item = i32> {
     return value.get();
 }
 
 fn main() -> i32 {
     let bytes = Bytes { value: 7 };
-    return read_i32[Bytes](&bytes) - 7;
+    return read_i32<Bytes>(&bytes) - 7;
 }

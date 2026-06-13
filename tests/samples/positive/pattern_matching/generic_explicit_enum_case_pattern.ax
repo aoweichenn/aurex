@@ -1,19 +1,19 @@
 module generic_explicit_enum_case_pattern;
 
-enum Option[T] {
+enum Option<T> {
     some(T),
     none,
 }
 
-fn unwrap_or_zero(opt: Option[i32]) -> i32 {
+fn unwrap_or_zero(opt: Option<i32>) -> i32 {
     return match opt {
-        Option[i32].some(value) => value,
-        Option[i32].none => 0,
+        Option<i32>.some(value) => value,
+        Option<i32>.none => 0,
     };
 }
 
 fn main() -> i32 {
-    return unwrap_or_zero(Option[i32].some(42)) -
-        unwrap_or_zero(Option[i32].none) -
+    return unwrap_or_zero(Option<i32>.some(42)) -
+        unwrap_or_zero(Option<i32>.none) -
         42;
 }

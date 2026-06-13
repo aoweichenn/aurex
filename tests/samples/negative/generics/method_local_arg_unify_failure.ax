@@ -5,7 +5,7 @@ struct Box {
 }
 
 impl Box {
-    fn pick[T](self: &Box, left: T, right: T) -> T {
+    fn pick<T>(self: &Box, left: T, right: T) -> T {
         return left;
     }
 }

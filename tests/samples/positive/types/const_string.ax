@@ -6,10 +6,10 @@ const C_TEXT: *const u8 = c"hi";
 fn main() -> i32 {
     let text: str = TEXT;
     let c_text: *const u8 = C_TEXT;
-    if ptraddr(C_TEXT) == cast[usize](0) {
+    if ptraddr(C_TEXT) == cast<usize>(0) {
         return 1;
     }
-    if ptraddr(c_text) == cast[usize](0) {
+    if ptraddr(c_text) == cast<usize>(0) {
         return 2;
     }
     return 0;

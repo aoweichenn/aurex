@@ -160,7 +160,7 @@ TEST(QueryUnit, TraitObjectUpcastCoercionKeyIncludesGenericObjectIdentity)
     const query::TraitObjectTypeKey child_i32 = test_generic_object_key("Child", i32, "Child-i32");
     const query::TraitObjectTypeKey parent_i32 = test_generic_object_key("Parent", i32, "Parent-i32");
     const query::TraitObjectTypeKey parent_bool = test_generic_object_key("Parent", bool_type, "Parent-bool");
-    const query::StableFingerprint128 edge_path = query::stable_fingerprint("Child[T]->Parent[T]");
+    const query::StableFingerprint128 edge_path = query::stable_fingerprint("Child<T>->Parent<T>");
 
     const query::TraitObjectUpcastCoercionKey to_i32 = query::trait_object_upcast_coercion_key(
         child_i32, child_i32.object_origin, parent_i32, edge_path, query::TraitObjectBorrowKindKey::shared);

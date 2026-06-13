@@ -37,11 +37,9 @@ IdentifierInterner& IdentifierInterner::operator=(const IdentifierInterner& othe
     return *this;
 }
 
-IdentifierInterner::IdentifierInterner(IdentifierInterner&& other) noexcept
-    : arena_(std::move(other.arena_)), texts_(std::move(other.texts_)), ids_(std::move(other.ids_))
+IdentifierInterner::IdentifierInterner(IdentifierInterner&& other) noexcept : IdentifierInterner()
 {
-    other.texts_.clear();
-    other.ids_.clear();
+    this->swap(other);
 }
 
 IdentifierInterner& IdentifierInterner::operator=(IdentifierInterner&& other) noexcept
@@ -62,7 +60,8 @@ std::size_t IdentifierTextHash::operator()(const std::string_view value) const n
 StableHash64 stable_hash_text(const std::string_view text) noexcept
 {
     base::u64 hash = SYNTAX_STABLE_HASH_OFFSET;
-    for (const unsigned char byte : text) {
+    for (const char raw_byte : text) {
+        const auto byte = static_cast<unsigned char>(raw_byte);
         hash ^= static_cast<base::u64>(byte);
         hash *= SYNTAX_STABLE_HASH_PRIME;
     }

@@ -14,11 +14,11 @@ extern c {
 }
 
 fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {
-    return unsafe { ptrcast[*mut u8](calloc(count, size)) };
+    return unsafe { ptrcast<*mut u8>(calloc(count, size)) };
 }
 
 fn free_bytes(ptr: *mut u8) -> void {
-    free(unsafe { ptrcast[*mut void](ptr) });
+    free(unsafe { ptrcast<*mut void>(ptr) });
 }
 
 fn c_strlen(text: *const u8) -> usize {
@@ -30,18 +30,18 @@ fn c_string_equal(left: *const u8, right: *const u8) -> bool {
 }
 
 fn main() -> i32 {
-    let buffer: *mut u8 = alloc_zeroed_bytes(cast[usize](96), cast[usize](1));
+    let buffer: *mut u8 = alloc_zeroed_bytes(cast<usize>(96), cast<usize>(1));
     if buffer == null {
         return 1;
     }
     let code: u8 = b'A';
-    let narrow: i16 = cast[i16](7);
+    let narrow: i16 = cast<i16>(7);
     let enabled: bool = true;
-    let scale: f32 = cast[f32](2);
+    let scale: f32 = cast<f32>(2);
     let expected: *const u8 = c"value=7:ok small=65 narrow=7 flag=1 float=2.0";
     let written: i32 = snprintf(
         buffer,
-        cast[usize](96),
+        cast<usize>(96),
         c"value=%d:%s small=%d narrow=%d flag=%d float=%.1f",
         7,
         c"ok",
@@ -50,11 +50,11 @@ fn main() -> i32 {
         enabled,
         scale
     );
-    if written != cast[i32](c_strlen(expected)) {
+    if written != cast<i32>(c_strlen(expected)) {
         free_bytes(buffer);
         return 2;
     }
-    if !c_string_equal(unsafe { ptrcast[*const u8](buffer) }, expected) {
+    if !c_string_equal(unsafe { ptrcast<*const u8>(buffer) }, expected) {
         free_bytes(buffer);
         return 3;
     }

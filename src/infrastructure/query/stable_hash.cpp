@@ -79,7 +79,7 @@ void StableHashBuilder::mix_bool(const bool value) noexcept
 
 void StableHashBuilder::mix_bytes(const std::string_view bytes) noexcept
 {
-    for (const unsigned char byte : bytes) {
+    for (const char byte : bytes) {
         this->mix_raw_byte(static_cast<base::u8>(byte));
     }
 }
@@ -198,7 +198,7 @@ void StableKeyWriter::write_bool(const bool value)
 void StableKeyWriter::write_string(const std::string_view value)
 {
     this->write_u64(static_cast<base::u64>(value.size()));
-    for (const unsigned char byte : value) {
+    for (const char byte : value) {
         this->write_raw_byte(static_cast<base::u8>(byte));
     }
 }

@@ -1,6 +1,6 @@
 module inference_failure;
 
-fn phantom[T](value: i32) -> i32 {
+fn phantom<T>(value: i32) -> i32 {
     return value;
 }
 

@@ -414,12 +414,12 @@ TEST(CoreUnit, LosslessSyntaxBuildsTopLevelDeclarationAndGroupNodes)
                                         "pub const answer: i32 = 42;\n"
                                         "type Alias = i32;\n"
                                         "pub opaque struct Foreign;\n"
-                                        "pub struct Box[T] { pub value: T; }\n"
+                                        "pub struct Box<T> { pub value: T; }\n"
                                         "enum Mode: u8 { fast = 1, slow = 2, }\n"
                                         "pub trait Reader { fn read(self: &mut Self) -> i32; }\n"
-                                        "impl Box[i32] { pub fn read(self: &Box[i32]) -> i32 { return self.value; } }\n"
+                                        "impl Box<i32> { pub fn read(self: &Box<i32>) -> i32 { return self.value; } }\n"
                                         "extern C { unsafe fn native(value: i32) -> i32; }\n"
-                                        "export C unsafe fn run() -> i32 { return native(0); }\n";
+                                        "export C unsafe fn run() -> i32 { let values: [1]i32 = [1]; return native(values[0]); }\n";
 
     lex::TokenBuffer tokens = tokenize_lossless(source);
     const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(tokens.span());

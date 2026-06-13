@@ -1,7 +1,7 @@
 module lambda_missing_return;
 
 fn main() -> i32 {
-    let broken: fn(i32) -> i32 = fn(value: i32) -> i32 {
+    let broken: fn(i32) -> i32 = |value: i32| -> i32 {
         let next = value + 1;
     };
     return broken(0);

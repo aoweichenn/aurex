@@ -1,11 +1,11 @@
 module lambda_closure_return;
 
 fn make_adder(base: i32) {
-    return fn(value: i32) -> i32 => value + base;
+    return |value: i32| -> i32 => value + base;
 }
 
 fn make_scaled_offset(scale: i32, offset: i32) {
-    return fn(value: i32) -> i32 {
+    return |value: i32| -> i32 {
         let scaled: i32 = value * scale;
         return scaled + offset;
     };

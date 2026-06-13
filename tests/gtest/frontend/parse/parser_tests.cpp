@@ -449,18 +449,26 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
 {
     constexpr std::string_view source = "module parser.lambda_literals;\n"
                                         "fn main() -> i32 {\n"
-                                        "  let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;\n"
-                                        "  let add_two: fn(i32) -> i32 = fn(value: i32) -> i32 {\n"
+                                        "  let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;\n"
+                                        "  let add_two: fn(i32) -> i32 = |value: i32| -> i32 {\n"
                                         "    return value + 2;\n"
                                         "  };\n"
-                                        "  return inc(40) + add_two(0) - 42;\n"
+                                        "  let one: fn() -> i32 = || -> i32 => 1;\n"
+                                        "  let spaced_one: fn() -> i32 = | | -> i32 => 1;\n"
+                                        "  let add: fn(i32, i32) -> i32 = |\n"
+                                        "    left: i32,\n"
+                                        "    right: i32,\n"
+                                        "  | -> i32 => left + right;\n"
+                                        "  return inc(40) + add_two(0) + one() + spaced_one() + add(1, 2) - 47;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast,
         {
-            "lambda fn(value: i32) -> i32",
+            "lambda |value: i32| -> i32",
+            "lambda || -> i32",
+            "lambda |left: i32, right: i32| -> i32",
             "stmt #",
             "return",
             "binary",
@@ -471,16 +479,48 @@ TEST(CoreUnit, ParserRejectsMalformedLambdaFunctionLiterals)
 {
     expect_parse_diagnostic("module parser.lambda_missing_return_arrow;\n"
                             "fn main() -> i32 {\n"
-                            "  let bad = fn(value: i32) i32 => value;\n"
+                            "  let bad = |value: i32| i32 => value;\n"
                             "  return bad(0);\n"
                             "}\n",
-        "expected '->' after lambda parameter list");
+        "expected '->' after closure parameter list");
     expect_parse_diagnostic("module parser.lambda_missing_body;\n"
                             "fn main() -> i32 {\n"
-                            "  let bad = fn(value: i32) -> i32;\n"
+                            "  let bad = |value: i32| -> i32;\n"
                             "  return bad(0);\n"
                             "}\n",
-        "expected lambda body");
+        "expected closure body");
+}
+
+TEST(CoreUnit, ParserRejectsMalformedLambdaParameterLists)
+{
+    expect_parse_error("module parser.lambda_missing_param_name;\n"
+                       "fn main() -> i32 {\n"
+                       "  let bad = |: i32| -> i32 => 1;\n"
+                       "  return bad();\n"
+                       "}\n",
+        "expected parameter name");
+    expect_parse_error("module parser.lambda_missing_param_separator;\n"
+                       "fn main() -> i32 {\n"
+                       "  let bad = |left: i32 right: i32| -> i32 => left;\n"
+                       "  return bad(0, 1);\n"
+                       "}\n",
+        "expected ',' or '|' after closure parameter");
+}
+
+TEST(CoreUnit, ParserRejectsLegacyFnClosureLiterals)
+{
+    expect_parse_error("module parser.legacy_fn_closure_literal;\n"
+                       "fn main() -> i32 {\n"
+                       "  let bad = fn(value: i32) -> i32 => value;\n"
+                       "  return bad(0);\n"
+                       "}\n",
+        "legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr");
+    expect_parse_error("module parser.legacy_empty_fn_closure_literal;\n"
+                       "fn main() -> i32 {\n"
+                       "  let bad = fn() -> i32 => 1;\n"
+                       "  return bad();\n"
+                       "}\n",
+        "legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr");
 }
 
 TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
@@ -3618,7 +3658,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_strvalid,
             TokenKind::kw_strfromutf8,
             TokenKind::kw_strraw,
+            TokenKind::kw_fn,
             TokenKind::kw_unsafe,
+            TokenKind::pipe,
+            TokenKind::pipe_pipe,
             TokenKind::l_paren,
             TokenKind::l_brace,
             TokenKind::minus,
@@ -3740,6 +3783,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
         {
             TokenKind::comma,
             TokenKind::r_paren,
+            TokenKind::pipe,
             TokenKind::arrow,
             TokenKind::l_brace,
             TokenKind::semicolon,

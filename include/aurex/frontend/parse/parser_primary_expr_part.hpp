@@ -16,10 +16,17 @@ public:
     [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
 
 private:
+    struct LambdaHead final {
+        const syntax::Token& begin;
+        std::vector<syntax::ParamDecl> params;
+    };
+
     [[nodiscard]] syntax::ExprId parse_lambda_expr(ExprContext context);
-    [[nodiscard]] std::vector<syntax::ParamDecl> parse_lambda_param_list();
+    [[nodiscard]] syntax::ExprId parse_legacy_lambda_expr(ExprContext context);
+    [[nodiscard]] syntax::ExprId finish_lambda_expr(LambdaHead head, ExprContext context);
+    [[nodiscard]] std::vector<syntax::ParamDecl> parse_lambda_param_list(syntax::TokenKind terminator);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_lambda_param();
-    bool recover_lambda_param_separator();
+    bool recover_lambda_param_separator(syntax::TokenKind terminator);
     [[nodiscard]] syntax::StmtId make_lambda_return_body(
         const syntax::Token& begin, syntax::ExprId value, const base::SourceRange& body_range);
     [[nodiscard]] syntax::ExprId parse_unsafe_block_expr(ExprContext context);

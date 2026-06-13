@@ -486,20 +486,20 @@ safe reference 已作为 M2 基础类型落地：
   和 origin parameter；未完成的是 generic const arithmetic、const where predicate、associated const、dyn const
   equality 和 unresolved const-param array runtime ABI。
 
-函数指针类型、lambda 字面量和 M20 捕获闭包核心子集已作为基础函数式能力落地：
+函数指针类型、闭包字面量和 M20 捕获闭包核心子集已作为基础函数式能力落地：
 
 ```aurex
 type BinaryOp = fn(i32, i32) -> i32;
 type CCallback = extern c fn(*mut void, ...) -> i32;
-let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
+let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;
 let base: i32 = 40;
-let add_base = fn(value: i32) -> i32 => value + base;
+let add_base = |value: i32| -> i32 => value + base;
 ```
 
-当前语义是非捕获函数指针：函数名和无捕获 lambda 字面量可以作为值赋给 `fn(...) -> T`，函数名也可以作为值赋给
+当前语义是非捕获函数指针：函数名和无捕获闭包字面量可以作为值赋给 `fn(...) -> T`，函数名也可以作为值赋给
 `extern c fn(...) -> T`；局部变量、参数和 struct 字段中的函数指针可以用普通调用语法间接调用。调用约定、参数类型、
-variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。lambda 当前要求显式参数类型和
-显式 `-> T`，支持 `=> expr` 表达式体和 `{ ... }` 块体。
+variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。闭包字面量当前要求显式参数类型
+和显式 `-> T`，支持 `=> expr` 表达式体和 `{ ... }` 块体。
 
 M20 捕获闭包核心子集当前支持捕获外层非泛型依赖、非 borrowed-view 的 `Copy` 局部或参数，按值复制进编译器生成的匿名
 environment record；闭包可局部存储、直接调用、嵌套调用、在 match guard 中使用捕获值，也可从函数返回并由
@@ -661,7 +661,7 @@ fn main() -> i32 {
 - named 参数按目标参数名重排，缺失的 defaulted 参数由声明默认值填充。
 - sema 会在 checked binding 中保存 `ordered_args`；IR lowering、borrow summary、body flow graph、body loan
   precheck、place-state precheck、move analysis 和 borrow escape / lambda capture 扫描都消费归一化顺序。
-- named 参数不支持 enum constructor、function value / lambda 间接调用或 variadic C call。
+- named 参数不支持 enum constructor、function value / closure 间接调用或 variadic C call。
 
 function prototype：
 
@@ -1143,11 +1143,11 @@ compiler-owned `Copy`、内部 resource summary、whole-local move analysis、cl
 
 - range pattern。
 - string/byte pattern。
-- 默认参数 / 命名参数的第一版已完成；仍未完成的是默认表达式引用前序参数、function value / lambda 参数名元数据、
+- 默认参数 / 命名参数的第一版已完成；仍未完成的是默认表达式引用前序参数、function value / closure 参数名元数据、
   enum constructor 命名 payload、ABI 级 optional/default metadata 和 C ABI / variadic default support。
 - match guard 已区分无 guard、字面量 true/false 和动态表达式；dynamic slice 代表长度 witness 和 open integer literal usefulness 已进入穷尽/不可达主路径。
 - shared / mutable / consuming closure capture、generic closure environment ABI、borrowed closure environment escape、
-  `Fn` / `FnMut` / `FnOnce` 风格能力和 heap/runtime closure box；M20 已支持无捕获 lambda 与 Copy-by-value
+  `Fn` / `FnMut` / `FnOnce` 风格能力和 heap/runtime closure box；M20 已支持无捕获闭包字面量与 Copy-by-value
   捕获闭包核心子集。
 - operator overloading。
 - user-defined implicit conversion。
@@ -1277,15 +1277,15 @@ let all = bytes[:];
 
    M20 已支持非泛型依赖、非 borrowed-view 的 Copy-by-value 捕获闭包核心子集；完整 shared/mutable/consuming
    capture mode、generic closure environment ABI 和 borrowed closure environment escape 继续暂缓。非捕获函数类型、
-   无捕获 lambda 和 C callback 已作为基础系统能力落地：
+   无捕获闭包字面量和 C callback 已作为基础系统能力落地：
 
    ```aurex
    type Cmp = fn(a: *const void, b: *const void) -> i32;
    type Callback = extern c fn(ctx: *mut void) -> void;
-   let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
+   let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;
    ```
 
-   函数名和无捕获 lambda 可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic
+   函数名和无捕获闭包字面量可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic
    只允许出现在 `extern c fn` 类型中。捕获闭包当前是内部匿名环境 record 值，不是薄函数指针；闭包调用经由
    hidden-env thunk。尚未完成的是 mutable/consuming capture mode、generic-dependent 捕获、borrowed closure
    environment escape、`Fn`/`FnMut`/`FnOnce` 风格能力、标准库 adapter 和 heap/runtime closure box。

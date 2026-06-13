@@ -655,7 +655,7 @@ let (value, flag) = pair;
 - 数字字段必须在 tuple 元素范围内；越界会报 `tuple field index is out of range`。
 - 匿名 tuple 不支持命名字段，例如 `value.first` / `value.second`；这类访问会报 `tuple field access requires a numeric field`。需要命名字段时使用 named struct。
 
-### 5.7 函数类型、lambda 与捕获闭包
+### 5.7 函数类型、闭包字面量与捕获闭包
 
 函数类型表示薄函数指针。它不是带环境的 closure 类型，也不保存捕获环境。
 
@@ -672,23 +672,23 @@ unsafe extern c fn(*const u8) -> i32
 - `unsafe fn` 函数值调用也需要 unsafe context。
 - `extern c fn` 使用 C ABI。
 - variadic `...` 只支持 `extern c`。
-- 函数名和无捕获 lambda 字面量都可以作为 `fn(...) -> T` 薄函数值。
-- 无捕获 lambda 字面量使用 Aurex ABI，不能写 `extern c`、`unsafe` 或 variadic。
-- lambda 参数和返回类型当前必须显式标注；尚不做 lambda 自身返回类型推断。
+- 函数名和无捕获闭包字面量都可以作为 `fn(...) -> T` 薄函数值。
+- 无捕获闭包字面量使用 Aurex ABI，不能写 `extern c`、`unsafe` 或 variadic。
+- 闭包参数和返回类型当前必须显式标注；尚不做闭包自身返回类型推断。
 
-无捕获 lambda 字面量：
+无捕获闭包字面量：
 
 ```aurex
-let inc: fn(i32) -> i32 = fn(value: i32) -> i32 => value + 1;
+let inc: fn(i32) -> i32 = |value: i32| -> i32 => value + 1;
 
-let add_two: fn(i32) -> i32 = fn(value: i32) -> i32 {
+let add_two: fn(i32) -> i32 = |value: i32| -> i32 {
     let local = value + 2;
     return local;
 };
 ```
 
 `=> expr` 是表达式体形式，语义等价于返回该表达式。`{ ... }` 是块体形式，按普通函数体规则检查
-`return`。lambda body 拥有独立参数和局部作用域；它不是外层 block 的 tail expression，也不允许直接
+`return`。closure body 拥有独立参数和局部作用域；它不是外层 block 的 tail expression，也不允许直接
 `return` 外层函数。
 
 捕获闭包在 M20 支持编译器核心子集：只支持按值捕获非泛型依赖、非 borrowed-view、且满足 `Copy` capability
@@ -698,12 +698,12 @@ let add_two: fn(i32) -> i32 = fn(value: i32) -> i32 {
 ```aurex
 fn direct(value: i32) -> i32 {
     let base: i32 = 40;
-    let add_base = fn(next: i32) -> i32 => next + base;
+    let add_base = |next: i32| -> i32 => next + base;
     return add_base(value);
 }
 
 fn make_adder(base: i32) {
-    return fn(value: i32) -> i32 => value + base;
+    return |value: i32| -> i32 => value + base;
 }
 
 fn use_returned() -> i32 {
@@ -722,7 +722,7 @@ fn use_returned() -> i32 {
 
 当前显式拒绝或尚未建模的能力：
 
-- 捕获闭包不能赋给 `fn(...) -> T`，也不会自动转换成薄函数指针；只有无捕获 lambda 可以作为 `fn` 值。
+- 捕获闭包不能赋给 `fn(...) -> T`，也不会自动转换成薄函数指针；只有无捕获闭包字面量可以作为 `fn` 值。
 - 捕获非 `Copy` 值会报 `capturing a non-Copy value in a closure is not supported yet`。
 - 捕获 `str`、reference、slice 或包含这些 borrowed-view 成员的值会报
   `capturing a borrowed-view value in a closure is not supported yet`。
@@ -740,7 +740,7 @@ fn use_returned() -> i32 {
 ```aurex
 fn main() -> i32 {
     let base: i32 = 1;
-    let add_base: fn(i32) -> i32 = fn(value: i32) -> i32 => value + base; // error
+    let add_base: fn(i32) -> i32 = |value: i32| -> i32 => value + base; // error
     return add_base(41);
 }
 ```
@@ -1422,18 +1422,18 @@ let b = add(a, 2);
 let c = module_name.function_name(3);
 ```
 
-函数名和无捕获 lambda 可作为非捕获函数指针值；捕获闭包是匿名环境值，不能赋给 `fn(...) -> T`：
+函数名和无捕获闭包字面量可作为非捕获函数指针值；捕获闭包是匿名环境值，不能赋给 `fn(...) -> T`：
 
 ```aurex
 type Op = fn(i32) -> i32;
 let op: Op = add_one;
 let value = op(41);
 
-let inc: Op = fn(value: i32) -> i32 => value + 1;
+let inc: Op = |value: i32| -> i32 => value + 1;
 let next = inc(41);
 
 let base: i32 = 1;
-let bad: Op = fn(value: i32) -> i32 => value + base; // error
+let bad: Op = |value: i32| -> i32 => value + base; // error
 ```
 
 ### 8.2 泛型调用

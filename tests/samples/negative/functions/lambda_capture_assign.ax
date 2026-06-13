@@ -2,7 +2,7 @@ module lambda_capture_assign;
 
 fn main() -> i32 {
     var base: i32 = 1;
-    let set_base = fn(value: i32) -> i32 {
+    let set_base = |value: i32| -> i32 {
         base = value;
         return base;
     };

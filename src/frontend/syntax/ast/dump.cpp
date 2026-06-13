@@ -1204,7 +1204,11 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         append_generic_args_label(out, module, expr.generic_args, expr.type_args);
     }
     if (expr.kind == ExprKind::lambda) {
-        out << " fn(";
+        if (expr.lambda_params.empty()) {
+            out << " ||";
+        } else {
+            out << " |";
+        }
         for (base::usize i = 0; i < expr.lambda_params.size(); ++i) {
             if (i != 0) {
                 out << ", ";
@@ -1214,7 +1218,10 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
                 out << " = expr#" << expr.lambda_params[i].default_value.value;
             }
         }
-        out << ") -> " << type_label(module, expr.lambda_return_type);
+        if (!expr.lambda_params.empty()) {
+            out << "|";
+        }
+        out << " -> " << type_label(module, expr.lambda_return_type);
     }
     if (is_valid(expr.cast_type)) {
         out << " to " << type_label(module, expr.cast_type);

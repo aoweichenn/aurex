@@ -62,7 +62,10 @@ bool token_starts_expression(const TokenKind kind) noexcept
         case TokenKind::kw_strvalid:
         case TokenKind::kw_strfromutf8:
         case TokenKind::kw_strraw:
+        case TokenKind::kw_fn:
         case TokenKind::kw_unsafe:
+        case TokenKind::pipe:
+        case TokenKind::pipe_pipe:
         case TokenKind::l_paren:
         case TokenKind::l_brace:
         case TokenKind::l_bracket:

@@ -48,6 +48,7 @@ bool token_ends_parameter(const TokenKind kind) noexcept
     switch (kind) {
         case TokenKind::comma:
         case TokenKind::r_paren:
+        case TokenKind::pipe:
         case TokenKind::arrow:
         case TokenKind::l_brace:
         case TokenKind::semicolon:

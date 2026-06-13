@@ -201,7 +201,7 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     const std::string lambda_ast = require_success(aurexc() + " --emit=ast " + q(lambda)).output;
     expect_contains_all(lambda_ast,
         {
-            "lambda fn(value: i32) -> i32",
+            "lambda |value: i32| -> i32",
             "return",
             "binary",
         });

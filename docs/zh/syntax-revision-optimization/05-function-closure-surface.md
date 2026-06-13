@@ -1,7 +1,7 @@
 # Function / Closure Surface：把闭包字面量从 `fn` 骨架里拆出来
 
 日期：2026-06-13
-状态：语法修正优化第五手改动设计稿
+状态：语法修正优化第五手改动已硬切落地，不保留旧闭包成功路径
 关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P2 `fn` 同时承载声明、类型和 lambda
 
 本文固定 Aurex 函数、函数类型和闭包字面量的第一阶段修正方向。核心判断：`fn` 可以继续作为“函数声明”和“薄函数指针类型”的表面，但不应该继续作为闭包字面量的起始符号。当前 `fn(x: i32) -> i32 => x + 1` 视觉上像函数声明写到一半突然变成表达式，这个形状不清爽，也让用户把 named function、function pointer 和 closure value 混在一起。
@@ -427,12 +427,12 @@ IR / lowering 规则不变：
 
 ## 迁移计划
 
-### Stage 1：接受新闭包语法
+### Stage 1：硬切新闭包语法
 
 - parser 接受 `|...| -> T => expr`。
 - parser 接受 `|...| -> T { ... }`。
 - parser 接受 `|| -> T => expr` 和 `|| -> T { ... }`。
-- 旧 `fn(...) -> T => expr` / `fn(...) -> T { ... }` 继续接受，最好发 deprecation warning。
+- 旧 `fn(...) -> T => expr` / `fn(...) -> T { ... }` 只作为 legacy error 解析恢复，不进入成功路径。
 
 ### Stage 2：更新文档、样例和测试
 
@@ -442,14 +442,14 @@ IR / lowering 规则不变：
 - negative samples 中 `fn(...) -> T => ...` 也同步迁移，除非专门测试 legacy 诊断。
 - AST dump / checked dump 如果只展示 semantic lambda，可不强制保留旧 spelling。
 
-### Stage 3：收紧旧语法
+### Stage 3：保持旧语法为错误
 
 - expression primary 中 `kw_fn` 不再作为正常闭包起点。
-- 旧 `fn(...) -> T => ...` 从 warning 升级为 error。
+- 旧 `fn(...) -> T => ...` 是 legacy error。
 - error 指向新写法：
 
 ```text
-legacy closure literal syntax is no longer supported; write `|x: T| -> R => expr`
+legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr
 ```
 
 ## 诊断规则
@@ -464,7 +464,7 @@ expected closure body after return type
 closure literals cannot be extern c
 closure literals cannot be variadic
 closure literals cannot be declared unsafe; put unsafe operations in an unsafe block
-legacy `fn(...) -> T` closure literal is deprecated; write `|...| -> T`
+legacy fn(...) closure literal syntax is no longer supported; write |...| -> T => expr
 ```
 
 需要避免的诊断：
@@ -581,7 +581,7 @@ Parser：
 
 - `a | b` 继续是 bitwise-or binary expression。
 - `a || b` 继续是 logical-or binary expression。
-- 迁移期旧 `fn(x: i32) -> i32 => x` 仍可解析为 lambda 并产生 warning。
+- 旧 `fn(x: i32) -> i32 => x` 只允许出现在 legacy 负例中，parser 为恢复可继续解析后续结构，但文件必须失败。
 
 Sema：
 

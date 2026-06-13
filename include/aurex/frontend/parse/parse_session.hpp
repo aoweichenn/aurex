@@ -22,8 +22,8 @@ inline constexpr base::usize PARSER_EXPR_RESERVE_SLACK_TOKEN_DIVISOR = 64;
     const syntax::AstReserveEstimate::Exprs& exprs) noexcept
 {
     return exprs.literals + exprs.names + exprs.generic_applies + exprs.unaries + exprs.binaries + exprs.calls
-        + exprs.ifs + exprs.blocks + exprs.matches + exprs.arrays + exprs.tuples + exprs.fields + exprs.indexes
-        + exprs.slices + exprs.struct_literals + exprs.casts;
+        + exprs.lambdas + exprs.ifs + exprs.blocks + exprs.matches + exprs.arrays + exprs.tuples + exprs.fields
+        + exprs.indexes + exprs.slices + exprs.struct_literals + exprs.casts;
 }
 
 inline void count_parser_primary_expr_token(
@@ -45,6 +45,11 @@ inline void count_parser_primary_expr_token(
         case syntax::TokenKind::kw_false:
         case syntax::TokenKind::kw_null:
             ++exprs.literals;
+            break;
+        case syntax::TokenKind::kw_fn:
+        case syntax::TokenKind::pipe:
+        case syntax::TokenKind::pipe_pipe:
+            ++exprs.lambdas;
             break;
         case syntax::TokenKind::kw_if:
             ++exprs.ifs;

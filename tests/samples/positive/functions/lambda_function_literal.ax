@@ -13,20 +13,20 @@ fn apply(op: UnaryOp, value: i32) -> i32 {
 
 fn choose(flag: bool) -> UnaryOp {
     if flag {
-        return fn(value: i32) -> i32 => value + 1;
+        return |value: i32| -> i32 => value + 1;
     }
-    return fn(value: i32) -> i32 {
+    return |value: i32| -> i32 {
         return value + 2;
     };
 }
 
 fn main() -> i32 {
-    let inc: UnaryOp = fn(value: i32) -> i32 => value + 1;
-    let add_two: UnaryOp = fn(value: i32) -> i32 {
+    let inc: UnaryOp = |value: i32| -> i32 => value + 1;
+    let add_two: UnaryOp = |value: i32| -> i32 {
         let local = value + 2;
         return local;
     };
-    let score: UnaryOp = fn(value: i32) -> i32 {
+    let score: UnaryOp = |value: i32| -> i32 {
         let maybe = MaybeI32.some(value);
         return match maybe {
             .some(inner) if inner > 0 => inner,

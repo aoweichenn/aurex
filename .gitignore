@@ -1,4 +1,5 @@
 build/
+build-coverage/
 *.profraw
 *.profdata
 bootstrap/m0_bootstrap

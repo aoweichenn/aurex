@@ -25,6 +25,17 @@ constexpr char IR_DROP_TUPLE_FIELD_PREFIX[] = "";
 constexpr int IR_LOCAL_PLACE_TUPLE_FIELD_DECIMAL_BASE = 10;
 constexpr std::string_view IR_LOCAL_PLACE_TUPLE_FIELD_INDEX_CONTEXT = "ir local place tuple field index";
 
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
 struct DropGlueFrame {
     ValueId address = INVALID_VALUE_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
@@ -206,8 +217,23 @@ void Lowerer::lower_capturing_lambda_body(const FunctionId function_id, const se
 
     for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
         const IrTextId field_name = this->module_.intern(capture.field_name.view());
+        const sema::TypeHandle field_type =
+            sema::is_valid(capture.field_type) ? capture.field_type : capture.type;
         const ValueId field_address =
-            this->append_field_address(env_param, field_name, capture.type, sema::PointerMutability::mut);
+            this->append_field_address(env_param, field_name, field_type, sema::PointerMutability::mut);
+        if (lambda_capture_kind_is_reference(capture.kind)) {
+            const ValueId captured_slot =
+                this->append_load(field_address, field_type, this->module_.intern(capture.name.view()));
+            LocalBinding binding{
+                .slot = captured_slot,
+                .cleanup_flag = INVALID_VALUE_ID,
+                .type = capture.type,
+                .is_mutable = lambda_capture_kind_is_mutable(capture.kind),
+                .field_cleanups = {},
+            };
+            this->bind_local(capture.name_id, binding);
+            continue;
+        }
         const ValueId field_value =
             this->append_load(field_address, capture.type, this->module_.intern(capture.name.view()));
         Value slot = this->module_.make_value();

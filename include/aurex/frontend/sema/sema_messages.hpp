@@ -159,8 +159,8 @@ inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_UNUSED =
 inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_DUPLICATE =
     "duplicate closure capture name";
 
-inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_REFERENCE_UNSUPPORTED =
-    "reference capture in closures is not supported yet";
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE =
+    "mutable closure capture requires a mutable captured variable";
 
 inline constexpr std::string_view SEMA_FUNCTION_TYPE_PARAMETER_STORAGE =
     "function type parameter type is not valid storage";

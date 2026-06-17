@@ -19,6 +19,12 @@ constexpr std::string_view IR_AGGREGATE_ROLLBACK_LOAD_NAME = "aggregate.rollback
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
 constexpr std::string_view IR_DYNPROJECT_INTRINSIC_NAME = "dynproject";
 
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
 struct RollbackCleanupScope {
     std::vector<std::vector<CleanupAction>>* scopes = nullptr;
     base::usize index = 0;
@@ -482,8 +488,11 @@ ValueId Lowerer::lower_lambda_expr(const syntax::ExprId expr_id)
                 if (local == this->locals_.end()) {
                     return INVALID_VALUE_ID;
                 }
-                const ValueId captured_value =
-                    this->append_load(local->second.slot, capture.type, this->module_.intern(capture.name.view()));
+                ValueId captured_value = local->second.slot;
+                if (!lambda_capture_kind_is_reference(capture.kind)) {
+                    captured_value = this->append_load(
+                        local->second.slot, capture.type, this->module_.intern(capture.name.view()));
+                }
                 value.fields.push_back(FieldValue{
                     this->module_.intern(capture.field_name.view()),
                     captured_value,

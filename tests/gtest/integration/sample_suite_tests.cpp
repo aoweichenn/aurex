@@ -75,7 +75,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"lambda_capture_function_pointer_mismatch", "initializer type does not match declared type"},
     {"lambda_capture_generic_dependent", "capturing a generic-dependent value in a closure is not supported yet"},
     {"lambda_capture_non_copy", "capturing a non-Copy value in a closure is not supported yet"},
-    {"lambda_reference_capture", "reference capture in closures is not supported yet"},
+    {"lambda_reference_capture", "mutable closure capture requires a mutable captured variable"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict",
         "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
@@ -529,6 +529,16 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_closure_capture)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_closure_return)
 {
     run_positive_runtime_smoke_sample("functions", "lambda_closure_return.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_reference_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_reference_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_mutable_reference_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_mutable_reference_capture.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic)

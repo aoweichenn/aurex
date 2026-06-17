@@ -3,6 +3,7 @@
 #include <aurex/frontend/sema/function.hpp>
 #include <aurex/frontend/sema/storage.hpp>
 #include <aurex/frontend/sema/type.hpp>
+#include <aurex/frontend/syntax/ast/nodes.hpp>
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
 #include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
@@ -200,6 +201,8 @@ struct CheckedLambdaInfo {
         InternedText field_name;
         IdentId field_name_id = INVALID_IDENT_ID;
         TypeHandle type = INVALID_TYPE_HANDLE;
+        TypeHandle field_type = INVALID_TYPE_HANDLE;
+        syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
         base::SourceRange use_range{};
         base::SourceRange declaration_range{};
     };

@@ -1,0 +1,12 @@
+module lambda_mutable_reference_capture;
+
+fn main() -> i32 {
+    var total: i32 = 0;
+    let add = [&mut total](value: i32) -> i32 {
+        total += value;
+        return total;
+    };
+    let first: i32 = add(3);
+    let second: i32 = add(4);
+    return first * 10 + second + total - 44;
+}

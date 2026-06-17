@@ -234,6 +234,18 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(returned_closure) + " -o " + q(returned_closure_bin));
     require_success(q(returned_closure_bin));
 
+    const fs::path reference_closure = positive_sample("functions", "lambda_reference_capture.ax");
+    const std::string reference_closure_ir = require_success(aurexc() + " --emit=ir " + q(reference_closure)).output;
+    expect_contains_all(reference_closure_ir, {"aggregate {.__capture_0_base", "load %", "call __aurex_lambda"});
+    const fs::path reference_closure_bin = test_bin_root() / "lambda_reference_capture";
+    require_success(aurexc() + " " + q(reference_closure) + " -o " + q(reference_closure_bin));
+    require_success(q(reference_closure_bin));
+
+    const fs::path mutable_reference_closure = positive_sample("functions", "lambda_mutable_reference_capture.ax");
+    const fs::path mutable_reference_closure_bin = test_bin_root() / "lambda_mutable_reference_capture";
+    require_success(aurexc() + " " + q(mutable_reference_closure) + " -o " + q(mutable_reference_closure_bin));
+    require_success(q(mutable_reference_closure_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -267,7 +279,7 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_reference_capture.ax")))
             .output,
-        "reference capture in closures is not supported yet");
+        "mutable closure capture requires a mutable captured variable");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");

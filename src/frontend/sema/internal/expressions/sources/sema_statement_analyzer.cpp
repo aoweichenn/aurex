@@ -106,8 +106,15 @@ struct LambdaCaptureCandidate {
     IdentId name_id = INVALID_IDENT_ID;
     std::string_view name{};
     TypeHandle type = INVALID_TYPE_HANDLE;
+    syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    bool source_is_mutable = false;
     base::SourceRange use_range{};
     base::SourceRange declaration_range{};
+};
+
+struct LambdaCaptureListEntry {
+    syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    base::SourceRange range{};
 };
 
 [[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
@@ -686,6 +693,8 @@ private:
             symbol.name_id,
             name.empty() ? symbol.name.view() : name,
             symbol.type,
+            syntax::LambdaCaptureKind::value,
+            symbol.is_mutable,
             expr_range_or(this->core_.ctx_.module, expr, symbol.range),
             symbol.range,
         });
@@ -804,6 +813,38 @@ private:
         name += capture_name;
     }
     return name;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] TypeHandle lambda_capture_environment_field_type(
+    TypeTable& types, const LambdaCaptureCandidate& capture)
+{
+    if (lambda_capture_kind_is_reference(capture.kind)) {
+        return types.pointer(PointerMutability::mut, capture.type);
+    }
+    return capture.type;
+}
+
+[[nodiscard]] TypeHandle lambda_checked_capture_environment_field_type(
+    TypeTable& types, const CheckedLambdaInfo::Capture& capture)
+{
+    if (is_valid(capture.field_type)) {
+        return capture.field_type;
+    }
+    if (lambda_capture_kind_is_reference(capture.kind)) {
+        return types.pointer(PointerMutability::mut, capture.type);
+    }
+    return capture.type;
 }
 
 [[nodiscard]] bool lambda_captures_contain_array(
@@ -965,27 +1006,30 @@ void report_generic_dependent_lambda_capture(
         "captured value `" + std::string(capture.name) + "` is declared here");
 }
 
-void check_lambda_capture_mode(
-    SemanticAnalyzerCore& core, const syntax::LambdaCaptureDecl& capture, bool& has_unsupported_capture)
+void check_lambda_capture_mode(SemanticAnalyzerCore& core, const LambdaCaptureCandidate& capture,
+    const LambdaCaptureListEntry& entry, bool& has_unsupported_capture)
 {
-    if (capture.kind == syntax::LambdaCaptureKind::value) {
+    if (entry.kind != syntax::LambdaCaptureKind::mutable_reference || capture.source_is_mutable) {
         return;
     }
-    core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REFERENCE_UNSUPPORTED));
+    core.report_general(entry.range, std::string(SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE));
+    core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+        "captured value `" + std::string(capture.name) + "` is declared here");
     has_unsupported_capture = true;
 }
 
 void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyzerCore::ExprView& expr,
-    const std::span<const LambdaCaptureCandidate> captures, bool& has_unsupported_capture)
+    const std::span<LambdaCaptureCandidate> captures, bool& has_unsupported_capture)
 {
-    std::unordered_set<IdentId, IdentIdHash> listed;
+    std::unordered_map<IdentId, LambdaCaptureListEntry, IdentIdHash> listed;
     listed.reserve(expr.lambda_captures.size());
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
-        check_lambda_capture_mode(core, capture, has_unsupported_capture);
         if (!is_valid(capture.name_id)) {
             continue;
         }
-        if (!listed.insert(capture.name_id).second) {
+        const auto inserted = listed.emplace(
+            capture.name_id, LambdaCaptureListEntry{capture.kind, capture.range});
+        if (!inserted.second) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DUPLICATE));
             has_unsupported_capture = true;
         }
@@ -993,17 +1037,21 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
 
     std::unordered_set<IdentId, IdentIdHash> used;
     used.reserve(captures.size());
-    for (const LambdaCaptureCandidate& capture : captures) {
+    for (LambdaCaptureCandidate& capture : captures) {
         if (!is_valid(capture.name_id)) {
             continue;
         }
         used.insert(capture.name_id);
-        if (!listed.contains(capture.name_id)) {
+        const auto listed_capture = listed.find(capture.name_id);
+        if (listed_capture == listed.end()) {
             core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_NOT_LISTED));
             core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
                 "captured value `" + std::string(capture.name) + "` is declared here");
             has_unsupported_capture = true;
+            continue;
         }
+        capture.kind = listed_capture->second.kind;
+        check_lambda_capture_mode(core, capture, listed_capture->second, has_unsupported_capture);
     }
 
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
@@ -2882,6 +2930,8 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
             this->core_.state_.checked.intern_text(field_name),
             field_name_id,
             capture.type,
+            lambda_capture_environment_field_type(this->core_.state_.checked.types, capture),
+            capture.kind,
             capture.use_range,
             capture.declaration_range,
         });
@@ -2906,7 +2956,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
                 capture.field_name_id,
                 capture.field_name,
                 module,
-                capture.type,
+                lambda_checked_capture_environment_field_type(this->core_.state_.checked.types, capture),
                 capture.use_range,
                 syntax::Visibility::private_,
                 this->core_.stable_member_key(environment.stable_id, StableSymbolKind::struct_field,
@@ -2946,7 +2996,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
                 syntax::INVALID_MODULE_ID,
                 capture.type,
                 capture.declaration_range,
-                false,
+                lambda_capture_kind_is_mutable(capture.kind),
                 syntax::Visibility::private_,
                 {},
             },

@@ -1,8 +1,8 @@
-# Function / Closure Surface：C++ 风格 capture-list 第一批落地
+# Function / Closure Surface：C++ 风格 capture-list
 
-日期：2026-06-13
-状态：语法修正优化第六手改动，第一批代码落地
-关联实现：parser / AST / sema / samples / gtest
+日期：2026-06-17
+状态：当前闭包捕获语法与语义
+关联实现：parser / AST / sema / IR lowering / samples / gtest
 
 ## 结论
 
@@ -16,28 +16,18 @@ Aurex 闭包字面量切到 C++ 风格 capture-list：
 }
 ```
 
-第一批语义只放开按值捕获：
+显式捕获列表支持三种模式：
 
 ```aurex
-[base](value: i32) -> i32 => value + base
+[base](value: i32) -> i32 => value + base      // 值捕获：闭包环境保存独立副本
+[&base](value: i32) -> i32 => value + base     // 共享引用捕获：闭包体读取外层变量当前值
+[&mut base](value: i32) -> i32 {               // 可变引用捕获：闭包体写入外层 var
+    base += value;
+    return base;
+}
 ```
 
-引用捕获必须在语法和 AST 中一开始占住位置，但当前不能假支持：
-
-```aurex
-[&base](value: i32) -> i32 => value + base      // 当前 sema 拒绝
-[&mut base](value: i32) -> i32 => value + base  // 当前 sema 拒绝
-```
-
-诊断固定为：
-
-```text
-reference capture in closures is not supported yet
-```
-
-原因很直接：当前 closure lowering 是把捕获值 load 出来，复制进匿名环境 record。这个模型只能表达 value capture，
-不能表达“环境里保存外层变量地址，并且闭包体内的名字 alias 到原变量”的 reference capture。直接放开 `[&x]`
-会把引用捕获偷偷降级成值捕获，这是错误语义。
+`[&mut x]` 要求被捕获对象是可写外层变量；`let` 绑定只能用 `[x]` 或 `[&x]`。
 
 ## 为什么不继续用 pipe lambda
 
@@ -98,20 +88,26 @@ ClosureBody =
 
 ## 捕获语义
 
-第一批只真正支持：
+当前实现支持：
 
 ```aurex
 [name]
+[&name]
+[&mut name]
 ```
 
 语义：
 
 - 捕获项必须被 body 实际使用。
 - body 实际使用的外层局部/参数必须列在 capture-list。
+- `[name]` 是值捕获，环境字段保存 captured value 的副本。
+- `[&name]` 是共享引用捕获，环境字段保存外层 slot 地址，闭包体只读 alias。
+- `[&mut name]` 是可变引用捕获，环境字段保存外层 slot 地址，闭包体可写 alias。
+- `[&mut name]` 要求外层 binding 本身可写。
 - 重复捕获诊断为 duplicate closure capture name。
 - 列了但未使用诊断为 closure capture list contains a name that is not captured。
 - 用了但没列诊断为 closure capture must be listed in the capture list。
-- 捕获值仍要求非 generic-dependent、非 borrowed-view、满足 `Copy` capability。
+- 值捕获仍要求非 generic-dependent、非 borrowed-view、满足 `Copy` capability。
 - 捕获闭包不是 `fn(...) -> T` 薄函数指针，不能赋给 `fn` 类型。
 
 示例：
@@ -124,57 +120,48 @@ fn direct_capture(value: i32) -> i32 {
 }
 ```
 
-## 引用捕获为什么先拒绝
+## 引用捕获 lowering
 
-`[&x]` 的正确语义不是“复制 x 的当前值”，而是：
+`[&x]` 的语义不是“复制 x 的当前值”，而是：
 
 - closure environment 保存指向外层 binding storage 的引用/地址。
 - closure body 内的 `x` 解析成这个外层 storage 的别名。
 - shared reference capture 只能读，不能写。
-- mutable reference capture 需要独占借用，并影响外层变量的可写/可借用状态。
-- 逃逸闭包必须证明引用不超过被捕获 binding 的 lifetime。
+- mutable reference capture 要求外层变量可写。
+- borrow/lifetime checker 后续继续细化逃逸闭包和 alias 冲突约束。
 
-当前 IR lowering 做的是：
+值捕获 lowering：
 
 ```text
 outer local slot -> load value -> environment field -> closure body local slot
 ```
 
-引用捕获需要的是：
+引用捕获 lowering：
 
 ```text
 outer local slot address -> environment field -> closure body alias binding
 ```
 
-这会牵涉：
+实现落点：
 
 - checked lambda capture 中保存 capture mode。
-- environment field type 从 captured value type 变成 reference/pointer-like carrier。
+- environment field type 对引用捕获使用内部 pointer-like carrier。
 - closure body local symbol 绑定到 alias storage，而不是新 alloca 后 store。
-- borrow/lifetime checker 对 closure escape 做额外约束。
 - mutable capture 和外层 variable mutability、loan state 联动。
 
-因此当前选择是：parser/AST 接受 `[&x]` / `[&mut x]`，sema 明确拒绝，后续完整实现后再删除这个 unsupported 诊断。
-
-## 第一批代码落点
+## 代码落点
 
 - token 层不新增关键字；`&`、`mut`、identifier 复用现有 token。
 - AST 新增 `LambdaCaptureKind` 和 `LambdaCaptureDecl`。
 - lambda payload 持有 `captures + params + return_type + body`。
 - parser 删除旧 pipe lambda 成功路径，闭包只从 `[` capture-list `]` `(` param-list `)` 开始。
-- sema 校验显式 capture-list，并拒绝 reference capture。
+- sema 校验显式 capture-list，持久化 capture mode，并拒绝 `[&mut]` 捕获不可写绑定。
 - dump 输出 `lambda [](value: i32) -> i32`、`lambda [base](...)`、`lambda [&base](...)`。
+- IR lowering 对值捕获保存值，对引用捕获保存外层 slot 地址，闭包体绑定 alias storage。
 - samples 和 gtest 全部迁移到新写法，不保留旧源码语法。
 
-## 后续放开引用捕获的验收条件
+## 后续深化
+- 后续可加入 C++ 默认捕获 `[=]`、`[&]` 和 init-capture，但当前版本只实现显式 capture-list。
+- 需要继续扩展嵌套引用捕获、外层 move/drop 后使用、返回闭包等生命周期负例。
 
-真正支持 `[&x]` / `[&mut x]` 前，至少要同时完成：
-
-- checked lambda capture 持久化 capture mode。
-- closure environment layout 支持引用字段。
-- closure body lowering 能把捕获名绑定成 alias，不再复制到新本地 slot。
-- borrow checker 能验证 shared/mutable capture 的冲突和逃逸。
-- 负例覆盖 escaping reference capture、mutable alias 冲突、外层 move/drop 后捕获使用。
-- 正例覆盖 shared read、mutable write、嵌套引用捕获、返回非逃逸闭包或明确拒绝逃逸。
-
-在这些条件完成前，`[&x]` 和 `[&mut x]` 只能作为已占位语法，不能作为可运行语义。
+- borrow/lifetime checker 需要继续细化 shared/mutable capture 的冲突和闭包逃逸约束。

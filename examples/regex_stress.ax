@@ -120,7 +120,7 @@ fn run_repeated_fullmatches(checker: CompiledCheck, compiled: &regex.Regex, subj
     var iteration: usize = 0usize;
     while iteration < STRESS_FULLMATCH_ITERATIONS {
         let result: regex.MatchResult = checker(compiled, subject);
-        let code: i32 = require_match_span(CASE_FULLMATCH_BASE, result, 0usize, strblen(subject));
+        let code: i32 = require_match_span(CASE_FULLMATCH_BASE, result, 0usize, subject.len);
         if code != 0 {
             return code;
         }
@@ -158,7 +158,7 @@ fn require_feature_matrix() -> i32 {
         return ready;
     }
     let result: regex.MatchResult = regex.fullmatch_compiled(&syntax_mix, "aaabcccdddd");
-    let code: i32 = require_match_span(CASE_FEATURE_BASE + 20, result, 0usize, strblen("aaabcccdddd"));
+    let code: i32 = require_match_span(CASE_FEATURE_BASE + 20, result, 0usize, "aaabcccdddd".len);
     if code != 0 {
         return code;
     }
@@ -170,7 +170,7 @@ fn require_feature_matrix() -> i32 {
         return dot_ready;
     }
     let dot_result: regex.MatchResult = regex.fullmatch_compiled(&dot_and_escape, "file.txt");
-    return require_match_span(CASE_FEATURE_BASE + 60, dot_result, 0usize, strblen("file.txt"));
+    return require_match_span(CASE_FEATURE_BASE + 60, dot_result, 0usize, "file.txt".len);
 }
 
 fn require_capture_pressure() -> i32 {
@@ -224,8 +224,8 @@ fn require_linear_search_surface() -> i32 {
     return require_match_span(
         CASE_LINEAR_SEARCH_BASE + 20,
         result,
-        strblen("trace trace trace trace trace trace trace trace trace trace "),
-        strblen("trace trace trace trace trace trace trace trace trace trace aaaab")
+        "trace trace trace trace trace trace trace trace trace trace ".len,
+        "trace trace trace trace trace trace trace trace trace trace aaaab".len
     );
 }
 
@@ -245,8 +245,8 @@ fn require_prefix_prefilter_surface() -> i32 {
         let code: i32 = require_match_span(
             CASE_PREFIX_SEARCH_BASE + 20,
             result,
-            strblen("trace trace trace trace trace trace trace trace trace trace "),
-            strblen("trace trace trace trace trace trace trace trace trace trace needleXYZ")
+            "trace trace trace trace trace trace trace trace trace trace ".len,
+            "trace trace trace trace trace trace trace trace trace trace needleXYZ".len
         );
         if code != 0 {
             return code;
@@ -294,8 +294,8 @@ fn main() -> i32 {
     let log_case: StressCase = StressCase {
         pattern: "(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)",
         haystack: "trace: ignored; warn: ops@example.com; audit: done",
-        expected_start: strblen("trace: ignored; "),
-        expected_end: strblen("trace: ignored; warn: ops@example.com"),
+        expected_start: "trace: ignored; ".len,
+        expected_end: "trace: ignored; warn: ops@example.com".len,
     };
     let search_code: i32 = run_repeated_searches(regex.search_compiled, &search_pattern, log_case);
     if search_code != 0 {

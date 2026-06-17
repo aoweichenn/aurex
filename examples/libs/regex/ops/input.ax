@@ -16,12 +16,12 @@ pub fn text(value: str) -> RegexInput {
         mode: t.MODE_TEXT,
         text: value,
         data: null,
-        len: strblen(value),
+        len: value.len,
     };
 }
 
 pub fn bytes(value: []u8) -> RegexInput {
-    return bytes_raw(sliceptr(value), slicelen(value));
+    return bytes_raw(value.ptr, value.len);
 }
 
 pub fn bytes_raw(data: *const u8, len: usize) -> RegexInput {
@@ -66,7 +66,7 @@ impl RegexInput {
         if self.mode == t.MODE_BYTES {
             return unsafe { self.data[offset] };
         }
-        let data: *const u8 = strptr(self.text);
+        let data: *const u8 = self.text.ptr;
         return unsafe { data[offset] };
     }
 

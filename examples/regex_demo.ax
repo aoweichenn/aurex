@@ -87,7 +87,7 @@ fn main() -> i32 {
     if require_match(CASE_COMPILED_MATCH, result) != 0 {
         return CASE_COMPILED_MATCH;
     }
-    if result.start != 0usize || result.end != strblen("abcdab") {
+    if result.start != 0usize || result.end != "abcdab".len {
         return CASE_COMPILED_SPAN;
     }
 

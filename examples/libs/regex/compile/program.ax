@@ -9,7 +9,7 @@ pub fn create(pattern: str, mode: u8) -> t.Regex {
 }
 
 pub fn create_with_options(pattern: str, mode: u8, options: t.RegexOptions) -> t.Regex {
-    let pattern_len: usize = strblen(pattern);
+    let pattern_len: usize = pattern.len;
     if pattern_len > options.max_pattern_bytes {
         return empty_with_status(pattern, mode, options, t.RegexStatus.pattern_too_large);
     }

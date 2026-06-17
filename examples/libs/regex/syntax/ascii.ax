@@ -81,7 +81,7 @@ pub const RBRACE: u8 = b'}';
 pub const TILDE: u8 = b'~';
 
 pub fn byte_at(text_value: str, index: usize) -> u8 {
-    let data: *const u8 = strptr(text_value);
+    let data: *const u8 = text_value.ptr;
     return unsafe { data[index] };
 }
 

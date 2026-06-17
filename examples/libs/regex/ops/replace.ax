@@ -471,8 +471,8 @@ fn expand_replacement(
     var next_written: usize = written;
     var next_required: usize = required;
     var at: usize = 0usize;
-    let replacement_len: usize = strblen(replacement);
-    let replacement_data: *const u8 = strptr(replacement);
+    let replacement_len: usize = replacement.len;
+    let replacement_data: *const u8 = replacement.ptr;
     while at < replacement_len {
         let value: u8 = unsafe { replacement_data[at] };
         if value == ascii.BACKSLASH {
@@ -522,7 +522,7 @@ fn expand_replacement_escape(
     written: usize,
     required: usize
 ) -> TemplateExpansion {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     let marker_at: usize = slash_at + 1usize;
     if marker_at >= replacement_len {
         return TemplateExpansion { written: written, required: required, next_at: slash_at, status: t.RegexStatus.replacement_error };
@@ -574,13 +574,13 @@ fn expand_template(
     written: usize,
     required: usize
 ) -> TemplateExpansion {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     let next_at: usize = dollar_at + 1usize;
     if next_at >= replacement_len {
         let copied: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
         return template_result(copied, replacement_len, t.RegexStatus.ok);
     }
-    let data: *const u8 = strptr(replacement);
+    let data: *const u8 = replacement.ptr;
     let marker: u8 = unsafe { data[next_at] };
     if marker == ascii.DOLLAR {
         let copied_dollar: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
@@ -615,7 +615,7 @@ fn expand_named_template(
     required: usize
 ) -> TemplateExpansion {
     var at: usize = name_start;
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     while at < replacement_len && ascii.byte_at(replacement, at) != ascii.RBRACE {
         at += 1usize;
     }
@@ -646,7 +646,7 @@ fn expand_named_template(
 }
 
 fn parse_replacement_hex_escape(replacement: str, start: usize, fixed_digits: usize, allow_braced: bool) -> ParsedScalar {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     if allow_braced && start < replacement_len && ascii.byte_at(replacement, start) == ascii.LBRACE {
         return parse_replacement_braced_hex(replacement, start + 1usize);
     }
@@ -672,7 +672,7 @@ fn parse_replacement_hex_escape(replacement: str, start: usize, fixed_digits: us
 }
 
 fn parse_replacement_braced_hex(replacement: str, start: usize) -> ParsedScalar {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     var at: usize = start;
     var value: usize = 0usize;
     var digits: usize = 0usize;

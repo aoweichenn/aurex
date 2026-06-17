@@ -49,7 +49,7 @@ pub fn regex_database_bytes(compiled: &t.Regex) -> usize {
         return 0usize;
     }
     return REGEX_HEADER_BYTES
-        + strblen(compiled.pattern)
+        + compiled.pattern.len
         + compiled.state_len * STATE_ENCODED_BYTES
         + compiled.range_len * RANGE_ENCODED_BYTES
         + compiled.capture_len * CAPTURE_ENCODED_BYTES;
@@ -66,7 +66,7 @@ pub fn serialize_regex(compiled: &t.Regex, out: *mut u8, out_capacity: usize) ->
     write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
     write_u8(out, out_capacity, cursor_ptr, compiled.mode);
     write_options(out, out_capacity, cursor_ptr, compiled.options);
-    write_usize(out, out_capacity, cursor_ptr, strblen(compiled.pattern));
+    write_usize(out, out_capacity, cursor_ptr, compiled.pattern.len);
     write_usize(out, out_capacity, cursor_ptr, compiled.start);
     write_usize(out, out_capacity, cursor_ptr, compiled.accept);
     write_usize(out, out_capacity, cursor_ptr, compiled.state_len);
@@ -139,8 +139,8 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
 }
 
 pub fn deserialize_regex(bytes: []u8) -> t.Regex {
-    let data: *const u8 = sliceptr(bytes);
-    let len: usize = slicelen(bytes);
+    let data: *const u8 = bytes.ptr;
+    let len: usize = bytes.len;
     if len < REGEX_HEADER_BYTES || !has_regex_magic(data, len) {
         return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
     }
@@ -240,8 +240,8 @@ pub fn deserialize_regex(bytes: []u8) -> t.Regex {
 }
 
 pub fn deserialize_set(bytes: []u8) -> t.RegexSet {
-    let data: *const u8 = sliceptr(bytes);
-    let len: usize = slicelen(bytes);
+    let data: *const u8 = bytes.ptr;
+    let len: usize = bytes.len;
     if len < HEADER_BYTES || !has_set_magic(data, len) {
         return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
     }
@@ -382,9 +382,9 @@ fn write_regex_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> v
 }
 
 fn write_pattern_bytes(out: *mut u8, out_capacity: usize, cursor: *mut usize, pattern: str) -> void {
-    let data: *const u8 = strptr(pattern);
+    let data: *const u8 = pattern.ptr;
     var offset: usize = 0usize;
-    while offset < strblen(pattern) {
+    while offset < pattern.len {
         write_u8(out, out_capacity, cursor, unsafe { data[offset] });
         offset += 1usize;
     }
@@ -1109,7 +1109,7 @@ fn validate_regex_state(compiled: &t.Regex, state: t.State) -> bool {
 }
 
 fn validate_capture(compiled: &t.Regex, capture: t.CaptureInfo) -> bool {
-    let pattern_len: usize = strblen(compiled.pattern);
+    let pattern_len: usize = compiled.pattern.len;
     if capture.name_start > pattern_len || capture.name_len > pattern_len - capture.name_start {
         return false;
     }

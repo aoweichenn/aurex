@@ -26,11 +26,11 @@ pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> t.Bu
 }
 
 fn escape_with(input: str, out: *mut u8, out_capacity: usize, needs_escape: EscapePredicate) -> t.BufferResult {
-    let data: *const u8 = strptr(input);
+    let data: *const u8 = input.ptr;
     var offset: usize = 0usize;
     var written: usize = 0usize;
     var required: usize = 0usize;
-    while offset < strblen(input) {
+    while offset < input.len {
         let value: u8 = unsafe { data[offset] };
         let copied: CopyState = copy_escaped_byte(value, needs_escape, out, out_capacity, written, required);
         written = copied.written;

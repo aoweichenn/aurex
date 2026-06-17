@@ -24,13 +24,13 @@ const UNICODE_BOUNDARY_END: usize = 3usize;
 const REPLACE_CAPACITY: usize = 64usize;
 
 fn same_text(left: str, right: str) -> bool {
-    if strblen(left) != strblen(right) {
+    if left.len != right.len {
         return false;
     }
-    let left_ptr: *const u8 = strptr(left);
-    let right_ptr: *const u8 = strptr(right);
+    let left_ptr: *const u8 = left.ptr;
+    let right_ptr: *const u8 = right.ptr;
     var offset: usize = 0usize;
-    while offset < strblen(left) {
+    while offset < left.len {
         if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
             return false;
         }
@@ -151,7 +151,7 @@ fn require_boundaries() -> i32 {
         return absolute_start_rejects;
     }
     let absolute_end: regex.MatchResult = regex.find("abc\\z", "xabc");
-    let absolute_end_code: i32 = require_span(CASE_BOUNDARY + 60, absolute_end, 1usize, strblen("xabc"));
+    let absolute_end_code: i32 = require_span(CASE_BOUNDARY + 60, absolute_end, 1usize, "xabc".len);
     if absolute_end_code != 0 {
         return absolute_end_code;
     }
@@ -302,11 +302,11 @@ fn require_unicode() -> i32 {
     }
     var captures: regex.Captures = regex.captures("(.)", "é");
     defer regex.destroy_captures(&mut captures);
-    if !captures.ok() || captures.start != 0usize || captures.end != strblen("é") {
+    if !captures.ok() || captures.start != 0usize || captures.end != "é".len {
         return CASE_UNICODE + 40;
     }
     let capture: regex.CaptureSpan = regex.capture_at(&captures, 1usize);
-    if !capture.matched || capture.start != 0usize || capture.end != strblen("é") ||
+    if !capture.matched || capture.start != 0usize || capture.end != "é".len ||
         !same_text(regex.capture_text("é", &captures, 1usize), "é") {
         return CASE_UNICODE + 41;
     }

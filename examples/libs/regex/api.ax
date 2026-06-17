@@ -558,7 +558,7 @@ pub fn diagnostic(compiled: &t.Regex) -> t.RegexDiagnostic {
         error_kind: compiled.error_kind,
         error_kind_code: error_kind_code(compiled.error_kind),
         pattern_index: t.CAPTURE_MISSING,
-        pattern_len: strblen(compiled.pattern),
+        pattern_len: compiled.pattern.len,
     };
 }
 

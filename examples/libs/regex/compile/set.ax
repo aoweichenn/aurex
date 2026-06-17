@@ -75,14 +75,14 @@ pub fn program_bytes(compiled: &t.RegexSet) -> usize {
 }
 
 fn compile_set_with_mode(patterns: []str, mode: u8, options: t.RegexOptions) -> t.RegexSet {
-    let pattern_count: usize = slicelen(patterns);
+    let pattern_count: usize = patterns.len;
     if pattern_count > limits.MAX_SET_PATTERNS {
         return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, limits.MAX_SET_PATTERNS);
     }
     var total_pattern_bytes: usize = 0usize;
     var scan: usize = 0usize;
     while scan < pattern_count {
-        total_pattern_bytes += strblen(patterns[scan]);
+        total_pattern_bytes += patterns[scan].len;
         scan += 1usize;
     }
     if can_compile_literal_trie_set(patterns, mode, options) {
@@ -125,7 +125,7 @@ fn can_compile_literal_trie_set(patterns: []str, mode: u8, options: t.RegexOptio
     if !literal_trie_options_supported(options) {
         return false;
     }
-    let pattern_count: usize = slicelen(patterns);
+    let pattern_count: usize = patterns.len;
     if pattern_count == 0usize {
         return false;
     }
@@ -149,7 +149,7 @@ fn has_flag(flags: u8, flag: u8) -> bool {
 }
 
 fn is_plain_literal_pattern(pattern: str, mode: u8) -> bool {
-    let len: usize = strblen(pattern);
+    let len: usize = pattern.len;
     if len == 0usize {
         return false;
     }
@@ -190,7 +190,7 @@ fn is_regex_meta_byte(value: u8) -> bool {
 }
 
 fn compile_literal_trie_set(patterns: []str, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
-    let pattern_count: usize = slicelen(patterns);
+    let pattern_count: usize = patterns.len;
     var compiled: t.RegexSet = create_set(pattern_count, mode, total_pattern_bytes, options);
     if compiled.status != t.RegexStatus.ok {
         return compiled;
@@ -277,7 +277,7 @@ fn insert_literal_pattern(
 ) -> bool {
     var node_id: usize = 0usize;
     var at: usize = 0usize;
-    let len: usize = strblen(pattern);
+    let len: usize = pattern.len;
     while at < len {
         let step: LiteralStep = literal_step_at(pattern, mode, at);
         if !step.valid {

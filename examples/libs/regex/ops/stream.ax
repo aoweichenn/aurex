@@ -65,7 +65,7 @@ pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {
         stream.status = t.RegexStatus.unsupported;
         return stream.status;
     }
-    let chunk_len: usize = strblen(chunk);
+    let chunk_len: usize = chunk.len;
     compact_stream(stream);
     if !ensure_capacity(stream, stream.len + chunk_len) {
         return stream.status;
@@ -87,12 +87,12 @@ pub fn stream_feed_bytes(stream: &mut t.RegexStream, chunk: []u8) -> t.RegexStat
         stream.status = t.RegexStatus.unsupported;
         return stream.status;
     }
-    let chunk_len: usize = slicelen(chunk);
+    let chunk_len: usize = chunk.len;
     compact_stream(stream);
     if !ensure_capacity(stream, stream.len + chunk_len) {
         return stream.status;
     }
-    copy_const_bytes(stream.buffer, stream.len, sliceptr(chunk), 0usize, chunk_len);
+    copy_const_bytes(stream.buffer, stream.len, chunk.ptr, 0usize, chunk_len);
     stream.len += chunk_len;
     return stream.status;
 }
@@ -222,7 +222,7 @@ fn compact_capacity(remaining: usize) -> usize {
 }
 
 fn copy_chunk(dst: *mut u8, dst_start: usize, chunk: str, chunk_len: usize) -> void {
-    let src: *const u8 = strptr(chunk);
+    let src: *const u8 = chunk.ptr;
     var index: usize = 0usize;
     while index < chunk_len {
         unsafe {

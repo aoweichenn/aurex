@@ -10325,7 +10325,7 @@ const SCX_ALIASES: [342]PropertyAlias = [
 
 
 pub fn decode_at(text_value: str, offset: usize) -> Decode {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return Decode { value: 0usize, next: offset, valid: false };
     }
@@ -10378,7 +10378,7 @@ pub fn decode_at(text_value: str, offset: usize) -> Decode {
 }
 
 pub fn next_boundary(text_value: str, offset: usize) -> usize {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return len;
     }
@@ -10390,7 +10390,7 @@ pub fn next_boundary(text_value: str, offset: usize) -> usize {
 }
 
 pub fn align_forward_boundary(text_value: str, offset: usize) -> usize {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return len;
     }
@@ -11080,7 +11080,7 @@ fn alias_lookup(aliases: []PropertyAlias, count: usize, pattern: str, name_start
 
 fn normalized_name_matches(pattern: str, name_start: usize, name_len: usize, expected: str) -> bool {
     let end: usize = name_start + name_len;
-    let expected_len: usize = strblen(expected);
+    let expected_len: usize = expected.len;
     var at: usize = name_start;
     var expected_at: usize = 0usize;
     while at < end {

@@ -18,7 +18,7 @@ M4 trait/protocol、M3 module/generic 和 M2 language core 基线之上。
 本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以
 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/ast/*`、
 `src/frontend/parse/grammar/*`、`src/frontend/sema/internal/*`、`tests/samples/**`、`tests/gtest/frontend/**` 和
-`examples/**` 的当前实现为准。`docs/spec/m2_grammar.md` 是早期 M2 语法冻结文档；遇到差异时，以本文和当前源码为准。
+`examples/**` 的当前实现为准。早期 M2 语法冻结文档已从当前文档集中删除；遇到差异时，以本文和当前源码为准。
 
 ## 前言：范围、记号和当前能力
 
@@ -2679,7 +2679,7 @@ raw pointer、resource cleanup、match、泛型别名、method、函数指针和
 - 第一阶段 API 程序：`examples/regex_phase1.ax`
 - 工业语法面程序：`examples/regex_industrial.ax`
 - 压力程序：`examples/regex_stress.ax`
-- 详细语法/API/模块说明：`docs/zh/regex.md`
+- 正则库说明已从当前精简文档集中移除；此处只保留语言手册概要。
 
 编译方式：
 
@@ -2747,7 +2747,7 @@ fn main() -> i32 {
 - 压力测试：`regex_stress.ax` 通过数百次重复匹配验证 compiled API 复用、内存预算和错误路径。
 
 当前正则语法是 UTF-8 text regex 语法，详细定义见
-`docs/zh/regex.md`。概要如下：
+本节只保留语言手册概要：
 
 - 字面量：普通字面量按 Unicode scalar value 匹配。
 - 转义：`\a`、`\e`、`\f`、`\n`、`\r`、`\t`、`\v`、`\0`、`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。

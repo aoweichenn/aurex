@@ -2,7 +2,7 @@
 
 日期：2026-06-13
 状态：语法修正优化第一批落地设计记录
-关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P0 `[]` 过载和 P0 大小写启发式影响 parsing
+关联问题：泛型 `[]` 过载和大小写启发式影响 parsing
 
 本文固定 Aurex 泛型语法的第一项修正：泛型参数、泛型实参、associated type equality、type-operand builtin 和泛型表达式调用统一使用 C++ 风格的 `<...>` 表面。
 
@@ -387,7 +387,7 @@ Sema / IR 不应依赖 delimiter 文本。若有诊断文本、dump golden 或 s
 
 - `docs/zh/language-manual.md`
 - `docs/zh/language-feature-inventory.md`
-- `docs/zh/m27c-syntax-ergonomics-review.md`
+- 当前语法修正优化目录
 - `tests/samples/**`
 - `tests/gtest/frontend/**`
 - `examples/**`

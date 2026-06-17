@@ -9,7 +9,7 @@
 
 1. [Angle Bracket Generics：泛型从 `[]` 迁移到 `<...>`](01-angle-bracket-generics.md)
 2. [Builtin / Intrinsic Surface：删除硬关键字污染，收束内建能力](02-builtin-intrinsic-surface.md)
-3. [Range Loop Surface：拆掉伪 `for-in range(...)`](03-range-loop-surface.md)
+3. [Range Loop Surface：保留原来的 `range(...)` 写法](03-range-loop-surface.md)
 4. [Mut / Const Access Surface：把可写权限从深不可变里拆开](04-mut-const-access-surface.md)
 5. [Function / Closure Surface：把闭包字面量从 `fn` 骨架里拆出来](05-function-closure-surface.md)
 6. [Function / Closure Surface：C++ 风格 capture-list 第一批落地](06-function-closure-cpp-capture-list.md)

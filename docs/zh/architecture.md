@@ -74,7 +74,7 @@
 
 M2.5 的架构主线是 stable-ID-driven query，而不是先堆一层 LSP 适配器：
 
-- 第一批 [M2.5 Query Key 设计](m2.5-query-key-design.md) 已经进入默认增量缓存主路径，
+- 第一批 M2.5 Query Key 设计已经进入默认增量缓存主路径，
   Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
   GenericInstanceKey 和 diagnostics query 边界已经定牢。
 - 现有 sema 结果已经固定为显式 typed identity、显式诊断 kind 和稳定 fingerprint。

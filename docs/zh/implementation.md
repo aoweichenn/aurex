@@ -25,7 +25,7 @@ M1 的 `noncopy` / `move` / use-after-move 语义已从 M2 当前实现删除。
 
 ## M2.5 前端方向
 
-M2.5 第一批 [Query Key 设计](m2.5-query-key-design.md) 已经落到默认增量缓存主路径：
+M2.5 第一批 Query Key 设计已经落到默认增量缓存主路径：
 当前 typed identity 和 diagnostics 元数据已经固定为 query-safe 数据，并明确
 Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
 GenericInstanceKey、diagnostics query 和 red-green fingerprint 的边界。

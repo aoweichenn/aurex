@@ -2,7 +2,7 @@
 
 日期：2026-06-13
 状态：语法修正优化第四手改动设计稿；建议硬切，不保留成功兼容路径
-关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 `mut` / `const` 位置不统一
+关联问题：`mut` / `const` 位置不统一
 
 本文固定 Aurex `mut` / `const` 语法表面的第一阶段修正方向。核心结论不是“`mut` 放前面还是放后面”，而是先把概念拆干净：Aurex 当前已经有 `let` / `var`、`&T` / `&mut T`、`*const T` / `*mut T`、`[]const T` / `[]mut T` 四组表面，如果继续把它们都叫“const/mutability”，用户和实现都会把 binding、view、object immutability 和 aliasing 证明混成一坨。
 

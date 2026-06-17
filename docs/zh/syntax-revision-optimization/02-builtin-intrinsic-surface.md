@@ -2,7 +2,7 @@
 
 日期：2026-06-13
 状态：语法修正优化第二手问题分析；str / slice projection 已由第七手落地
-关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 builtin 名字和关键字污染
+关联问题：builtin 名字和关键字污染
 
 落地说明：本文保留旧 builtin 名字作为问题分析材料。当前已实际落地的 str / slice 表面以
 `07-builtin-member-projection.md` 为准：源码使用 `text.len`、`text.ptr`、`slice.len`、`slice.ptr`，

@@ -182,9 +182,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         syntax::Token{syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 6U, 6U}, ""},
     };
     parse::TokenCursor generic_open_cursor{std::span<const syntax::Token>{generic_open_tokens}};
-    EXPECT_TRUE(generic_open_cursor.match_generic_left_angle());
-    EXPECT_EQ(generic_open_cursor.previous().kind, syntax::TokenKind::less);
-    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::equal));
+    EXPECT_FALSE(generic_open_cursor.check_generic_left_angle());
+    EXPECT_FALSE(generic_open_cursor.match_generic_left_angle());
+    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::less_equal));
     EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::identifier));
 
     constexpr std::string_view source =
@@ -4484,23 +4484,36 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
         "expected ',' or '}' after match arm");
 }
 
-TEST(CoreUnit, ParserRejectsLegacyBracketGenericSyntax)
+TEST(CoreUnit, ParserKeepsBracketSyntaxOutOfGenerics)
 {
-    constexpr std::string_view message =
-        "generic parameters and type arguments use '<...>'; '[' and ']' are reserved";
-    expect_parse_error("module parser.legacy_bracket_generic_params;\n"
+    expect_parse_error("module parser.bracket_generic_params_fn;\n"
                        "fn id[T](x: T) -> T { return x; }\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_type_args;\n"
+        "expected '(' after function name");
+    expect_parse_error("module parser.bracket_generic_params_struct;\n"
+                       "struct Box[T] { value: T; }\n",
+        "expected '{' after struct name");
+    expect_parse_error("module parser.bracket_generic_params_enum;\n"
+                       "enum Maybe[T] { some(T), none }\n",
+        "expected '{' after enum name");
+    expect_parse_error("module parser.bracket_generic_params_trait;\n"
+                       "trait Reader[T] { fn read(self: &T) -> i32; }\n",
+        "expected '{' after trait name");
+    expect_parse_error("module parser.bracket_type_args;\n"
                        "struct Pair<A, B> { first: A; second: B; }\n"
                        "type Bad = Pair[i32, bool];\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_dyn_trait_args;\n"
+        "expected ';' after type alias declaration");
+    expect_parse_error("module parser.bracket_dyn_trait_args;\n"
                        "type Bad = &dyn Draw[i32];\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_associated_trait_args;\n"
+        "expected ';' after type alias declaration");
+    expect_parse_error("module parser.bracket_associated_trait_args;\n"
                        "type Bad = &dyn Iterator[Item = i32];\n",
-        message);
+        "expected ';' after type alias declaration");
+    expect_parse_error("module parser.bracket_enum_case_pattern;\n"
+                       "enum Maybe<T> { some(T), none }\n"
+                       "fn main(value: Maybe<i32>) -> i32 {\n"
+                       "  return match value { Maybe[i32].some(x) => x, Maybe<i32>.none => 0 };\n"
+                       "}\n",
+        "expected ',' or '}' after match arm");
 }
 
 TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
@@ -4594,7 +4607,7 @@ TEST(CoreUnit, ParserRecoversMalformedAssociatedTypeConstraints)
                             "}\n",
         "expected '=' in associated type constraint");
     expect_parse_diagnostic("module parser.bad_where_associated_name;\n"
-                            "fn recovered<T>(value: T) -> T where T: Iterator<= i32> {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator< = i32> {\n"
                             "  return value;\n"
                             "}\n",
         "expected associated type constraint name");

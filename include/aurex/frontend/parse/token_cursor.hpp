@@ -159,13 +159,7 @@ public:
 
     [[nodiscard]] bool check_generic_left_angle() const noexcept
     {
-        switch (this->peek().kind) {
-            case syntax::TokenKind::less:
-            case syntax::TokenKind::less_equal:
-                return true;
-            default:
-                return false;
-        }
+        return this->peek().kind == syntax::TokenKind::less;
     }
 
     bool match_generic_left_angle() noexcept
@@ -173,18 +167,7 @@ public:
         if (!this->check_generic_left_angle()) {
             return false;
         }
-        if (this->peek().kind == syntax::TokenKind::less) {
-            this->advance();
-            return true;
-        }
-
-        const syntax::Token& token = this->peek();
-        this->pending_index_ = 0;
-        this->pending_count_ = 0;
-        this->pending_tokens_[this->pending_count_++] =
-            split_token(token, syntax::TokenKind::equal, TOKEN_CURSOR_SECOND_CHAR_OFFSET);
-        this->record_synthetic_previous(split_token(token, syntax::TokenKind::less, TOKEN_CURSOR_FIRST_CHAR_OFFSET));
-        ++this->current_;
+        this->advance();
         return true;
     }
 

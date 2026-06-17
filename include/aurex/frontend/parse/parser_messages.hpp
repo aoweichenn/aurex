@@ -248,8 +248,6 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expect
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or '>' after generic parameter";
 
-inline constexpr std::string_view PARSER_EXPECT_LEGACY_GENERIC_BEGIN = "expected '['";
-
 inline constexpr std::string_view PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED = "generic bounds are not part of M2 syntax";
 
 inline constexpr std::string_view PARSER_EXPECT_WHERE_GENERIC_PARAM = "expected generic parameter name in where clause";
@@ -261,9 +259,6 @@ inline constexpr std::string_view PARSER_EXPECT_WHERE_CAPABILITY = "expected cap
 
 inline constexpr std::string_view PARSER_EXPECT_WHERE_SEPARATOR =
     "expected ',' or declaration body after where constraint";
-
-inline constexpr std::string_view PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED =
-    "generic parameters and type arguments use '<...>'; '[' and ']' are reserved for arrays, slices, indexes, attributes, and origins";
 
 inline constexpr std::string_view PARSER_M2_RANGE_FOR_ONLY_RANGE =
     "M2 range-for only supports range(...); generic iteration is not part of M2 syntax";

@@ -50,7 +50,7 @@ let xs: Vec<Box<i32>> = make_vec<Box<i32>>();
 let y: Result<Vec<i32>, Error> = parse(input);
 ```
 
-旧 `[]` 泛型写法不保留兼容入口。第一批修改直接删除 `[]` 的泛型职责，下面这些写法只作为 legacy syntax 诊断输入：
+`[]` 不属于 Aurex 泛型语法。下面这些 token 序列不定义为泛型参数或泛型实参：
 
 ```aurex
 Box[T]
@@ -60,7 +60,7 @@ cast[i32](x)
 sizeof[*mut Pair]
 ```
 
-当前唯一合法写法：
+当前泛型唯一合法写法：
 
 ```aurex
 Box<T>
@@ -334,9 +334,9 @@ GenericContinuation  = "(" | "{" | "."
 
 ## 第一批落地策略
 
-### 直接切换，不保留双语法
+### 当前语法只定义 `<...>`
 
-本批不做“新旧两套语法同时可用”的中间态。parser 只接受：
+parser 只接受：
 
 ```aurex
 Box<T>
@@ -344,14 +344,6 @@ fn f<T>(...)
 impl<T> Box<T> { ... }
 trait Source<T> { ... }
 foo<T>(bar)
-```
-
-旧 `[]` 泛型写法只进入 focused legacy diagnostic：
-
-```text
-generic arguments should use '<...>'; replace Box[T] with Box<T>
-generic parameters should use '<...>'; replace fn f[T] with fn f<T>
-associated type constraints should use '<...>'; replace Source[Item = i32] with Source<Item = i32>
 ```
 
 `foo[bar]` 只解析为 index/slice。泛型函数调用只能写：
@@ -374,9 +366,9 @@ lexer 不需要为泛型提供空格敏感信息。trivia 仍应保留给 format
 
 需要新增或调整：
 
-- generic parameter list parser：从 `[` / `]` 切换到 `<` / generic right-angle close。
-- named type generic args parser：从 `[` / `]` 切换到 `<` / generic right-angle close。
-- dyn trait associated type constraints：从 `dyn Trait[Item = T]` 迁移到 `dyn Trait<Item = T>`。
+- generic parameter list parser：只接受 `<` / generic right-angle close。
+- named type generic args parser：只接受 `<` / generic right-angle close。
+- dyn trait associated type constraints：只接受 `dyn Trait<Item = T>`。
 - expression postfix parser：新增 angle generic suffix；删除 `[]` generic apply 分类。
 - expression postfix parser：对 `ExprPath <` 做可回滚的 generic suffix 试探解析；试探成功只取决于 generic args 是否闭合，以及后续 token 是否为 `(` / `{` / `.`。
 - expression postfix parser：不得用 whitespace、newline、comment 或 identifier 首字母大小写参与 `<...>` 判定。
@@ -387,7 +379,7 @@ lexer 不需要为泛型提供空格敏感信息。trivia 仍应保留给 format
 
 AST 里的 `GenericParamDecl`、`GenericArgDecl`、`TypeNode::generic_args`、`GenericApplyExprPayload` 等语义结构不需要改模型，只需要更新 source range 和 parser 构造路径。
 
-Sema / IR 不应依赖旧 delimiter。若有诊断文本、dump golden 或 syntax fixture，需同步更新。
+Sema / IR 不应依赖 delimiter 文本。若有诊断文本、dump golden 或 syntax fixture，需同步更新。
 
 ### Docs / Samples / Tests
 
@@ -469,13 +461,15 @@ let b: Array<i32, 4> = value;
 let c: Array<i32, (N >> 1)> = value; // future, not first batch
 ```
 
-旧语法诊断：
+非泛型 bracket 形式：
 
 ```aurex
 struct Box[T] { value: T; }
 fn id[T](x: T) -> T { return x; }
 let x: Box[i32] = value;
 ```
+
+这些形式不是泛型。parser 不提供兼容分支，也不把它们恢复成泛型 AST。
 
 ## 成功标准
 

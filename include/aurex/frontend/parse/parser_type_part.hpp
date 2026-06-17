@@ -34,7 +34,6 @@ private:
     [[nodiscard]] syntax::GenericArgDecl parse_generic_arg();
     void parse_generic_type_args(std::vector<syntax::TypeId>& type_args, std::vector<syntax::GenericArgDecl>& args);
     [[nodiscard]] bool recover_generic_type_arg_separator() const;
-    void reject_legacy_bracket_type_args() const;
     void expect_array_length_end() const;
 };
 

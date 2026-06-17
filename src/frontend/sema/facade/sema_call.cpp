@@ -447,19 +447,19 @@ TypeHandle SemanticAnalyzerCore::resolve_generic_type_selector(const NamedTypeSe
     use_type.type_args = selector.type_args;
     use_type.generic_args = selector.generic_args;
 
-    std::vector<syntax::GenericArgDecl> legacy_args;
+    std::vector<syntax::GenericArgDecl> type_only_args;
     std::span<const syntax::GenericArgDecl> ordered_args = selector.generic_args;
     if (ordered_args.empty() && !selector.type_args.empty()) {
-        legacy_args.reserve(selector.type_args.size());
+        type_only_args.reserve(selector.type_args.size());
         for (const syntax::TypeId type_arg : selector.type_args) {
-            legacy_args.push_back(syntax::GenericArgDecl{
+            type_only_args.push_back(syntax::GenericArgDecl{
                 syntax::GenericArgKind::type,
                 type_arg,
                 syntax::INVALID_EXPR_ID,
                 selector.range,
             });
         }
-        ordered_args = legacy_args;
+        ordered_args = type_only_args;
     }
 
     const GenericTemplateInfo* generic_struct = selector.qualified
@@ -729,19 +729,19 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(con
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    std::vector<syntax::GenericArgDecl> legacy_args;
+    std::vector<syntax::GenericArgDecl> type_only_args;
     std::span<const syntax::GenericArgDecl> ordered_args = selector.generic_args;
     if (ordered_args.empty() && !selector.type_args.empty()) {
-        legacy_args.reserve(selector.type_args.size());
+        type_only_args.reserve(selector.type_args.size());
         for (const syntax::TypeId type_arg : selector.type_args) {
-            legacy_args.push_back(syntax::GenericArgDecl{
+            type_only_args.push_back(syntax::GenericArgDecl{
                 syntax::GenericArgKind::type,
                 type_arg,
                 syntax::INVALID_EXPR_ID,
                 selector.range,
             });
         }
-        ordered_args = legacy_args;
+        ordered_args = type_only_args;
     }
     base::Result<GenericArgumentBundle> args =
         this->resolve_generic_argument_bundle(*generic, ordered_args, callee_range);

@@ -105,10 +105,6 @@ syntax::ItemId ItemParser::parse_fn_decl(
 std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params()
 {
     std::vector<syntax::GenericParamDecl> params;
-    if (this->check(TokenKind::l_bracket)) {
-        this->reject_legacy_bracket_generic_params();
-        return params;
-    }
     if (!this->check_generic_left_angle()) {
         return params;
     }
@@ -121,24 +117,6 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
     this->expect_generic_right_angle_recovered_after(
         std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END), RecoveryContext::generic_parameter, begin);
     return params;
-}
-
-void ItemParser::reject_legacy_bracket_generic_params() const
-{
-    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
-    this->report_at(begin, std::string(PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED));
-    while (!this->is_eof()) {
-        if (this->match(TokenKind::r_bracket)) {
-            this->reset_panic();
-            return;
-        }
-        if (this->check(TokenKind::l_paren) || this->check(TokenKind::l_brace) || this->check(TokenKind::equal)
-            || this->check(TokenKind::semicolon)) {
-            this->reset_panic();
-            return;
-        }
-        this->advance();
-    }
 }
 
 void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params)

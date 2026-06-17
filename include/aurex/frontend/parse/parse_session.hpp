@@ -60,7 +60,6 @@ inline void count_parser_primary_expr_token(
             ++exprs.arrays;
             ++exprs.slices;
             ++exprs.indexes;
-            ++exprs.generic_applies;
             ++exprs.lambdas;
             break;
         case syntax::TokenKind::l_paren:

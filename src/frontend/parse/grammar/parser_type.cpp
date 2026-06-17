@@ -437,8 +437,6 @@ syntax::TypeId TypeParser::parse_named_type()
         const syntax::Token& end = this->expect_generic_right_angle_recovered_after(
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, generic_begin);
         type.range = this->merge(type.range, end.range);
-    } else if (this->check(TokenKind::l_bracket)) {
-        this->reject_legacy_bracket_type_args();
     }
     return this->session_.module.push_type(type);
 }
@@ -506,8 +504,6 @@ syntax::TypeId TypeParser::parse_dyn_trait_principal_type(const base::SourceRang
         const syntax::Token& end = this->expect_generic_right_angle_recovered_after(
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, args_begin);
         type.range = this->merge(type.range, end.range);
-    } else if (this->check(TokenKind::l_bracket)) {
-        this->reject_legacy_bracket_type_args();
     }
     return this->session_.module.push_type(std::move(type));
 }
@@ -860,24 +856,6 @@ bool TypeParser::recover_function_type_param_separator(bool& is_variadic) const
     }
     this->reset_panic();
     return false;
-}
-
-void TypeParser::reject_legacy_bracket_type_args() const
-{
-    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
-    this->report_at(begin, std::string(PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED));
-    while (!this->is_eof()) {
-        if (this->match(TokenKind::r_bracket)) {
-            this->reset_panic();
-            return;
-        }
-        if (this->check(TokenKind::r_paren) || this->check(TokenKind::r_brace) || this->check(TokenKind::r_bracket)
-            || this->check(TokenKind::equal) || this->check(TokenKind::semicolon)) {
-            this->reset_panic();
-            return;
-        }
-        this->advance();
-    }
 }
 
 void TypeParser::expect_array_length_end() const

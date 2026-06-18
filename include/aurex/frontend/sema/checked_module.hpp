@@ -1342,6 +1342,7 @@ enum class ForInIterationKind : base::u8 {
     range_value,
     array_value,
     slice_value,
+    str_bytes,
     protocol_iterator,
 };
 

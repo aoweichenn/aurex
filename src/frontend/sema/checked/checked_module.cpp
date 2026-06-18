@@ -75,6 +75,8 @@ std::string_view for_in_iteration_kind_name(const ForInIterationKind kind) noexc
             return "array_value";
         case ForInIterationKind::slice_value:
             return "slice_value";
+        case ForInIterationKind::str_bytes:
+            return "str_bytes";
         case ForInIterationKind::protocol_iterator:
             return "protocol_iterator";
     }

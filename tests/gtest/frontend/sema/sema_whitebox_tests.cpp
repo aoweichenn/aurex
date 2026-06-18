@@ -440,6 +440,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::counted_range), "counted_range");
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::array_value), "array_value");
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::slice_value), "slice_value");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::str_bytes), "str_bytes");
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::protocol_iterator), "protocol_iterator");
     EXPECT_EQ(sema::for_in_iteration_kind_name(static_cast<sema::ForInIterationKind>(99)), "<invalid>");
     EXPECT_EQ(sema::for_in_item_mode_name(sema::ForInItemMode::immutable_value_copy), "immutable_value_copy");

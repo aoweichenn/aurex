@@ -3442,6 +3442,11 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
             plan.element_access = PointerMutability::const_;
             plan.range_type = element_type;
             plan.requires_copy_item = false;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_str(iterable_type)) {
+            element_type = this->core_.state_.checked.types.builtin(BuiltinType::u8);
+            plan.kind = ForInIterationKind::str_bytes;
+            plan.element_access = PointerMutability::const_;
+            plan.requires_copy_item = false;
         } else {
             bool protocol_error_reported = false;
             const std::optional<ForInIterationPlan> protocol_plan =

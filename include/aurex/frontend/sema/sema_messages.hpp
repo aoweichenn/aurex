@@ -284,7 +284,7 @@ inline constexpr std::string_view SEMA_RANGE_BOUNDS_SAME_TYPE = "range bounds mu
 inline constexpr std::string_view SEMA_RANGE_STEP_SAME_TYPE = "range step must have the same type as bounds";
 
 inline constexpr std::string_view SEMA_FOR_IN_ITERABLE_PROTOCOL =
-    "for-in iterable must be an array, slice, iterator, or expose iter()";
+    "for-in iterable must be an array, slice, str, iterator, or expose iter()";
 
 inline constexpr std::string_view SEMA_FOR_IN_ITERATOR_HAS_NEXT =
     "for-in iterator must define has_next(self: &mut Iterator) -> bool";

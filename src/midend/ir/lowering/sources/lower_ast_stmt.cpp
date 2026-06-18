@@ -23,6 +23,8 @@ constexpr std::string_view IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX = "for.iterable.u
 constexpr std::string_view IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX = "for.iterable.exit";
 constexpr std::string_view IR_FOR_ITERABLE_CURSOR_SLOT_NAME = "for.iterable.cursor";
 constexpr std::string_view IR_FOR_ITERABLE_END_SLOT_NAME = "for.iterable.end";
+constexpr std::string_view IR_FOR_STR_DATA_NAME = "for.str.data";
+constexpr std::string_view IR_FOR_STR_LEN_NAME = "for.str.len";
 constexpr std::string_view IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME = "for.iterator";
 constexpr std::string_view IR_FOR_PROTOCOL_SOURCE_SLOT_NAME = "for.iterable.source";
 constexpr std::string_view IR_FOR_PROTOCOL_COND_BLOCK_PREFIX = "for.protocol.cond";
@@ -114,6 +116,7 @@ struct DropGlueFrame {
 [[nodiscard]] bool for_in_iteration_plan_is_iterable(const sema::ForInIterationPlan& plan) noexcept
 {
     return plan.kind == sema::ForInIterationKind::array_value || plan.kind == sema::ForInIterationKind::slice_value
+        || plan.kind == sema::ForInIterationKind::str_bytes
         || plan.kind == sema::ForInIterationKind::protocol_iterator;
 }
 
@@ -160,6 +163,13 @@ struct DropGlueFrame {
         const sema::TypeInfo& slice = types.get(iterable_type);
         plan.kind = sema::ForInIterationKind::slice_value;
         plan.element_access = slice.slice_mutability;
+        return plan;
+    }
+    if (sema::is_valid(iterable_type) && types.is_str(iterable_type)) {
+        plan.kind = sema::ForInIterationKind::str_bytes;
+        plan.item_type = types.builtin(sema::BuiltinType::u8);
+        plan.element_access = sema::PointerMutability::const_;
+        plan.requires_copy_item = false;
     }
     return plan;
 }
@@ -802,6 +812,30 @@ std::optional<ForIterableSource> Lowerer::lower_for_iterable_source(const sema::
             .length = this->append_slice_len(slice_value),
             .element_type = plan.item_type,
             .mutability = plan.element_access,
+        };
+    }
+
+    if (plan.kind == sema::ForInIterationKind::str_bytes && this->module_.types.is_str(plan.iterable_type)) {
+        const ValueId str_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+        if (!is_valid(str_value)) {
+            return std::nullopt;
+        }
+        Value data = this->module_.make_value();
+        data.kind = ValueKind::str_data;
+        data.type = this->module_.types.pointer(
+            sema::PointerMutability::const_, this->module_.types.builtin(sema::BuiltinType::u8));
+        data.name = this->module_.intern(IR_FOR_STR_DATA_NAME);
+        data.object = str_value;
+        Value length = this->module_.make_value();
+        length.kind = ValueKind::str_byte_len;
+        length.type = usize_type;
+        length.name = this->module_.intern(IR_FOR_STR_LEN_NAME);
+        length.object = str_value;
+        return ForIterableSource{
+            .base_address = this->append_value(data),
+            .length = this->append_value(length),
+            .element_type = plan.item_type,
+            .mutability = sema::PointerMutability::const_,
         };
     }
 

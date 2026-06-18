@@ -457,6 +457,27 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     require_success(aurexc() + " " + q(iterable_source) + " -o " + q(iterable_bin));
     require_success(q(iterable_bin));
 
+    const fs::path str_iterable_source = positive_sample("control_flow", "for_in_str.ax");
+    const std::string str_iterable_checked =
+        require_success(aurexc() + " --emit=checked " + q(str_iterable_source)).output;
+    expect_contains_all(str_iterable_checked,
+        {"for_in_iteration_plans", "str_bytes", "item=u8", "iterable_type=str", "copy_item=false"});
+    const std::string str_iterable_ir =
+        require_success(aurexc() + " --emit=ir " + q(str_iterable_source)).output;
+    expect_contains_all(str_iterable_ir,
+        {
+            "for.iterable.cond",
+            "for.iterable.body",
+            "for.iterable.update",
+            "for.iterable.exit",
+            "str_data",
+            "str_byte_len",
+            "index_addr",
+        });
+    const fs::path str_iterable_bin = test_bin_root() / "for_in_str";
+    require_success(aurexc() + " " + q(str_iterable_source) + " -o " + q(str_iterable_bin));
+    require_success(q(str_iterable_bin));
+
     const fs::path direct_protocol_source = positive_sample("control_flow", "for_in_protocol_direct.ax");
     const std::string direct_protocol_checked =
         require_success(aurexc() + " --emit=checked " + q(direct_protocol_source)).output;
@@ -639,7 +660,7 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
         "range expects 1 to 3 arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
-        "for-in iterable must be an array, slice, iterator, or expose iter()");
+        "for-in iterable must be an array, slice, str, iterator, or expose iter()");
     expect_contains(require_failure(aurexc() + " --check "
                                     + q(negative_sample("control_flow", "for_in_non_copy_element.ax")))
                         .output,

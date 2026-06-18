@@ -2,7 +2,7 @@
 
 ## 最高优先级
 
-泛型语法修正、protocol iterator for-in 和一等 `range(...)` value 已经收口；下一步优先推进 for-in 剩余边界和低层 builtin 设计。
+泛型语法修正、protocol iterator for-in、一等 `range(...)` value 和 str byte iteration 已经收口；下一步优先推进 for-in 剩余边界和低层 builtin 设计。
 
 泛型保留边界：
 
@@ -12,8 +12,8 @@
 
 iterator / for-in 后续处理：
 
-- 当前已支持 counted `range(...)`、普通表达式位置的 `range<T>` value、range value for-in、array/slice value for-in、直接 protocol iterator、`iter()` protocol iterator、inherent method dispatch、静态 trait dispatch 和 generic `where` 下的 trait dispatch。
-- 仍需单独设计 mutable/reference item iteration、str iteration、range literal 和标准库 iterable adapter。
+- 当前已支持 counted `range(...)`、普通表达式位置的 `range<T>` value、range value for-in、array/slice value for-in、str byte iteration、直接 protocol iterator、`iter()` protocol iterator、inherent method dispatch、静态 trait dispatch 和 generic `where` 下的 trait dispatch。
+- 仍需单独设计 mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter。
 - 本轮不引入新的 builtin/intrinsic 名字。
 
 closure 后续处理：
@@ -27,7 +27,7 @@ closure 后续处理：
 
 - `01-angle-bracket-generics.md`：已落地，继续查漏。
 - `02-builtin-surface.md`：已切到 `as`、`sizeof<T>()`、`alignof<T>()`；低层 builtin 之后单独设计。
-- `03-range-loop-surface.md`：保留 `for i in range(...)`，已补一等 range value、array/slice value for-in 和用户 protocol iterator for-in；str iteration、reference item iteration、range literal 和标准库 adapter 后续处理。
+- `03-range-loop-surface.md`：保留 `for i in range(...)`，已补一等 range value、array/slice value for-in、str byte iteration 和用户 protocol iterator for-in；reference item iteration、range literal、标准库 adapter 和字符级 str adapter 后续处理。
 - `04-mut-const-access-surface.md`：保留 `[]T` / `[]mut T`，旧 `[]const T` 不再作为当前设计。
 - `05-function-closure-surface.md` 和 `06-function-closure-cpp-capture-list.md`：闭包 capture-list、init-capture 和 move capture 已进入当前语言表面；后续只推进 closure trait 与 escape/lifetime 专题。
 - `07-builtin-member-projection.md`：`.len` / `.ptr` 已覆盖 str、shared slice、mutable slice、泛型样例和 IR lowering。

@@ -14,7 +14,7 @@ Aurex 当前已经具备一个无标准库依赖的小型系统语言核心：
 - 泛型函数、泛型类型、泛型 impl、method-local 泛型、typed scalar const generic check-only 子集。
 - `where` capability、nominal static trait、显式 trait impl、associated type、associated-type equality、trait default method。
 - borrowed dyn trait、borrowed dyn composition、supertrait upcast和 checked vtable dispatch。
-- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、counted `range(...)`、一等 `range(...)` value、range value for-in、array/slice value for-in、protocol iterator for-in、`defer`、`?`、`unsafe`。
+- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、counted `range(...)`、一等 `range(...)` value、range value for-in、array/slice value for-in、str byte for-in、protocol iterator for-in、`defer`、`?`、`unsafe`。
 - compiler-owned `Copy` capability、move/reinit 检查、cleanup/drop flag、borrow summary、local loan checking 和 lifetime/origin 诊断。
 - Aurex IR、IR verifier/pass pipeline、LLVM backend 和 clang native 输出。
 
@@ -62,6 +62,11 @@ for item in values {
     total += item;
 }
 
+let text: str = "abc";
+for byte in text {
+    total += ((byte) as i32);
+}
+
 struct Counter {
     current: i32;
     end: i32;
@@ -85,9 +90,10 @@ for item in counter {
 }
 ```
 
-`for item in expr` 当前支持三类来源：
+`for item in expr` 当前支持四类来源：
 
 - array/slice 按值迭代。每轮从元素地址 load，元素类型必须满足 `Copy`，不会 move array/slice 本身。
+- `str` 按 UTF-8 存储字节迭代。每轮 item 类型是 `u8`，不进行 Unicode scalar / `char` 解码，不 move `str` 本身。
 - 表达式本身是 protocol iterator。iterator 必须提供 `has_next(self: &mut Iterator) -> bool` 和 `next(self: &mut Iterator) -> Item`。
 - 表达式提供 `iter()`，且 `iter()` 返回 protocol iterator。`iter()` receiver 可以是 by-value、`&self` 或 `&mut self`，按普通 receiver 规则匹配。
 
@@ -95,7 +101,7 @@ for item in counter {
 
 protocol iterator 的 `Item` 由 `next()` 按值返回，不要求 `Copy`。协议方法可以来自 inherent method，也可以来自静态 trait dispatch；generic `where T: Trait` 下的静态 trait dispatch 已进入 IR lowering。dyn trait vtable-slot dispatch 暂不作为 for-in protocol 来源。
 
-mutable/reference item iteration、str iteration、range literal 和标准库 iterable adapter 仍未进入当前语言表面。
+mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / `char` iteration adapter 仍未进入当前语言表面。
 
 ### 类型
 
@@ -234,12 +240,13 @@ unsafe { strraw(data, len) }
 - `tests/samples/negative/functions/lambda_capture_default_order.ax`
 - `tests/samples/negative/functions/lambda_capture_default_redundant.ax`
 - `tests/samples/positive/control_flow/for_in_array_slice.ax`
+- `tests/samples/positive/control_flow/for_in_str.ax`
 - `tests/samples/negative/control_flow/for_in_non_copy_element.ax`
 
 ## 当前非目标
 
 - 标准库 API 和拥有型容器。
-- str iteration、mutable/reference item iteration、range literal 和标准库 iterable adapter。
+- mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / `char` iteration adapter。
 - 低层 builtin 长命名空间或新 intrinsic 表面。
 - owning dyn runtime。
 - 完整宏展开和 proc-macro。

@@ -185,6 +185,11 @@ for item in values {
     total += item;
 }
 
+let text: str = "abc";
+for byte in text {
+    total += ((byte) as i32);
+}
+
 struct Counter {
     current: i32;
     end: i32;
@@ -210,9 +215,11 @@ for item in counter {
 
 `for i in range(...)` 是 counted range loop。普通表达式位置的 `range(...)` 会生成 `range<T>` value，记录 `start`、`end`、`step` 三个整数字段；该值可以绑定到局部并用 `for item in range_value` 迭代。当前源码类型语法还不能直接书写 `range<T>`，通常依赖 `let values = range(...)` 推断。
 
-`for item in expr` 支持 range value iteration、array/slice value iteration 和 protocol iterator iteration。
+`for item in expr` 支持 range value iteration、array/slice value iteration、str byte iteration 和 protocol iterator iteration。
 
 array/slice value iteration 每轮按值读取元素，元素类型必须满足 `Copy`，不会 move array/slice 本身。
+
+str iteration 每轮读取一个 UTF-8 存储字节，loop item 类型是 `u8`。它不做 Unicode scalar / `char` 解码；字符级迭代留给后续标准库 adapter。
 
 protocol iterator 可以是表达式本身，也可以由 `expr.iter()` 产生。iterator 必须提供：
 
@@ -329,7 +336,7 @@ strraw(data, len)
 ## 12. 当前不支持
 
 - 标准库 API 和拥有型容器。
-- str iteration、mutable/reference item iteration、range literal 和标准库 iterable adapter。
+- mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter。
 - closure trait、borrowed-view capture 和完整 escaping closure lifetime。
 - owning dyn 和 `Box<dyn Trait>`。
 - 完整 macro/proc-macro/用户 derive lowering。

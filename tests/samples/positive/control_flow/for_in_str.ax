@@ -1,0 +1,48 @@
+module for_in_str;
+
+fn sum_ascii_bytes() -> i32 {
+    let text: str = "Az!";
+    var total: i32 = 0;
+    for byte in text {
+        total += ((byte) as i32);
+    }
+    return total;
+}
+
+fn count_empty_bytes() -> i32 {
+    let text: str = "";
+    var count: i32 = 0;
+    for byte in text {
+        count += ((byte) as i32) + 1;
+    }
+    return count;
+}
+
+fn sum_utf8_storage_bytes() -> i32 {
+    let bytes: [5]u8 = [0xCEu8, 0xBBu8, 0xE2u8, 0x82u8, 0xACu8];
+    let text: str = strfromutf8(bytes[:]);
+    var total: i32 = 0;
+    for byte in text {
+        total += ((byte) as i32);
+    }
+    return total;
+}
+
+fn source_remains_usable() -> i32 {
+    let text: str = "ok";
+    var total: i32 = 0;
+    for byte in text {
+        total += ((byte) as i32);
+    }
+    return total - ((text.len) as i32);
+}
+
+fn main() -> i32 {
+    if sum_ascii_bytes() == 220 &&
+        count_empty_bytes() == 0 &&
+        sum_utf8_storage_bytes() == 921 &&
+        source_remains_usable() == 216 {
+        return 0;
+    }
+    return 1;
+}

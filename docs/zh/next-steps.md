@@ -2,14 +2,13 @@
 
 ## 最高优先级
 
-先把已落地语法面的边界继续收紧，再推进 iterator 和低层 builtin 设计。
+泛型语法修正已经收口；下一步优先推进 iterator / for-in 和低层 builtin 设计。
 
-泛型后续处理：
+泛型保留边界：
 
-- 确认 parser、AST dump、sema、IR lowering、sample 和负例都只承认尖括号泛型。
-- 清理旧的 `[]` 泛型痕迹和文档引用。
-- 补齐 generic builtin 的正负样例，尤其是 retained generic body 的 type operand side table。
-- 检查泛型实例化错误诊断，避免把新语言阶段的旧兼容逻辑继续保留下来。
+- 当前语言表面只承认尖括号泛型。
+- parser、AST dump、sema、IR lowering、sample 和负例已经覆盖尖括号泛型、generic builtin side table 和泛型实例化诊断。
+- 旧 `[]` 泛型只保留为 parser 诊断入口，不作为兼容语义继续推进。
 
 iterator / for-in 后续处理：
 

@@ -2,16 +2,17 @@
 
 版本：0.1.9
 
-当前开发线收敛到两块：
+当前开发线收敛到三块：
 
-1. 泛型语法和实例化闭环。
-2. 语法表面清理。
-3. 闭包捕获和最小 for-in 语义闭环。
+1. iterator / for-in 后续语义设计。
+2. 低层 builtin 表面和安全边界设计。
+3. closure trait、borrowed-view capture 和 escape/lifetime 专题。
 
 ## 已完成
 
 - 泛型调用和类型实参已经切到尖括号表面，`[]` 不再作为泛型语法。
 - `sizeof<T>()` / `alignof<T>()`、`ptrat<T>`、`ptrcast<T>`、`bitcast<T>` 等 builtin type operand 已进入泛型实例化 side-table 闭环。
+- 泛型实例化诊断已经覆盖 type/const 实参 kind mismatch，`T`/`N` 等参数名会出现在错误消息中；当前 const 参数名转发仍作为泛型上下文内的合法路径保留。
 - slice / str 的基础成员投影使用 `.len` / `.ptr`，历史 helper 名字不再作为当前语言表面。
 - `[]T` / `[]mut T` 是当前 slice 类型表面，`[]const T` 属于旧写法。
 - range loop 保留 `for i in range(...)`，不引入更长的 counted-loop marker。
@@ -33,5 +34,6 @@
 
 - `progress.md` 和 `version.md` 不再承担历史流水账职责，只记录当前版本边界。
 - 被删除的历史设计如果后续仍有实现价值，应重新整理进当前执行文档，而不是恢复旧目录。
+- 泛型语法修正专题已关闭，旧 `[]` 泛型兼容不得重新进入语义路径。
 - iterator/range protocol 尚未设计；当前只有 counted `range(...)` 和 array/slice value for-in 子集。
 - closure trait、borrowed-view capture 和更完整 escape/lifetime 仍是后续专题。

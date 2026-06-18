@@ -1333,6 +1333,17 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_arg_is_simple_const_param_name(
         && type.type_args.empty() && type.generic_args.empty();
 }
 
+bool SemanticAnalyzerCore::GenericAnalyzer::type_arg_names_current_const_param(const syntax::TypeNode& type) const
+{
+    if (!this->type_arg_is_simple_const_param_name(type)
+        || this->core_.state_.flow.current_generic_context == nullptr) {
+        return false;
+    }
+    const IdentId name_id =
+        syntax::is_valid(type.name_id) ? type.name_id : this->core_.ctx_.module.find_identifier(type.name);
+    return this->core_.state_.flow.current_generic_context->const_params.contains(name_id);
+}
+
 base::Result<query::StableFingerprint128> SemanticAnalyzerCore::GenericAnalyzer::const_generic_arg_fingerprint(
     const syntax::GenericArgDecl& arg, const TypeHandle expected_type, const base::SourceRange& use_range)
 {
@@ -1350,11 +1361,13 @@ base::Result<query::StableFingerprint128> SemanticAnalyzerCore::GenericAnalyzer:
             return base::Result<query::StableFingerprint128>::fail(
                 base::Error{base::ErrorCode::sema_error, std::string(SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED)});
         }
+        const IdentId name_id =
+            syntax::is_valid(type.name_id) ? type.name_id : this->core_.ctx_.module.find_identifier(type.name);
         const auto identity =
-            this->core_.state_.flow.current_generic_context->const_param_identities.find(type.name_id);
+            this->core_.state_.flow.current_generic_context->const_param_identities.find(name_id);
         const auto actual_type =
-            this->core_.state_.flow.current_generic_context->const_params.find(type.name_id);
-        const auto value = this->core_.state_.flow.current_generic_context->const_arg_values.find(type.name_id);
+            this->core_.state_.flow.current_generic_context->const_params.find(name_id);
+        const auto value = this->core_.state_.flow.current_generic_context->const_arg_values.find(name_id);
         if (identity == this->core_.state_.flow.current_generic_context->const_param_identities.end()
             || actual_type == this->core_.state_.flow.current_generic_context->const_params.end()
             || value == this->core_.state_.flow.current_generic_context->const_arg_values.end()) {
@@ -1478,6 +1491,20 @@ SemanticAnalyzerCore::GenericAnalyzer::resolve_generic_argument_bundle(
             continue;
         }
         if (kind == syntax::GenericParamKind::const_) {
+            if (args[index].kind == syntax::GenericArgKind::type) {
+                if (!syntax::is_valid(args[index].type)
+                    || args[index].type.value >= this->core_.ctx_.module.types.size()) {
+                    this->core_.report_type(args[index].range, sema_const_generic_argument_expected_message(param_name));
+                    return base::Result<GenericArgumentBundle>::fail(
+                        base::Error{base::ErrorCode::sema_error, "expected const generic argument"});
+                }
+                const syntax::TypeNode& type = this->core_.ctx_.module.types[args[index].type.value];
+                if (!this->type_arg_names_current_const_param(type)) {
+                    this->core_.report_type(args[index].range, sema_const_generic_argument_expected_message(param_name));
+                    return base::Result<GenericArgumentBundle>::fail(
+                        base::Error{base::ErrorCode::sema_error, "expected const generic argument"});
+                }
+            }
             const TypeHandle const_type =
                 index < info.ordered_const_param_types.size() ? info.ordered_const_param_types[index]
                                                               : INVALID_TYPE_HANDLE;

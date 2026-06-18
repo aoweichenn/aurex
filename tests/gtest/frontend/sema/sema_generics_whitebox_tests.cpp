@@ -7,6 +7,7 @@ namespace aurex::test {
 namespace {
 
 constexpr base::SourceId SEMA_CONST_GENERIC_TEST_SOURCE_ID{716};
+constexpr std::string_view SEMA_CONST_GENERIC_TEST_INTERNAL_CONTRACT_PREFIX = "semantic AST contract violation";
 
 [[nodiscard]] syntax::AstModule parse_const_generic_source(const std::string_view source)
 {
@@ -1613,6 +1614,56 @@ TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsForwardedParamTypeMismatch)
     EXPECT_NE(output.find(sema::SEMA_CONST_GENERIC_ARGUMENT_TYPE_MISMATCH), std::string::npos) << output;
     EXPECT_NE(output.find("expected type: usize"), std::string::npos) << output;
     EXPECT_NE(output.find("actual type: bool"), std::string::npos) << output;
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsConstArgForTypeParamWithNamedDiagnostic)
+{
+    const std::string output = analyze_const_generic_source_failure(
+        "module const_generic_type_param_const_arg;\n"
+        "struct ArrayBox<T, const N: usize> {\n"
+        "    value: T;\n"
+        "}\n"
+        "fn use() -> i32 {\n"
+        "    let value: ArrayBox<1, 4> = ArrayBox<i32, 4> { value: 1 };\n"
+        "    return 0;\n"
+        "}\n");
+
+    EXPECT_NE(output.find("generic parameter `T` expects a type argument"), std::string::npos) << output;
+    EXPECT_EQ(output.find(sema::SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED), std::string::npos) << output;
+    EXPECT_EQ(output.find(SEMA_CONST_GENERIC_TEST_INTERNAL_CONTRACT_PREFIX), std::string::npos) << output;
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsTypeArgForConstParamWithNamedDiagnostic)
+{
+    const std::string output = analyze_const_generic_source_failure(
+        "module const_generic_const_param_type_arg;\n"
+        "struct ArrayBox<T, const N: usize> {\n"
+        "    value: T;\n"
+        "}\n"
+        "fn use() -> i32 {\n"
+        "    let value: ArrayBox<i32, bool> = ArrayBox<i32, 4> { value: 1 };\n"
+        "    return 0;\n"
+        "}\n");
+
+    EXPECT_NE(output.find("generic parameter `N` expects a const argument"), std::string::npos) << output;
+    EXPECT_EQ(output.find(sema::SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED), std::string::npos) << output;
+    EXPECT_EQ(output.find(SEMA_CONST_GENERIC_TEST_INTERNAL_CONTRACT_PREFIX), std::string::npos) << output;
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstGenericRejectsFunctionTypeArgForConstParamWithNamedDiagnostic)
+{
+    const std::string output = analyze_const_generic_source_failure(
+        "module const_generic_function_const_param_type_arg;\n"
+        "fn id<T, const N: usize>(value: T) -> T {\n"
+        "    return value;\n"
+        "}\n"
+        "fn use() -> i32 {\n"
+        "    return id<i32, bool>(1);\n"
+        "}\n");
+
+    EXPECT_NE(output.find("generic parameter `N` expects a const argument"), std::string::npos) << output;
+    EXPECT_EQ(output.find(sema::SEMA_CONST_GENERIC_ARGUMENT_UNSUPPORTED), std::string::npos) << output;
+    EXPECT_EQ(output.find(SEMA_CONST_GENERIC_TEST_INTERNAL_CONTRACT_PREFIX), std::string::npos) << output;
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericAggregateInstanceSignaturesTrackResolvedShape)

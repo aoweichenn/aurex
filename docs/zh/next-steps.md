@@ -16,7 +16,7 @@
 当前语法修正按 `docs/zh/syntax-revision-optimization/` 推进：
 
 - `01-angle-bracket-generics.md`：已落地，继续查漏。
-- `02-builtin-intrinsic-surface.md`：继续把 builtin 表面收敛到短且一致的写法。
+- `02-builtin-surface.md`：已切到 `as`、`sizeof<T>()`、`alignof<T>()`；低层 builtin 之后单独设计。
 - `03-range-loop-surface.md`：保留 `for i in range(...)`，等 iterator/range protocol 专题统一处理。
 - `04-mut-const-access-surface.md`：保留 `[]T` / `[]mut T`，旧 `[]const T` 不再作为当前设计。
 - `05-function-closure-surface.md` 和 `06-function-closure-cpp-capture-list.md`：下一步进入函数/闭包语义和捕获实现。

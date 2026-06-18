@@ -5,7 +5,7 @@ fn layout_sum<T>(value: T) -> usize where T: Sized {
     if value_addr == 0usize {
         return 99usize;
     }
-    return sizeof<T> + alignof<T>;
+    return sizeof<T>() + alignof<T>();
 }
 
 fn pointer_ops<T>(value: &T) -> bool where T: Sized {
@@ -25,7 +25,7 @@ fn slice_ops<T>(values: []T) -> usize where T: Sized {
 }
 
 fn utf8_ops<T>(marker: T, bytes: []u8) -> usize where T: Sized {
-    if sizeof<T> == 0usize {
+    if sizeof<T>() == 0usize {
         return 99usize;
     }
     if ptraddr(&marker) == 0usize {
@@ -43,7 +43,7 @@ fn cast_inside_generic<T>(value: T, number: usize) -> i32 where T: Sized {
     if ptraddr(&value) == 0usize {
         return -1;
     }
-    return cast<i32>(number);
+    return ((number) as i32);
 }
 
 fn main() -> i32 {

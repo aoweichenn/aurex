@@ -16,7 +16,6 @@ using syntax::TokenKind;
 
 enum class BuiltinExprShape {
     CAST,
-    TYPE,
     PTRADDR,
     PTRAT,
     STR_SLICE_UNARY,
@@ -33,11 +32,8 @@ constexpr base::usize PARSER_MAX_EXPRESSION_NESTING_DEPTH = 512;
 constexpr base::usize PARSER_GROUPED_RECOVERY_STACK_INITIAL_CAPACITY = 16;
 
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
-    {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
     {TokenKind::kw_ptrcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
     {TokenKind::kw_bitcast, BuiltinExprShape::CAST, syntax::ExprKind::bcast},
-    {TokenKind::kw_sizeof, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
-    {TokenKind::kw_alignof, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
     {TokenKind::kw_ptraddr, BuiltinExprShape::PTRADDR, syntax::ExprKind::ptr_addr},
     {
         TokenKind::kw_ptrat,
@@ -180,8 +176,6 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context)
     switch (builtin->shape) {
         case BuiltinExprShape::CAST:
             return parser.parse_cast(builtin->expr_kind, context);
-        case BuiltinExprShape::TYPE:
-            return parser.parse_type_builtin(builtin->expr_kind);
         case BuiltinExprShape::PTRADDR:
             return parser.parse_ptraddr(context);
         case BuiltinExprShape::PTRAT:

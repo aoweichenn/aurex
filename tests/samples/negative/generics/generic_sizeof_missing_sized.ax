@@ -4,9 +4,9 @@ fn bad<T>(value: T) -> usize {
     if ptraddr(&value) == 0usize {
         return 0usize;
     }
-    return sizeof<T>;
+    return sizeof<T>();
 }
 
 fn main() -> i32 {
-    return cast<i32>(bad<i32>(1));
+    return ((bad<i32>(1)) as i32);
 }

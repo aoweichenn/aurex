@@ -81,7 +81,7 @@ fn ensure_capture_capacity(captures: &mut t.Captures, needed: usize) -> bool {
     if captures.spans != null && captures.span_capacity >= needed {
         return true;
     }
-    let spans: *mut t.CaptureSpan = alloc.alloc_zeroed<t.CaptureSpan>(needed, sizeof<t.CaptureSpan>);
+    let spans: *mut t.CaptureSpan = alloc.alloc_zeroed<t.CaptureSpan>(needed, sizeof<t.CaptureSpan>());
     if spans == null {
         return false;
     }

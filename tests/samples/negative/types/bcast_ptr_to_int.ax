@@ -3,5 +3,5 @@ module bcast_ptr_to_int;
 fn main() -> i32 {
   let pointer: *const i32 = null;
   let address: usize = bitcast<usize>(pointer);
-  return cast<i32>(address);
+  return ((address) as i32);
 }

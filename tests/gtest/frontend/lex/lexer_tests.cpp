@@ -187,7 +187,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors)
         "  let suffix_value: usize = 42usize;\n"
         "  let leading_dot: f32 = .5f32;\n"
         "  let trailing_dot: f64 = 1.;\n"
-        "  let span_value: text.SpanU8 = text.span_u8(c\"hi\", cast<usize>(2));\n"
+        "  let span_value: text.SpanU8 = text.span_u8(c\"hi\", ((2) as usize));\n"
         "  let copied_value: i32 = i8_value;\n"
         "  let try_token: i32 = 1?;\n"
         "  extern c fn printf(format: *const u8, ...) -> i32;\n"
@@ -335,8 +335,8 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
     constexpr std::string_view source =
         "module import as pub priv extern export fn struct opaque enum const type impl trait match "
         "let var if else for in is while break continue defer return true false null "
-        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe cast "
-        "ptrcast bitcast sizeof alignof ptraddr ptrat strvalid strfromutf8 strraw";
+        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe "
+        "ptrcast bitcast ptraddr ptrat strvalid strfromutf8 strraw";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
@@ -392,11 +392,8 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
         TokenKind::kw_char,
         TokenKind::kw_mut,
         TokenKind::kw_unsafe,
-        TokenKind::kw_cast,
         TokenKind::kw_ptrcast,
         TokenKind::kw_bitcast,
-        TokenKind::kw_sizeof,
-        TokenKind::kw_alignof,
         TokenKind::kw_ptraddr,
         TokenKind::kw_ptrat,
         TokenKind::kw_strvalid,
@@ -411,13 +408,16 @@ TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers)
 {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
-        "modulee importable pub_ fnx for2 string_pointer strlen_bytes ptraddress";
+        "modulee importable pub_ fnx for2 string_pointer strlen_bytes ptraddress cast sizeof alignof";
     lex::Lexer lexer({11}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
     EXPECT_FALSE(diagnostics.has_error());
 
     const std::vector<TokenKind> expected{
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
         TokenKind::identifier,
         TokenKind::identifier,
         TokenKind::identifier,

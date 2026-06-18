@@ -50,14 +50,11 @@ let xs: Vec<Box<i32>> = make_vec<Box<i32>>();
 let y: Result<Vec<i32>, Error> = parse(input);
 ```
 
-`[]` 不属于 Aurex 泛型语法。下面这些 token 序列不定义为泛型参数或泛型实参：
+`[]` 不属于 Aurex 泛型语法。bracket 形式只保留数组、slice、index 相关语义；parser 不提供 bracket 泛型兼容分支，也不把它们恢复成泛型 AST。
 
 ```aurex
-Box[T]
-fn f[T](x: T) -> T
-Source[Item = i32]
-cast[i32](x)
-sizeof[*mut Pair]
+let item = values[index];
+let view = values[start:end];
 ```
 
 当前泛型唯一合法写法：
@@ -66,17 +63,17 @@ sizeof[*mut Pair]
 Box<T>
 fn f<T>(x: T) -> T
 Source<Item = i32>
-cast<i32>(x)
-sizeof<*mut Pair>
+((x) as i32)
+sizeof<*mut Pair>()
 ```
 
-`sizeof<T>` / `alignof<T>` 当前保持 builtin type operand 形态，不追加 `()`；`cast<T>(x)`、`ptrat<T>(addr)`、`ptrcast<T>(p)`、`bitcast<T>(x)` 是带 value argument 的 builtin call。后续若 builtin 降级为 intrinsic namespace，可自然变成：
+`sizeof<T>()` / `alignof<T>()` 当前使用普通泛型调用外形，必须写空参数列表；`x as T` 是表达式 cast；`ptrat<T>(addr)`、`ptrcast<T>(p)`、`bitcast<T>(x)` 是带 value argument 的 builtin call。
 
 ```aurex
-intrinsic.sizeof<*mut Pair>()
-intrinsic.alignof<Pair>()
-intrinsic.cast<i32>(x)
-intrinsic.ptr_at<*mut Pair>(addr)
+sizeof<*mut Pair>()
+alignof<Pair>()
+value as i32
+ptrat<*mut Pair>(addr)
 ```
 
 ## 不采用的部分
@@ -461,15 +458,14 @@ let b: Array<i32, 4> = value;
 let c: Array<i32, (N >> 1)> = value; // future, not first batch
 ```
 
-非泛型 bracket 形式：
+bracket 形式不是泛型：
 
 ```aurex
-struct Box[T] { value: T; }
-fn id[T](x: T) -> T { return x; }
-let x: Box[i32] = value;
+let item = values[index];
+let view = values[start:end];
 ```
 
-这些形式不是泛型。parser 不提供兼容分支，也不把它们恢复成泛型 AST。
+泛型声明、类型实参和表达式泛型调用都必须使用 `<...>`。
 
 ## 成功标准
 

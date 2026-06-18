@@ -20,20 +20,20 @@ fn sum_checked_text(bytes: []u8) -> i32 {
         return -1;
     }
     let text: str = strfromutf8(bytes);
-    return cast<i32>(text.len);
+    return ((text.len) as i32);
 }
 
 fn main() -> i32 {
     var pair: Pair = Pair { a: 1, b: 2 };
     let addr: usize = ptraddr(&pair);
     let pair_ptr: *mut Pair = unsafe { ptrat<*mut Pair>(addr) };
-    let pointer_size: usize = sizeof<*mut Pair>;
-    let pointer_align: usize = alignof<*mut Pair>;
-    if pointer_size == cast<usize>(0) || pointer_align == cast<usize>(0) {
+    let pointer_size: usize = sizeof<*mut Pair>();
+    let pointer_align: usize = alignof<*mut Pair>();
+    if pointer_size == ((0) as usize) || pointer_align == ((0) as usize) {
         return 1;
     }
 
-    if cast<i32>(true) != 1 || cast<bool>(2) != true {
+    if ((true) as i32) != 1 || ((2) as bool) != true {
         return 2;
     }
 
@@ -43,15 +43,15 @@ fn main() -> i32 {
         return 3;
     }
 
-    let zero_bits: f32 = unsafe { bitcast<f32>(cast<u32>(0)) };
+    let zero_bits: f32 = unsafe { bitcast<f32>(((0) as u32)) };
     if zero_bits != 0.0f32 {
         return 4;
     }
 
-    if sizeof<Padded> != cast<usize>(16) || alignof<Padded> != cast<usize>(8) {
+    if sizeof<Padded>() != ((16) as usize) || alignof<Padded>() != ((8) as usize) {
         return 5;
     }
-    if sizeof<Tiny> != cast<usize>(2) || alignof<Tiny> != cast<usize>(2) {
+    if sizeof<Tiny>() != ((2) as usize) || alignof<Tiny>() != ((2) as usize) {
         return 6;
     }
 

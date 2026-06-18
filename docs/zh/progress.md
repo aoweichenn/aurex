@@ -10,7 +10,7 @@
 ## 已完成
 
 - 泛型调用和类型实参已经切到尖括号表面，`[]` 不再作为泛型语法。
-- `sizeof<T>` / `alignof<T>`、`ptrat<T>`、`ptrcast<T>`、`bitcast<T>` 等 builtin type operand 已进入泛型实例化 side-table 闭环。
+- `sizeof<T>()` / `alignof<T>()`、`ptrat<T>`、`ptrcast<T>`、`bitcast<T>` 等 builtin type operand 已进入泛型实例化 side-table 闭环。
 - slice / str 的基础成员投影使用 `.len` / `.ptr`，旧的 `slicelen`、`sliceptr`、`strblen`、`strptr` 不再作为当前语言表面。
 - `[]T` / `[]mut T` 是当前 slice 类型表面，`[]const T` 属于旧写法。
 - range loop 暂时保留 `for i in range(...)`，不引入更长的 counted-loop marker；真正 iterator/range protocol 后续专题处理。

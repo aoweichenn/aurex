@@ -1,14 +1,14 @@
 module cast_bool_nonzero;
 
-const CONST_FROM_INT: bool = cast<bool>(2);
-const CONST_FROM_ZERO: bool = cast<bool>(0);
+const CONST_FROM_INT: bool = ((2) as bool);
+const CONST_FROM_ZERO: bool = ((0) as bool);
 
 fn main() -> i32 {
-    let runtime_from_int: bool = cast<bool>(2);
-    let runtime_from_negative: bool = cast<bool>(-1);
-    let runtime_from_zero: bool = cast<bool>(0);
-    let runtime_from_float: bool = cast<bool>(cast<f64>(2));
-    let runtime_from_float_zero: bool = cast<bool>(cast<f64>(0));
+    let runtime_from_int: bool = ((2) as bool);
+    let runtime_from_negative: bool = ((-1) as bool);
+    let runtime_from_zero: bool = ((0) as bool);
+    let runtime_from_float: bool = ((((2) as f64)) as bool);
+    let runtime_from_float_zero: bool = ((((0) as f64)) as bool);
     if !CONST_FROM_INT {
         return 1;
     }

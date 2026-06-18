@@ -21,7 +21,7 @@ fn open_stream_with_mode(compiled: &t.Regex, mode: u8) -> t.RegexStream {
     if compiled.mode != mode {
         return empty_stream(compiled_ptr, t.RegexStatus.unsupported);
     }
-    let buffer: *mut u8 = alloc.alloc_zeroed<u8>(limits.MIN_STREAM_CAPACITY, sizeof<u8>);
+    let buffer: *mut u8 = alloc.alloc_zeroed<u8>(limits.MIN_STREAM_CAPACITY, sizeof<u8>());
     if buffer == null {
         return empty_stream(compiled_ptr, t.RegexStatus.out_of_memory);
     }
@@ -176,7 +176,7 @@ fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
     if stream.history_limit > 0usize && next_capacity > stream.history_limit {
         next_capacity = stream.history_limit;
     }
-    let next: *mut u8 = alloc.alloc_zeroed<u8>(next_capacity, sizeof<u8>);
+    let next: *mut u8 = alloc.alloc_zeroed<u8>(next_capacity, sizeof<u8>());
     if next == null {
         stream.status = t.RegexStatus.out_of_memory;
         return false;
@@ -195,7 +195,7 @@ fn compact_stream(stream: &mut t.RegexStream) -> void {
     let remaining: usize = stream.len - stream.next_start;
     let target_capacity: usize = compact_capacity(remaining);
     if target_capacity < stream.capacity {
-        let next: *mut u8 = alloc.alloc_zeroed<u8>(target_capacity, sizeof<u8>);
+        let next: *mut u8 = alloc.alloc_zeroed<u8>(target_capacity, sizeof<u8>());
         if next != null {
             copy_bytes(next, 0usize, stream.buffer, stream.next_start, remaining);
             alloc.free_bytes(stream.buffer);

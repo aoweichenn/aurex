@@ -981,11 +981,11 @@ let value = result?;
 内建表达式：
 
 ```aurex
-cast<i32>(value)
+((value) as i32)
 ptrcast<*const u8>(ptr)
 bitcast<u32>(value)
-sizeof<T>
-alignof<T>
+sizeof<T>()
+alignof<T>()
 ptraddr(ptr)
 ptrat<*mut T>(address)
 text.ptr

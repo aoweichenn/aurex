@@ -213,7 +213,7 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context)
         operands.push_back(this->make_binary(op->op, lhs, rhs));
     };
 
-    operands.push_back(this->parse_unary(context));
+    operands.push_back(this->parse_cast_expr(context));
     while (const BinaryOperatorSyntax* op = binary_operator_for(this->peek().kind)) {
         const syntax::Token& token = this->advance();
         if (!operators.empty() && is_non_associative_comparison_precedence(operators.back()->precedence)
@@ -224,12 +224,25 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context)
             reduce_top_operator();
         }
         operators.push_back(op);
-        operands.push_back(this->parse_unary(context));
+        operands.push_back(this->parse_cast_expr(context));
     }
     while (!operators.empty()) {
         reduce_top_operator();
     }
     return operands.back();
+}
+
+syntax::ExprId ExprParser::parse_cast_expr(const ExprContext context)
+{
+    syntax::ExprId expr = this->parse_unary(context);
+    while (this->match(TokenKind::kw_as)) {
+        const syntax::Token& as_token = this->previous();
+        const syntax::TypeId type = this->parse_type();
+        const base::SourceRange type_range = this->type_range_or(type, as_token.range);
+        expr = this->session_.module.push_cast_like_expr(
+            syntax::ExprKind::cast, this->merge(this->expr_range_or(expr, as_token.range), type_range), type, expr);
+    }
+    return expr;
 }
 
 syntax::ExprId ExprParser::parse_unary(const ExprContext context) const

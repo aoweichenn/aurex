@@ -22,6 +22,40 @@ constexpr char PARSER_TUPLE_FIELD_LAST_DIGIT = '9';
 constexpr int PARSER_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH = 1;
 constexpr int PARSER_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH = 2;
 
+constexpr std::string_view PARSER_LAYOUT_QUERY_SIZEOF = "sizeof";
+constexpr std::string_view PARSER_LAYOUT_QUERY_ALIGNOF = "alignof";
+
+[[nodiscard]] std::optional<syntax::ExprKind> layout_query_kind_for_name(const std::string_view name) noexcept
+{
+    if (name == PARSER_LAYOUT_QUERY_SIZEOF) {
+        return syntax::ExprKind::size_of;
+    }
+    if (name == PARSER_LAYOUT_QUERY_ALIGNOF) {
+        return syntax::ExprKind::align_of;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<syntax::ExprKind> layout_query_kind_for_callee(
+    const syntax::AstModule& module, const syntax::ExprId callee) noexcept
+{
+    if (!syntax::is_valid(callee) || callee.value >= module.exprs.size()
+        || module.exprs.kind(callee.value) != syntax::ExprKind::generic_apply) {
+        return std::nullopt;
+    }
+    const syntax::GenericApplyExprPayload* const generic = module.exprs.generic_apply_payload(callee.value);
+    if (generic == nullptr || !syntax::is_valid(generic->callee)
+        || generic->callee.value >= module.exprs.size()
+        || module.exprs.kind(generic->callee.value) != syntax::ExprKind::name) {
+        return std::nullopt;
+    }
+    const syntax::NameExprPayload* const name = module.exprs.name_payload(generic->callee.value);
+    if (name == nullptr || !name->scope_name.empty()) {
+        return std::nullopt;
+    }
+    return layout_query_kind_for_name(name->text);
+}
+
 [[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept
 {
     const std::string_view text = token.text();
@@ -444,8 +478,35 @@ syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId base, c
     const syntax::Token& end = this->expect_recovered_after(
         TokenKind::r_paren, std::string(PARSER_EXPECT_CALL_ARGUMENTS_END), RecoveryContext::call_argument, begin);
     const base::SourceRange call_range = this->merge(begin.range, end.range);
+    if (std::optional<syntax::ExprId> query = this->parse_layout_query_call_suffix(base, payload, call_range)) {
+        return query.value();
+    }
     return this->session_.module.push_call_expr(
         syntax::ExprKind::call, this->merge(this->expr_range_or(base, call_range), call_range), std::move(payload));
+}
+
+std::optional<syntax::ExprId> PostfixExprParser::parse_layout_query_call_suffix(
+    const syntax::ExprId base, const syntax::CallExprPayload& payload, const base::SourceRange& call_range)
+{
+    const std::optional<syntax::ExprKind> kind = layout_query_kind_for_callee(this->session_.module, base);
+    if (!kind.has_value()) {
+        return std::nullopt;
+    }
+    const syntax::GenericApplyExprPayload* const generic =
+        this->session_.module.exprs.generic_apply_payload(base.value);
+    const base::SourceRange range = this->merge(this->expr_range_or(base, call_range), call_range);
+    if (generic == nullptr || generic->type_args.size() != 1 || generic->generic_args.size() != 1) {
+        this->report_at(
+            syntax::Token{TokenKind::invalid, range, {}}, std::string(PARSER_LAYOUT_QUERY_ARGUMENT_COUNT));
+        return this->session_.module.push_invalid_expr(range);
+    }
+    if (!payload.args.empty()) {
+        this->report_at(
+            syntax::Token{TokenKind::invalid, call_range, {}}, std::string(PARSER_LAYOUT_QUERY_VALUE_ARGUMENTS));
+        return this->session_.module.push_invalid_expr(range);
+    }
+    return this->session_.module.push_cast_like_expr(
+        kind.value(), range, generic->type_args.front(), syntax::INVALID_EXPR_ID);
 }
 
 void PostfixExprParser::parse_call_args(syntax::CallExprPayload& payload, const ExprContext context)

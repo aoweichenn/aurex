@@ -2,5 +2,5 @@ module literal_invalid_float_suffix;
 
 fn main() -> i32 {
     let value = 1.0u8;
-    return cast<i32>(value);
+    return ((value) as i32);
 }

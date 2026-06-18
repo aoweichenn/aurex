@@ -2,5 +2,5 @@ module bcast_u8_from_bool;
 
 fn main() -> i32 {
     let value: u8 = bitcast<u8>(true);
-    return cast<i32>(value);
+    return ((value) as i32);
 }

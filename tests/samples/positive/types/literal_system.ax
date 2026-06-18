@@ -20,22 +20,22 @@ fn main() -> i32 {
     if ESCAPED_CH != CH {
         return 2;
     }
-    if sizeof<char> != cast<usize>(4) {
+    if sizeof<char>() != ((4) as usize) {
         return 3;
     }
-    if cast<i32>(bytes[0]) != 97 {
+    if ((bytes[0]) as i32) != 97 {
         return 4;
     }
-    if cast<i32>(i) != 1 {
+    if ((i) as i32) != 1 {
         return 5;
     }
-    if cast<i32>(u) != 255 {
+    if ((u) as i32) != 255 {
         return 6;
     }
-    if cast<i32>(F) != 1 {
+    if ((F) as i32) != 1 {
         return 7;
     }
-    if cast<i32>(f) != 1 {
+    if ((f) as i32) != 1 {
         return 8;
     }
     return 0;

@@ -2,5 +2,5 @@ module unsafe_ptrat_required;
 
 fn main() -> i32 {
     let ptr: *const i32 = ptrat<*const i32>(4096);
-    return cast<i32>(ptraddr(ptr));
+    return ((ptraddr(ptr)) as i32);
 }

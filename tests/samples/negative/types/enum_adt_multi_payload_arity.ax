@@ -6,6 +6,6 @@ enum Token {
 }
 
 fn main() -> i32 {
-    let token = Token.span(cast<usize>(1));
+    let token = Token.span(((1) as usize));
     return 0;
 }

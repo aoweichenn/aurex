@@ -65,11 +65,8 @@ inline void count_parser_primary_expr_token(
         case syntax::TokenKind::l_paren:
             ++exprs.tuples;
             break;
-        case syntax::TokenKind::kw_cast:
         case syntax::TokenKind::kw_ptrcast:
         case syntax::TokenKind::kw_bitcast:
-        case syntax::TokenKind::kw_sizeof:
-        case syntax::TokenKind::kw_alignof:
         case syntax::TokenKind::kw_ptraddr:
         case syntax::TokenKind::kw_ptrat:
         case syntax::TokenKind::kw_strvalid:

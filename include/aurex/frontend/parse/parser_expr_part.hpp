@@ -18,6 +18,7 @@ private:
     [[nodiscard]] syntax::MatchArm parse_match_arm(ExprContext context, const base::SourceRange& fallback_range);
     [[nodiscard]] bool recover_match_arm_separator() const;
     [[nodiscard]] syntax::ExprId parse_binary_expr(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_cast_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_unary(ExprContext context) const;
     [[nodiscard]] syntax::ExprId make_binary(syntax::BinaryOp op, syntax::ExprId lhs, syntax::ExprId rhs) const;
 };

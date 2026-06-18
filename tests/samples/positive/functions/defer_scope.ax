@@ -28,7 +28,7 @@ fn index_ptr(index: &mut usize) -> *mut usize {
 fn push(log: *mut u8, index: *mut usize, value: u8) -> void {
     unsafe {
         log[*index] = value;
-        *index = *index + cast<usize>(1);
+        *index = *index + ((1) as usize);
     }
 }
 
@@ -80,7 +80,7 @@ fn for_paths(log: *mut u8, index: *mut usize) -> void {
 }
 
 fn main() -> i32 {
-    let log: *mut u8 = alloc_zeroed_bytes(cast<usize>(32), cast<usize>(1));
+    let log: *mut u8 = alloc_zeroed_bytes(((32) as usize), ((1) as usize));
     if log == null {
         return 1;
     }

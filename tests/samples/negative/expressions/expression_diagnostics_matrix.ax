@@ -50,10 +50,10 @@ fn main() -> i32 {
     let bad_payload_arity = Payload.item(1, 2);
     let addr_bad = ptraddr(1);
     let from_bad = ptrat<i32>(true);
-    let bad_sizeof_void: usize = sizeof<void>;
+    let bad_sizeof_void: usize = sizeof<void>();
     let bad_ptr = 1.ptr;
     let bad_len = 1.len;
-    let bad_strraw_data = strraw(1, cast<usize>(1));
+    let bad_strraw_data = strraw(1, ((1) as usize));
     let bad_strraw_len = strraw(c"bytes", true);
     let bad_generic_apply = id<i32>;
     let bad_array_unknown = [missing_name];

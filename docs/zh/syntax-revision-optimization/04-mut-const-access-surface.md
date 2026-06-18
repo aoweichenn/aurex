@@ -397,7 +397,7 @@ let bytes: []u8 = data[:];
 let out: []mut u8 = buffer[:];
 
 let text_ptr: *const u8 = c"hello";
-let raw_out: *mut u8 = unsafe { intrinsic.ptr_at<*mut u8>(addr) };
+let raw_out: *mut u8 = unsafe { ptrat<*mut u8>(addr) };
 ```
 
 ## Parser 规则

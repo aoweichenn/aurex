@@ -36,9 +36,9 @@ fn main() -> i32 {
         *ptr = *ptr + 1;
     }
     let text: str = unsafe { from_raw("ok".ptr, "ok".len) };
-    let zero_bits: f32 = unsafe { bitcast<f32>(cast<u32>(0)) };
+    let zero_bits: f32 = unsafe { bitcast<f32>(((0) as u32)) };
     let read_ptr: *const i32 = as_const_ptr(&value);
     let reader: UnsafeRead = read_raw;
     let read_value: i32 = unsafe { reader(read_ptr) };
-    return value - read_value + cast<i32>(text.len) - 2;
+    return value - read_value + ((text.len) as i32) - 2;
 }

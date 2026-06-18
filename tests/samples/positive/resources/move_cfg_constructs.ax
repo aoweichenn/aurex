@@ -82,7 +82,7 @@ fn exercise<T>(value: T, replacement: T, flag: bool) -> T {
     let casted: *const T = unsafe { ptrcast<*const T>(raw) };
     let recast: *const T = unsafe { bitcast<*const T>(casted) };
     let raw_addr: usize = unsafe { ptraddr(recast) };
-    let casted_addr: i32 = cast<i32>(raw_addr != 0usize);
+    let casted_addr: i32 = ((raw_addr != 0usize) as i32);
 
     var current: T = value;
     let mutable_borrow: &mut T = &mut current;

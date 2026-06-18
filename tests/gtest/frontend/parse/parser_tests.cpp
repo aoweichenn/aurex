@@ -248,7 +248,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let p: *mut i32 = unsafe { ptrat<*mut i32>(ptraddr(argv)) };\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
-        "  let size: usize = sizeof<*mut i32>;\n"
+        "  let size: usize = sizeof<*mut i32>();\n"
         "  let data: *const u8 = s.ptr;\n"
         "  let len: usize = s.len;\n"
         "  let raw: str = unsafe { strraw(data, len) };\n"
@@ -261,7 +261,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
         "  let reps: [2]u8 = [b'a'; 2];\n"
-        "  let a: i32 = cast<i32>(argc) + unsafe { bitcast<i32>(argc) } + alignof<*mut i32>;\n"
+        "  let a: i32 = ((argc) as i32) + unsafe { bitcast<i32>(argc) } + alignof<*mut i32>();\n"
         "  let q: *mut i32 = unsafe { ptrcast<*mut i32>(p) };\n"
         "  let make_text: UnsafeText = unchecked_string;\n"
         "  let from_fn_ptr: str = unsafe { make_text(data, len) };\n"
@@ -294,7 +294,6 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
             "kw_null",
             "kw_ptrcast",
             "kw_bitcast",
-            "kw_alignof",
             "kw_ptraddr",
             "kw_ptrat",
             "ellipsis",
@@ -359,7 +358,7 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
         "  let raw: str = unsafe { strraw(\"abc\".ptr, \"abc\".len) };\n"
         "  let slice = values[0:2];\n"
         "  let idx = values[1];\n"
-        "  let computed = -input + callee(pair.left, idx) * cast<i32>(sizeof<*const i32>);\n"
+        "  let computed = -input + callee(pair.left, idx) * ((sizeof<*const i32>()) as i32);\n"
         "  return if flag { computed } else { pair.right };\n"
         "}\n";
 
@@ -2476,7 +2475,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
     constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID{19};
     constexpr std::string_view source = "module parser.builtin_arg_recovery;\n"
                                         "fn recovered(argc: i32) -> i32 {\n"
-                                        "  let value = cast<i32 @>(argc);\n"
+                                        "  let value = sizeof<i32, u32>();\n"
                                         "  let broken = ;\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -2496,7 +2495,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected '>' after cast type");
+    expect_contains(messages, "layout query expects exactly one type argument");
     expect_contains(messages, "expected expression");
 }
 
@@ -2897,7 +2896,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
                                         "}\n"
                                         "fn opened @(a: i32) -> i32 { return a; }\n"
                                         "fn recovered(value: i32) -> i32 {\n"
-                                        "  let casted = cast @<i32>(value);\n"
+                                        "  let casted = value as @;\n"
                                         "  let broken_builtin = ptrat @<*mut i32>(casted);\n"
                                         "  let broken = ;\n"
                                         "  return casted;\n"
@@ -2920,7 +2919,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
     }
     expect_contains(messages, "expected '(' after function decorator");
     expect_contains(messages, "expected '(' after function name");
-    expect_contains(messages, "expected '<' after cast builtin");
+    expect_contains(messages, "expected type");
     expect_contains(messages, "expected '<' after ptrat");
     expect_contains(messages, "expected expression");
 }
@@ -3631,11 +3630,8 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_true,
             TokenKind::kw_false,
             TokenKind::kw_null,
-            TokenKind::kw_cast,
             TokenKind::kw_ptrcast,
             TokenKind::kw_bitcast,
-            TokenKind::kw_sizeof,
-            TokenKind::kw_alignof,
             TokenKind::kw_ptraddr,
             TokenKind::kw_ptrat,
             TokenKind::kw_strvalid,
@@ -3927,7 +3923,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
                                         "  let text: str = \"hello\";\n"
                                         "  let data: *const u8 = text.ptr;\n"
                                         "  let len: usize = text.len;\n"
-                                        "  let broken_cast: i32 = cast<i32>(1 @);\n"
+                                        "  let broken_size: usize = sizeof<i32>(1);\n"
                                         "  let broken_str: str = strraw(data len);\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -3947,7 +3943,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
         messages += diagnostic.message;
         messages.push_back('\n');
     }
-    expect_contains(messages, "expected ')' after cast expression");
+    expect_contains(messages, "layout query expects empty parentheses");
     expect_contains(messages, "expected ',' after strraw data");
 }
 
@@ -4487,7 +4483,7 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
 TEST(CoreUnit, ParserKeepsBracketSyntaxOutOfGenerics)
 {
     expect_parse_error("module parser.bracket_generic_params_fn;\n"
-                       "fn id[T](x: T) -> T { return x; }\n",
+                       "fn id" "[T](x: T) -> T { return x; }\n",
         "expected '(' after function name");
     expect_parse_error("module parser.bracket_generic_params_struct;\n"
                        "struct Box[T] { value: T; }\n",

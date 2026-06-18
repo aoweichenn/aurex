@@ -11,7 +11,6 @@ public:
     }
 
     [[nodiscard]] syntax::ExprId parse_cast(syntax::ExprKind kind, ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
     [[nodiscard]] syntax::ExprId parse_ptraddr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_ptrat(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_str_slice_unary(syntax::ExprKind kind, ExprContext context);

@@ -21,28 +21,28 @@ enum Payload: u8 {
 }
 
 fn main() -> i32 {
-    if sizeof<Padded> != cast<usize>(16) {
+    if sizeof<Padded>() != ((16) as usize) {
         return 1;
     }
-    if alignof<Padded> != cast<usize>(8) {
+    if alignof<Padded>() != ((8) as usize) {
         return 2;
     }
-    if sizeof<PackedBytes> != cast<usize>(3) {
+    if sizeof<PackedBytes>() != ((3) as usize) {
         return 3;
     }
-    if alignof<PackedBytes> != cast<usize>(1) {
+    if alignof<PackedBytes>() != ((1) as usize) {
         return 4;
     }
-    if sizeof<Tag> != cast<usize>(2) {
+    if sizeof<Tag>() != ((2) as usize) {
         return 5;
     }
-    if alignof<Tag> != cast<usize>(2) {
+    if alignof<Tag>() != ((2) as usize) {
         return 6;
     }
-    if sizeof<Payload> != cast<usize>(16) {
+    if sizeof<Payload>() != ((16) as usize) {
         return 7;
     }
-    if alignof<Payload> != cast<usize>(8) {
+    if alignof<Payload>() != ((8) as usize) {
         return 8;
     }
     return 0;

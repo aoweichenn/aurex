@@ -150,16 +150,10 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "kw_char";
         case TokenKind::kw_mut:
             return "kw_mut";
-        case TokenKind::kw_cast:
-            return "kw_cast";
         case TokenKind::kw_ptrcast:
             return "kw_ptrcast";
         case TokenKind::kw_bitcast:
             return "kw_bitcast";
-        case TokenKind::kw_sizeof:
-            return "kw_sizeof";
-        case TokenKind::kw_alignof:
-            return "kw_alignof";
         case TokenKind::kw_ptraddr:
             return "kw_ptraddr";
         case TokenKind::kw_ptrat:

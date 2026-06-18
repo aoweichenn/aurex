@@ -18,17 +18,17 @@ pub fn create_with_options(pattern: str, mode: u8, options: t.RegexOptions) -> t
     if state_capacity > options.max_state_capacity || range_capacity > options.max_range_capacity {
         return empty_with_status(pattern, mode, options, t.RegexStatus.program_too_large);
     }
-    let states: *mut t.State = alloc.alloc_zeroed<t.State>(state_capacity, sizeof<t.State>);
+    let states: *mut t.State = alloc.alloc_zeroed<t.State>(state_capacity, sizeof<t.State>());
     if states == null {
         return empty_with_status(pattern, mode, options, t.RegexStatus.out_of_memory);
     }
-    let ranges: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(range_capacity, sizeof<t.ClassRange>);
+    let ranges: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(range_capacity, sizeof<t.ClassRange>());
     if ranges == null {
         alloc.free_typed<t.State>(states);
         return empty_with_status(pattern, mode, options, t.RegexStatus.out_of_memory);
     }
     let capture_capacity: usize = options.max_capture_groups + limits.RESERVED_CAPTURE_INFO_COUNT;
-    let captures: *mut t.CaptureInfo = alloc.alloc_zeroed<t.CaptureInfo>(capture_capacity, sizeof<t.CaptureInfo>);
+    let captures: *mut t.CaptureInfo = alloc.alloc_zeroed<t.CaptureInfo>(capture_capacity, sizeof<t.CaptureInfo>());
     if captures == null {
         alloc.free_typed<t.State>(states);
         alloc.free_typed<t.ClassRange>(ranges);
@@ -278,9 +278,9 @@ pub fn range_count(compiled: &t.Regex) -> usize {
 }
 
 pub fn program_bytes(compiled: &t.Regex) -> usize {
-    return compiled.state_capacity * sizeof<t.State>
-        + compiled.range_capacity * sizeof<t.ClassRange>
-        + compiled.capture_capacity * sizeof<t.CaptureInfo>;
+    return compiled.state_capacity * sizeof<t.State>()
+        + compiled.range_capacity * sizeof<t.ClassRange>()
+        + compiled.capture_capacity * sizeof<t.CaptureInfo>();
 }
 
 pub fn patch(compiled: &mut t.Regex, state_id: usize, target: usize) -> void {
@@ -447,7 +447,7 @@ fn ensure_state_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if next_capacity > compiled.options.max_state_capacity {
         next_capacity = compiled.options.max_state_capacity;
     }
-    let next: *mut t.State = alloc.alloc_zeroed<t.State>(next_capacity, sizeof<t.State>);
+    let next: *mut t.State = alloc.alloc_zeroed<t.State>(next_capacity, sizeof<t.State>());
     if next == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;
@@ -475,7 +475,7 @@ fn ensure_range_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if next_capacity > compiled.options.max_range_capacity {
         next_capacity = compiled.options.max_range_capacity;
     }
-    let next: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(next_capacity, sizeof<t.ClassRange>);
+    let next: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(next_capacity, sizeof<t.ClassRange>());
     if next == null {
         set_status(compiled, t.RegexStatus.out_of_memory);
         return false;

@@ -6,5 +6,5 @@ struct S {
 
 fn main() -> i32 {
   let s: S = S { value: 1 };
-  return cast<i32>(s.value);
+  return ((s.value) as i32);
 }

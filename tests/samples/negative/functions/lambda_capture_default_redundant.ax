@@ -1,0 +1,7 @@
+module lambda_capture_default_redundant;
+
+fn main() -> i32 {
+    let base: i32 = 1;
+    let add = [=, base](value: i32) -> i32 => value + base;
+    return add(1);
+}

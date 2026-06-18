@@ -360,6 +360,7 @@ private:
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_step);
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_end);
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_start);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_iterable);
                 break;
             case syntax::StmtKind::return_:
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->return_value);
@@ -821,9 +822,32 @@ private:
         || kind == syntax::LambdaCaptureKind::mutable_reference;
 }
 
+[[nodiscard]] bool lambda_capture_kind_is_default(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::default_value || kind == syntax::LambdaCaptureKind::default_reference;
+}
+
 [[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
 {
     return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] syntax::LambdaCaptureKind lambda_capture_default_explicit_kind(
+    const syntax::LambdaCaptureKind kind) noexcept
+{
+    if (kind == syntax::LambdaCaptureKind::default_reference) {
+        return syntax::LambdaCaptureKind::shared_reference;
+    }
+    return syntax::LambdaCaptureKind::value;
+}
+
+[[nodiscard]] bool lambda_capture_redundant_with_default(
+    const syntax::LambdaCaptureKind default_kind, const syntax::LambdaCaptureKind explicit_kind) noexcept
+{
+    if (lambda_capture_default_explicit_kind(default_kind) == syntax::LambdaCaptureKind::value) {
+        return explicit_kind == syntax::LambdaCaptureKind::value;
+    }
+    return explicit_kind == syntax::LambdaCaptureKind::shared_reference;
 }
 
 [[nodiscard]] TypeHandle lambda_capture_environment_field_type(
@@ -1023,9 +1047,34 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
 {
     std::unordered_map<IdentId, LambdaCaptureListEntry, IdentIdHash> listed;
     listed.reserve(expr.lambda_captures.size());
+    std::optional<LambdaCaptureListEntry> default_capture;
+    bool seen_named_capture = false;
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+        if (lambda_capture_kind_is_default(capture.kind)) {
+            if (default_capture.has_value()) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DEFAULT_DUPLICATE));
+                has_unsupported_capture = true;
+            }
+            if (seen_named_capture) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DEFAULT_FIRST));
+                has_unsupported_capture = true;
+            }
+            if (!default_capture.has_value()) {
+                default_capture = LambdaCaptureListEntry{
+                    capture.kind,
+                    capture.range,
+                };
+            }
+            continue;
+        }
         if (!is_valid(capture.name_id)) {
             continue;
+        }
+        seen_named_capture = true;
+        if (default_capture.has_value()
+            && lambda_capture_redundant_with_default(default_capture->kind, capture.kind)) {
+            core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REDUNDANT_WITH_DEFAULT));
+            has_unsupported_capture = true;
         }
         const auto inserted = listed.emplace(
             capture.name_id, LambdaCaptureListEntry{capture.kind, capture.range});
@@ -1044,6 +1093,10 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
         used.insert(capture.name_id);
         const auto listed_capture = listed.find(capture.name_id);
         if (listed_capture == listed.end()) {
+            if (default_capture.has_value()) {
+                capture.kind = lambda_capture_default_explicit_kind(default_capture->kind);
+                continue;
+            }
             core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_NOT_LISTED));
             core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
                 "captured value `" + std::string(capture.name) + "` is declared here");
@@ -3227,6 +3280,27 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_for_condition(const syntax
 TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
     const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    if (syntax::is_valid(stmt.range_iterable)) {
+        const TypeHandle iterable_type = this->core_.analyze_expr(stmt.range_iterable);
+        TypeHandle element_type = INVALID_TYPE_HANDLE;
+        if (is_valid(iterable_type) && this->core_.state_.checked.types.is_array(iterable_type)) {
+            element_type = this->core_.state_.checked.types.get(iterable_type).array_element;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_slice(iterable_type)) {
+            element_type = this->core_.state_.checked.types.get(iterable_type).slice_element;
+        } else {
+            this->core_.report_general(
+                expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+                std::string(SEMA_FOR_IN_ARRAY_OR_SLICE));
+        }
+        if (is_valid(element_type) && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
+            this->core_.report_general(
+                expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+                std::string(SEMA_FOR_IN_ELEMENT_COPY));
+        }
+        this->core_.record_stmt_local_type(stmt_id, element_type);
+        return element_type;
+    }
+
     if (!syntax::is_valid(stmt.range_end)) {
         this->core_.record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
         this->core_.report_general(stmt.range, std::string(SEMA_FOR_RANGE_ARITY));

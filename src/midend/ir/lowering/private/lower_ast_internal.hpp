@@ -99,6 +99,13 @@ struct LocalBinding {
     std::vector<CleanupBinding> field_cleanups;
 };
 
+struct ForIterableSource {
+    ValueId base_address = INVALID_VALUE_ID;
+    ValueId length = INVALID_VALUE_ID;
+    sema::TypeHandle element_type = sema::INVALID_TYPE_HANDLE;
+    sema::PointerMutability mutability = sema::PointerMutability::const_;
+};
+
 struct LocalScopeFrame {
     std::unordered_map<sema::IdentId, std::optional<LocalBinding>, sema::IdentIdHash> previous_bindings;
 };
@@ -271,6 +278,7 @@ public:
     void lower_if(const syntax::StmtNode& stmt);
     void lower_for(const syntax::StmtNode& stmt);
     void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
+    void lower_for_iterable(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void lower_while(const syntax::StmtNode& stmt);
 
     [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const ExprView& expr);
@@ -294,6 +302,10 @@ public:
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
         ValueId cursor_slot, ValueId end_slot, ValueId step_slot, sema::TypeHandle range_type);
+    [[nodiscard]] std::optional<ForIterableSource> lower_for_iterable_source(
+        const syntax::StmtNode& stmt, sema::TypeHandle element_type);
+    [[nodiscard]] ValueId append_for_iterable_element_address(
+        const ForIterableSource& source, ValueId index, IrTextId name);
     [[nodiscard]] sema::ResourceSemanticsSummary resource_summary(sema::TypeHandle type);
     [[nodiscard]] bool cleanup_required(sema::TypeHandle type);
     [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;

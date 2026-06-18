@@ -195,23 +195,30 @@ bool PrimaryExprParser::lambda_head_follows() const noexcept
         return false;
     }
     ++offset;
-    if (this->peek_at(offset).kind != TokenKind::r_bracket) {
-        while (true) {
-            if (this->peek_at(offset).kind == TokenKind::amp) {
-                ++offset;
+    while (this->peek_at(offset).kind != TokenKind::r_bracket) {
+        if (this->peek_at(offset).kind == TokenKind::equal) {
+            ++offset;
+        } else if (this->peek_at(offset).kind == TokenKind::amp) {
+            ++offset;
+            if (this->peek_at(offset).kind != TokenKind::comma
+                && this->peek_at(offset).kind != TokenKind::r_bracket) {
                 if (this->peek_at(offset).kind == TokenKind::kw_mut) {
                     ++offset;
                 }
+                if (this->peek_at(offset).kind != TokenKind::identifier) {
+                    return false;
+                }
+                ++offset;
             }
-            if (this->peek_at(offset).kind != TokenKind::identifier) {
-                break;
-            }
+        } else if (this->peek_at(offset).kind == TokenKind::identifier) {
             ++offset;
-            if (this->peek_at(offset).kind != TokenKind::comma) {
-                break;
-            }
-            ++offset;
+        } else {
+            return false;
         }
+        if (this->peek_at(offset).kind != TokenKind::comma) {
+            break;
+        }
+        ++offset;
     }
     return this->peek_at(offset).kind == TokenKind::r_bracket
         && this->peek_at(offset + 1).kind == TokenKind::l_paren;
@@ -283,9 +290,26 @@ std::optional<syntax::LambdaCaptureDecl> PrimaryExprParser::parse_lambda_capture
 {
     syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
     base::SourceRange range = this->peek().range;
+    if (this->match(TokenKind::equal)) {
+        const syntax::Token& token = this->previous();
+        return syntax::LambdaCaptureDecl{
+            {},
+            token.range,
+            syntax::INVALID_IDENT_ID,
+            syntax::LambdaCaptureKind::default_value,
+        };
+    }
     if (this->match(TokenKind::amp)) {
         kind = syntax::LambdaCaptureKind::shared_reference;
         range = this->previous().range;
+        if (this->check(TokenKind::comma) || this->check(TokenKind::r_bracket)) {
+            return syntax::LambdaCaptureDecl{
+                {},
+                range,
+                syntax::INVALID_IDENT_ID,
+                syntax::LambdaCaptureKind::default_reference,
+            };
+        }
         if (this->match(TokenKind::kw_mut)) {
             kind = syntax::LambdaCaptureKind::mutable_reference;
             range = this->merge(range, this->previous().range);

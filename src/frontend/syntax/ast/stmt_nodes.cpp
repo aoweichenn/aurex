@@ -203,6 +203,7 @@ base::u32 StmtNodeList::store_payload(StmtNode node)
                     node.range_start,
                     node.range_end,
                     node.range_step,
+                    node.range_iterable,
                     node.body,
                 });
         case StmtKind::while_:
@@ -286,6 +287,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.range_start = payload.start;
             node.range_end = payload.end;
             node.range_step = payload.step;
+            node.range_iterable = payload.iterable;
             node.body = payload.body;
             loaded_known_payload = true;
             break;
@@ -379,6 +381,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.range_start = payload.start;
             node.range_end = payload.end;
             node.range_step = payload.step;
+            node.range_iterable = payload.iterable;
             node.body = payload.body;
             loaded_known_payload = true;
             break;

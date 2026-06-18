@@ -246,6 +246,19 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(mutable_reference_closure) + " -o " + q(mutable_reference_closure_bin));
     require_success(q(mutable_reference_closure_bin));
 
+    const fs::path default_capture_closure = positive_sample("functions", "lambda_default_capture.ax");
+    const std::string default_capture_ast =
+        require_success(aurexc() + " --emit=ast " + q(default_capture_closure)).output;
+    expect_contains_all(default_capture_ast,
+        {"lambda [=](next: i32) -> i32", "lambda [&](next: i32) -> i32",
+            "lambda [=, &adjust](value: i32) -> i32", "lambda [&, copied](value: i32) -> i32"});
+    const std::string default_capture_ir =
+        require_success(aurexc() + " --emit=ir " + q(default_capture_closure)).output;
+    expect_contains_all(default_capture_ir, {"aggregate {.__capture_0_base", "call __aurex_lambda"});
+    const fs::path default_capture_closure_bin = test_bin_root() / "lambda_default_capture";
+    require_success(aurexc() + " " + q(default_capture_closure) + " -o " + q(default_capture_closure_bin));
+    require_success(q(default_capture_closure_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -280,6 +293,18 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_reference_capture.ax")))
             .output,
         "mutable closure capture requires a mutable captured variable");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_duplicate.ax")))
+                        .output,
+        "duplicate closure capture default");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_order.ax")))
+                        .output,
+        "closure capture default must appear first");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_redundant.ax")))
+                        .output,
+        "closure capture is redundant with the capture default");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");
@@ -382,6 +407,24 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     require_success(aurexc() + " " + q(range_source) + " -o " + q(range_bin));
     require_success(q(range_bin));
 
+    const fs::path iterable_source = positive_sample("control_flow", "for_in_array_slice.ax");
+    const std::string iterable_ast = require_success(aurexc() + " --emit=ast " + q(iterable_source)).output;
+    expect_contains_all(iterable_ast, {"for_range value", "slice"});
+    const std::string iterable_ir = require_success(aurexc() + " --emit=ir " + q(iterable_source)).output;
+    expect_contains_all(iterable_ir,
+        {
+            "for.iterable.cond",
+            "for.iterable.body",
+            "for.iterable.update",
+            "for.iterable.exit",
+            "index_addr",
+            "slice_data",
+            "slice_len",
+        });
+    const fs::path iterable_bin = test_bin_root() / "for_in_array_slice";
+    require_success(aurexc() + " " + q(iterable_source) + " -o " + q(iterable_bin));
+    require_success(q(iterable_bin));
+
     const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(bad_for_condition)).output, "for condition must be bool");
@@ -419,7 +462,11 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
         "range expects 1 to 3 arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
-        "M2 range-for only supports range(...); generic iteration is not part of M2 syntax");
+        "for-in iterable must be an array or slice");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("control_flow", "for_in_non_copy_element.ax")))
+                        .output,
+        "for-in element type must be Copy");
 
     const fs::path value_source = positive_sample("types", "value_flow.ax");
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(value_source)).output;

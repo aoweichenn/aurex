@@ -201,6 +201,7 @@ void push_precheck_statement_children(const syntax::AstModule& module, const syn
             push_precheck_expr(pending_exprs, module, stmt.range_start);
             push_precheck_expr(pending_exprs, module, stmt.range_end);
             push_precheck_expr(pending_exprs, module, stmt.range_step);
+            push_precheck_expr(pending_exprs, module, stmt.range_iterable);
             push_precheck_stmt(pending_stmts, module, stmt.body);
             break;
         case syntax::StmtKind::while_:
@@ -2356,7 +2357,8 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_need_local_loan_check(
         case syntax::StmtKind::for_range:
             return this->expr_may_need_local_loan_check(stmt.range_start)
                 || this->expr_may_need_local_loan_check(stmt.range_end)
-                || this->expr_may_need_local_loan_check(stmt.range_step);
+                || this->expr_may_need_local_loan_check(stmt.range_step)
+                || this->expr_may_need_local_loan_check(stmt.range_iterable);
         case syntax::StmtKind::defer:
         case syntax::StmtKind::expr:
             return this->expr_may_need_local_loan_check(stmt.init);

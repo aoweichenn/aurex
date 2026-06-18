@@ -7,7 +7,7 @@
 namespace aurex::test {
 namespace {
 
-constexpr std::array<std::string_view, 23> REQUIRED_CURRENT_DOCUMENTS = {
+constexpr std::array<std::string_view, 22> REQUIRED_CURRENT_DOCUMENTS = {
     "docs/README.md",
     "docs/zh/README.md",
     "docs/zh/architecture.md",
@@ -22,7 +22,6 @@ constexpr std::array<std::string_view, 23> REQUIRED_CURRENT_DOCUMENTS = {
     "docs/zh/version.md",
     "docs/zh/next-steps.md",
     "docs/zh/progress.md",
-    "docs/zh/m3.1-generics-plan.md",
     "docs/zh/syntax-revision-optimization/README.md",
     "docs/zh/syntax-revision-optimization/01-angle-bracket-generics.md",
     "docs/zh/syntax-revision-optimization/02-builtin-surface.md",
@@ -33,13 +32,14 @@ constexpr std::array<std::string_view, 23> REQUIRED_CURRENT_DOCUMENTS = {
     "docs/zh/syntax-revision-optimization/07-builtin-member-projection.md",
 };
 
-constexpr std::array<std::string_view, 6> REMOVED_DOCUMENT_PATHS = {
+constexpr std::array<std::string_view, 7> REMOVED_DOCUMENT_PATHS = {
     "docs/en",
     "docs/ARCHITECTURE.zh.md",
     "docs/DESIGN.en.md",
     "docs/DESIGN.zh.md",
     "docs/SELFHOST.md",
     "docs/SEMANTICS.md",
+    "docs/zh/m3.1-generics-plan.md",
 };
 
 void expect_document_contains(const fs::path& path, const std::string_view text)
@@ -76,7 +76,7 @@ TEST_F(AurexIntegrationTest, CurrentDocumentationExplainsTheActiveRoadmap)
     expect_document_contains("docs/README.md", "这一版只维护中文文档");
     expect_document_contains("docs/zh/README.md", "本目录是 Aurex 当前唯一维护的文档版本");
     expect_document_contains("docs/zh/progress.md", "泛型语法和实例化闭环");
-    expect_document_contains("docs/zh/next-steps.md", "先把泛型相关工作完整收口");
+    expect_document_contains("docs/zh/next-steps.md", "先把已落地语法面的边界继续收紧");
     expect_document_contains("docs/zh/version.md", "当前文档基线：中文文档精简版");
 }
 

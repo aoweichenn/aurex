@@ -159,6 +159,15 @@ inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_UNUSED =
 inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_DUPLICATE =
     "duplicate closure capture name";
 
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_DEFAULT_DUPLICATE =
+    "duplicate closure capture default";
+
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_DEFAULT_FIRST =
+    "closure capture default must appear first";
+
+inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_REDUNDANT_WITH_DEFAULT =
+    "closure capture is redundant with the capture default";
+
 inline constexpr std::string_view SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE =
     "mutable closure capture requires a mutable captured variable";
 
@@ -273,6 +282,12 @@ inline constexpr std::string_view SEMA_RANGE_STEP_INTEGER = "range step must be 
 inline constexpr std::string_view SEMA_RANGE_BOUNDS_SAME_TYPE = "range bounds must have the same type";
 
 inline constexpr std::string_view SEMA_RANGE_STEP_SAME_TYPE = "range step must have the same type as bounds";
+
+inline constexpr std::string_view SEMA_FOR_IN_ARRAY_OR_SLICE =
+    "for-in iterable must be an array or slice";
+
+inline constexpr std::string_view SEMA_FOR_IN_ELEMENT_COPY =
+    "for-in element type must be Copy";
 
 inline constexpr std::string_view SEMA_LOCAL_TYPE_INFER = "local variable type cannot be inferred";
 

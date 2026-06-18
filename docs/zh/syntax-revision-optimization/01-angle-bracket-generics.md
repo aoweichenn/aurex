@@ -281,7 +281,7 @@ Vec<Box<i32> >
 
 ### 规则 7：const generic 第一批只支持 atom
 
-第一批 const generic 保持当前 M16 check-only 子集：const argument 只接受 integer / bool / char scalar literal，或当前 generic context 中同类型 const parameter name。
+第一批 const generic 保持当前 check-only 子集：const argument 只接受 integer / bool / char scalar literal，或当前 generic context 中同类型 const parameter name。
 
 ```aurex
 struct Array<T, const N: usize> {

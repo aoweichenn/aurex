@@ -458,6 +458,10 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
                                         "  let by_value = [base](value: i32) -> i32 => value + base;\n"
                                         "  let by_ref = [&base](value: i32) -> i32 => value + base;\n"
                                         "  let by_mut_ref = [&mut base](value: i32) -> i32 => value + base;\n"
+                                        "  let default_value = [=](value: i32) -> i32 => value + base;\n"
+                                        "  let default_ref = [&](value: i32) -> i32 => value + base;\n"
+                                        "  let mixed_value = [=, &base](value: i32) -> i32 => value + base;\n"
+                                        "  let mixed_ref = [&, base](value: i32) -> i32 => value + base;\n"
                                         "  return inc(40) + add_two(0) + one() + add(1, 2) - 46;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -471,6 +475,10 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
             "lambda [base](value: i32) -> i32",
             "lambda [&base](value: i32) -> i32",
             "lambda [&mut base](value: i32) -> i32",
+            "lambda [=](value: i32) -> i32",
+            "lambda [&](value: i32) -> i32",
+            "lambda [=, &base](value: i32) -> i32",
+            "lambda [&, base](value: i32) -> i32",
             "stmt #",
             "return",
             "binary",
@@ -3346,6 +3354,7 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
     constexpr std::string_view source = "module parser.for_range;\n"
                                         "fn main(limit: i32) -> i32 {\n"
                                         "  var total: i32 = 0;\n"
+                                        "  let values: [3]i32 = [1, 2, 3];\n"
                                         "  for i in range(limit) {\n"
                                         "    total += i;\n"
                                         "  }\n"
@@ -3355,6 +3364,12 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
                                         "  for k in range(1, limit, 2) {\n"
                                         "    total += k;\n"
                                         "  }\n"
+                                        "  for value in values {\n"
+                                        "    total += value;\n"
+                                        "  }\n"
+                                        "  for value in values[:] {\n"
+                                        "    total += value;\n"
+                                        "  }\n"
                                         "  return total;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -3363,31 +3378,52 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
     ASSERT_NE(main, nullptr);
     ASSERT_TRUE(syntax::is_valid(main->body));
     const syntax::StmtNode& body = module.stmts[main->body.value];
-    ASSERT_GE(body.statements.size(), 4U);
+    ASSERT_GE(body.statements.size(), 7U);
 
-    const syntax::StmtNode& end_loop = module.stmts[body.statements[1].value];
+    const syntax::StmtNode& end_loop = module.stmts[body.statements[2].value];
     ASSERT_EQ(end_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(end_loop.name, "i");
     EXPECT_FALSE(syntax::is_valid(end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(end_loop.range_end));
     EXPECT_FALSE(syntax::is_valid(end_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(end_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(end_loop.body));
 
-    const syntax::StmtNode& start_end_loop = module.stmts[body.statements[2].value];
+    const syntax::StmtNode& start_end_loop = module.stmts[body.statements[3].value];
     ASSERT_EQ(start_end_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(start_end_loop.name, "j");
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_end));
     EXPECT_FALSE(syntax::is_valid(start_end_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(start_end_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.body));
 
-    const syntax::StmtNode& stepped_loop = module.stmts[body.statements[3].value];
+    const syntax::StmtNode& stepped_loop = module.stmts[body.statements[4].value];
     ASSERT_EQ(stepped_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(stepped_loop.name, "k");
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_end));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(stepped_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.body));
+
+    const syntax::StmtNode& array_loop = module.stmts[body.statements[5].value];
+    ASSERT_EQ(array_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(array_loop.name, "value");
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_start));
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_step));
+    EXPECT_TRUE(syntax::is_valid(array_loop.range_iterable));
+    EXPECT_TRUE(syntax::is_valid(array_loop.body));
+
+    const syntax::StmtNode& slice_loop = module.stmts[body.statements[6].value];
+    ASSERT_EQ(slice_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(slice_loop.name, "value");
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_start));
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_step));
+    EXPECT_TRUE(syntax::is_valid(slice_loop.range_iterable));
+    EXPECT_TRUE(syntax::is_valid(slice_loop.body));
 }
 
 TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
@@ -3399,13 +3435,6 @@ TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
                        "  return 0;\n"
                        "}\n",
         "expected ',' or ')' after range argument");
-    expect_parse_error("module parser.for_range_missing_args;\n"
-                       "fn main() -> i32 {\n"
-                       "  for i in range {\n"
-                       "  }\n"
-                       "  return 0;\n"
-                       "}\n",
-        "expected '(' after range");
     expect_parse_error("module parser.for_range_empty_args;\n"
                        "fn main() -> i32 {\n"
                        "  for i in range() {\n"

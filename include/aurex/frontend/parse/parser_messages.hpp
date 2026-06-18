@@ -260,9 +260,6 @@ inline constexpr std::string_view PARSER_EXPECT_WHERE_CAPABILITY = "expected cap
 inline constexpr std::string_view PARSER_EXPECT_WHERE_SEPARATOR =
     "expected ',' or declaration body after where constraint";
 
-inline constexpr std::string_view PARSER_M2_RANGE_FOR_ONLY_RANGE =
-    "M2 range-for only supports range(...); generic iteration is not part of M2 syntax";
-
 inline constexpr std::string_view PARSER_M2_EXPLICIT_GENERIC_CALL_SYNTAX =
     "explicit generic calls use '<...>', for example id<i32>(...)";
 

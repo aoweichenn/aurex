@@ -15,6 +15,12 @@ namespace {
 
 constexpr std::string_view IR_FOR_RANGE_ZERO_LITERAL = "0";
 constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
+constexpr std::string_view IR_FOR_ITERABLE_COND_BLOCK_PREFIX = "for.iterable.cond";
+constexpr std::string_view IR_FOR_ITERABLE_BODY_BLOCK_PREFIX = "for.iterable.body";
+constexpr std::string_view IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX = "for.iterable.update";
+constexpr std::string_view IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX = "for.iterable.exit";
+constexpr std::string_view IR_FOR_ITERABLE_CURSOR_SLOT_NAME = "for.iterable.cursor";
+constexpr std::string_view IR_FOR_ITERABLE_END_SLOT_NAME = "for.iterable.end";
 constexpr std::string_view IR_DROP_FLAG_VALUE_NAME = "drop.flag";
 constexpr std::string_view IR_DROP_THEN_BLOCK_PREFIX = "drop.then";
 constexpr std::string_view IR_DROP_JOIN_BLOCK_PREFIX = "drop.join";
@@ -696,6 +702,58 @@ ValueId Lowerer::append_for_range_condition(
     const ValueId backward_active =
         this->append_binary_value(BinaryOp::logical_and, bool_type, negative_step, backward_bound);
     return this->append_binary_value(BinaryOp::logical_or, bool_type, forward_active, backward_active);
+}
+
+std::optional<ForIterableSource> Lowerer::lower_for_iterable_source(
+    const syntax::StmtNode& stmt, const sema::TypeHandle element_type)
+{
+    const sema::TypeHandle iterable_type = this->expr_type(stmt.range_iterable);
+    if (!syntax::is_valid(stmt.range_iterable) || !sema::is_valid(iterable_type) || !sema::is_valid(element_type)) {
+        return std::nullopt;
+    }
+
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    if (this->module_.types.is_array(iterable_type)) {
+        const sema::TypeInfo& array = this->module_.types.get(iterable_type);
+        const PlaceAddress iterable = this->lower_object_place_or_value(stmt.range_iterable);
+        if (!is_valid(iterable.address)) {
+            return std::nullopt;
+        }
+        return ForIterableSource{
+            .base_address = iterable.address,
+            .length = this->append_integer_literal(std::to_string(array.array_count), usize_type),
+            .element_type = array.array_element,
+            .mutability = iterable.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_,
+        };
+    }
+
+    if (this->module_.types.is_slice(iterable_type)) {
+        const sema::TypeInfo& slice = this->module_.types.get(iterable_type);
+        const ValueId slice_value = this->lower_expr(stmt.range_iterable, iterable_type);
+        if (!is_valid(slice_value)) {
+            return std::nullopt;
+        }
+        return ForIterableSource{
+            .base_address = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element),
+            .length = this->append_slice_len(slice_value),
+            .element_type = slice.slice_element,
+            .mutability = slice.slice_mutability,
+        };
+    }
+
+    return std::nullopt;
+}
+
+ValueId Lowerer::append_for_iterable_element_address(
+    const ForIterableSource& source, const ValueId index, const IrTextId name)
+{
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::index_addr;
+    value.type = this->module_.types.pointer(source.mutability, source.element_type);
+    value.name = name;
+    value.object = source.base_address;
+    value.index = index;
+    return this->append_value(value);
 }
 
 sema::ResourceSemanticsSummary Lowerer::resource_summary(const sema::TypeHandle type)
@@ -1591,6 +1649,11 @@ void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    if (syntax::is_valid(stmt.range_iterable)) {
+        this->lower_for_iterable(stmt_id, stmt);
+        return;
+    }
+
     this->push_local_scope();
     const base::usize scope_depth = this->cleanup_scopes_.size();
     this->cleanup_scopes_.push_back({});
@@ -1653,6 +1716,91 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
         ? this->append_load(step_slot, range_type, this->module_.intern("for.range.step"))
         : this->append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, range_type);
     const ValueId next = this->append_binary_value(BinaryOp::add, range_type, current, step);
+    this->append_store(cursor_slot, next);
+    this->append_branch_if_open(condition_block);
+    this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_iterable(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
+{
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    const sema::TypeHandle element_type = this->stmt_local_type(stmt_id);
+    const std::optional<ForIterableSource> source = this->lower_for_iterable_source(stmt, element_type);
+    if (!source.has_value()) {
+        if (!this->has_terminator(this->current_block_)) {
+            this->emit_cleanup_scopes(scope_depth);
+        }
+        this->cleanup_scopes_.resize(scope_depth);
+        this->pop_local_scope();
+        return;
+    }
+
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    const ValueId cursor_slot = this->append_temp_alloca(IR_FOR_ITERABLE_CURSOR_SLOT_NAME, usize_type);
+    const ValueId end_slot = this->append_temp_alloca(IR_FOR_ITERABLE_END_SLOT_NAME, usize_type);
+    this->append_store(cursor_slot, this->append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, usize_type));
+    this->append_store(end_slot, source->length);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_COND_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_BODY_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const sema::TypeHandle bool_type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    const ValueId cursor_condition =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId end_condition =
+        this->append_load(end_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_END_SLOT_NAME));
+    const ValueId condition =
+        this->append_binary_value(BinaryOp::less, bool_type, cursor_condition, end_condition);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->cleanup_scopes_.size()});
+    this->current_block_ = body_block;
+    const IrTextId loop_name = this->module_.intern(stmt.name);
+    const ValueId element_index =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId element_address = this->append_for_iterable_element_address(*source, element_index, loop_name);
+    const ValueId element_value = this->append_load(element_address, element_type, loop_name);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, element_type);
+    this->bind_local(stmt.name_id,
+        LocalBinding{
+            .slot = loop_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = element_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
+    this->append_store(loop_slot, element_value);
+    this->lower_block(stmt.body);
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    const ValueId current =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId one = this->append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, usize_type);
+    const ValueId next = this->append_binary_value(BinaryOp::add, usize_type, current, one);
     this->append_store(cursor_slot, next);
     this->append_branch_if_open(condition_block);
     this->loop_contexts_.pop_back();

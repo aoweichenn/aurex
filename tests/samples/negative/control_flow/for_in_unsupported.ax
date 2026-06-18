@@ -1,7 +1,8 @@
 module for_in_unsupported;
 
 fn main() -> i32 {
-    for i in items() {
+    let value: i32 = 1;
+    for i in value {
         return i;
     }
     return 0;

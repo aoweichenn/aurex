@@ -560,6 +560,7 @@ private:
         this->add_expr(stmt.range_start);
         this->add_expr(stmt.range_end);
         this->add_expr(stmt.range_step);
+        this->add_expr(stmt.range_iterable);
         this->add_stmt(stmt.then_block);
         this->add_stmt(stmt.else_block);
         this->add_stmt(stmt.else_if);

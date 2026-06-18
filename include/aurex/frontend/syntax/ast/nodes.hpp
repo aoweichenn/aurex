@@ -158,6 +158,8 @@ enum class LambdaCaptureKind {
     value,
     shared_reference,
     mutable_reference,
+    default_value,
+    default_reference,
 };
 
 struct LambdaCaptureDecl {

@@ -66,6 +66,8 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"enum_hash_rejected", "does not satisfy capability `Hash`"},
     {"float_eq_rejected", "type f64 does not satisfy capability `Eq`"},
     {"float_ord_rejected", "type f64 does not satisfy capability `Ord`"},
+    {"for_in_non_copy_element", "for-in element type must be Copy"},
+    {"for_in_unsupported", "for-in iterable must be an array or slice"},
     {"generic_ptrat_non_pointer", "ptrat target type must be a pointer"},
     {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
     {"generic_sizeof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
@@ -75,6 +77,9 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"lambda_capture_function_pointer_mismatch", "initializer type does not match declared type"},
     {"lambda_capture_generic_dependent", "capturing a generic-dependent value in a closure is not supported yet"},
     {"lambda_capture_non_copy", "capturing a non-Copy value in a closure is not supported yet"},
+    {"lambda_capture_default_duplicate", "duplicate closure capture default"},
+    {"lambda_capture_default_order", "closure capture default must appear first"},
+    {"lambda_capture_default_redundant", "closure capture is redundant with the capture default"},
     {"lambda_reference_capture", "mutable closure capture requires a mutable captured variable"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict",
@@ -539,6 +544,16 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_reference_captur
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_mutable_reference_capture)
 {
     run_positive_runtime_smoke_sample("functions", "lambda_mutable_reference_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_default_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_default_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_array_slice)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_array_slice.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic)

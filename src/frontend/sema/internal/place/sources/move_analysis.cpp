@@ -1080,6 +1080,7 @@ private:
                 break;
             case syntax::StmtKind::for_range:
                 this->push_mode_block(tasks, stmt.body);
+                this->push_mode_expression(tasks, stmt.range_iterable, RequestedUse::initialized_place);
                 this->push_mode_expression(tasks, stmt.range_step, RequestedUse::owned);
                 this->push_mode_expression(tasks, stmt.range_end, RequestedUse::owned);
                 this->push_mode_expression(tasks, stmt.range_start, RequestedUse::owned);
@@ -1581,6 +1582,9 @@ private:
         }
         if (syntax::is_valid(stmt.range_step)) {
             bounds.emplace_back(stmt.range_step, RequestedUse::owned);
+        }
+        if (syntax::is_valid(stmt.range_iterable)) {
+            bounds.emplace_back(stmt.range_iterable, RequestedUse::initialized_place);
         }
         this->push_expression_sequence(bounds, task.start, header, task.environment, task.borrow_environment,
             loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,

@@ -1131,6 +1131,9 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     if (is_valid(stmt.range_step)) {
         dump_expr(out, module, stmt.range_step, depth + 1);
     }
+    if (is_valid(stmt.range_iterable)) {
+        dump_expr(out, module, stmt.range_iterable, depth + 1);
+    }
     if (is_valid(stmt.then_block)) {
         dump_stmt(out, module, stmt.then_block, depth + 1);
     }
@@ -1197,10 +1200,21 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             if (i != 0) {
                 out << ", ";
             }
-            if (expr.lambda_captures[i].kind == LambdaCaptureKind::shared_reference) {
-                out << "&";
-            } else if (expr.lambda_captures[i].kind == LambdaCaptureKind::mutable_reference) {
-                out << "&mut ";
+            switch (expr.lambda_captures[i].kind) {
+                case LambdaCaptureKind::default_value:
+                    out << "=";
+                    continue;
+                case LambdaCaptureKind::default_reference:
+                    out << "&";
+                    continue;
+                case LambdaCaptureKind::shared_reference:
+                    out << "&";
+                    break;
+                case LambdaCaptureKind::mutable_reference:
+                    out << "&mut ";
+                    break;
+                case LambdaCaptureKind::value:
+                    break;
             }
             out << expr.lambda_captures[i].name;
         }

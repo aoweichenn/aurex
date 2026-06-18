@@ -1,0 +1,35 @@
+module for_in_array_slice;
+
+fn sum_array() -> i32 {
+    let values: [4]i32 = [1, 2, 3, 4];
+    var total: i32 = 0;
+    for value in values {
+        total += value;
+    }
+    return total + values[0];
+}
+
+fn sum_slice() -> i32 {
+    let values: [4]i32 = [2, 4, 6, 8];
+    let view: []i32 = values[:];
+    var total: i32 = 0;
+    for value in view {
+        total += value;
+    }
+    return total;
+}
+
+fn sum_array_literal() -> i32 {
+    var total: i32 = 0;
+    for value in [3, 5, 7] {
+        total += value;
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    if sum_array() == 11 && sum_slice() == 20 && sum_array_literal() == 15 {
+        return 0;
+    }
+    return 1;
+}

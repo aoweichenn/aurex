@@ -1,6 +1,6 @@
 # Aurex 中文文档
 
-本目录是 Aurex 当前唯一维护的文档版本。文档按用途分组，保留能指导当前实现和接下来开发的内容。
+本目录是 Aurex 当前唯一维护的文档版本。文档按当前项目状态组织，不保存历史阶段流水账。
 
 ## 快速入口
 
@@ -17,18 +17,13 @@
 
 ## 语言和语法
 
-- [语言手册](language-manual.md)
+- [语言参考手册](language-manual.md)
 - [语言特性清单](language-feature-inventory.md)
-- [语法修正优化](syntax-revision-optimization/README.md)
-
-## 当前重点
-
-- [M3.1 泛型计划](m3.1-generics-plan.md)
 - [语法修正优化](syntax-revision-optimization/README.md)
 
 ## 维护规则
 
 - 只维护中文版本。
-- 路线变化优先更新本索引、`progress.md`、`next-steps.md` 和对应当前执行文档。
-- 不再为每个微阶段新增单篇 release baseline。
-- 历史报告和旧阶段设计直接删除；需要的信息整理进当前项目文档。
+- 路线变化优先更新本索引、`progress.md`、`next-steps.md` 和对应当前专题。
+- 已完成或废弃的阶段记录不要作为独立文档保存。
+- 当前语法以源码、样例和测试为准；文档必须跟随实现更新。

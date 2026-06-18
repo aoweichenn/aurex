@@ -1714,6 +1714,15 @@ sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexc
     return (*this->active_side_tables_.stmt_local_types)[stmt.value];
 }
 
+const sema::ForInIterationPlan* Lowerer::for_in_iteration_plan(const syntax::StmtId stmt) const noexcept
+{
+    if (!syntax::is_valid(stmt) || this->active_side_tables_.for_in_iteration_plans == nullptr) {
+        return nullptr;
+    }
+    const auto found = this->active_side_tables_.for_in_iteration_plans->find(stmt.value);
+    return found == this->active_side_tables_.for_in_iteration_plans->end() ? nullptr : &found->second;
+}
+
 sema::TypeHandle Lowerer::aggregate_field_type(
     const sema::TypeHandle aggregate_type, const std::string_view name) const noexcept
 {

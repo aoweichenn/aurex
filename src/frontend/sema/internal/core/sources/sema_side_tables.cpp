@@ -208,6 +208,19 @@ TypeHandle SemanticSideTableReader::cached_stmt_local_type(const syntax::StmtId 
     return stmt.value < stmt_local_types.size() ? stmt_local_types[stmt.value] : INVALID_TYPE_HANDLE;
 }
 
+const ForInIterationPlan* SemanticSideTableReader::cached_for_in_iteration_plan(
+    const syntax::StmtId stmt) const noexcept
+{
+    if (!syntax::is_valid(stmt)) {
+        return nullptr;
+    }
+    const ForInIterationPlanMap& plans = this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.for_in_iteration_plans
+        : this->core_.state_.flow.current_side_tables.side_tables->for_in_iteration_plans;
+    const auto found = plans.find(stmt.value);
+    return found == plans.end() ? nullptr : &found->second;
+}
+
 std::string_view SemanticSideTableReader::cached_expr_c_name(const syntax::ExprId expr) const noexcept
 {
     if (!syntax::is_valid(expr)) {
@@ -287,6 +300,18 @@ void SemanticSideTableStore::record_stmt_local_type(const syntax::StmtId stmt, c
         ensure_side_table_slot(stmt_local_types, stmt.value);
         stmt_local_types[stmt.value] = type;
     }
+}
+
+void SemanticSideTableStore::record_for_in_iteration_plan(
+    const syntax::StmtId stmt, const ForInIterationPlan& plan)
+{
+    if (!syntax::is_valid(stmt)) {
+        return;
+    }
+    ForInIterationPlanMap& plans = this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.for_in_iteration_plans
+        : this->core_.state_.flow.current_side_tables.side_tables->for_in_iteration_plans;
+    plans[stmt.value] = plan;
 }
 
 void SemanticSideTableStore::record_expr_c_name(const syntax::ExprId expr, const std::string_view c_name)

@@ -21,6 +21,11 @@ void SemanticAnalyzerCore::record_stmt_local_type(const syntax::StmtId stmt, con
     this->side_table_store().record_stmt_local_type(stmt, type);
 }
 
+void SemanticAnalyzerCore::record_for_in_iteration_plan(const syntax::StmtId stmt, const ForInIterationPlan& plan)
+{
+    this->side_table_store().record_for_in_iteration_plan(stmt, plan);
+}
+
 void SemanticAnalyzerCore::record_expr_c_name(const syntax::ExprId expr, const std::string_view c_name)
 {
     this->side_table_store().record_expr_c_name(expr, c_name);
@@ -113,6 +118,12 @@ TypeHandle SemanticAnalyzerCore::cached_syntax_type(const syntax::TypeId type) c
 TypeHandle SemanticAnalyzerCore::cached_stmt_local_type(const syntax::StmtId stmt) const noexcept
 {
     return this->side_table_reader().cached_stmt_local_type(stmt);
+}
+
+const ForInIterationPlan* SemanticAnalyzerCore::cached_for_in_iteration_plan(
+    const syntax::StmtId stmt) const noexcept
+{
+    return this->side_table_reader().cached_for_in_iteration_plan(stmt);
 }
 
 std::string_view SemanticAnalyzerCore::cached_expr_c_name(const syntax::ExprId expr) const noexcept

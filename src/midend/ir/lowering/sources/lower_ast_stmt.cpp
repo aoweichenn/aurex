@@ -103,6 +103,53 @@ struct DropGlueFrame {
     return std::to_string(index);
 }
 
+[[nodiscard]] bool for_in_iteration_plan_is_iterable(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::array_value || plan.kind == sema::ForInIterationKind::slice_value;
+}
+
+[[nodiscard]] bool for_in_iteration_plan_is_counted_range(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::counted_range;
+}
+
+[[nodiscard]] sema::ForInIterationPlan fallback_counted_range_plan(
+    const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::TypeHandle range_type) noexcept
+{
+    sema::ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = sema::ForInIterationKind::counted_range;
+    plan.start_expr = stmt.range_start;
+    plan.end_expr = stmt.range_end;
+    plan.step_expr = stmt.range_step;
+    plan.item_type = range_type;
+    plan.range_type = range_type;
+    plan.requires_copy_item = false;
+    return plan;
+}
+
+[[nodiscard]] sema::ForInIterationPlan fallback_iterable_plan(const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt, const sema::TypeTable& types, const sema::TypeHandle iterable_type,
+    const sema::TypeHandle item_type) noexcept
+{
+    sema::ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.item_type = item_type;
+    plan.index_type = types.builtin(sema::BuiltinType::usize);
+    if (sema::is_valid(iterable_type) && types.is_array(iterable_type)) {
+        plan.kind = sema::ForInIterationKind::array_value;
+        return plan;
+    }
+    if (sema::is_valid(iterable_type) && types.is_slice(iterable_type)) {
+        const sema::TypeInfo& slice = types.get(iterable_type);
+        plan.kind = sema::ForInIterationKind::slice_value;
+        plan.element_access = slice.slice_mutability;
+    }
+    return plan;
+}
+
 [[nodiscard]] std::string cleanup_child_flag_name(
     const std::string_view parent, const std::string_view field_name)
 {
@@ -319,6 +366,7 @@ void Lowerer::lower_generic_function_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
     this->active_side_tables_ = previous_tables;
@@ -339,6 +387,7 @@ void Lowerer::lower_trait_default_method_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
     this->active_side_tables_ = previous_tables;
@@ -704,40 +753,39 @@ ValueId Lowerer::append_for_range_condition(
     return this->append_binary_value(BinaryOp::logical_or, bool_type, forward_active, backward_active);
 }
 
-std::optional<ForIterableSource> Lowerer::lower_for_iterable_source(
-    const syntax::StmtNode& stmt, const sema::TypeHandle element_type)
+std::optional<ForIterableSource> Lowerer::lower_for_iterable_source(const sema::ForInIterationPlan& plan)
 {
-    const sema::TypeHandle iterable_type = this->expr_type(stmt.range_iterable);
-    if (!syntax::is_valid(stmt.range_iterable) || !sema::is_valid(iterable_type) || !sema::is_valid(element_type)) {
+    if (!syntax::is_valid(plan.iterable_expr) || !sema::is_valid(plan.iterable_type)
+        || !sema::is_valid(plan.item_type)) {
         return std::nullopt;
     }
 
     const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
-    if (this->module_.types.is_array(iterable_type)) {
-        const sema::TypeInfo& array = this->module_.types.get(iterable_type);
-        const PlaceAddress iterable = this->lower_object_place_or_value(stmt.range_iterable);
+    if (plan.kind == sema::ForInIterationKind::array_value && this->module_.types.is_array(plan.iterable_type)) {
+        const sema::TypeInfo& array = this->module_.types.get(plan.iterable_type);
+        const PlaceAddress iterable = this->lower_object_place_or_value(plan.iterable_expr);
         if (!is_valid(iterable.address)) {
             return std::nullopt;
         }
         return ForIterableSource{
             .base_address = iterable.address,
             .length = this->append_integer_literal(std::to_string(array.array_count), usize_type),
-            .element_type = array.array_element,
+            .element_type = plan.item_type,
             .mutability = iterable.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_,
         };
     }
 
-    if (this->module_.types.is_slice(iterable_type)) {
-        const sema::TypeInfo& slice = this->module_.types.get(iterable_type);
-        const ValueId slice_value = this->lower_expr(stmt.range_iterable, iterable_type);
+    if (plan.kind == sema::ForInIterationKind::slice_value && this->module_.types.is_slice(plan.iterable_type)) {
+        const sema::TypeInfo& slice = this->module_.types.get(plan.iterable_type);
+        const ValueId slice_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
         if (!is_valid(slice_value)) {
             return std::nullopt;
         }
         return ForIterableSource{
             .base_address = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element),
             .length = this->append_slice_len(slice_value),
-            .element_type = slice.slice_element,
-            .mutability = slice.slice_mutability,
+            .element_type = plan.item_type,
+            .mutability = plan.element_access,
         };
     }
 
@@ -1649,7 +1697,11 @@ void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
-    if (syntax::is_valid(stmt.range_iterable)) {
+    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
+    const bool plan_is_iterable = checked_plan != nullptr && for_in_iteration_plan_is_iterable(*checked_plan);
+    const bool plan_is_counted_range =
+        checked_plan != nullptr && for_in_iteration_plan_is_counted_range(*checked_plan);
+    if (plan_is_iterable || (!plan_is_counted_range && syntax::is_valid(stmt.range_iterable))) {
         this->lower_for_iterable(stmt_id, stmt);
         return;
     }
@@ -1658,14 +1710,17 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     const base::usize scope_depth = this->cleanup_scopes_.size();
     this->cleanup_scopes_.push_back({});
 
-    const sema::TypeHandle range_type = this->stmt_local_type(stmt_id);
-    const ValueId start_value = syntax::is_valid(stmt.range_start)
-        ? this->lower_expr(stmt.range_start, range_type)
+    const sema::ForInIterationPlan fallback =
+        fallback_counted_range_plan(stmt_id, stmt, this->stmt_local_type(stmt_id));
+    const sema::ForInIterationPlan& plan = plan_is_counted_range ? *checked_plan : fallback;
+    const sema::TypeHandle range_type = plan.range_type;
+    const ValueId start_value = syntax::is_valid(plan.start_expr)
+        ? this->lower_expr(plan.start_expr, range_type)
         : this->append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, range_type);
-    const ValueId end_value = this->lower_expr(stmt.range_end, range_type);
+    const ValueId end_value = this->lower_expr(plan.end_expr, range_type);
     ValueId step_slot = INVALID_VALUE_ID;
-    if (syntax::is_valid(stmt.range_step)) {
-        const ValueId step_value = this->lower_expr(stmt.range_step, range_type);
+    if (syntax::is_valid(plan.step_expr)) {
+        const ValueId step_value = this->lower_expr(plan.step_expr, range_type);
         step_slot = this->append_temp_alloca("for.range.step", range_type);
         this->append_store(step_slot, step_value);
     }
@@ -1734,8 +1789,14 @@ void Lowerer::lower_for_iterable(const syntax::StmtId stmt_id, const syntax::Stm
     const base::usize scope_depth = this->cleanup_scopes_.size();
     this->cleanup_scopes_.push_back({});
 
-    const sema::TypeHandle element_type = this->stmt_local_type(stmt_id);
-    const std::optional<ForIterableSource> source = this->lower_for_iterable_source(stmt, element_type);
+    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
+    const sema::ForInIterationPlan fallback =
+        fallback_iterable_plan(stmt_id, stmt, this->module_.types, this->expr_type(stmt.range_iterable),
+            this->stmt_local_type(stmt_id));
+    const sema::ForInIterationPlan& plan =
+        checked_plan != nullptr && for_in_iteration_plan_is_iterable(*checked_plan) ? *checked_plan : fallback;
+    const sema::TypeHandle element_type = plan.item_type;
+    const std::optional<ForIterableSource> source = this->lower_for_iterable_source(plan);
     if (!source.has_value()) {
         if (!this->has_terminator(this->current_block_)) {
             this->emit_cleanup_scopes(scope_depth);

@@ -3401,24 +3401,41 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_for_condition(const syntax
 TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
     const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.start_expr = stmt.range_start;
+    plan.end_expr = stmt.range_end;
+    plan.step_expr = stmt.range_step;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+
     if (syntax::is_valid(stmt.range_iterable)) {
         const TypeHandle iterable_type = this->core_.analyze_expr(stmt.range_iterable);
         TypeHandle element_type = INVALID_TYPE_HANDLE;
         if (is_valid(iterable_type) && this->core_.state_.checked.types.is_array(iterable_type)) {
-            element_type = this->core_.state_.checked.types.get(iterable_type).array_element;
+            const TypeInfo& array = this->core_.state_.checked.types.get(iterable_type);
+            element_type = array.array_element;
+            plan.kind = ForInIterationKind::array_value;
+            plan.element_access = PointerMutability::const_;
         } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_slice(iterable_type)) {
-            element_type = this->core_.state_.checked.types.get(iterable_type).slice_element;
+            const TypeInfo& slice = this->core_.state_.checked.types.get(iterable_type);
+            element_type = slice.slice_element;
+            plan.kind = ForInIterationKind::slice_value;
+            plan.element_access = slice.slice_mutability;
         } else {
             this->core_.report_general(
                 expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
                 std::string(SEMA_FOR_IN_ARRAY_OR_SLICE));
         }
+        plan.iterable_type = iterable_type;
+        plan.item_type = element_type;
         if (is_valid(element_type) && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
             this->core_.report_general(
                 expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
                 std::string(SEMA_FOR_IN_ELEMENT_COPY));
         }
         this->core_.record_stmt_local_type(stmt_id, element_type);
+        this->core_.record_for_in_iteration_plan(stmt_id, plan);
         return element_type;
     }
 
@@ -3498,6 +3515,12 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
         ? start
         : (this->core_.state_.checked.types.is_integer(end) ? end : step);
     this->core_.record_stmt_local_type(stmt_id, local_type);
+    plan.kind = ForInIterationKind::counted_range;
+    plan.item_type = local_type;
+    plan.range_type = local_type;
+    plan.element_access = PointerMutability::const_;
+    plan.requires_copy_item = false;
+    this->core_.record_for_in_iteration_plan(stmt_id, plan);
     return local_type;
 }
 

@@ -1318,6 +1318,40 @@ struct CoercionRecord {
     CoercionKind kind = CoercionKind::contextual_integer_literal;
 };
 
+enum class ForInIterationKind : base::u8 {
+    none,
+    counted_range,
+    array_value,
+    slice_value,
+};
+
+enum class ForInItemMode : base::u8 {
+    immutable_value_copy,
+};
+
+struct ForInIterationPlan {
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    ForInIterationKind kind = ForInIterationKind::none;
+    ForInItemMode item_mode = ForInItemMode::immutable_value_copy;
+    syntax::ExprId start_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId end_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId step_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId iterable_expr = syntax::INVALID_EXPR_ID;
+    TypeHandle iterable_type = INVALID_TYPE_HANDLE;
+    TypeHandle item_type = INVALID_TYPE_HANDLE;
+    TypeHandle index_type = INVALID_TYPE_HANDLE;
+    TypeHandle range_type = INVALID_TYPE_HANDLE;
+    PointerMutability element_access = PointerMutability::const_;
+    bool evaluates_source_once = true;
+    bool consumes_iterable = false;
+    bool requires_copy_item = true;
+};
+
+using ForInIterationPlanMap = SemaMap<base::u32, ForInIterationPlan>;
+
+[[nodiscard]] std::string_view for_in_iteration_kind_name(ForInIterationKind kind) noexcept;
+[[nodiscard]] std::string_view for_in_item_mode_name(ForInItemMode mode) noexcept;
+
 struct GenericNodeSpan {
     base::u32 begin = 0;
     base::u32 count = 0;
@@ -1438,6 +1472,7 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaMap<base::u32, TypeHandle> sparse_syntax_type_handles;
     SemaMap<base::u32, TypeHandle> sparse_stmt_local_types;
+    ForInIterationPlanMap for_in_iteration_plans;
     GenericSparseFallbackStats sparse_fallbacks;
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
@@ -1615,6 +1650,7 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaTypeTable syntax_type_handles;
     SemaTypeTable stmt_local_types;
+    ForInIterationPlanMap for_in_iteration_plans;
     SemaIdentTable item_c_name_ids;
     SemaVector<CoercionRecord> coercions;
     SemaVector<CheckedLambdaInfo> lambdas;

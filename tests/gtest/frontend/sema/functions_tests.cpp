@@ -419,6 +419,8 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     require_success(aurexc() + " --emit=llvm-ir " + q(for_source));
 
     const fs::path range_source = positive_sample("control_flow", "for_range.ax");
+    const std::string range_checked = require_success(aurexc() + " --emit=checked " + q(range_source)).output;
+    expect_contains_all(range_checked, {"for_in_iteration_plans", "counted_range", "copy_item=false"});
     const std::string range_ir = require_success(aurexc() + " --emit=ir " + q(range_source)).output;
     expect_contains_all(range_ir,
         {
@@ -437,6 +439,9 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     const fs::path iterable_source = positive_sample("control_flow", "for_in_array_slice.ax");
     const std::string iterable_ast = require_success(aurexc() + " --emit=ast " + q(iterable_source)).output;
     expect_contains_all(iterable_ast, {"for_range value", "slice"});
+    const std::string iterable_checked = require_success(aurexc() + " --emit=checked " + q(iterable_source)).output;
+    expect_contains_all(iterable_checked,
+        {"for_in_iteration_plans", "array_value", "slice_value", "copy_item=true", "eval_once=true"});
     const std::string iterable_ir = require_success(aurexc() + " --emit=ir " + q(iterable_source)).output;
     expect_contains_all(iterable_ir,
         {

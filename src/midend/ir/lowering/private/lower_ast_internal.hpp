@@ -31,6 +31,7 @@ struct ActiveSideTables {
     const sema::SemaIdentTable* pattern_c_name_ids = nullptr;
     const sema::SemaTypeTable* syntax_type_handles = nullptr;
     const sema::SemaTypeTable* stmt_local_types = nullptr;
+    const sema::ForInIterationPlanMap* for_in_iteration_plans = nullptr;
 };
 
 struct CallTarget {
@@ -302,8 +303,7 @@ public:
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
         ValueId cursor_slot, ValueId end_slot, ValueId step_slot, sema::TypeHandle range_type);
-    [[nodiscard]] std::optional<ForIterableSource> lower_for_iterable_source(
-        const syntax::StmtNode& stmt, sema::TypeHandle element_type);
+    [[nodiscard]] std::optional<ForIterableSource> lower_for_iterable_source(const sema::ForInIterationPlan& plan);
     [[nodiscard]] ValueId append_for_iterable_element_address(
         const ForIterableSource& source, ValueId index, IrTextId name);
     [[nodiscard]] sema::ResourceSemanticsSummary resource_summary(sema::TypeHandle type);
@@ -424,6 +424,7 @@ public:
     [[nodiscard]] sema::TypeHandle syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] const sema::ForInIterationPlan* for_in_iteration_plan(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] sema::TypeHandle aggregate_field_type(
         sema::TypeHandle aggregate_type, std::string_view name) const noexcept;
     [[nodiscard]] sema::TypeHandle local_load_type(ValueId slot) const noexcept;

@@ -62,6 +62,30 @@ std::string_view owned_use_mode_name(const OwnedUseMode mode) noexcept
     return "<invalid>";
 }
 
+std::string_view for_in_iteration_kind_name(const ForInIterationKind kind) noexcept
+{
+    switch (kind) {
+        case ForInIterationKind::none:
+            return "none";
+        case ForInIterationKind::counted_range:
+            return "counted_range";
+        case ForInIterationKind::array_value:
+            return "array_value";
+        case ForInIterationKind::slice_value:
+            return "slice_value";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_item_mode_name(const ForInItemMode mode) noexcept
+{
+    switch (mode) {
+        case ForInItemMode::immutable_value_copy:
+            return "immutable_value_copy";
+    }
+    return "<invalid>";
+}
+
 std::string_view receiver_access_kind_name(const ReceiverAccessKind kind) noexcept
 {
     switch (kind) {
@@ -268,7 +292,8 @@ GenericSideTables::GenericSideTables()
       sparse_expr_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_pattern_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_syntax_type_handles(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
-      sparse_stmt_local_types(make_sema_map<base::u32, TypeHandle>(*this->arena_))
+      sparse_stmt_local_types(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
+      for_in_iteration_plans(make_sema_map<base::u32, ForInIterationPlan>(*this->arena_))
 {
 }
 
@@ -394,6 +419,7 @@ void GenericSideTables::configure_local_dense(const GenericSideTableLocalLayoutV
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
+    this->for_in_iteration_plans.clear();
     this->sparse_fallbacks = {};
 }
 
@@ -434,6 +460,7 @@ void GenericSideTables::configure_local_dense(const GenericSideTableLayout& shar
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
+    this->for_in_iteration_plans.clear();
     this->sparse_fallbacks = {};
 }
 
@@ -497,6 +524,7 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept
     swap(this->pattern_case_name_ids, other.pattern_case_name_ids);
     this->sparse_syntax_type_handles.swap(other.sparse_syntax_type_handles);
     this->sparse_stmt_local_types.swap(other.sparse_stmt_local_types);
+    this->for_in_iteration_plans.swap(other.for_in_iteration_plans);
     swap(this->sparse_fallbacks, other.sparse_fallbacks);
     swap(this->arena_, other.arena_);
     swap(this->analysis_arena_, other.analysis_arena_);
@@ -537,6 +565,7 @@ void GenericSideTables::copy_from(const GenericSideTables& other)
     this->pattern_case_name_ids = other.pattern_case_name_ids;
     this->sparse_syntax_type_handles = other.sparse_syntax_type_handles;
     this->sparse_stmt_local_types = other.sparse_stmt_local_types;
+    this->for_in_iteration_plans = other.for_in_iteration_plans;
     this->sparse_fallbacks = other.sparse_fallbacks;
 }
 
@@ -549,6 +578,7 @@ CheckedModule::CheckedModule()
       pattern_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       syntax_type_handles(make_sema_vector<TypeHandle>(*this->arena_)),
       stmt_local_types(make_sema_vector<TypeHandle>(*this->arena_)),
+      for_in_iteration_plans(make_sema_map<base::u32, ForInIterationPlan>(*this->arena_)),
       item_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       coercions(make_sema_vector<CoercionRecord>(*this->arena_)),
       lambdas(make_sema_vector<CheckedLambdaInfo>(*this->arena_)),
@@ -666,6 +696,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     swap(this->pattern_case_name_ids, other.pattern_case_name_ids);
     this->syntax_type_handles.swap(other.syntax_type_handles);
     this->stmt_local_types.swap(other.stmt_local_types);
+    this->for_in_iteration_plans.swap(other.for_in_iteration_plans);
     this->item_c_name_ids.swap(other.item_c_name_ids);
     this->coercions.swap(other.coercions);
     this->lambdas.swap(other.lambdas);
@@ -736,6 +767,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->pattern_case_name_ids = other.pattern_case_name_ids;
     this->syntax_type_handles.assign(other.syntax_type_handles.begin(), other.syntax_type_handles.end());
     this->stmt_local_types.assign(other.stmt_local_types.begin(), other.stmt_local_types.end());
+    this->for_in_iteration_plans.clear();
+    this->for_in_iteration_plans.reserve(other.for_in_iteration_plans.size());
+    for (const auto& entry : other.for_in_iteration_plans) {
+        this->for_in_iteration_plans.emplace(entry.first, entry.second);
+    }
     this->item_c_name_ids.assign(other.item_c_name_ids.begin(), other.item_c_name_ids.end());
     this->coercions.assign(other.coercions.begin(), other.coercions.end());
     this->lambdas.clear();
@@ -2942,6 +2978,17 @@ std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& i
     return display;
 }
 
+std::string_view pointer_mutability_dump_name(const PointerMutability mutability) noexcept
+{
+    switch (mutability) {
+        case PointerMutability::const_:
+            return "const";
+        case PointerMutability::mut:
+            return "mut";
+    }
+    return "<invalid>";
+}
+
 std::string dump_checked_module(const CheckedModule& checked)
 {
     std::ostringstream out;
@@ -2955,6 +3002,52 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << "    resource #" << index << " " << checked.types.display_name(type) << " "
             << resource_semantics_debug_string(summary)
             << " fingerprint=" << query::debug_string(resource_semantics_fingerprint(summary)) << "\n";
+    }
+    std::vector<const ForInIterationPlan*> for_in_plans;
+    for_in_plans.reserve(checked.for_in_iteration_plans.size());
+    for (const auto& entry : checked.for_in_iteration_plans) {
+        for_in_plans.push_back(&entry.second);
+    }
+    std::sort(for_in_plans.begin(), for_in_plans.end(),
+        [](const ForInIterationPlan* lhs, const ForInIterationPlan* rhs) {
+            return lhs->stmt.value < rhs->stmt.value;
+        });
+    if (!for_in_plans.empty()) {
+        out << "  for_in_iteration_plans " << for_in_plans.size() << "\n";
+        for (const ForInIterationPlan* const plan_ptr : for_in_plans) {
+            const ForInIterationPlan& plan = *plan_ptr;
+            out << "    for_in #" << plan.stmt.value << " " << for_in_iteration_kind_name(plan.kind)
+                << " item=" << checked.types.display_name(plan.item_type)
+                << " mode=" << for_in_item_mode_name(plan.item_mode);
+            if (syntax::is_valid(plan.iterable_expr)) {
+                out << " iterable_expr=#" << plan.iterable_expr.value
+                    << " iterable_type=" << checked.types.display_name(plan.iterable_type)
+                    << " access=" << pointer_mutability_dump_name(plan.element_access);
+            } else {
+                out << " range_exprs=(start=";
+                if (syntax::is_valid(plan.start_expr)) {
+                    out << "#" << plan.start_expr.value;
+                } else {
+                    out << "<implicit>";
+                }
+                out << ", end=";
+                if (syntax::is_valid(plan.end_expr)) {
+                    out << "#" << plan.end_expr.value;
+                } else {
+                    out << "<invalid>";
+                }
+                out << ", step=";
+                if (syntax::is_valid(plan.step_expr)) {
+                    out << "#" << plan.step_expr.value;
+                } else {
+                    out << "<implicit>";
+                }
+                out << ")";
+            }
+            out << " eval_once=" << (plan.evaluates_source_once ? "true" : "false")
+                << " consumes=" << (plan.consumes_iterable ? "true" : "false")
+                << " copy_item=" << (plan.requires_copy_item ? "true" : "false") << "\n";
+        }
     }
     const bool show_parts = checked_has_non_primary_parts(checked);
 

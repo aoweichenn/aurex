@@ -62,7 +62,9 @@ mutable iteration、range value 和 generic iterable capability 一起设计。
   - iterable 分支要求表达式类型是 array 或 slice。
   - iterable element type 必须满足 `Copy`。
   - loop local 是不可变局部。
+  - sema 会记录 checked `ForInIterationPlan`，把 counted range、array value iteration、slice value iteration 作为后续阶段可查询的语义事实。
 - `src/midend/ir/lowering/sources/lower_ast_stmt.cpp`
+  - lowering 优先消费 `ForInIterationPlan`，缺失时仅保留旧推断路径作为兼容 fallback。
   - `lower_for_range()` 把缺省 start 降成 `0`。
   - 缺省 step 降成 `1`。
   - 显式 step 会存入临时 slot。

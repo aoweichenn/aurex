@@ -226,6 +226,7 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
         &this->checked_.pattern_c_name_ids,
         &this->checked_.syntax_type_handles,
         &this->checked_.stmt_local_types,
+        &this->checked_.for_in_iteration_plans,
     };
     this->index_enum_cases();
 }

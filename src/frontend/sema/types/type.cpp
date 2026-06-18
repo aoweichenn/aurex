@@ -29,6 +29,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_PREFIX = "[]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_RANGE_PREFIX = "range<";
+constexpr std::string_view SEMA_TYPE_DISPLAY_RANGE_CLOSE = ">";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_OPEN = "(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_CLOSE = ")";
 constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_SEPARATOR = ", ";
@@ -137,6 +139,7 @@ struct TypeDisplayTask {
         case TypeKind::reference:
         case TypeKind::array:
         case TypeKind::slice:
+        case TypeKind::range:
         case TypeKind::tuple:
         case TypeKind::function:
         case TypeKind::struct_:
@@ -264,6 +267,7 @@ TypeTable::TypeTable()
       reference_types_(make_sema_map<ReferenceKey, TypeHandle, ReferenceKeyHash>(*this->arena_, ReferenceKeyHash{})),
       array_types_(make_sema_map<ArrayKey, TypeHandle, ArrayKeyHash>(*this->arena_, ArrayKeyHash{})),
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash{})),
+      range_types_(make_sema_map<RangeKey, TypeHandle, RangeKeyHash>(*this->arena_, RangeKeyHash{})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash{})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash{})),
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
@@ -282,6 +286,7 @@ TypeTable::TypeTable(const TypeTable& other)
       reference_types_(make_sema_map<ReferenceKey, TypeHandle, ReferenceKeyHash>(*this->arena_, ReferenceKeyHash{})),
       array_types_(make_sema_map<ArrayKey, TypeHandle, ArrayKeyHash>(*this->arena_, ArrayKeyHash{})),
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash{})),
+      range_types_(make_sema_map<RangeKey, TypeHandle, RangeKeyHash>(*this->arena_, RangeKeyHash{})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash{})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash{})),
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
@@ -337,6 +342,7 @@ void TypeTable::swap(TypeTable& other) noexcept
     this->reference_types_.swap(other.reference_types_);
     this->array_types_.swap(other.array_types_);
     this->slice_types_.swap(other.slice_types_);
+    this->range_types_.swap(other.range_types_);
     this->tuple_types_.swap(other.tuple_types_);
     this->function_types_.swap(other.function_types_);
     swap(this->texts_, other.texts_);
@@ -359,6 +365,7 @@ void TypeTable::copy_from(const TypeTable& other)
     this->reference_types_ = other.reference_types_;
     this->array_types_ = other.array_types_;
     this->slice_types_ = other.slice_types_;
+    this->range_types_ = other.range_types_;
     this->tuple_types_.clear();
     this->tuple_types_.reserve(other.tuple_types_.size());
     for (const auto& entry : other.tuple_types_) {
@@ -474,6 +481,7 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other)
     copy.array_element = other.array_element;
     copy.slice_mutability = other.slice_mutability;
     copy.slice_element = other.slice_element;
+    copy.range_element = other.range_element;
     copy.tuple_elements = this->copy_type_handles(other.tuple_elements);
     copy.function_call_conv = other.function_call_conv;
     copy.function_is_unsafe = other.function_is_unsafe;
@@ -644,6 +652,21 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
     info.slice_element = element;
     const TypeHandle handle = this->push(std::move(info));
     this->slice_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::range(const TypeHandle element)
+{
+    const RangeKey key{element.value};
+    if (const auto found = this->range_types_.find(key); found != this->range_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info = this->make_type_info();
+    info.kind = TypeKind::range;
+    info.range_element = element;
+    const TypeHandle handle = this->push(std::move(info));
+    this->range_types_.emplace(key, handle);
     return handle;
 }
 
@@ -962,6 +985,11 @@ bool TypeTable::is_slice(const TypeHandle type) const noexcept
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::slice;
 }
 
+bool TypeTable::is_range(const TypeHandle type) const noexcept
+{
+    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::range;
+}
+
 bool TypeTable::is_tuple(const TypeHandle type) const noexcept
 {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::tuple;
@@ -1060,6 +1088,15 @@ std::string TypeTable::display_name(const TypeHandle type) const
                 name.append(info.slice_mutability == PointerMutability::mut ? SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX
                                                                             : SEMA_TYPE_DISPLAY_SLICE_PREFIX);
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.slice_element, {}});
+                break;
+            case TypeKind::range:
+                name.append(SEMA_TYPE_DISPLAY_RANGE_PREFIX);
+                pending.push_back(TypeDisplayTask{
+                    TypeDisplayTaskKind::text,
+                    INVALID_TYPE_HANDLE,
+                    std::string(SEMA_TYPE_DISPLAY_RANGE_CLOSE),
+                });
+                pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.range_element, {}});
                 break;
             case TypeKind::tuple:
                 name.append(SEMA_TYPE_DISPLAY_TUPLE_OPEN);
@@ -1280,6 +1317,11 @@ std::size_t TypeTable::SliceKeyHash::operator()(const SliceKey& key) const noexc
 {
     return (static_cast<std::size_t>(key.element) << 1)
         ^ static_cast<std::size_t>(key.mutability == PointerMutability::mut ? 1U : 0U);
+}
+
+std::size_t TypeTable::RangeKeyHash::operator()(const RangeKey& key) const noexcept
+{
+    return static_cast<std::size_t>(key.element);
 }
 
 std::size_t TypeTable::FunctionKeyHash::operator()(const FunctionKey& key) const noexcept

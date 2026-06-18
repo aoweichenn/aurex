@@ -74,6 +74,11 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"for_in_protocol_missing_has_next", "for-in iterator must define has_next(self: &mut Iterator) -> bool"},
     {"for_in_protocol_next_void", "for-in iterator must define next(self: &mut Iterator) -> Item"},
     {"for_in_unsupported", "for-in iterable must be an array, slice, iterator, or expose iter()"},
+    {"range_value_arity", "range expects 1 to 3 arguments"},
+    {"range_value_named_argument", "named arguments are not supported for this call"},
+    {"range_value_non_integer", "range bounds must be integer"},
+    {"range_value_step_type_mismatch", "range step must have the same type as bounds"},
+    {"range_value_type_mismatch", "range bounds must have the same type"},
     {"generic_ptrat_non_pointer", "ptrat target type must be a pointer"},
     {"generic_alignof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"generic_const_param_type_arg", "generic parameter `N` expects a const argument"},
@@ -579,6 +584,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_move_capture)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_array_slice)
 {
     run_positive_runtime_smoke_sample("control_flow", "for_in_array_slice.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_range_value)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_range_value.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_direct)

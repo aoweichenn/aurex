@@ -476,6 +476,7 @@ template <typename Enum>
         case CanonicalTypeKind::reference:
         case CanonicalTypeKind::array:
         case CanonicalTypeKind::slice:
+        case CanonicalTypeKind::range:
         case CanonicalTypeKind::associated_type_projection:
             return child_count == 1;
         case CanonicalTypeKind::function:
@@ -518,6 +519,8 @@ template <typename Enum>
             }
             break;
         }
+        case CanonicalTypeKind::range:
+            break;
         case CanonicalTypeKind::function:
             if (!read_function_call_conv(reader) || !read_bool_value(reader) || !read_bool_value(reader)
                 || !reader.read_u32(function_param_count)) {

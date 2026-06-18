@@ -14,7 +14,7 @@ Aurex 当前已经具备一个无标准库依赖的小型系统语言核心：
 - 泛型函数、泛型类型、泛型 impl、method-local 泛型、typed scalar const generic check-only 子集。
 - `where` capability、nominal static trait、显式 trait impl、associated type、associated-type equality、trait default method。
 - borrowed dyn trait、borrowed dyn composition、supertrait upcast和 checked vtable dispatch。
-- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、counted `range(...)`、array/slice value for-in、protocol iterator for-in、`defer`、`?`、`unsafe`。
+- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、counted `range(...)`、一等 `range(...)` value、range value for-in、array/slice value for-in、protocol iterator for-in、`defer`、`?`、`unsafe`。
 - compiler-owned `Copy` capability、move/reinit 检查、cleanup/drop flag、borrow summary、local loan checking 和 lifetime/origin 诊断。
 - Aurex IR、IR verifier/pass pipeline、LLVM backend 和 clang native 输出。
 
@@ -52,6 +52,11 @@ for i in range(0, 10, 2) {
     total += i;
 }
 
+let range_values = range(1, 5);
+for item in range_values {
+    total += item;
+}
+
 let values: [3]i32 = [1, 2, 3];
 for item in values {
     total += item;
@@ -86,9 +91,11 @@ for item in counter {
 - 表达式本身是 protocol iterator。iterator 必须提供 `has_next(self: &mut Iterator) -> bool` 和 `next(self: &mut Iterator) -> Item`。
 - 表达式提供 `iter()`，且 `iter()` 返回 protocol iterator。`iter()` receiver 可以是 by-value、`&self` 或 `&mut self`，按普通 receiver 规则匹配。
 
+普通表达式位置的 `range(...)` 是语言内建值构造，生成 `range<T>`，内部由 `start`、`end`、`step` 三个整数 `T` 字段组成；`for item in range_value` 使用与 counted range loop 相同的半开区间、正/负 step 和零 step 语义。
+
 protocol iterator 的 `Item` 由 `next()` 按值返回，不要求 `Copy`。协议方法可以来自 inherent method，也可以来自静态 trait dispatch；generic `where T: Trait` 下的静态 trait dispatch 已进入 IR lowering。dyn trait vtable-slot dispatch 暂不作为 for-in protocol 来源。
 
-mutable/reference item iteration、str iteration、range value 和标准库 iterable adapter 仍未进入当前语言表面。
+mutable/reference item iteration、str iteration、range literal 和标准库 iterable adapter 仍未进入当前语言表面。
 
 ### 类型
 
@@ -232,7 +239,7 @@ unsafe { strraw(data, len) }
 ## 当前非目标
 
 - 标准库 API 和拥有型容器。
-- range value、str iteration、mutable/reference item iteration 和标准库 iterable adapter。
+- str iteration、mutable/reference item iteration、range literal 和标准库 iterable adapter。
 - 低层 builtin 长命名空间或新 intrinsic 表面。
 - owning dyn runtime。
 - 完整宏展开和 proc-macro。

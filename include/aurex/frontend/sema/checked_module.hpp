@@ -1318,9 +1318,28 @@ struct CoercionRecord {
     CoercionKind kind = CoercionKind::contextual_integer_literal;
 };
 
+inline constexpr std::string_view SEMA_RANGE_VALUE_START_FIELD = "start";
+inline constexpr std::string_view SEMA_RANGE_VALUE_END_FIELD = "end";
+inline constexpr std::string_view SEMA_RANGE_VALUE_STEP_FIELD = "step";
+inline constexpr base::usize SEMA_RANGE_VALUE_FIELD_COUNT = 3;
+
+struct RangeValuePlan {
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId start_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId end_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId step_expr = syntax::INVALID_EXPR_ID;
+    TypeHandle element_type = INVALID_TYPE_HANDLE;
+    TypeHandle range_type = INVALID_TYPE_HANDLE;
+    bool default_start = false;
+    bool default_step = false;
+};
+
+using RangeValuePlanMap = SemaMap<base::u32, RangeValuePlan>;
+
 enum class ForInIterationKind : base::u8 {
     none,
     counted_range,
+    range_value,
     array_value,
     slice_value,
     protocol_iterator,
@@ -1512,6 +1531,7 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaMap<base::u32, TypeHandle> sparse_syntax_type_handles;
     SemaMap<base::u32, TypeHandle> sparse_stmt_local_types;
+    RangeValuePlanMap range_value_plans;
     ForInIterationPlanMap for_in_iteration_plans;
     GenericSparseFallbackStats sparse_fallbacks;
 
@@ -1690,6 +1710,7 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaTypeTable syntax_type_handles;
     SemaTypeTable stmt_local_types;
+    RangeValuePlanMap range_value_plans;
     ForInIterationPlanMap for_in_iteration_plans;
     SemaIdentTable item_c_name_ids;
     SemaVector<CoercionRecord> coercions;
@@ -1830,6 +1851,7 @@ public:
     [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
+    [[nodiscard]] RangeValuePlan clone_range_value_plan(const RangeValuePlan& other) const;
     [[nodiscard]] ForInIterationPlan clone_for_in_iteration_plan(const ForInIterationPlan& other);
     [[nodiscard]] ForInProtocolCallPlan clone_for_in_protocol_call_plan(const ForInProtocolCallPlan& other);
     [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);

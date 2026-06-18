@@ -175,6 +175,11 @@ for i in range(0, 10, 2) {
     total += i;
 }
 
+let range_values = range(1, 5);
+for item in range_values {
+    total += item;
+}
+
 let values: [3]i32 = [1, 2, 3];
 for item in values {
     total += item;
@@ -203,7 +208,9 @@ for item in counter {
 }
 ```
 
-`for i in range(...)` 是 counted range loop。`for item in expr` 支持 array/slice value iteration 和 protocol iterator iteration。
+`for i in range(...)` 是 counted range loop。普通表达式位置的 `range(...)` 会生成 `range<T>` value，记录 `start`、`end`、`step` 三个整数字段；该值可以绑定到局部并用 `for item in range_value` 迭代。当前源码类型语法还不能直接书写 `range<T>`，通常依赖 `let values = range(...)` 推断。
+
+`for item in expr` 支持 range value iteration、array/slice value iteration 和 protocol iterator iteration。
 
 array/slice value iteration 每轮按值读取元素，元素类型必须满足 `Copy`，不会 move array/slice 本身。
 
@@ -322,7 +329,7 @@ strraw(data, len)
 ## 12. 当前不支持
 
 - 标准库 API 和拥有型容器。
-- range value、str iteration、mutable/reference item iteration 和标准库 iterable adapter。
+- str iteration、mutable/reference item iteration、range literal 和标准库 iterable adapter。
 - closure trait、borrowed-view capture 和完整 escaping closure lifetime。
 - owning dyn 和 `Box<dyn Trait>`。
 - 完整 macro/proc-macro/用户 derive lowering。

@@ -2,7 +2,7 @@
 
 日期：2026-06-18
 状态：当前实现
-关联问题：`for i in range(...)` 是 counted range loop 特例；`for x in expr` 同时支持 array/slice value iteration 和用户 protocol iterator。
+关联问题：`for i in range(...)` 是 counted range loop 特例；普通表达式位置的 `range(...)` 是一等 range value；`for x in expr` 同时支持 range value、array/slice value iteration 和用户 protocol iterator。
 
 本轮结论：不引入更长的 counted-loop marker，继续使用：
 
@@ -33,6 +33,11 @@ for value in view {
     total += value;
 }
 
+let range_values = range(1, 5);
+for value in range_values {
+    total += value;
+}
+
 let counter: Counter = Counter { current: 0, end: 4 };
 for value in counter {
     total += value;
@@ -46,12 +51,14 @@ for value in counter {
 - `range(end)`：从 `0` 到 `end`，半开区间。
 - `range(start, end)`：从 `start` 到 `end`，半开区间。
 - `range(start, end, step)`：从 `start` 到 `end`，每次加 `step`。
+- 普通表达式位置的 `range(...)` 生成 `range<T>` value，内部记录 `start`、`end`、`step` 三个 `T` 字段。
+- `for item in range_value { ... }`：按 range value 的三字段 lower 成 counted loop；range value 可复用。
 - `for item in array_expr { ... }`：array 按值迭代。
 - `for item in slice_expr { ... }`：slice 按值迭代。
 - `for item in iterator_expr { ... }`：表达式本身作为 protocol iterator。
 - `for item in iterable_expr { ... }`：如果表达式提供 `iter()` 且返回 protocol iterator，则使用 `iter()` 返回值作为 iterator。
 
-`range(...)` 真实实现仍不是普通函数调用，也不是通用 iteration。相关入口：
+`for i in range(...)` 仍保留 parser 层 counted-loop 快路径；普通表达式位置的 `range(...)` 由 sema 识别为语言内建值构造，不走普通函数调用查找。相关入口：
 
 - `src/frontend/parse/grammar/parser_control_stmt.cpp`
   - `next_for_is_range_loop()` 识别 `Identifier "in"`。
@@ -61,10 +68,16 @@ for value in counter {
   - AST 已有专门的 `StmtKind::for_range`。
   - payload 是 `name`、`range_start`、`range_end`、`range_step`、`range_iterable`、`body`。
 - `include/aurex/frontend/sema/checked_module.hpp`
-  - `ForInIterationPlan` 记录 counted range、array value、slice value 和 protocol iterator 的 checked lowering 事实。
+  - `RangeValuePlan` 记录普通表达式位置 `range(...)` 的 start/end/step 表达式、默认 start/step 和 `range<T>` 类型。
+  - `ForInIterationPlan` 记录 counted range、range value、array value、slice value 和 protocol iterator 的 checked lowering 事实。
   - protocol plan 记录 iterator type、item type、source kind、`iter`/`has_next`/`next` 调用 kind 和具体函数 key。
+- `src/frontend/sema/facade/sema_call.cpp`
+  - `analyze_range_value_call_expr()` 在普通 call 表达式位置识别未限定 `range(...)`。
+  - arity、整数类型、bounds 同类型和 step 同类型规则与 counted range 保持一致。
+  - 当前语言内建优先于同名局部函数值。
 - `src/frontend/sema/internal/expressions/sources/sema_statement_analyzer.cpp`
   - `analyze_for_range_bounds()` 要求 counted range 的 start、end、step 都是整数。
+  - iterable 表达式若是 `range<T>`，生成 `ForInIterationKind::range_value`，item 类型为 `T`。
   - array/slice 分支要求元素类型满足 `Copy`。
   - protocol 分支先尝试表达式本身作为 iterator，再尝试 `expr.iter()`。
   - protocol iterator 必须提供 `has_next(self: &mut Iterator) -> bool` 和 `next(self: &mut Iterator) -> Item`。
@@ -77,11 +90,12 @@ for value in counter {
   - `iter(&self)` / `iter(&mut self)` 分别记录 shared borrow / mutable borrow。
 - `src/midend/ir/lowering/sources/lower_ast_stmt.cpp`
   - lowering 优先消费 checked `ForInIterationPlan`。
+  - range value 分支把 `start`、`end`、`step` 字段读出到隐藏 slot 后，复用 counted-loop 条件和更新语义。
   - array/slice 分支用 `usize` cursor/end；array 长度来自类型，slice 长度来自 `slice_len`，元素地址用 `index_addr`，每轮 load 成不可变 local。
   - protocol 分支把 iterator 存入隐藏 slot；condition 调用 `has_next(&mut iterator)`，body 调用 `next(&mut iterator)` 并把返回值存成 loop local。
   - protocol iterator、`iter()` 临时 source 和每轮 item 都走现有 cleanup/drop 机制。
 
-也就是说，当前语义层有一个专门的整数 counted loop、一个 array/slice value iteration 子集，以及一个用户协议迭代器子集。
+也就是说，当前语义层有一个专门的整数 counted loop、一个一等 `range<T>` value iteration 子集、一个 array/slice value iteration 子集，以及一个用户协议迭代器子集。
 
 ## Protocol Iterator
 
@@ -161,6 +175,16 @@ impl MutableRange {
 - 不 move array/slice 本身。
 - 不调用用户函数或 trait method。
 
+当前 range value for-in：
+
+- `range(...)` 在普通表达式位置产生 `range<T>`，`T` 必须是整数类型。
+- 内部表示是编译器生成的三字段 record：`start: T`、`end: T`、`step: T`。
+- `range(end)` 的 start 默认为 `0`，`range(start, end)` 的 step 默认为 `1`。
+- range value 可绑定到局部、按值保存和复用。
+- `for item in range_value` 的 loop item 是不可变局部，类型是 `T`。
+- 循环条件、负 step 和零 step 行为与 counted range loop 一致。
+- 当前源码类型语法还不能直接书写 `range<T>`，只能通过 `let values = range(...)` 推断。
+
 当前 protocol for-in：
 
 - 表达式本身可以是 iterator；这种情况下 iterable 会被消费进隐藏 iterator slot。
@@ -178,7 +202,6 @@ impl MutableRange {
 - 不把 `for i in range(...)` 标为 deprecated。
 - 不迁移 tests、samples、examples 里的 range loop 写法。
 - 不引入 `..` / `..<` / `..=` range expression。
-- 不把 `range(...)` 下沉为普通 range value。
 - 不定义标准库 iterator trait 或标准库 adapter。
 - 不引入 str 默认 iteration。
 - 不引入 reference item / mutable item iteration 表面。
@@ -188,11 +211,10 @@ impl MutableRange {
 
 后续 iterator/range 专题只剩这些表面需要统一：
 
-1. 决定 `range(...)` 是否从 parser magic 下沉为真实 range value。
-2. 决定 str 的默认 iteration item 是 byte、char、rune、shared reference，还是其它 view。
-3. 决定 array/slice 是否新增 `&item`、`&mut item` 或 consuming item iteration。
-4. 决定是否需要 range literal。
-5. 决定标准库 iterable trait/adapter 是否要和当前结构协议并存，还是迁移到名义 trait。
-6. 决定 dyn trait iterator dispatch 是否进入语言表面。
+1. 决定 str 的默认 iteration item 是 byte、char、rune、shared reference，还是其它 view。
+2. 决定 array/slice 是否新增 `&item`、`&mut item` 或 consuming item iteration。
+3. 决定是否需要 range literal。
+4. 决定标准库 iterable trait/adapter 是否要和当前结构协议并存，还是迁移到名义 trait。
+5. 决定 dyn trait iterator dispatch 是否进入语言表面。
 
-当前阶段的工程动作就是：保留原有 `for i in range(...)`，完成 array/slice value for-in 和用户 protocol iterator for-in 的可运行子集，不继续推进更长的 counted loop 语法。
+当前阶段的工程动作就是：保留原有 `for i in range(...)`，同时让普通表达式位置的 `range(...)` 成为可迭代的一等值；array/slice value for-in 和用户 protocol iterator for-in 也保持可运行子集。不继续推进更长的 counted loop 语法。

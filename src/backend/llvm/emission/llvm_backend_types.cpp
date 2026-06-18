@@ -129,6 +129,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type)
                 continue;
             case sema::TypeKind::struct_:
             case sema::TypeKind::tuple:
+            case sema::TypeKind::range:
             case sema::TypeKind::opaque_struct:
                 result = this->records_.at(current.value);
                 break;

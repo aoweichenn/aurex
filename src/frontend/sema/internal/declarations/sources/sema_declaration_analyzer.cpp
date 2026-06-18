@@ -1037,6 +1037,9 @@ SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_ty
             case TypeKind::slice:
                 pending.push_back(info.slice_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::tuple:
                 for (const TypeHandle element : info.tuple_elements) {
                     pending.push_back(element);

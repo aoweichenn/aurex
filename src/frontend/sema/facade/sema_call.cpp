@@ -17,8 +17,11 @@ namespace {
 constexpr base::u32 SEMA_RECEIVER_ARGUMENT_COUNT = 1;
 constexpr base::usize SEMA_DYNPROJECT_REQUIRED_TYPE_ARGS = 2;
 constexpr base::usize SEMA_DYNPROJECT_REQUIRED_ARGS = 1;
+constexpr base::usize SEMA_RANGE_VALUE_MIN_ARG_COUNT = 1;
+constexpr base::usize SEMA_RANGE_VALUE_MAX_ARG_COUNT = 3;
 constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
 constexpr std::string_view SEMA_DYNPROJECT_INTRINSIC_NAME = "dynproject";
+constexpr std::string_view SEMA_RANGE_VALUE_INTRINSIC_NAME = "range";
 
 [[nodiscard]] std::string module_selector_path_name(const std::vector<std::string_view>& parts)
 {
@@ -74,10 +77,68 @@ constexpr std::string_view SEMA_DYNPROJECT_INTRINSIC_NAME = "dynproject";
     return std::nullopt;
 }
 
+[[nodiscard]] bool range_value_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept
+{
+    switch (op) {
+        case syntax::BinaryOp::add:
+        case syntax::BinaryOp::sub:
+        case syntax::BinaryOp::mul:
+        case syntax::BinaryOp::div:
+        case syntax::BinaryOp::mod:
+        case syntax::BinaryOp::shl:
+        case syntax::BinaryOp::shr:
+        case syntax::BinaryOp::bit_and:
+        case syntax::BinaryOp::bit_xor:
+        case syntax::BinaryOp::bit_or:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] bool range_value_contextual_integer_expr(
+    const syntax::AstModule& module, const syntax::ExprId candidate)
+{
+    std::vector<syntax::ExprId> pending;
+    pending.push_back(candidate);
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(current) || current.value >= module.exprs.size()) {
+            return false;
+        }
+        const syntax::ExprKind kind = module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::integer_literal) {
+            continue;
+        }
+        if (const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(current.value);
+            kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::numeric_negate) {
+            pending.push_back(unary->operand);
+            continue;
+        }
+        if (const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(current.value);
+            kind == syntax::ExprKind::binary && binary != nullptr
+            && range_value_binary_result_uses_operand_type(binary->op)) {
+            pending.push_back(binary->lhs);
+            pending.push_back(binary->rhs);
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] bool is_unqualified_dynproject_selector(
     const SemanticAnalyzerCore::NamedTypeSelector& selector) noexcept
 {
     return !selector.qualified && selector.name == SEMA_DYNPROJECT_INTRINSIC_NAME;
+}
+
+[[nodiscard]] bool is_unqualified_range_value_call_callee(
+    const SemanticAnalyzerCore::ExprView& callee) noexcept
+{
+    return callee.kind == syntax::ExprKind::name && callee.scope_name.empty()
+        && callee.text == SEMA_RANGE_VALUE_INTRINSIC_NAME;
 }
 
 [[nodiscard]] bool is_single_trait_object(const TypeTable& types, const TypeHandle type) noexcept
@@ -584,6 +645,9 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
         }
         return this->analyze_explicit_generic_function_call_expr(expr_id, expr, callee, selector.name);
     }
+    if (is_unqualified_range_value_call_callee(callee)) {
+        return this->analyze_range_value_call_expr(expr_id, expr);
+    }
     if (callee.kind == syntax::ExprKind::name && callee.scope_name.empty()) {
         if (const Symbol* local = this->state_.names.symbols.find(callee.text_id); local != nullptr) {
             return this->analyze_function_value_call_expr(expr_id, expr, callee.text);
@@ -703,6 +767,97 @@ TypeHandle SemanticAnalyzerCore::analyze_dynproject_intrinsic_call(
         expr.args.front(), argument_type, target_reference_type, source_principal_type,
         query::BorrowedDynViewPathUse::explicit_projection, {}, expr.range);
     return this->record_expr_type(expr_id, target_reference_type);
+}
+
+TypeHandle SemanticAnalyzerCore::analyze_range_value_call_expr(
+    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr)
+{
+    if (std::ranges::any_of(expr.arg_labels, [](const syntax::CallArgLabelDecl& label) {
+            return !label.name.empty();
+        })) {
+        this->report_type(expr.range, std::string(SEMA_NAMED_ARGUMENT_NOT_SUPPORTED));
+    }
+    if (expr.args.size() < SEMA_RANGE_VALUE_MIN_ARG_COUNT || expr.args.size() > SEMA_RANGE_VALUE_MAX_ARG_COUNT) {
+        for (const syntax::ExprId arg : expr.args) {
+            static_cast<void>(this->analyze_expr(arg));
+        }
+        this->report_general(expr.range, std::string(SEMA_FOR_RANGE_ARITY));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    std::vector<TypeHandle> operand_types(expr.args.size(), INVALID_TYPE_HANDLE);
+    TypeHandle range_element_type = INVALID_TYPE_HANDLE;
+    for (base::usize index = 0; index < expr.args.size(); ++index) {
+        if (!range_value_contextual_integer_expr(this->ctx_.module, expr.args[index])) {
+            operand_types[index] = this->analyze_expr(expr.args[index]);
+            range_element_type = operand_types[index];
+            break;
+        }
+    }
+    if (!is_valid(range_element_type) && !expr.args.empty()) {
+        operand_types.front() = this->analyze_expr(expr.args.front());
+        range_element_type = operand_types.front();
+    }
+    for (base::usize index = 0; index < expr.args.size(); ++index) {
+        if (!is_valid(operand_types[index])) {
+            operand_types[index] = this->analyze_expr(expr.args[index], range_element_type);
+        }
+    }
+
+    bool ok = true;
+    for (base::usize index = 0; index < expr.args.size(); ++index) {
+        if (!this->state_.checked.types.is_integer(operand_types[index])) {
+            const std::string_view message =
+                index == 2 ? SEMA_RANGE_STEP_INTEGER : SEMA_RANGE_BOUNDS_INTEGER;
+            this->report_general(
+                call_expr_range_or(this->ctx_.module, expr.args[index], expr.range), std::string(message));
+            ok = false;
+        }
+    }
+    if (expr.args.size() >= 2 && is_valid(operand_types[0]) && is_valid(operand_types[1])
+        && !this->state_.checked.types.same(operand_types[0], operand_types[1])) {
+        this->report_general(expr.range, std::string(SEMA_RANGE_BOUNDS_SAME_TYPE));
+        ok = false;
+    }
+    if (expr.args.size() == SEMA_RANGE_VALUE_MAX_ARG_COUNT && is_valid(operand_types[0])
+        && is_valid(operand_types[2]) && this->state_.checked.types.is_integer(operand_types[0])
+        && this->state_.checked.types.is_integer(operand_types[2])
+        && !this->state_.checked.types.same(operand_types[0], operand_types[2])) {
+        this->report_general(
+            call_expr_range_or(this->ctx_.module, expr.args[2], expr.range), std::string(SEMA_RANGE_STEP_SAME_TYPE));
+        ok = false;
+    }
+
+    if (!is_valid(range_element_type)) {
+        for (const TypeHandle type : operand_types) {
+            if (this->state_.checked.types.is_integer(type)) {
+                range_element_type = type;
+                break;
+            }
+        }
+    }
+    if (!ok || !this->state_.checked.types.is_integer(range_element_type)) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const TypeHandle range_type = this->state_.checked.types.range(range_element_type);
+    RangeValuePlan plan;
+    plan.expr = expr_id;
+    plan.element_type = range_element_type;
+    plan.range_type = range_type;
+    plan.default_start = expr.args.size() == 1;
+    plan.default_step = expr.args.size() < SEMA_RANGE_VALUE_MAX_ARG_COUNT;
+    if (expr.args.size() == 1) {
+        plan.end_expr = expr.args[0];
+    } else {
+        plan.start_expr = expr.args[0];
+        plan.end_expr = expr.args[1];
+        if (expr.args.size() == SEMA_RANGE_VALUE_MAX_ARG_COUNT) {
+            plan.step_expr = expr.args[2];
+        }
+    }
+    this->record_range_value_plan(expr_id, plan);
+    return this->record_expr_type(expr_id, range_type);
 }
 
 TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(const syntax::ExprId expr_id,

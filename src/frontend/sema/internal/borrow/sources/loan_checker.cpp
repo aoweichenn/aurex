@@ -1454,6 +1454,7 @@ private:
             case TypeKind::associated_projection:
                 return true;
             case TypeKind::array:
+            case TypeKind::range:
             case TypeKind::tuple:
             case TypeKind::struct_:
             case TypeKind::enum_:
@@ -2016,6 +2017,9 @@ private:
                 case TypeKind::array:
                     pending.push_back(info.array_element);
                     break;
+                case TypeKind::range:
+                    pending.push_back(info.range_element);
+                    break;
                 case TypeKind::tuple:
                     pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                     break;
@@ -2298,6 +2302,9 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());

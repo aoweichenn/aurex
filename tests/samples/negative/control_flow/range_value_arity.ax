@@ -1,0 +1,9 @@
+module range_value_arity;
+
+fn main() -> i32 {
+    let values = range();
+    for value in values {
+        return value;
+    }
+    return 0;
+}

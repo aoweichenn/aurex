@@ -560,6 +560,9 @@ bool SemanticAnalyzerCore::DropCheckAnalyzer::type_can_contain_borrow(const Type
             case TypeKind::array:
                 pending.push_back(TypeFrame{info.array_element});
                 break;
+            case TypeKind::range:
+                pending.push_back(TypeFrame{info.range_element});
+                break;
             case TypeKind::tuple:
                 for (const TypeHandle element : info.tuple_elements) {
                     pending.push_back(TypeFrame{element});

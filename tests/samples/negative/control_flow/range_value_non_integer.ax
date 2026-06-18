@@ -1,0 +1,9 @@
+module range_value_non_integer;
+
+fn main() -> i32 {
+    let values = range(true);
+    for value in values {
+        return value;
+    }
+    return 0;
+}

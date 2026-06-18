@@ -3073,6 +3073,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::unify_generic_type(const TypeHandle 
                 }
                 pending.emplace_back(pattern_info.array_element, actual_info.array_element);
                 break;
+            case TypeKind::range:
+                pending.emplace_back(pattern_info.range_element, actual_info.range_element);
+                break;
             case TypeKind::struct_:
             case TypeKind::enum_:
                 if (pattern_info.generic_origin_key.empty()
@@ -3184,6 +3187,9 @@ SemanticAnalyzerCore::GenericAnalyzer::generic_param_identities_in_type(const Ty
                 break;
             case TypeKind::array:
                 pending.push_back(type_info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(type_info.range_element);
                 break;
             case TypeKind::tuple:
                 for (const TypeHandle element : type_info.tuple_elements) {
@@ -3429,6 +3435,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_contains_generic_param(const Ty
                 break;
             case TypeKind::slice:
                 pending.push_back(info.slice_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::function:
                 pending.push_back(info.function_return);

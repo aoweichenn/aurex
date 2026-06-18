@@ -686,6 +686,9 @@ SemanticAnalyzerCore::LifetimeAnalyzer::origin_names_for_type(const TypeHandle t
             case TypeKind::array:
                 pending.push_back(info.array_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::slice:
                 pending.push_back(info.slice_element);
                 break;
@@ -765,6 +768,9 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
             case TypeKind::array:
                 pending.push_back(info.array_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                 break;
@@ -837,6 +843,9 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_has_concrete_borrow_surface(co
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());

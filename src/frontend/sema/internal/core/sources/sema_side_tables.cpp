@@ -208,6 +208,18 @@ TypeHandle SemanticSideTableReader::cached_stmt_local_type(const syntax::StmtId 
     return stmt.value < stmt_local_types.size() ? stmt_local_types[stmt.value] : INVALID_TYPE_HANDLE;
 }
 
+const RangeValuePlan* SemanticSideTableReader::cached_range_value_plan(const syntax::ExprId expr) const noexcept
+{
+    if (!syntax::is_valid(expr)) {
+        return nullptr;
+    }
+    const RangeValuePlanMap& plans = this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.range_value_plans
+        : this->core_.state_.flow.current_side_tables.side_tables->range_value_plans;
+    const auto found = plans.find(expr.value);
+    return found == plans.end() ? nullptr : &found->second;
+}
+
 const ForInIterationPlan* SemanticSideTableReader::cached_for_in_iteration_plan(
     const syntax::StmtId stmt) const noexcept
 {
@@ -312,6 +324,17 @@ void SemanticSideTableStore::record_for_in_iteration_plan(
         ? this->core_.state_.checked.for_in_iteration_plans
         : this->core_.state_.flow.current_side_tables.side_tables->for_in_iteration_plans;
     plans[stmt.value] = plan;
+}
+
+void SemanticSideTableStore::record_range_value_plan(const syntax::ExprId expr, const RangeValuePlan& plan)
+{
+    if (!syntax::is_valid(expr)) {
+        return;
+    }
+    RangeValuePlanMap& plans = this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.range_value_plans
+        : this->core_.state_.flow.current_side_tables.side_tables->range_value_plans;
+    plans[expr.value] = plan;
 }
 
 void SemanticSideTableStore::record_expr_c_name(const syntax::ExprId expr, const std::string_view c_name)

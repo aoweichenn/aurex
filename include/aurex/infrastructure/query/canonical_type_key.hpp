@@ -34,6 +34,7 @@ enum class CanonicalTypeKind : base::u8 {
     reference,
     array,
     slice,
+    range,
     tuple,
     function,
     nominal,
@@ -88,6 +89,7 @@ struct DropGlueKey {
 [[nodiscard]] CanonicalTypeKey canonical_reference(PointerMutabilityKey mutability, CanonicalTypeKey pointee);
 [[nodiscard]] CanonicalTypeKey canonical_array(base::u64 count, CanonicalTypeKey element);
 [[nodiscard]] CanonicalTypeKey canonical_slice(PointerMutabilityKey mutability, CanonicalTypeKey element);
+[[nodiscard]] CanonicalTypeKey canonical_range(CanonicalTypeKey element);
 [[nodiscard]] CanonicalTypeKey canonical_tuple(std::span<const CanonicalTypeKey> elements);
 [[nodiscard]] CanonicalTypeKey canonical_function(FunctionCallConvKey call_conv, bool is_unsafe, bool is_variadic,
     std::span<const CanonicalTypeKey> params, const CanonicalTypeKey& return_type);

@@ -1,6 +1,7 @@
 #include <aurex/midend/ir/enum_layout.hpp>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <optional>
 #include <string>
@@ -15,6 +16,7 @@ namespace {
 
 constexpr std::string_view IR_FOR_RANGE_ZERO_LITERAL = "0";
 constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
+constexpr std::string_view IR_FOR_RANGE_VALUE_SLOT_NAME = "for.range.value";
 constexpr std::string_view IR_FOR_ITERABLE_COND_BLOCK_PREFIX = "for.iterable.cond";
 constexpr std::string_view IR_FOR_ITERABLE_BODY_BLOCK_PREFIX = "for.iterable.body";
 constexpr std::string_view IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX = "for.iterable.update";
@@ -118,6 +120,11 @@ struct DropGlueFrame {
 [[nodiscard]] bool for_in_iteration_plan_is_counted_range(const sema::ForInIterationPlan& plan) noexcept
 {
     return plan.kind == sema::ForInIterationKind::counted_range;
+}
+
+[[nodiscard]] bool for_in_iteration_plan_is_range_value(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::range_value;
 }
 
 [[nodiscard]] sema::ForInIterationPlan fallback_counted_range_plan(
@@ -373,6 +380,7 @@ void Lowerer::lower_generic_function_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->range_value_plans,
         &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
@@ -394,6 +402,7 @@ void Lowerer::lower_trait_default_method_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->range_value_plans,
         &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
@@ -1110,6 +1119,11 @@ bool Lowerer::type_may_emit_runtime_drop(const sema::TypeHandle type, const Clea
                     pending.push_back(info.array_element);
                 }
                 break;
+            case sema::TypeKind::range:
+                if (this->cleanup_required(info.range_element)) {
+                    pending.push_back(info.range_element);
+                }
+                break;
             case sema::TypeKind::enum_:
                 for (const auto& entry : this->checked_.enum_cases) {
                     const sema::EnumCaseInfo& enum_case = entry.second;
@@ -1157,6 +1171,7 @@ CleanupAbiPolicy Lowerer::cleanup_abi_policy(const sema::TypeHandle type, const 
         case sema::TypeKind::enum_:
         case sema::TypeKind::tuple:
         case sema::TypeKind::array:
+        case sema::TypeKind::range:
             return CleanupAbiPolicy::structural_static;
         case sema::TypeKind::builtin:
         case sema::TypeKind::pointer:
@@ -1271,6 +1286,23 @@ bool Lowerer::append_runtime_drop_glue(
                         DropGlueFrame{this->append_value(element), info.array_element, element.name, true});
                 }
                 break;
+            case sema::TypeKind::range: {
+                if (!this->cleanup_required(info.range_element)) {
+                    break;
+                }
+                const std::array<std::string_view, sema::SEMA_RANGE_VALUE_FIELD_COUNT> field_names{
+                    sema::SEMA_RANGE_VALUE_START_FIELD,
+                    sema::SEMA_RANGE_VALUE_END_FIELD,
+                    sema::SEMA_RANGE_VALUE_STEP_FIELD,
+                };
+                for (const std::string_view field_name_text : field_names) {
+                    const IrTextId field_name = this->module_.intern(field_name_text);
+                    const ValueId field_address = this->append_field_address(
+                        frame.address, field_name, info.range_element, sema::PointerMutability::mut);
+                    pending.push_back(DropGlueFrame{field_address, info.range_element, field_name, true});
+                }
+                break;
+            }
             case sema::TypeKind::enum_: {
                 if (!is_payload_enum(this->module_.types, frame.type)) {
                     break;
@@ -1766,6 +1798,10 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     const bool plan_is_iterable = checked_plan != nullptr && for_in_iteration_plan_is_iterable(*checked_plan);
     const bool plan_is_counted_range =
         checked_plan != nullptr && for_in_iteration_plan_is_counted_range(*checked_plan);
+    if (checked_plan != nullptr && for_in_iteration_plan_is_range_value(*checked_plan)) {
+        this->lower_for_range_value(stmt_id, stmt, *checked_plan);
+        return;
+    }
     if (plan_is_iterable || (!plan_is_counted_range && syntax::is_valid(stmt.range_iterable))) {
         this->lower_for_iterable(stmt_id, stmt);
         return;
@@ -1835,6 +1871,88 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     const ValueId step = is_valid(step_slot)
         ? this->append_load(step_slot, range_type, this->module_.intern("for.range.step"))
         : this->append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, range_type);
+    const ValueId next = this->append_binary_value(BinaryOp::add, range_type, current, step);
+    this->append_store(cursor_slot, next);
+    this->append_branch_if_open(condition_block);
+    this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_range_value(
+    const syntax::StmtId, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan)
+{
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    const sema::TypeHandle range_value_type = plan.iterable_type;
+    const sema::TypeHandle range_type = plan.range_type;
+    const ValueId range_value = this->lower_expr(plan.iterable_expr, range_value_type);
+    const ValueId range_slot = this->append_temp_alloca(IR_FOR_RANGE_VALUE_SLOT_NAME, range_value_type);
+    this->append_store(range_slot, range_value);
+
+    const auto load_range_field = [&](const std::string_view field_name) -> ValueId {
+        const IrTextId field = this->module_.intern(field_name);
+        const ValueId address =
+            this->append_field_address(range_slot, field, range_type, sema::PointerMutability::const_);
+        return this->append_load(address, range_type, field);
+    };
+    const ValueId start_value = load_range_field(sema::SEMA_RANGE_VALUE_START_FIELD);
+    const ValueId end_value = load_range_field(sema::SEMA_RANGE_VALUE_END_FIELD);
+    const ValueId step_value = load_range_field(sema::SEMA_RANGE_VALUE_STEP_FIELD);
+
+    const ValueId cursor_slot = this->append_temp_alloca("for.range.cursor", range_type);
+    const ValueId end_slot = this->append_temp_alloca("for.range.end", range_type);
+    const ValueId step_slot = this->append_temp_alloca("for.range.step", range_type);
+    this->append_store(cursor_slot, start_value);
+    this->append_store(end_slot, end_value);
+    this->append_store(step_slot, step_value);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        "for.range.cond" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        "for.range.body" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        "for.range.update" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        "for.range.exit" + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const ValueId condition = this->append_for_range_condition(cursor_slot, end_slot, step_slot, range_type);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->cleanup_scopes_.size()});
+    this->current_block_ = body_block;
+    const IrTextId loop_name = this->module_.intern(stmt.name);
+    const ValueId loop_value = this->append_load(cursor_slot, range_type, loop_name);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, range_type);
+    this->bind_local(stmt.name_id,
+        LocalBinding{
+            .slot = loop_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = range_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
+    this->append_store(loop_slot, loop_value);
+    this->lower_block(stmt.body);
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    const ValueId current = this->append_load(cursor_slot, range_type, this->module_.intern("for.range.cursor"));
+    const ValueId step = this->append_load(step_slot, range_type, this->module_.intern("for.range.step"));
     const ValueId next = this->append_binary_value(BinaryOp::add, range_type, current, step);
     this->append_store(cursor_slot, next);
     this->append_branch_if_open(condition_block);

@@ -25,6 +25,8 @@ constexpr base::usize QUERY_CANONICAL_TYPE_STACK_RESERVE = 16;
             return "array";
         case CanonicalTypeKind::slice:
             return "slice";
+        case CanonicalTypeKind::range:
+            return "range";
         case CanonicalTypeKind::tuple:
             return "tuple";
         case CanonicalTypeKind::function:
@@ -69,6 +71,8 @@ void write_type_header(StableKeyWriter& writer, const CanonicalTypeKey& key)
             break;
         case CanonicalTypeKind::array:
             writer.write_u64(key.array_count);
+            break;
+        case CanonicalTypeKind::range:
             break;
         case CanonicalTypeKind::function:
             writer.write_u8(static_cast<base::u8>(key.function_call_conv));
@@ -184,6 +188,14 @@ CanonicalTypeKey canonical_slice(const PointerMutabilityKey mutability, Canonica
     CanonicalTypeKey key;
     key.kind = CanonicalTypeKind::slice;
     key.mutability = mutability;
+    key.children.push_back(std::move(element));
+    return key;
+}
+
+CanonicalTypeKey canonical_range(CanonicalTypeKey element)
+{
+    CanonicalTypeKey key;
+    key.kind = CanonicalTypeKind::range;
     key.children.push_back(std::move(element));
     return key;
 }

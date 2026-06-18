@@ -943,6 +943,9 @@ private:
             case TypeKind::array:
                 pending.push_back(info.array_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                 break;
@@ -1000,6 +1003,9 @@ private:
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
@@ -2773,6 +2779,9 @@ private:
                 case TypeKind::array:
                     pending.push_back(info.array_element);
                     break;
+                case TypeKind::range:
+                    pending.push_back(info.range_element);
+                    break;
                 case TypeKind::tuple:
                     pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                     break;
@@ -3426,6 +3435,13 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
             element_type = slice.slice_element;
             plan.kind = ForInIterationKind::slice_value;
             plan.element_access = slice.slice_mutability;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_range(iterable_type)) {
+            const TypeInfo& range = this->core_.state_.checked.types.get(iterable_type);
+            element_type = range.range_element;
+            plan.kind = ForInIterationKind::range_value;
+            plan.element_access = PointerMutability::const_;
+            plan.range_type = element_type;
+            plan.requires_copy_item = false;
         } else {
             bool protocol_error_reported = false;
             const std::optional<ForInIterationPlan> protocol_plan =
@@ -3442,7 +3458,8 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
         }
         plan.iterable_type = iterable_type;
         plan.item_type = element_type;
-        if (is_valid(element_type) && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
+        if (plan.requires_copy_item && is_valid(element_type)
+            && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
             this->core_.report_general(
                 expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
                 std::string(SEMA_FOR_IN_ELEMENT_COPY));

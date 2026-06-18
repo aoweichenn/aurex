@@ -72,6 +72,7 @@ enum class TokenKind {
     kw_str,
     kw_char,
     kw_mut,
+    kw_move,
     kw_ptrcast,
     kw_bitcast,
     kw_ptraddr,

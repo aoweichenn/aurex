@@ -235,6 +235,7 @@ syntax::TypeId TypeParser::parse_type()
         base::u64 array_count = 0;
         syntax::ArrayLengthDecl array_length;
         syntax::TypeOriginQualifier reference_origin;
+        bool is_invalid = false;
     };
 
     const auto reference_origin_qualifier_follows = [&]() noexcept {
@@ -322,10 +323,12 @@ syntax::TypeId TypeParser::parse_type()
             const syntax::Token& begin = this->previous();
             if (this->match(TokenKind::r_bracket)) {
                 syntax::PointerMutability mutability = syntax::PointerMutability::const_;
+                bool legacy_const_slice = false;
                 if (this->match(TokenKind::kw_mut)) {
                     mutability = syntax::PointerMutability::mut;
                 } else if (this->match(TokenKind::kw_const)) {
                     this->report_at(this->previous(), std::string(PARSER_LEGACY_CONST_SLICE_TYPE));
+                    legacy_const_slice = true;
                 }
                 constructors.push_back(TypeConstructor{
                     TypeConstructorKind::slice,
@@ -334,6 +337,7 @@ syntax::TypeId TypeParser::parse_type()
                     0,
                     {},
                     {},
+                    legacy_const_slice,
                 });
                 continue;
             }
@@ -355,6 +359,10 @@ syntax::TypeId TypeParser::parse_type()
     syntax::TypeId type = this->parse_type_atom();
     for (base::usize index = constructors.size(); index > 0; --index) {
         const TypeConstructor& constructor = constructors[index - 1];
+        if (constructor.is_invalid) {
+            type = syntax::INVALID_TYPE_ID;
+            continue;
+        }
         syntax::TypeNode node;
         node.range = this->merge(constructor.begin_range, this->type_range_or(type, constructor.begin_range));
         if (constructor.kind == TypeConstructorKind::pointer) {

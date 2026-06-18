@@ -29,6 +29,7 @@ constexpr int SEMA_MOVE_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 enum class RequestedUse {
     owned,
+    consume,
     shared_borrow,
     mutable_borrow,
     place_only,
@@ -169,6 +170,8 @@ struct ModeTask {
             return OwnedUseMode::shared_borrow;
         case RequestedUse::mutable_borrow:
             return OwnedUseMode::mutable_borrow;
+        case RequestedUse::consume:
+            return OwnedUseMode::owned_consume;
         case RequestedUse::place_only:
         case RequestedUse::initialized_place:
             return OwnedUseMode::place_only;
@@ -176,6 +179,23 @@ struct ModeTask {
             break;
     }
     return OwnedUseMode::none;
+}
+
+[[nodiscard]] RequestedUse lambda_capture_initializer_use(const syntax::LambdaCaptureKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::LambdaCaptureKind::shared_reference:
+            return RequestedUse::shared_borrow;
+        case syntax::LambdaCaptureKind::mutable_reference:
+            return RequestedUse::mutable_borrow;
+        case syntax::LambdaCaptureKind::move:
+            return RequestedUse::consume;
+        case syntax::LambdaCaptureKind::value:
+        case syntax::LambdaCaptureKind::default_value:
+        case syntax::LambdaCaptureKind::default_reference:
+            return RequestedUse::owned;
+    }
+    return RequestedUse::owned;
 }
 
 } // namespace
@@ -1179,7 +1199,13 @@ private:
     {
         switch (expr.kind) {
             case syntax::ExprKind::name:
+                break;
             case syntax::ExprKind::lambda:
+                for (base::usize i = expr.lambda_captures.size(); i > 0; --i) {
+                    const syntax::LambdaCaptureDecl& capture = expr.lambda_captures[i - 1];
+                    this->push_mode_expression(
+                        tasks, capture.initializer, lambda_capture_initializer_use(capture.kind));
+                }
                 break;
             case syntax::ExprKind::generic_apply:
                 this->push_mode_expression(tasks, expr.callee, RequestedUse::place_only);
@@ -1687,7 +1713,6 @@ private:
                     task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::invalid:
-            case syntax::ExprKind::lambda:
             case syntax::ExprKind::integer_literal:
             case syntax::ExprKind::float_literal:
             case syntax::ExprKind::bool_literal:
@@ -1702,6 +1727,17 @@ private:
             case syntax::ExprKind::align_of:
                 this->add_edge(task.start, task.continuation);
                 break;
+            case syntax::ExprKind::lambda: {
+                std::vector<std::pair<syntax::ExprId, RequestedUse>> captures;
+                captures.reserve(expr.lambda_captures.size());
+                for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+                    captures.emplace_back(capture.initializer, lambda_capture_initializer_use(capture.kind));
+                }
+                this->push_expression_sequence(captures, task.start, task.continuation, task.environment,
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
+                break;
+            }
         }
     }
 

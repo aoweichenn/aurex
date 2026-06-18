@@ -19,8 +19,8 @@ iterator / for-in 后续处理：
 
 closure 后续处理：
 
-- 当前 capture-list 已支持 `[]`、`[x]`、`[&x]`、`[&mut x]`、`[=]`、`[&]` 和显式覆盖。
-- 后续再设计 init-capture、move/consuming capture、closure trait、borrowed-view capture 和 escaping closure lifetime。
+- 当前 capture-list 已支持 `[]`、`[x]`、`[&x]`、`[&mut x]`、`[=]`、`[&]`、显式覆盖、init-capture 和 move capture。
+- 后续再设计 closure trait、borrowed-view capture 和 escaping closure lifetime。
 
 ## 语法修正
 
@@ -30,8 +30,8 @@ closure 后续处理：
 - `02-builtin-surface.md`：已切到 `as`、`sizeof<T>()`、`alignof<T>()`；低层 builtin 之后单独设计。
 - `03-range-loop-surface.md`：保留 `for i in range(...)`，已补 array/slice value for-in；iterator/range protocol 后续统一处理。
 - `04-mut-const-access-surface.md`：保留 `[]T` / `[]mut T`，旧 `[]const T` 不再作为当前设计。
-- `05-function-closure-surface.md` 和 `06-function-closure-cpp-capture-list.md`：闭包 capture-list 当前实现已对齐文档；后续只推进更深 capture/lifetime 专题。
-- `07-builtin-member-projection.md`：继续验证 `.len` / `.ptr` 在泛型、IR 和样例里的覆盖。
+- `05-function-closure-surface.md` 和 `06-function-closure-cpp-capture-list.md`：闭包 capture-list、init-capture 和 move capture 已进入当前语言表面；后续只推进 closure trait 与 escape/lifetime 专题。
+- `07-builtin-member-projection.md`：`.len` / `.ptr` 已覆盖 str、shared slice、mutable slice、泛型样例和 IR lowering。
 
 ## 文档维护
 

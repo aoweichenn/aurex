@@ -408,6 +408,9 @@ inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_NAME = "expected
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_SEPARATOR =
     "expected ',' or ']' after closure capture";
 
+inline constexpr std::string_view PARSER_CLOSURE_MOVE_CAPTURE_INITIALIZER_PREFIX =
+    "move capture initializer must be written as 'name = move expr' or 'move name'";
+
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST = "expected '(' after closure capture list";
 
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST_END = "expected ')' after closure parameters";

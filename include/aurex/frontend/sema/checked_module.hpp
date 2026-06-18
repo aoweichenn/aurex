@@ -203,6 +203,7 @@ struct CheckedLambdaInfo {
         TypeHandle type = INVALID_TYPE_HANDLE;
         TypeHandle field_type = INVALID_TYPE_HANDLE;
         syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+        syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
         base::SourceRange use_range{};
         base::SourceRange declaration_range{};
     };

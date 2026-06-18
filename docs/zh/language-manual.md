@@ -235,6 +235,8 @@ let default_value = [=](value: i32) -> i32 => value + base;
 let default_ref = [&](value: i32) -> i32 => value + base;
 let override_ref = [=, &base](value: i32) -> i32 => value + base;
 let override_value = [&, base](value: i32) -> i32 => value + base;
+let init = [captured = base + 1](value: i32) -> i32 => value + captured;
+let moved = [owned = move base](value: i32) -> i32 => value + owned;
 ```
 
 规则：
@@ -243,7 +245,9 @@ let override_value = [&, base](value: i32) -> i32 => value + base;
 - 只能有一个默认捕获。
 - `[=, x]` 和 `[&, &x]` 这类和默认模式重复的显式捕获会诊断。
 - 显式捕获可以覆盖默认模式，例如 `[=, &x]`、`[&, x]`。
-- 当前捕获源必须满足 `Copy`，不能是泛型依赖类型，也不能是 borrowed-view 类型。
+- `[x = expr]` 是 init-capture，initializer 在闭包创建点求值。
+- `[x = move expr]` 和 `[move x]` 是 move capture，创建闭包时消费源值。
+- 普通值捕获源必须满足 `Copy`；捕获泛型依赖类型或 borrowed-view 类型当前仍会诊断。
 
 ## 10. Trait 和 dyn
 
@@ -286,7 +290,7 @@ strraw(data, len)
 
 - 标准库 API 和拥有型容器。
 - 完整 iterator protocol。
-- closure init-capture、move/consuming capture、closure trait。
+- closure trait、borrowed-view capture 和完整 escaping closure lifetime。
 - owning dyn 和 `Box<dyn Trait>`。
 - 完整 macro/proc-macro/用户 derive lowering。
 - generic associated type、associated const、specialization、generic const arithmetic。

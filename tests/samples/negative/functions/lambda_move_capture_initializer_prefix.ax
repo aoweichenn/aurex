@@ -1,0 +1,7 @@
+module lambda_move_capture_initializer_prefix;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let run = [move value = value + 1]() -> i32 => value;
+    return run();
+}

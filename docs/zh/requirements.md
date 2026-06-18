@@ -26,6 +26,6 @@ Aurex 当前版本要提供一个可持续演进的小型系统语言核心：
 - 完整 iterator protocol、range value、mutable/reference item iteration、str iteration、generic iterable capability。
 - owning dyn、`Box<dyn Trait>`、allocator API、dynamic Drop dispatch、trait-object Drop runtime。
 - 完整宏展开、proc-macro、用户 derive lowering、generated token parser consumption。
-- closure init-capture、move/consuming capture、closure trait、escaping closure lifetime。
+- closure trait、borrowed-view capture、escaping closure lifetime。
 - generic associated type、associated const、specialization、generic const arithmetic、const where predicate。
 - 完整 Rust-style lifetime surface、raw pointer alias safe proof、语言级并发/atomic memory model。

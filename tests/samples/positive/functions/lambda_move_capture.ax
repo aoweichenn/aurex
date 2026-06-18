@@ -1,0 +1,34 @@
+module lambda_move_capture;
+
+struct Box {
+    value: i32;
+}
+
+impl Drop for Box {
+    fn drop(self: deinit Box) -> void {
+    }
+}
+
+fn make_box(value: i32) -> Box {
+    return Box{ value: value };
+}
+
+fn consume_box(box: Box) -> i32 {
+    return box.value;
+}
+
+fn explicit_move_capture() -> i32 {
+    let box = make_box(40);
+    let run = [move box]() -> i32 => consume_box(box);
+    return run();
+}
+
+fn init_move_capture() -> i32 {
+    let box = make_box(2);
+    let run = [owned = move box]() -> i32 => consume_box(owned);
+    return run();
+}
+
+fn main() -> i32 {
+    return explicit_move_capture() + init_move_capture() - 42;
+}

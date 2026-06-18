@@ -80,6 +80,9 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"lambda_capture_default_duplicate", "duplicate closure capture default"},
     {"lambda_capture_default_order", "closure capture default must appear first"},
     {"lambda_capture_default_redundant", "closure capture is redundant with the capture default"},
+    {"lambda_move_capture_after_move", "use of moved value `box`"},
+    {"lambda_move_capture_initializer_prefix",
+        "move capture initializer must be written as 'name = move expr' or 'move name'"},
     {"lambda_reference_capture", "mutable closure capture requires a mutable captured variable"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict",
@@ -93,6 +96,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"match_expression_missing_case", "match expression is not exhaustive for enum case"},
     {"match_guard_literal_false_not_exhaustive", "match expression over integer or bool requires a wildcard arm"},
     {"slice_pattern_non_slice_binding", "slice pattern requires an array or slice value"},
+    {"slice_legacy_const_type", "legacy []const T is no longer supported; write []T for a shared slice view"},
     {"match_open_integer_duplicate", "match arm is unreachable"},
     {"slice_dynamic_length_missing_empty", "match expression over dynamic slice is missing length or element coverage"},
     {"slice_missing_witness", "match expression over dynamic slice is missing length or element coverage"},
@@ -400,6 +404,7 @@ void verify_generic_builtin_ir()
             "bitcast",
             "slice_data",
             "slice_len",
+            "fn mut_slice_ops<i32>(values: []mut i32)",
             "str_data",
             "str_byte_len",
             "strvalid",
@@ -549,6 +554,16 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_mutable_referenc
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_default_capture)
 {
     run_positive_runtime_smoke_sample("functions", "lambda_default_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_init_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_init_capture.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_move_capture)
+{
+    run_positive_runtime_smoke_sample("functions", "lambda_move_capture.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_array_slice)

@@ -19,7 +19,7 @@
 - slice / str 基础观察使用 `.len` / `.ptr`。
 - counted range loop 暂时保留 `for i in range(...)`。
 - `for item in expr` 当前支持 array/slice 按值迭代，元素类型必须满足 `Copy`。
-- closure capture-list 支持 `[]`、`[x]`、`[&x]`、`[&mut x]`、`[=]`、`[&]` 和显式覆盖。
+- closure capture-list 支持 `[]`、`[x]`、`[&x]`、`[&mut x]`、`[=]`、`[&]`、显式覆盖、init-capture 和 move capture。
 
 ## 不再维护
 

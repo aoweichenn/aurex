@@ -27,8 +27,10 @@
 ```aurex
 [](value: i32) -> i32 => value + 1
 [base](value: i32) -> i32 => value + base
-[&base](value: i32) -> i32 => value + base      // 当前 sema 明确拒绝，后续实现引用捕获后放开
-[&mut base](value: i32) -> i32 => value + base  // 当前 sema 明确拒绝，后续实现引用捕获后放开
+[&base](value: i32) -> i32 => value + base
+[&mut base](value: i32) -> i32 => value + base
+[captured = base + 1](value: i32) -> i32 => value + captured
+[move owned](value: i32) -> i32 => value + owned
 ```
 
 这也保持了用户要求的原则：

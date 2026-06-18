@@ -1,0 +1,9 @@
+module slice_legacy_const_type;
+
+fn bytes_len(bytes: []const u8) -> usize {
+    return bytes.len;
+}
+
+fn main() -> i32 {
+    return 0;
+}

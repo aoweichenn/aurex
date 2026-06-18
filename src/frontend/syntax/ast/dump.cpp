@@ -150,6 +150,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "kw_char";
         case TokenKind::kw_mut:
             return "kw_mut";
+        case TokenKind::kw_move:
+            return "kw_move";
         case TokenKind::kw_ptrcast:
             return "kw_ptrcast";
         case TokenKind::kw_bitcast:
@@ -488,6 +490,17 @@ struct ExprDumpView {
             break;
     }
     return view;
+}
+
+[[nodiscard]] bool lambda_capture_initializer_is_same_name(
+    const AstModule& module, const LambdaCaptureDecl& capture) noexcept
+{
+    if (!is_valid(capture.initializer) || capture.initializer.value >= module.exprs.size()
+        || module.exprs.kind(capture.initializer.value) != ExprKind::name) {
+        return false;
+    }
+    const NameExprPayload* const payload = module.exprs.name_payload(capture.initializer.value);
+    return payload != nullptr && payload->scope_name.empty() && payload->text == capture.name;
 }
 
 std::string_view primitive_name(const PrimitiveTypeKind kind)
@@ -1200,7 +1213,10 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             if (i != 0) {
                 out << ", ";
             }
-            switch (expr.lambda_captures[i].kind) {
+            const LambdaCaptureDecl& capture = expr.lambda_captures[i];
+            const bool same_name_move_initializer = capture.kind == LambdaCaptureKind::move
+                && lambda_capture_initializer_is_same_name(module, capture);
+            switch (capture.kind) {
                 case LambdaCaptureKind::default_value:
                     out << "=";
                     continue;
@@ -1213,10 +1229,19 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
                 case LambdaCaptureKind::mutable_reference:
                     out << "&mut ";
                     break;
+                case LambdaCaptureKind::move:
+                    if (same_name_move_initializer) {
+                        out << "move ";
+                    }
+                    break;
                 case LambdaCaptureKind::value:
                     break;
             }
-            out << expr.lambda_captures[i].name;
+            out << capture.name;
+            if (is_valid(capture.initializer) && !same_name_move_initializer) {
+                out << (capture.kind == LambdaCaptureKind::move ? " = move expr#" : " = expr#")
+                    << capture.initializer.value;
+            }
         }
         out << "](";
         for (base::usize i = 0; i < expr.lambda_params.size(); ++i) {

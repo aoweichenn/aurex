@@ -264,6 +264,9 @@ template <typename T, typename Allocator>
                 return_type = source_payload->return_type;
                 body = source_payload->body;
             }
+            for (syntax::LambdaCaptureDecl& capture : captures) {
+                capture.initializer = remap_expr(capture.initializer, map);
+            }
             remap_param_decls(params, map);
             return_type = remap_type(return_type, map);
             body = remap_stmt(body, map);

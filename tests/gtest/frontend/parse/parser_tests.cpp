@@ -445,6 +445,7 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes)
 TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
 {
     constexpr std::string_view source = "module parser.lambda_literals;\n"
+                                        "fn id<T>(value: T) -> T where T: Sized { return value; }\n"
                                         "fn main() -> i32 {\n"
                                         "  let inc: fn(i32) -> i32 = [](value: i32) -> i32 => value + 1;\n"
                                         "  let add_two: fn(i32) -> i32 = [](value: i32) -> i32 {\n"
@@ -462,6 +463,9 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
                                         "  let default_ref = [&](value: i32) -> i32 => value + base;\n"
                                         "  let mixed_value = [=, &base](value: i32) -> i32 => value + base;\n"
                                         "  let mixed_ref = [&, base](value: i32) -> i32 => value + base;\n"
+                                        "  let init_capture = [captured = add(1, 2)](value: i32) -> i32 => value + captured;\n"
+                                        "  let generic_init_capture = [captured = id<i32>(3)](value: i32) -> i32 => value + captured;\n"
+                                        "  let move_capture = [move owned](value: i32) -> i32 => value + owned;\n"
                                         "  return inc(40) + add_two(0) + one() + add(1, 2) - 46;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -479,6 +483,8 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
             "lambda [&](value: i32) -> i32",
             "lambda [=, &base](value: i32) -> i32",
             "lambda [&, base](value: i32) -> i32",
+            "lambda [captured = expr#",
+            "lambda [move owned](value: i32) -> i32",
             "stmt #",
             "return",
             "binary",
@@ -3598,6 +3604,13 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
     expect_parse_error("module parser.bad_type;\n"
                        "fn f(value: ) -> i32 { return 0; }\n",
         "expected type");
+    expect_parse_error("module parser.bad_move_capture;\n"
+                       "fn main() -> i32 {\n"
+                       "  let value: i32 = 1;\n"
+                       "  let run = [move value = value + 1]() -> i32 => value;\n"
+                       "  return run();\n"
+                       "}\n",
+        "move capture initializer must be written as 'name = move expr' or 'move name'");
     expect_parse_error("module parser.bad_import;\n"
                        "import c.;\n",
         "expected identifier after '.'");

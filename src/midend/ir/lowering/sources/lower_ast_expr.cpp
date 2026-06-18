@@ -484,6 +484,16 @@ ValueId Lowerer::lower_lambda_expr(const syntax::ExprId expr_id)
             value.type = this->expr_type(expr_id);
             value.fields.reserve(lambda.captures.size());
             for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
+                if (syntax::is_valid(capture.initializer)) {
+                    const ValueId captured_value = lambda_capture_kind_is_reference(capture.kind)
+                        ? this->lower_place_addr(capture.initializer)
+                        : this->coerce_value(this->lower_expr(capture.initializer, capture.type), capture.type);
+                    value.fields.push_back(FieldValue{
+                        this->module_.intern(capture.field_name.view()),
+                        captured_value,
+                    });
+                    continue;
+                }
                 const auto local = this->locals_.find(capture.name_id);
                 if (local == this->locals_.end()) {
                     return INVALID_VALUE_ID;

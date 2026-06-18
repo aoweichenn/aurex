@@ -259,6 +259,25 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(default_capture_closure) + " -o " + q(default_capture_closure_bin));
     require_success(q(default_capture_closure_bin));
 
+    const fs::path init_capture_closure = positive_sample("functions", "lambda_init_capture.ax");
+    const std::string init_capture_ast = require_success(aurexc() + " --emit=ast " + q(init_capture_closure)).output;
+    expect_contains_all(
+        init_capture_ast, {"lambda [base = expr#", "lambda [&view = expr#", "lambda [&mut view = expr#"});
+    const std::string init_capture_ir = require_success(aurexc() + " --emit=ir " + q(init_capture_closure)).output;
+    expect_contains_all(init_capture_ir, {"aggregate {.__capture_0_base", "call __aurex_lambda"});
+    const fs::path init_capture_closure_bin = test_bin_root() / "lambda_init_capture";
+    require_success(aurexc() + " " + q(init_capture_closure) + " -o " + q(init_capture_closure_bin));
+    require_success(q(init_capture_closure_bin));
+
+    const fs::path move_capture_closure = positive_sample("functions", "lambda_move_capture.ax");
+    const std::string move_capture_ast = require_success(aurexc() + " --emit=ast " + q(move_capture_closure)).output;
+    expect_contains_all(move_capture_ast, {"lambda [move box]()", "lambda [owned = move expr#"});
+    const std::string move_capture_ir = require_success(aurexc() + " --emit=ir " + q(move_capture_closure)).output;
+    expect_contains_all(move_capture_ir, {"aggregate {.__capture_0_box", "aggregate {.__capture_0_owned"});
+    const fs::path move_capture_closure_bin = test_bin_root() / "lambda_move_capture";
+    require_success(aurexc() + " " + q(move_capture_closure) + " -o " + q(move_capture_closure_bin));
+    require_success(q(move_capture_closure_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -305,6 +324,14 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
                                     + q(negative_sample("functions", "lambda_capture_default_redundant.ax")))
                         .output,
         "closure capture is redundant with the capture default");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_move_capture_after_move.ax")))
+                        .output,
+        "use of moved value `box`");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_move_capture_initializer_prefix.ax")))
+                        .output,
+        "move capture initializer must be written as 'name = move expr' or 'move name'");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");

@@ -335,7 +335,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
     constexpr std::string_view source =
         "module import as pub priv extern export fn struct opaque enum const type impl trait match "
         "let var if else for in is while break continue defer return true false null "
-        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe "
+        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut move unsafe "
         "ptrcast bitcast ptraddr ptrat strvalid strfromutf8 strraw";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
@@ -391,6 +391,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
         TokenKind::kw_str,
         TokenKind::kw_char,
         TokenKind::kw_mut,
+        TokenKind::kw_move,
         TokenKind::kw_unsafe,
         TokenKind::kw_ptrcast,
         TokenKind::kw_bitcast,

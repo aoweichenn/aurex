@@ -1389,6 +1389,7 @@ CheckedLambdaInfo CheckedModule::clone_lambda_info(const CheckedLambdaInfo& othe
             capture.type,
             capture.field_type,
             capture.kind,
+            capture.initializer,
             capture.use_range,
             capture.declaration_range,
         });

@@ -108,8 +108,9 @@ fn main() -> i32 {
     let base: i32 = 2;
     let by_value = [base](value: i32) -> i32 => value + base;
     let by_ref = [&base](value: i32) -> i32 => value + base;
+    let by_init = [captured = base + 1](value: i32) -> i32 => value + captured;
     let by_default = [=](value: i32) -> i32 => value + base;
-    return by_value(1) + by_ref(1) + by_default(1);
+    return by_value(1) + by_ref(1) + by_init(1) + by_default(1);
 }
 ```
 
@@ -123,8 +124,11 @@ lambda capture-list 当前支持：
 - `[&]`
 - `[=, &x]`
 - `[&, x]`
+- `[x = expr]`
+- `[x = move expr]`
+- `[move x]`
 
-当前 capture 仍要求捕获值满足 `Copy`、不是泛型依赖类型、不是 borrowed-view 类型。init-capture、move/consuming capture、closure trait 和完整 escaping lifetime 后续单独设计。
+普通值捕获仍要求源值满足 `Copy`。init-capture 在闭包创建点求值并进入环境；move capture 会消费源值，捕获后继续使用源值会触发 move 诊断。当前 closure trait、borrowed-view capture 和完整 escaping lifetime 仍未进入语言表面。
 
 ### Trait 和 dyn view
 
@@ -202,5 +206,5 @@ unsafe { strraw(data, len) }
 - 低层 builtin 长命名空间或新 intrinsic 表面。
 - owning dyn runtime。
 - 完整宏展开和 proc-macro。
-- closure init/move/consuming capture。
+- closure trait、borrowed-view capture 和完整 escaping lifetime。
 - 完整 lifetime surface 和 raw pointer alias safe proof。

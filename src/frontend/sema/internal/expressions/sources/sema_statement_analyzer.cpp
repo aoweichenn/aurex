@@ -107,6 +107,7 @@ struct LambdaCaptureCandidate {
     std::string_view name{};
     TypeHandle type = INVALID_TYPE_HANDLE;
     syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
     bool source_is_mutable = false;
     base::SourceRange use_range{};
     base::SourceRange declaration_range{};
@@ -114,6 +115,7 @@ struct LambdaCaptureCandidate {
 
 struct LambdaCaptureListEntry {
     syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
     base::SourceRange range{};
 };
 
@@ -179,11 +181,17 @@ void push_lambda_capture_scoped_block(
 
 class LambdaCaptureScanner final {
 public:
-    LambdaCaptureScanner(SemanticAnalyzerCore& core, const std::span<const syntax::ParamDecl> params)
+    LambdaCaptureScanner(SemanticAnalyzerCore& core, const std::span<const syntax::ParamDecl> params,
+        const std::span<const syntax::LambdaCaptureDecl> captures)
         : core_(core)
     {
         this->local_scopes_.push_back({});
-        this->local_scopes_.back().reserve(params.size());
+        this->local_scopes_.back().reserve(params.size() + captures.size());
+        for (const syntax::LambdaCaptureDecl& capture : captures) {
+            if (syntax::is_valid(capture.initializer)) {
+                this->bind_local(capture.name_id, capture.range, capture.name);
+            }
+        }
         for (const syntax::ParamDecl& param : params) {
             this->bind_local(param.name_id, param.range, param.name);
         }
@@ -589,6 +597,10 @@ private:
                         .kind = LambdaCaptureScanActionKind::lambda_body,
                         .lambda = lambda,
                     });
+                    for (base::usize index = lambda->captures.size(); index > 0; --index) {
+                        push_lambda_capture_expr(
+                            pending, this->core_.ctx_.module, lambda->captures[index - 1].initializer);
+                    }
                 }
                 break;
             case syntax::ExprKind::name:
@@ -611,6 +623,11 @@ private:
     {
         if (lambda == nullptr) {
             return;
+        }
+        for (const syntax::LambdaCaptureDecl& capture : lambda->captures) {
+            if (syntax::is_valid(capture.initializer)) {
+                this->bind_local(capture.name_id, capture.range, capture.name);
+            }
         }
         for (const syntax::ParamDecl& param : lambda->params) {
             this->bind_local(param.name_id, param.range, param.name);
@@ -695,6 +712,7 @@ private:
             name.empty() ? symbol.name.view() : name,
             symbol.type,
             syntax::LambdaCaptureKind::value,
+            syntax::INVALID_EXPR_ID,
             symbol.is_mutable,
             expr_range_or(this->core_.ctx_.module, expr, symbol.range),
             symbol.range,
@@ -830,6 +848,16 @@ private:
 [[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
 {
     return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_has_initializer(const LambdaCaptureCandidate& capture) noexcept
+{
+    return syntax::is_valid(capture.initializer);
+}
+
+[[nodiscard]] bool lambda_capture_requires_copy(const LambdaCaptureCandidate& capture) noexcept
+{
+    return capture.kind == syntax::LambdaCaptureKind::value && !lambda_capture_has_initializer(capture);
 }
 
 [[nodiscard]] syntax::LambdaCaptureKind lambda_capture_default_explicit_kind(
@@ -1062,6 +1090,7 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
             if (!default_capture.has_value()) {
                 default_capture = LambdaCaptureListEntry{
                     capture.kind,
+                    syntax::INVALID_EXPR_ID,
                     capture.range,
                 };
             }
@@ -1071,13 +1100,13 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
             continue;
         }
         seen_named_capture = true;
-        if (default_capture.has_value()
+        if (!syntax::is_valid(capture.initializer) && default_capture.has_value()
             && lambda_capture_redundant_with_default(default_capture->kind, capture.kind)) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REDUNDANT_WITH_DEFAULT));
             has_unsupported_capture = true;
         }
         const auto inserted = listed.emplace(
-            capture.name_id, LambdaCaptureListEntry{capture.kind, capture.range});
+            capture.name_id, LambdaCaptureListEntry{capture.kind, capture.initializer, capture.range});
         if (!inserted.second) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DUPLICATE));
             has_unsupported_capture = true;
@@ -1104,14 +1133,102 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
             continue;
         }
         capture.kind = listed_capture->second.kind;
+        capture.initializer = listed_capture->second.initializer;
         check_lambda_capture_mode(core, capture, listed_capture->second, has_unsupported_capture);
     }
 
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
-        if (is_valid(capture.name_id) && !used.contains(capture.name_id)) {
+        if (is_valid(capture.name_id) && !syntax::is_valid(capture.initializer) && !used.contains(capture.name_id)) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_UNUSED));
             has_unsupported_capture = true;
         }
+    }
+}
+
+void order_lambda_captures_by_capture_list(
+    const SemanticAnalyzerCore::ExprView& expr, std::vector<LambdaCaptureCandidate>& captures)
+{
+    if (captures.empty()) {
+        return;
+    }
+    std::unordered_map<IdentId, base::usize, IdentIdHash> capture_indexes;
+    capture_indexes.reserve(captures.size());
+    for (base::usize index = 0; index < captures.size(); ++index) {
+        if (is_valid(captures[index].name_id)) {
+            capture_indexes.emplace(captures[index].name_id, index);
+        }
+    }
+
+    std::unordered_set<IdentId, IdentIdHash> ordered_names;
+    ordered_names.reserve(captures.size());
+    std::vector<LambdaCaptureCandidate> ordered;
+    ordered.reserve(captures.size());
+    for (const syntax::LambdaCaptureDecl& declaration : expr.lambda_captures) {
+        if (lambda_capture_kind_is_default(declaration.kind) || !is_valid(declaration.name_id)
+            || ordered_names.contains(declaration.name_id)) {
+            continue;
+        }
+        const auto found = capture_indexes.find(declaration.name_id);
+        if (found == capture_indexes.end()) {
+            continue;
+        }
+        ordered_names.insert(declaration.name_id);
+        ordered.push_back(std::move(captures[found->second]));
+    }
+    for (LambdaCaptureCandidate& capture : captures) {
+        if (is_valid(capture.name_id) && ordered_names.contains(capture.name_id)) {
+            continue;
+        }
+        if (is_valid(capture.name_id)) {
+            ordered_names.insert(capture.name_id);
+        }
+        ordered.push_back(std::move(capture));
+    }
+    captures = std::move(ordered);
+}
+
+void append_lambda_init_captures(SemanticAnalyzerCore& core, const SemanticAnalyzerCore::ExprView& expr,
+    std::vector<LambdaCaptureCandidate>& captures, bool& has_unsupported_capture)
+{
+    std::unordered_set<IdentId, IdentIdHash> existing;
+    existing.reserve(captures.size());
+    for (const LambdaCaptureCandidate& capture : captures) {
+        if (is_valid(capture.name_id)) {
+            existing.insert(capture.name_id);
+        }
+    }
+    for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+        if (!is_valid(capture.name_id) || !syntax::is_valid(capture.initializer)) {
+            continue;
+        }
+        if (existing.contains(capture.name_id)) {
+            continue;
+        }
+        TypeHandle capture_type = INVALID_TYPE_HANDLE;
+        bool source_is_mutable = false;
+        if (lambda_capture_kind_is_reference(capture.kind)) {
+            const SemanticAnalyzerCore::PlaceInfo place = core.analyze_place_info(capture.initializer, true);
+            core.require_place_projection_safety(place, capture.range);
+            capture_type = place.type;
+            source_is_mutable = place.is_writable;
+            if (capture.kind == syntax::LambdaCaptureKind::mutable_reference && !place.is_writable) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE));
+                has_unsupported_capture = true;
+            }
+        } else {
+            capture_type = core.analyze_expr(capture.initializer);
+        }
+        captures.push_back(LambdaCaptureCandidate{
+            capture.name_id,
+            capture.name,
+            capture_type,
+            capture.kind,
+            capture.initializer,
+            source_is_mutable,
+            expr_range_or(core.ctx_.module, capture.initializer, capture.range),
+            capture.range,
+        });
+        existing.insert(capture.name_id);
     }
 }
 
@@ -2920,16 +3037,19 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     const std::string symbol = lambda_symbol_name(module, owner_item, expr_id);
     const IdentId symbol_id = this->core_.intern_generated_key(symbol);
     std::vector<LambdaCaptureCandidate> captures =
-        LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
+        LambdaCaptureScanner(this->core_, expr.lambda_params, expr.lambda_captures).scan(expr.lambda_body);
     bool has_unsupported_capture = false;
+    append_lambda_init_captures(this->core_, expr, captures, has_unsupported_capture);
     check_lambda_capture_list(this->core_, expr, captures, has_unsupported_capture);
+    order_lambda_captures_by_capture_list(expr, captures);
     for (const LambdaCaptureCandidate& capture : captures) {
         if (lambda_capture_type_is_generic_dependent(this->core_, capture.type)) {
             report_generic_dependent_lambda_capture(this->core_, capture);
             has_unsupported_capture = true;
             continue;
         }
-        if (!this->core_.type_satisfies_capability(capture.type, CapabilityKind::copy)) {
+        if (lambda_capture_requires_copy(capture)
+            && !this->core_.type_satisfies_capability(capture.type, CapabilityKind::copy)) {
             report_noncopy_lambda_capture(this->core_, capture);
             has_unsupported_capture = true;
         }
@@ -2985,6 +3105,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
             capture.type,
             lambda_capture_environment_field_type(this->core_.state_.checked.types, capture),
             capture.kind,
+            capture.initializer,
             capture.use_range,
             capture.declaration_range,
         });

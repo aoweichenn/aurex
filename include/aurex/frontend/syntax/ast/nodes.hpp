@@ -158,6 +158,7 @@ enum class LambdaCaptureKind {
     value,
     shared_reference,
     mutable_reference,
+    move,
     default_value,
     default_reference,
 };
@@ -167,6 +168,7 @@ struct LambdaCaptureDecl {
     base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
     LambdaCaptureKind kind = LambdaCaptureKind::value;
+    ExprId initializer = INVALID_EXPR_ID;
 };
 
 struct CallArgLabelDecl {

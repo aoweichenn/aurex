@@ -306,6 +306,13 @@ public:
     [[nodiscard]] std::optional<ForIterableSource> lower_for_iterable_source(const sema::ForInIterationPlan& plan);
     [[nodiscard]] ValueId append_for_iterable_element_address(
         const ForIterableSource& source, ValueId index, IrTextId name);
+    void lower_for_protocol_iterator(
+        syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan);
+    [[nodiscard]] ValueId append_for_protocol_call(
+        const sema::ForInProtocolCallPlan& call, ValueId receiver_slot, sema::TypeHandle receiver_storage_type);
+    [[nodiscard]] ValueId append_for_protocol_receiver(
+        const sema::ForInProtocolCallPlan& call, ValueId receiver_slot, sema::TypeHandle receiver_storage_type);
+    [[nodiscard]] CallTarget call_target(const sema::FunctionLookupKey& function);
     [[nodiscard]] sema::ResourceSemanticsSummary resource_summary(sema::TypeHandle type);
     [[nodiscard]] bool cleanup_required(sema::TypeHandle type);
     [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;

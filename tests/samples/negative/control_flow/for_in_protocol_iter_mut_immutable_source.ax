@@ -1,0 +1,37 @@
+module for_in_protocol_iter_mut_immutable_source;
+
+struct Range {
+    start: i32;
+    end: i32;
+}
+
+struct RangeIter {
+    current: i32;
+    end: i32;
+}
+
+impl Range {
+    fn iter(self: &mut Range) -> RangeIter {
+        return RangeIter { current: self.start, end: self.end };
+    }
+}
+
+impl RangeIter {
+    fn has_next(self: &mut RangeIter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut RangeIter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    let range: Range = Range { start: 0, end: 3 };
+    for value in range {
+        return value;
+    }
+    return 0;
+}

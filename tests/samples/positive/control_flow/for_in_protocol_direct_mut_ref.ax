@@ -1,0 +1,32 @@
+module for_in_protocol_direct_mut_ref;
+
+struct Counter {
+    current: i32;
+    end: i32;
+}
+
+impl Counter {
+    fn has_next(self: &mut Counter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut Counter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+fn consume(iter: &mut Counter) -> i32 {
+    var total: i32 = 0;
+    for value in iter {
+        total = total + value;
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    var counter: Counter = Counter { current: 1, end: 5 };
+    let total: i32 = consume(&mut counter);
+    return total + counter.current - 15;
+}

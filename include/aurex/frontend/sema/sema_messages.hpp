@@ -283,8 +283,17 @@ inline constexpr std::string_view SEMA_RANGE_BOUNDS_SAME_TYPE = "range bounds mu
 
 inline constexpr std::string_view SEMA_RANGE_STEP_SAME_TYPE = "range step must have the same type as bounds";
 
-inline constexpr std::string_view SEMA_FOR_IN_ARRAY_OR_SLICE =
-    "for-in iterable must be an array or slice";
+inline constexpr std::string_view SEMA_FOR_IN_ITERABLE_PROTOCOL =
+    "for-in iterable must be an array, slice, iterator, or expose iter()";
+
+inline constexpr std::string_view SEMA_FOR_IN_ITERATOR_HAS_NEXT =
+    "for-in iterator must define has_next(self: &mut Iterator) -> bool";
+
+inline constexpr std::string_view SEMA_FOR_IN_ITERATOR_NEXT =
+    "for-in iterator must define next(self: &mut Iterator) -> Item";
+
+inline constexpr std::string_view SEMA_FOR_IN_ITER_METHOD =
+    "for-in iter() method must return an iterator";
 
 inline constexpr std::string_view SEMA_FOR_IN_ELEMENT_COPY =
     "for-in element type must be Copy";

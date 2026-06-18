@@ -21,6 +21,12 @@ constexpr std::string_view IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX = "for.iterable.u
 constexpr std::string_view IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX = "for.iterable.exit";
 constexpr std::string_view IR_FOR_ITERABLE_CURSOR_SLOT_NAME = "for.iterable.cursor";
 constexpr std::string_view IR_FOR_ITERABLE_END_SLOT_NAME = "for.iterable.end";
+constexpr std::string_view IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME = "for.iterator";
+constexpr std::string_view IR_FOR_PROTOCOL_SOURCE_SLOT_NAME = "for.iterable.source";
+constexpr std::string_view IR_FOR_PROTOCOL_COND_BLOCK_PREFIX = "for.protocol.cond";
+constexpr std::string_view IR_FOR_PROTOCOL_BODY_BLOCK_PREFIX = "for.protocol.body";
+constexpr std::string_view IR_FOR_PROTOCOL_UPDATE_BLOCK_PREFIX = "for.protocol.update";
+constexpr std::string_view IR_FOR_PROTOCOL_EXIT_BLOCK_PREFIX = "for.protocol.exit";
 constexpr std::string_view IR_DROP_FLAG_VALUE_NAME = "drop.flag";
 constexpr std::string_view IR_DROP_THEN_BLOCK_PREFIX = "drop.then";
 constexpr std::string_view IR_DROP_JOIN_BLOCK_PREFIX = "drop.join";
@@ -105,7 +111,8 @@ struct DropGlueFrame {
 
 [[nodiscard]] bool for_in_iteration_plan_is_iterable(const sema::ForInIterationPlan& plan) noexcept
 {
-    return plan.kind == sema::ForInIterationKind::array_value || plan.kind == sema::ForInIterationKind::slice_value;
+    return plan.kind == sema::ForInIterationKind::array_value || plan.kind == sema::ForInIterationKind::slice_value
+        || plan.kind == sema::ForInIterationKind::protocol_iterator;
 }
 
 [[nodiscard]] bool for_in_iteration_plan_is_counted_range(const sema::ForInIterationPlan& plan) noexcept
@@ -801,6 +808,64 @@ ValueId Lowerer::append_for_iterable_element_address(
     value.name = name;
     value.object = source.base_address;
     value.index = index;
+    return this->append_value(value);
+}
+
+CallTarget Lowerer::call_target(const sema::FunctionLookupKey& function)
+{
+    if (!sema::is_valid(function)) {
+        return {};
+    }
+    const auto signature = this->checked_.functions.find(function);
+    if (signature == this->checked_.functions.end() || signature->second.c_name.empty()) {
+        return {};
+    }
+    const IrTextId symbol = this->module_.intern(signature->second.c_name.view());
+    const auto found = this->function_symbols_.find(symbol);
+    if (found == this->function_symbols_.end()) {
+        return CallTarget{INVALID_FUNCTION_ID, symbol};
+    }
+    return CallTarget{found->second, symbol};
+}
+
+ValueId Lowerer::append_for_protocol_receiver(
+    const sema::ForInProtocolCallPlan& call, const ValueId receiver_slot, const sema::TypeHandle receiver_storage_type)
+{
+    if (!is_valid(receiver_slot) || !sema::is_valid(receiver_storage_type) || !sema::is_valid(call.param_type)) {
+        return INVALID_VALUE_ID;
+    }
+    if (this->module_.types.is_pointer(call.param_type) || this->module_.types.is_reference(call.param_type)) {
+        if (this->module_.types.is_pointer(receiver_storage_type)
+            || this->module_.types.is_reference(receiver_storage_type)) {
+            return this->coerce_value(
+                this->append_load(receiver_slot, receiver_storage_type, this->module_.intern(call.method_name.view())),
+                call.param_type);
+        }
+        return this->coerce_value(receiver_slot, call.param_type);
+    }
+    return this->coerce_value(
+        this->append_load(receiver_slot, receiver_storage_type, this->module_.intern(call.method_name.view())),
+        call.param_type);
+}
+
+ValueId Lowerer::append_for_protocol_call(
+    const sema::ForInProtocolCallPlan& call, const ValueId receiver_slot, const sema::TypeHandle receiver_storage_type)
+{
+    const CallTarget target = this->call_target(call.function_key);
+    const sema::TypeHandle return_type = sema::is_valid(call.return_type)
+        ? call.return_type
+        : this->module_.types.builtin(sema::BuiltinType::void_);
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::call;
+    value.type = return_type;
+    value.name = target.symbol;
+    value.call_target = target.function;
+    const sema::TypeHandle param_type =
+        is_valid(target.function) ? this->call_param_type(target.function, 0U) : call.param_type;
+    const ValueId receiver = this->append_for_protocol_receiver(call, receiver_slot, receiver_storage_type);
+    if (is_valid(receiver)) {
+        value.args.push_back(this->coerce_value(receiver, param_type));
+    }
     return this->append_value(value);
 }
 
@@ -1785,11 +1850,16 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
 
 void Lowerer::lower_for_iterable(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
+    if (checked_plan != nullptr && checked_plan->kind == sema::ForInIterationKind::protocol_iterator) {
+        this->lower_for_protocol_iterator(stmt_id, stmt, *checked_plan);
+        return;
+    }
+
     this->push_local_scope();
     const base::usize scope_depth = this->cleanup_scopes_.size();
     this->cleanup_scopes_.push_back({});
 
-    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
     const sema::ForInIterationPlan fallback =
         fallback_iterable_plan(stmt_id, stmt, this->module_.types, this->expr_type(stmt.range_iterable),
             this->stmt_local_type(stmt_id));
@@ -1865,6 +1935,114 @@ void Lowerer::lower_for_iterable(const syntax::StmtId stmt_id, const syntax::Stm
     this->append_store(cursor_slot, next);
     this->append_branch_if_open(condition_block);
     this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_protocol_iterator(
+    const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan)
+{
+    static_cast<void>(stmt_id);
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    ValueId source_slot = INVALID_VALUE_ID;
+    if (plan.protocol_source == sema::ForInProtocolSourceKind::iter_method) {
+        if (plan.iter_call.receiver_access == sema::ReceiverAccessKind::consuming) {
+            const ValueId source_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+            source_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_SOURCE_SLOT_NAME, plan.iterable_type);
+            this->append_store(source_slot, this->coerce_value(source_value, plan.iterable_type));
+        } else {
+            const PlaceAddress source_place = this->lower_place_address(plan.iterable_expr);
+            source_slot = source_place.address;
+            if (!is_valid(source_slot)) {
+                const ValueId source_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+                source_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_SOURCE_SLOT_NAME, plan.iterable_type);
+                this->append_store(source_slot, this->coerce_value(source_value, plan.iterable_type));
+                LocalBinding source_binding{
+                    .slot = source_slot,
+                    .cleanup_flag = INVALID_VALUE_ID,
+                    .type = plan.iterable_type,
+                    .is_mutable = false,
+                    .field_cleanups = {},
+                };
+                this->register_local_cleanup(source_binding, IR_FOR_PROTOCOL_SOURCE_SLOT_NAME);
+            }
+        }
+    }
+
+    const ValueId iterator_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME, plan.iterator_type);
+    ValueId iterator_value = INVALID_VALUE_ID;
+    if (plan.protocol_source == sema::ForInProtocolSourceKind::iter_method) {
+        iterator_value = this->append_for_protocol_call(plan.iter_call, source_slot, plan.iterable_type);
+    } else {
+        iterator_value = this->lower_expr(plan.iterable_expr, plan.iterator_type);
+    }
+    this->append_store(iterator_slot, this->coerce_value(iterator_value, plan.iterator_type));
+    LocalBinding iterator_binding{
+        .slot = iterator_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = plan.iterator_type,
+        .is_mutable = true,
+        .field_cleanups = {},
+    };
+    this->register_local_cleanup(iterator_binding, IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_COND_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_BODY_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_UPDATE_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_EXIT_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const ValueId condition =
+        this->append_for_protocol_call(plan.has_next_call, iterator_slot, plan.iterator_type);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->current_block_ = body_block;
+    this->push_local_scope();
+    const base::usize iteration_scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, iteration_scope_depth});
+
+    const ValueId loop_value = this->append_for_protocol_call(plan.next_call, iterator_slot, plan.iterator_type);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, plan.item_type);
+    this->append_store(loop_slot, this->coerce_value(loop_value, plan.item_type));
+    LocalBinding loop_binding{
+        .slot = loop_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = plan.item_type,
+        .is_mutable = false,
+        .field_cleanups = {},
+    };
+    this->register_local_cleanup(loop_binding, stmt.name);
+    this->bind_local(stmt.name_id, loop_binding);
+    this->lower_block_contents(stmt.body);
+    this->loop_contexts_.pop_back();
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(iteration_scope_depth);
+    }
+    this->cleanup_scopes_.resize(iteration_scope_depth);
+    this->pop_local_scope();
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    this->append_branch_if_open(condition_block);
 
     this->current_block_ = exit_block;
     if (!this->has_terminator(this->current_block_)) {

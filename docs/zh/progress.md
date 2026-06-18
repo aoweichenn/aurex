@@ -4,7 +4,7 @@
 
 当前开发线收敛到三块：
 
-1. iterator / for-in 后续语义设计。
+1. for-in 剩余语义：range value、str iteration、mutable/reference item iteration 和标准库 iterable adapter。
 2. 低层 builtin 表面和安全边界设计。
 3. closure trait、borrowed-view capture 和 escape/lifetime 专题。
 
@@ -16,7 +16,7 @@
 - slice / str 的基础成员投影使用 `.len` / `.ptr`，历史 helper 名字不再作为当前语言表面。
 - `[]T` / `[]mut T` 是当前 slice 类型表面，`[]const T` 属于旧写法。
 - range loop 保留 `for i in range(...)`，不引入更长的 counted-loop marker。
-- `for item in expr` 当前已支持 array/slice 按值迭代，元素类型必须满足 `Copy`；真正 iterator/range protocol 后续专题处理。
+- `for item in expr` 当前已支持 array/slice 按值迭代、直接 protocol iterator、`iter()` protocol iterator、inherent method dispatch、静态 trait dispatch 和 generic `where` 下的 trait dispatch。array/slice 元素必须满足 `Copy`；protocol item 不要求 `Copy`。
 - 函数闭包已切到 C++ 风格 capture-list，支持 `[]`、显式值/共享引用/可变引用捕获、`[=]` / `[&]` 默认捕获、显式覆盖、init-capture 和 move capture。
 
 ## 当前保留文档集
@@ -35,5 +35,5 @@
 - `progress.md` 和 `version.md` 不再承担历史流水账职责，只记录当前版本边界。
 - 被删除的历史设计如果后续仍有实现价值，应重新整理进当前执行文档，而不是恢复旧目录。
 - 泛型语法修正专题已关闭，旧 `[]` 泛型兼容不得重新进入语义路径。
-- iterator/range protocol 尚未设计；当前只有 counted `range(...)` 和 array/slice value for-in 子集。
+- range value、str iteration、mutable/reference item iteration 和标准库 iterable adapter 尚未设计；当前 protocol iterator 已支持直接 iterator、`iter()`、inherent/static trait dispatch 和 generic where dispatch。
 - closure trait、borrowed-view capture 和更完整 escape/lifetime 仍是后续专题。

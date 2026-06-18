@@ -179,9 +179,42 @@ let values: [3]i32 = [1, 2, 3];
 for item in values {
     total += item;
 }
+
+struct Counter {
+    current: i32;
+    end: i32;
+}
+
+impl Counter {
+    fn has_next(self: &mut Counter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut Counter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+let counter: Counter = Counter { current: 0, end: 3 };
+for item in counter {
+    total += item;
+}
 ```
 
-`for i in range(...)` 是 counted range loop。`for item in expr` 当前支持 array/slice value iteration，元素必须满足 `Copy`。完整 iterator protocol 后续单独设计。
+`for i in range(...)` 是 counted range loop。`for item in expr` 支持 array/slice value iteration 和 protocol iterator iteration。
+
+array/slice value iteration 每轮按值读取元素，元素类型必须满足 `Copy`，不会 move array/slice 本身。
+
+protocol iterator 可以是表达式本身，也可以由 `expr.iter()` 产生。iterator 必须提供：
+
+```aurex
+fn has_next(self: &mut Iterator) -> bool;
+fn next(self: &mut Iterator) -> Item;
+```
+
+`next()` 的返回值成为 loop item，protocol item 不要求 `Copy`。协议方法可以来自 inherent method 或静态 trait dispatch；dyn trait vtable-slot dispatch 暂不作为 for-in protocol 来源。
 
 ## 7. Pattern 和 match
 
@@ -289,7 +322,7 @@ strraw(data, len)
 ## 12. 当前不支持
 
 - 标准库 API 和拥有型容器。
-- 完整 iterator protocol。
+- range value、str iteration、mutable/reference item iteration 和标准库 iterable adapter。
 - closure trait、borrowed-view capture 和完整 escaping closure lifetime。
 - owning dyn 和 `Box<dyn Trait>`。
 - 完整 macro/proc-macro/用户 derive lowering。

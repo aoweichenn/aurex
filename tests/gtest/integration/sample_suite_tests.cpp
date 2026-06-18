@@ -67,7 +67,13 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"float_eq_rejected", "type f64 does not satisfy capability `Eq`"},
     {"float_ord_rejected", "type f64 does not satisfy capability `Ord`"},
     {"for_in_non_copy_element", "for-in element type must be Copy"},
-    {"for_in_unsupported", "for-in iterable must be an array or slice"},
+    {"for_in_protocol_has_next_non_bool", "for-in iterator must define has_next(self: &mut Iterator) -> bool"},
+    {"for_in_protocol_has_next_shared_receiver", "for-in iterator must define has_next(self: &mut Iterator) -> bool"},
+    {"for_in_protocol_iter_mut_immutable_source", "mutable method receiver requires writable storage"},
+    {"for_in_protocol_iter_missing_next", "for-in iterator must define next(self: &mut Iterator) -> Item"},
+    {"for_in_protocol_missing_has_next", "for-in iterator must define has_next(self: &mut Iterator) -> bool"},
+    {"for_in_protocol_next_void", "for-in iterator must define next(self: &mut Iterator) -> Item"},
+    {"for_in_unsupported", "for-in iterable must be an array, slice, iterator, or expose iter()"},
     {"generic_ptrat_non_pointer", "ptrat target type must be a pointer"},
     {"generic_alignof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"generic_const_param_type_arg", "generic parameter `N` expects a const argument"},
@@ -573,6 +579,36 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_lambda_move_capture)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_array_slice)
 {
     run_positive_runtime_smoke_sample("control_flow", "for_in_array_slice.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_direct)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_direct.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_direct_mut_ref)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_direct_mut_ref.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_iter_method)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_iter_method.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_iter_mut_method)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_iter_mut_method.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_trait_direct)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_trait_direct.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_for_in_protocol_generic_trait)
+{
+    run_positive_runtime_smoke_sample("control_flow", "for_in_protocol_generic_trait.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic)

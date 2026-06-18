@@ -73,6 +73,8 @@ std::string_view for_in_iteration_kind_name(const ForInIterationKind kind) noexc
             return "array_value";
         case ForInIterationKind::slice_value:
             return "slice_value";
+        case ForInIterationKind::protocol_iterator:
+            return "protocol_iterator";
     }
     return "<invalid>";
 }
@@ -82,6 +84,30 @@ std::string_view for_in_item_mode_name(const ForInItemMode mode) noexcept
     switch (mode) {
         case ForInItemMode::immutable_value_copy:
             return "immutable_value_copy";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_protocol_source_kind_name(const ForInProtocolSourceKind kind) noexcept
+{
+    switch (kind) {
+        case ForInProtocolSourceKind::direct_iterator:
+            return "direct_iterator";
+        case ForInProtocolSourceKind::iter_method:
+            return "iter_method";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_protocol_call_kind_name(const ForInProtocolCallKind kind) noexcept
+{
+    switch (kind) {
+        case ForInProtocolCallKind::none:
+            return "none";
+        case ForInProtocolCallKind::inherent_method:
+            return "inherent_method";
+        case ForInProtocolCallKind::trait_static_method:
+            return "trait_static_method";
     }
     return "<invalid>";
 }
@@ -770,7 +796,7 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->for_in_iteration_plans.clear();
     this->for_in_iteration_plans.reserve(other.for_in_iteration_plans.size());
     for (const auto& entry : other.for_in_iteration_plans) {
-        this->for_in_iteration_plans.emplace(entry.first, entry.second);
+        this->for_in_iteration_plans.emplace(entry.first, this->clone_for_in_iteration_plan(entry.second));
     }
     this->item_c_name_ids.assign(other.item_c_name_ids.begin(), other.item_c_name_ids.end());
     this->coercions.assign(other.coercions.begin(), other.coercions.end());
@@ -1655,6 +1681,22 @@ TraitObligation CheckedModule::clone_trait_obligation(const TraitObligation& oth
 TraitEvidence CheckedModule::clone_trait_evidence(const TraitEvidence& other) const
 {
     return other;
+}
+
+ForInProtocolCallPlan CheckedModule::clone_for_in_protocol_call_plan(const ForInProtocolCallPlan& other)
+{
+    ForInProtocolCallPlan copy = other;
+    copy.method_name = this->intern_text(other.method_name);
+    return copy;
+}
+
+ForInIterationPlan CheckedModule::clone_for_in_iteration_plan(const ForInIterationPlan& other)
+{
+    ForInIterationPlan copy = other;
+    copy.iter_call = this->clone_for_in_protocol_call_plan(other.iter_call);
+    copy.has_next_call = this->clone_for_in_protocol_call_plan(other.has_next_call);
+    copy.next_call = this->clone_for_in_protocol_call_plan(other.next_call);
+    return copy;
 }
 
 TraitMethodCallBinding CheckedModule::clone_trait_method_call_binding(const TraitMethodCallBinding& other)
@@ -3023,6 +3065,13 @@ std::string dump_checked_module(const CheckedModule& checked)
                 out << " iterable_expr=#" << plan.iterable_expr.value
                     << " iterable_type=" << checked.types.display_name(plan.iterable_type)
                     << " access=" << pointer_mutability_dump_name(plan.element_access);
+                if (plan.kind == ForInIterationKind::protocol_iterator) {
+                    out << " iterator=" << checked.types.display_name(plan.iterator_type)
+                        << " source=" << for_in_protocol_source_kind_name(plan.protocol_source)
+                        << " iter_call=" << for_in_protocol_call_kind_name(plan.iter_call.kind)
+                        << " has_next_call=" << for_in_protocol_call_kind_name(plan.has_next_call.kind)
+                        << " next_call=" << for_in_protocol_call_kind_name(plan.next_call.kind);
+                }
             } else {
                 out << " range_exprs=(start=";
                 if (syntax::is_valid(plan.start_expr)) {

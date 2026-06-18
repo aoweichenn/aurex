@@ -440,9 +440,19 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::counted_range), "counted_range");
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::array_value), "array_value");
     EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::slice_value), "slice_value");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::protocol_iterator), "protocol_iterator");
     EXPECT_EQ(sema::for_in_iteration_kind_name(static_cast<sema::ForInIterationKind>(99)), "<invalid>");
     EXPECT_EQ(sema::for_in_item_mode_name(sema::ForInItemMode::immutable_value_copy), "immutable_value_copy");
     EXPECT_EQ(sema::for_in_item_mode_name(static_cast<sema::ForInItemMode>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(sema::ForInProtocolSourceKind::direct_iterator),
+        "direct_iterator");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(sema::ForInProtocolSourceKind::iter_method), "iter_method");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(static_cast<sema::ForInProtocolSourceKind>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::none), "none");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::inherent_method), "inherent_method");
+    EXPECT_EQ(
+        sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::trait_static_method), "trait_static_method");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(static_cast<sema::ForInProtocolCallKind>(99)), "<invalid>");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::none), "none");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::shared), "shared");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::mutable_), "mutable");

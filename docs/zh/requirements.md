@@ -16,14 +16,14 @@ Aurex 当前版本要提供一个可持续演进的小型系统语言核心：
 - 函数、extern C、export C、默认参数、命名参数、method、泛型函数/类型/impl、const generic check-only 子集。
 - `where` capability、nominal static trait、显式 trait impl、associated type、associated-type equality、trait default method。
 - borrowed dyn trait view、borrowed dyn composition、supertrait upcast 和 checked vtable dispatch。
-- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、`for i in range(...)`、array/slice value for-in、`break`、`continue`、`defer`、`?`。
+- `let` / `var`、pattern、let-else、block expression、if/match expression、`while`、C-style `for`、`for i in range(...)`、array/slice value for-in、用户 protocol iterator for-in、`break`、`continue`、`defer`、`?`。
 - compiler-owned `Copy` capability、move/reinit 检查、cleanup/drop flag、borrow summary、local loan checking 和 lifetime/origin diagnostics。
 - Aurex IR、IR verifier/pass pipeline、LLVM backend、clang native 输出。
 
 ## 暂缓能力
 
 - 标准库 API、拥有型容器、文件/目录/进程/console 包装。
-- 完整 iterator protocol、range value、mutable/reference item iteration、str iteration、generic iterable capability。
+- range value、mutable/reference item iteration、str iteration、标准库 iterable adapter。
 - owning dyn、`Box<dyn Trait>`、allocator API、dynamic Drop dispatch、trait-object Drop runtime。
 - 完整宏展开、proc-macro、用户 derive lowering、generated token parser consumption。
 - closure trait、borrowed-view capture、escaping closure lifetime。

@@ -457,6 +457,151 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     require_success(aurexc() + " " + q(iterable_source) + " -o " + q(iterable_bin));
     require_success(q(iterable_bin));
 
+    const fs::path direct_protocol_source = positive_sample("control_flow", "for_in_protocol_direct.ax");
+    const std::string direct_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(direct_protocol_source)).output;
+    expect_contains_all(direct_protocol_checked,
+        {
+            "for_in_iteration_plans",
+            "protocol_iterator",
+            "source=direct_iterator",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+            "copy_item=false",
+            "consumes=true",
+        });
+    const std::string direct_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(direct_protocol_source)).output;
+    expect_contains_all(direct_protocol_ir,
+        {
+            "for.protocol.cond",
+            "for.protocol.body",
+            "for.protocol.update",
+            "for.protocol.exit",
+            "call m0_for_in_protocol_direct_Counter_has_next",
+            "call m0_for_in_protocol_direct_Counter_next",
+            "drop_if",
+        });
+    const fs::path direct_protocol_bin = test_bin_root() / "for_in_protocol_direct";
+    require_success(aurexc() + " " + q(direct_protocol_source) + " -o " + q(direct_protocol_bin));
+    require_success(q(direct_protocol_bin));
+
+    const fs::path direct_mut_ref_protocol_source =
+        positive_sample("control_flow", "for_in_protocol_direct_mut_ref.ax");
+    const std::string direct_mut_ref_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(direct_mut_ref_protocol_source)).output;
+    expect_contains_all(direct_mut_ref_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=direct_iterator",
+            "iterable_type=&mut for_in_protocol_direct_mut_ref.Counter",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+        });
+    const std::string direct_mut_ref_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(direct_mut_ref_protocol_source)).output;
+    expect_contains_all(direct_mut_ref_protocol_ir,
+        {
+            "fn consume(iter: &mut for_in_protocol_direct_mut_ref.Counter)",
+            "call m0_for_in_protocol_direct_mut_ref_Counter_has_next",
+            "call m0_for_in_protocol_direct_mut_ref_Counter_next",
+        });
+    const fs::path direct_mut_ref_protocol_bin = test_bin_root() / "for_in_protocol_direct_mut_ref";
+    require_success(aurexc() + " " + q(direct_mut_ref_protocol_source) + " -o " + q(direct_mut_ref_protocol_bin));
+    require_success(q(direct_mut_ref_protocol_bin));
+
+    const fs::path iter_method_protocol_source = positive_sample("control_flow", "for_in_protocol_iter_method.ax");
+    const std::string iter_method_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(iter_method_protocol_source)).output;
+    expect_contains_all(iter_method_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=iter_method",
+            "iter_call=inherent_method",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+            "consumes=false",
+        });
+    const std::string iter_method_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(iter_method_protocol_source)).output;
+    expect_contains_all(iter_method_protocol_ir,
+        {
+            "call m0_for_in_protocol_iter_method_Range_iter",
+            "call m0_for_in_protocol_iter_method_RangeIter_has_next",
+            "call m0_for_in_protocol_iter_method_RangeIter_next",
+        });
+    const fs::path iter_method_protocol_bin = test_bin_root() / "for_in_protocol_iter_method";
+    require_success(aurexc() + " " + q(iter_method_protocol_source) + " -o " + q(iter_method_protocol_bin));
+    require_success(q(iter_method_protocol_bin));
+
+    const fs::path iter_mut_method_protocol_source =
+        positive_sample("control_flow", "for_in_protocol_iter_mut_method.ax");
+    const std::string iter_mut_method_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(iter_mut_method_protocol_source)).output;
+    expect_contains_all(iter_mut_method_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=iter_method",
+            "iter_call=inherent_method",
+            "consumes=false",
+        });
+    const std::string iter_mut_method_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(iter_mut_method_protocol_source)).output;
+    expect_contains_all(iter_mut_method_protocol_ir,
+        {
+            "call m0_for_in_protocol_iter_mut_method_Range_iter",
+            "call m0_for_in_protocol_iter_mut_method_RangeIter_has_next",
+            "call m0_for_in_protocol_iter_mut_method_RangeIter_next",
+        });
+    const fs::path iter_mut_method_protocol_bin = test_bin_root() / "for_in_protocol_iter_mut_method";
+    require_success(aurexc() + " " + q(iter_mut_method_protocol_source) + " -o " + q(iter_mut_method_protocol_bin));
+    require_success(q(iter_mut_method_protocol_bin));
+
+    const fs::path trait_protocol_source = positive_sample("control_flow", "for_in_protocol_trait_direct.ax");
+    const std::string trait_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(trait_protocol_source)).output;
+    expect_contains_all(trait_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=direct_iterator",
+            "has_next_call=trait_static_method",
+            "next_call=trait_static_method",
+        });
+    const std::string trait_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(trait_protocol_source)).output;
+    expect_contains_all(trait_protocol_ir,
+        {
+            "call m0_for_in_protocol_trait_direct_Counter_trait_impl_IterI32__has_next",
+            "call m0_for_in_protocol_trait_direct_Counter_trait_impl_IterI32__next",
+        });
+    const fs::path trait_protocol_bin = test_bin_root() / "for_in_protocol_trait_direct";
+    require_success(aurexc() + " " + q(trait_protocol_source) + " -o " + q(trait_protocol_bin));
+    require_success(q(trait_protocol_bin));
+
+    const fs::path generic_protocol_source = positive_sample("control_flow", "for_in_protocol_generic_trait.ax");
+    const std::string generic_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(generic_protocol_source)).output;
+    expect_contains_all(generic_protocol_checked,
+        {
+            "generic_templates",
+            "template priv value consume params=1",
+            "param_envs",
+            "fn priv consume<for_in_protocol_generic_trait.Counter> -> i32",
+            "fn method for_in_protocol_generic_trait.Counter.has_next -> bool",
+            "fn method for_in_protocol_generic_trait.Counter.next -> i32",
+        });
+    const std::string generic_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(generic_protocol_source)).output;
+    expect_contains_all(generic_protocol_ir,
+        {
+            "fn consume<for_in_protocol_generic_trait.Counter>",
+            "call m0_for_in_protocol_generic_trait_Counter_trait_impl_IterI32__has_next",
+            "call m0_for_in_protocol_generic_trait_Counter_trait_impl_IterI32__next",
+        });
+    const fs::path generic_protocol_bin = test_bin_root() / "for_in_protocol_generic_trait";
+    require_success(aurexc() + " " + q(generic_protocol_source) + " -o " + q(generic_protocol_bin));
+    require_success(q(generic_protocol_bin));
+
     const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(bad_for_condition)).output, "for condition must be bool");
@@ -494,11 +639,40 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
         "range expects 1 to 3 arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
-        "for-in iterable must be an array or slice");
+        "for-in iterable must be an array, slice, iterator, or expose iter()");
     expect_contains(require_failure(aurexc() + " --check "
                                     + q(negative_sample("control_flow", "for_in_non_copy_element.ax")))
                         .output,
         "for-in element type must be Copy");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_missing_has_next.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_has_next_non_bool.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_has_next_shared_receiver.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_iter_missing_next.ax")))
+            .output,
+        "for-in iterator must define next(self: &mut Iterator) -> Item");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_iter_mut_immutable_source.ax")))
+            .output,
+        "mutable method receiver requires writable storage");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_protocol_next_void.ax")))
+            .output,
+        "for-in iterator must define next(self: &mut Iterator) -> Item");
 
     const fs::path value_source = positive_sample("types", "value_flow.ax");
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(value_source)).output;

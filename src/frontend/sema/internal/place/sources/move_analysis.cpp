@@ -812,6 +812,25 @@ private:
                                                                                   : OwnedUseMode::owned_copy;
     }
 
+    [[nodiscard]] RequestedUse for_range_iterable_use(const syntax::StmtId stmt_id) const noexcept
+    {
+        const ForInIterationPlan* const plan = this->core_.cached_for_in_iteration_plan(stmt_id);
+        if (plan == nullptr || plan->kind != ForInIterationKind::protocol_iterator) {
+            return RequestedUse::initialized_place;
+        }
+        if (plan->protocol_source == ForInProtocolSourceKind::direct_iterator
+            || plan->iter_call.receiver_access == ReceiverAccessKind::consuming) {
+            return RequestedUse::consume;
+        }
+        if (plan->iter_call.receiver_access == ReceiverAccessKind::mutable_) {
+            return RequestedUse::mutable_borrow;
+        }
+        if (plan->iter_call.receiver_access == ReceiverAccessKind::shared) {
+            return RequestedUse::shared_borrow;
+        }
+        return RequestedUse::initialized_place;
+    }
+
     void push_scoped_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
         MoveEnvironment environment, BorrowEnvironment borrow_environment, CleanupStack cleanup_scopes,
         const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
@@ -1100,7 +1119,7 @@ private:
                 break;
             case syntax::StmtKind::for_range:
                 this->push_mode_block(tasks, stmt.body);
-                this->push_mode_expression(tasks, stmt.range_iterable, RequestedUse::initialized_place);
+                this->push_mode_expression(tasks, stmt.range_iterable, this->for_range_iterable_use(stmt_id));
                 this->push_mode_expression(tasks, stmt.range_step, RequestedUse::owned);
                 this->push_mode_expression(tasks, stmt.range_end, RequestedUse::owned);
                 this->push_mode_expression(tasks, stmt.range_start, RequestedUse::owned);
@@ -1424,7 +1443,7 @@ private:
                 this->build_for_statement(stmt, task);
                 break;
             case syntax::StmtKind::for_range:
-                this->build_for_range_statement(stmt, task);
+                this->build_for_range_statement(task.stmt, stmt, task);
                 break;
             case syntax::StmtKind::return_:
                 if (syntax::is_valid(stmt.return_value)) {
@@ -1590,7 +1609,7 @@ private:
         }
     }
 
-    void build_for_range_statement(const syntax::StmtNode& stmt, const BuildTask& task)
+    void build_for_range_statement(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const BuildTask& task)
     {
         CleanupStack loop_cleanup_scopes = task.cleanup_scopes;
         const base::usize loop_keep_depth = loop_cleanup_scopes.size();
@@ -1610,7 +1629,7 @@ private:
             bounds.emplace_back(stmt.range_step, RequestedUse::owned);
         }
         if (syntax::is_valid(stmt.range_iterable)) {
-            bounds.emplace_back(stmt.range_iterable, RequestedUse::initialized_place);
+            bounds.emplace_back(stmt.range_iterable, this->for_range_iterable_use(stmt_id));
         }
         this->push_expression_sequence(bounds, task.start, header, task.environment, task.borrow_environment,
             loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,

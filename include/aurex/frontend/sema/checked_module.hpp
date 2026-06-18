@@ -1323,10 +1323,43 @@ enum class ForInIterationKind : base::u8 {
     counted_range,
     array_value,
     slice_value,
+    protocol_iterator,
 };
 
 enum class ForInItemMode : base::u8 {
     immutable_value_copy,
+};
+
+enum class ForInProtocolSourceKind : base::u8 {
+    direct_iterator,
+    iter_method,
+};
+
+enum class ForInProtocolCallKind : base::u8 {
+    none,
+    inherent_method,
+    trait_static_method,
+};
+
+struct ForInProtocolCallPlan {
+    ForInProtocolCallKind kind = ForInProtocolCallKind::none;
+    TraitMethodDispatchKind trait_dispatch = TraitMethodDispatchKind::param_env;
+    FunctionLookupKey function_key;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle self_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandle param_type = INVALID_TYPE_HANDLE;
+    InternedText method_name;
+    IdentId method_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    query::StableFingerprint128 predicate_fingerprint;
+    TraitImplLookupKey impl_key;
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    bool receiver_auto_borrow = false;
+    bool receiver_two_phase_eligible = false;
 };
 
 struct ForInIterationPlan {
@@ -1341,7 +1374,12 @@ struct ForInIterationPlan {
     TypeHandle item_type = INVALID_TYPE_HANDLE;
     TypeHandle index_type = INVALID_TYPE_HANDLE;
     TypeHandle range_type = INVALID_TYPE_HANDLE;
+    TypeHandle iterator_type = INVALID_TYPE_HANDLE;
     PointerMutability element_access = PointerMutability::const_;
+    ForInProtocolSourceKind protocol_source = ForInProtocolSourceKind::direct_iterator;
+    ForInProtocolCallPlan iter_call;
+    ForInProtocolCallPlan has_next_call;
+    ForInProtocolCallPlan next_call;
     bool evaluates_source_once = true;
     bool consumes_iterable = false;
     bool requires_copy_item = true;
@@ -1351,6 +1389,8 @@ using ForInIterationPlanMap = SemaMap<base::u32, ForInIterationPlan>;
 
 [[nodiscard]] std::string_view for_in_iteration_kind_name(ForInIterationKind kind) noexcept;
 [[nodiscard]] std::string_view for_in_item_mode_name(ForInItemMode mode) noexcept;
+[[nodiscard]] std::string_view for_in_protocol_source_kind_name(ForInProtocolSourceKind kind) noexcept;
+[[nodiscard]] std::string_view for_in_protocol_call_kind_name(ForInProtocolCallKind kind) noexcept;
 
 struct GenericNodeSpan {
     base::u32 begin = 0;
@@ -1790,6 +1830,8 @@ public:
     [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
+    [[nodiscard]] ForInIterationPlan clone_for_in_iteration_plan(const ForInIterationPlan& other);
+    [[nodiscard]] ForInProtocolCallPlan clone_for_in_protocol_call_plan(const ForInProtocolCallPlan& other);
     [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);
     [[nodiscard]] FunctionCallBinding clone_function_call_binding(const FunctionCallBinding& other) const;
     [[nodiscard]] TraitObjectMethodSlotFact clone_trait_object_method_slot_fact(

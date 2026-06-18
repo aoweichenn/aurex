@@ -29,6 +29,10 @@ constexpr base::usize SEMA_FOR_RANGE_MAX_OPERAND_COUNT = 3;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_UNKNOWN = 0;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_FALSE = 1;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_TRUE = 2;
+constexpr base::u32 SEMA_FOR_IN_RECEIVER_PARAM_COUNT = 1;
+constexpr std::string_view SEMA_FOR_IN_ITER_METHOD_NAME = "iter";
+constexpr std::string_view SEMA_FOR_IN_HAS_NEXT_METHOD_NAME = "has_next";
+constexpr std::string_view SEMA_FOR_IN_NEXT_METHOD_NAME = "next";
 constexpr std::string_view SEMA_LAMBDA_SYMBOL_PREFIX = "__aurex_lambda";
 constexpr std::string_view SEMA_LAMBDA_ENV_SYMBOL_SUFFIX = "_env";
 constexpr std::string_view SEMA_LAMBDA_CAPTURE_FIELD_PREFIX = "__capture_";
@@ -3423,9 +3427,18 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
             plan.kind = ForInIterationKind::slice_value;
             plan.element_access = slice.slice_mutability;
         } else {
-            this->core_.report_general(
-                expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
-                std::string(SEMA_FOR_IN_ARRAY_OR_SLICE));
+            bool protocol_error_reported = false;
+            const std::optional<ForInIterationPlan> protocol_plan =
+                this->analyze_for_in_protocol_plan(stmt_id, stmt, iterable_type, protocol_error_reported);
+            if (protocol_plan.has_value()) {
+                this->core_.record_stmt_local_type(stmt_id, protocol_plan->item_type);
+                this->core_.record_for_in_iteration_plan(stmt_id, *protocol_plan);
+                return protocol_plan->item_type;
+            }
+            if (!protocol_error_reported) {
+                this->core_.report_general(expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+                    std::string(SEMA_FOR_IN_ITERABLE_PROTOCOL));
+            }
         }
         plan.iterable_type = iterable_type;
         plan.item_type = element_type;
@@ -3522,6 +3535,335 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
     plan.requires_copy_item = false;
     this->core_.record_for_in_iteration_plan(stmt_id, plan);
     return local_type;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_for_in_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    bool& reported_failure)
+{
+    reported_failure = false;
+    if (!is_valid(iterable_type)) {
+        return std::nullopt;
+    }
+    if (std::optional<ForInIterationPlan> direct =
+            this->analyze_direct_iterator_protocol_plan(stmt_id, stmt, iterable_type, false);
+        direct.has_value()) {
+        return direct;
+    }
+    if (std::optional<ForInIterationPlan> iter =
+            this->analyze_iter_method_protocol_plan(stmt_id, stmt, iterable_type, reported_failure);
+        iter.has_value() || reported_failure) {
+        return iter;
+    }
+
+    const base::SourceRange range = expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range);
+    if (this->type_has_for_in_protocol_signal(iterable_type, range)) {
+        reported_failure = true;
+        return this->analyze_direct_iterator_protocol_plan(stmt_id, stmt, iterable_type, true);
+    }
+    return std::nullopt;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_direct_iterator_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    const bool report_failure)
+{
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = ForInIterationKind::protocol_iterator;
+    plan.protocol_source = ForInProtocolSourceKind::direct_iterator;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.iterator_type = iterable_type;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+    plan.element_access = PointerMutability::mut;
+    plan.requires_copy_item = false;
+    plan.consumes_iterable = true;
+    plan.evaluates_source_once = true;
+    if (!this->complete_iterator_protocol_plan(
+            plan, iterable_type, expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+            report_failure)) {
+        return std::nullopt;
+    }
+    return plan;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_iter_method_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    bool& reported_failure)
+{
+    reported_failure = false;
+    const base::SourceRange range = expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range);
+    ForInProtocolMethodResolution iter =
+        this->resolve_for_in_protocol_method(iterable_type, SEMA_FOR_IN_ITER_METHOD_NAME, range, false);
+    if (!iter.found) {
+        return std::nullopt;
+    }
+    if (!this->for_in_receiver_matches(iter.call, iterable_type, stmt.range_iterable, range, false, true)) {
+        reported_failure = true;
+        return std::nullopt;
+    }
+
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = ForInIterationKind::protocol_iterator;
+    plan.protocol_source = ForInProtocolSourceKind::iter_method;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.iterator_type = iter.return_type;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+    plan.element_access = PointerMutability::mut;
+    plan.iter_call = iter.call;
+    plan.requires_copy_item = false;
+    plan.consumes_iterable = iter.call.receiver_access == ReceiverAccessKind::consuming;
+    plan.evaluates_source_once = true;
+    if (!this->complete_iterator_protocol_plan(plan, iter.return_type, range, false)) {
+        reported_failure = true;
+        if (this->type_has_for_in_protocol_signal(iter.return_type, range)) {
+            static_cast<void>(this->complete_iterator_protocol_plan(plan, iter.return_type, range, true));
+        } else {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITER_METHOD));
+        }
+        return std::nullopt;
+    }
+    return plan;
+}
+
+ForInProtocolMethodResolution SemanticAnalyzerCore::StatementAnalyzer::resolve_for_in_protocol_method(
+    const TypeHandle receiver_type,
+    const std::string_view method_name,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    ForInProtocolMethodResolution result;
+    if (!is_valid(receiver_type)) {
+        return result;
+    }
+    const IdentId method_name_id = this->core_.ctx_.module.find_identifier(method_name);
+    if (!is_valid(method_name_id)) {
+        return result;
+    }
+
+    TypeHandle owner_type = receiver_type;
+    if (this->core_.state_.checked.types.is_pointer(owner_type)
+        || this->core_.state_.checked.types.is_reference(owner_type)) {
+        owner_type = this->core_.state_.checked.types.get(owner_type).pointee;
+    }
+
+    const FunctionSignature* signature =
+        this->core_.find_method_in_visible_modules(owner_type, method_name_id, method_name, range, true, false);
+    if (signature != nullptr) {
+        this->core_.ensure_function_return_known(*signature, range);
+        this->core_.validate_unsafe_call(*signature, range);
+        result.call.kind = ForInProtocolCallKind::inherent_method;
+        result.call.function_key = signature->semantic_key;
+        result.call.receiver_type = receiver_type;
+        result.call.self_type = owner_type;
+        result.call.return_type = signature->return_type;
+        result.call.param_type = signature->param_types.empty() ? INVALID_TYPE_HANDLE : signature->param_types.front();
+        result.call.method_name = this->core_.state_.checked.intern_text(method_name);
+        result.call.method_name_id = method_name_id;
+        result.call.receiver_access = ReceiverAccessKind::none;
+        if (signature->param_types.size() == SEMA_FOR_IN_RECEIVER_PARAM_COUNT) {
+            const TypeHandle self_type = signature->param_types.front();
+            if (this->core_.state_.checked.types.is_pointer(self_type)
+                || this->core_.state_.checked.types.is_reference(self_type)) {
+                const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+                result.call.receiver_access =
+                    self.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_
+                                                                      : ReceiverAccessKind::shared;
+                const bool receiver_is_indirect = this->core_.state_.checked.types.is_pointer(receiver_type)
+                    || this->core_.state_.checked.types.is_reference(receiver_type);
+                result.call.receiver_auto_borrow =
+                    !receiver_is_indirect && this->core_.state_.checked.types.same(self.pointee, receiver_type);
+                result.call.receiver_two_phase_eligible =
+                    result.call.receiver_auto_borrow
+                    && this->core_.state_.checked.types.is_reference(self_type)
+                    && self.pointer_mutability == PointerMutability::mut;
+            } else if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+                result.call.receiver_access = ReceiverAccessKind::consuming;
+            }
+        }
+        result.return_type = signature->return_type;
+        result.receiver_type = receiver_type;
+        result.found = true;
+        return result;
+    }
+
+    TraitMethodCallResolution trait_resolution =
+        this->core_.resolve_trait_method_call(owner_type, method_name_id, method_name, range, true, false);
+    if (!trait_resolution.found) {
+        if (report_failure) {
+            trait_resolution =
+                this->core_.resolve_trait_method_call(owner_type, method_name_id, method_name, range, true, true);
+        }
+        if (!trait_resolution.found) {
+            return result;
+        }
+    }
+    if (trait_resolution.dispatch == TraitMethodDispatchKind::vtable_slot) {
+        return result;
+    }
+    result.call.kind = ForInProtocolCallKind::trait_static_method;
+    result.call.trait_dispatch = trait_resolution.dispatch;
+    if (trait_resolution.signature != nullptr) {
+        result.call.function_key = trait_resolution.signature->semantic_key;
+    }
+    if (trait_resolution.predicate != nullptr) {
+        result.call.predicate_index = trait_resolution.predicate->index;
+        result.call.predicate_fingerprint = trait_resolution.predicate->canonical_fingerprint;
+    }
+    if (trait_resolution.impl != nullptr) {
+        result.call.impl_key = trait_resolution.impl->key;
+    }
+    if (trait_resolution.trait != nullptr) {
+        result.call.trait_module = trait_resolution.trait->module;
+        result.call.trait_name_id = trait_resolution.trait->name_id;
+    }
+    if (trait_resolution.requirement != nullptr) {
+        result.call.requirement_ordinal = trait_resolution.requirement->ordinal;
+    }
+    result.call.receiver_type = receiver_type;
+    result.call.self_type = owner_type;
+    result.call.return_type = trait_resolution.return_type;
+    result.call.param_type =
+        trait_resolution.param_types.empty() ? INVALID_TYPE_HANDLE : trait_resolution.param_types.front();
+    result.call.method_name = this->core_.state_.checked.intern_text(method_name);
+    result.call.method_name_id = method_name_id;
+    if (trait_resolution.param_types.size() == SEMA_FOR_IN_RECEIVER_PARAM_COUNT) {
+        const TypeHandle self_type = trait_resolution.param_types.front();
+        if (this->core_.state_.checked.types.is_pointer(self_type)
+            || this->core_.state_.checked.types.is_reference(self_type)) {
+            const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+            result.call.receiver_access =
+                self.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_
+                                                                  : ReceiverAccessKind::shared;
+            const bool receiver_is_indirect = this->core_.state_.checked.types.is_pointer(receiver_type)
+                || this->core_.state_.checked.types.is_reference(receiver_type);
+            result.call.receiver_auto_borrow =
+                !receiver_is_indirect && this->core_.state_.checked.types.same(self.pointee, receiver_type);
+            result.call.receiver_two_phase_eligible =
+                result.call.receiver_auto_borrow && this->core_.state_.checked.types.is_reference(self_type)
+                && self.pointer_mutability == PointerMutability::mut;
+        } else if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+            result.call.receiver_access = ReceiverAccessKind::consuming;
+        }
+    }
+    result.return_type = trait_resolution.return_type;
+    result.receiver_type = receiver_type;
+    result.found = true;
+    return result;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::type_has_for_in_protocol_signal(
+    const TypeHandle receiver_type, const base::SourceRange& range)
+{
+    return this->resolve_for_in_protocol_method(receiver_type, SEMA_FOR_IN_HAS_NEXT_METHOD_NAME, range, false).found
+        || this->resolve_for_in_protocol_method(receiver_type, SEMA_FOR_IN_NEXT_METHOD_NAME, range, false).found;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::for_in_receiver_matches(const ForInProtocolCallPlan& call,
+    const TypeHandle receiver_type,
+    const syntax::ExprId receiver_expr,
+    const base::SourceRange& range,
+    const bool synthetic_mutable_place,
+    const bool report_failure)
+{
+    const auto report_receiver_type_mismatch = [&] {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_METHOD_RECEIVER_TYPE_MISMATCH));
+        }
+    };
+    const TypeHandle self_type = call.param_type;
+    if (!is_valid(self_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+        return true;
+    }
+    if (!this->core_.state_.checked.types.is_pointer(self_type)
+        && !this->core_.state_.checked.types.is_reference(self_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+    if (this->core_.state_.checked.types.is_pointer(receiver_type)
+        || this->core_.state_.checked.types.is_reference(receiver_type)) {
+        const TypeInfo& receiver = this->core_.state_.checked.types.get(receiver_type);
+        if (self.kind != receiver.kind
+            || !this->core_.state_.checked.types.same(self.pointee, receiver.pointee)) {
+            report_receiver_type_mismatch();
+            return false;
+        }
+        if (self.pointer_mutability == PointerMutability::mut
+            && receiver.pointer_mutability != PointerMutability::mut) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
+            }
+            return false;
+        }
+        return true;
+    }
+    if (!this->core_.state_.checked.types.same(self.pointee, receiver_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    if (self.pointer_mutability == PointerMutability::mut && !synthetic_mutable_place) {
+        if (!this->core_.is_place_expr(receiver_expr)) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_METHOD_RECEIVER_PLACE));
+            }
+            return false;
+        }
+        if (!this->core_.is_writable_place(receiver_expr)) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::complete_iterator_protocol_plan(
+    ForInIterationPlan& plan, const TypeHandle iterator_type, const base::SourceRange& range, const bool report_failure)
+{
+    ForInProtocolMethodResolution has_next =
+        this->resolve_for_in_protocol_method(iterator_type, SEMA_FOR_IN_HAS_NEXT_METHOD_NAME, range, report_failure);
+    if (!has_next.found
+        || !this->for_in_receiver_matches(has_next.call, iterator_type, syntax::INVALID_EXPR_ID, range, true, false)
+        || has_next.call.receiver_access != ReceiverAccessKind::mutable_
+        || !this->core_.state_.checked.types.is_bool(has_next.return_type)) {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITERATOR_HAS_NEXT));
+        }
+        return false;
+    }
+
+    ForInProtocolMethodResolution next =
+        this->resolve_for_in_protocol_method(iterator_type, SEMA_FOR_IN_NEXT_METHOD_NAME, range, report_failure);
+    if (!next.found
+        || !this->for_in_receiver_matches(next.call, iterator_type, syntax::INVALID_EXPR_ID, range, true, false)
+        || next.call.receiver_access != ReceiverAccessKind::mutable_
+        || !is_valid(next.return_type) || this->core_.state_.checked.types.is_void(next.return_type)) {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITERATOR_NEXT));
+        }
+        return false;
+    }
+
+    plan.iterator_type = iterator_type;
+    plan.item_type = next.return_type;
+    plan.has_next_call = has_next.call;
+    plan.next_call = next.call;
+    return true;
 }
 
 void SemanticAnalyzerCore::StatementAnalyzer::define_for_range_local(

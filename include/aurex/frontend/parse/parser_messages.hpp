@@ -248,6 +248,9 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expect
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or '>' after generic parameter";
 
+inline constexpr std::string_view PARSER_LEGACY_BRACKET_GENERIC =
+    "generic parameter and argument lists use '<...>'; square brackets are reserved for arrays, slices, indexes, and patterns";
+
 inline constexpr std::string_view PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED = "generic bounds are not part of M2 syntax";
 
 inline constexpr std::string_view PARSER_EXPECT_WHERE_GENERIC_PARAM = "expected generic parameter name in where clause";

@@ -73,6 +73,8 @@ TEST_F(AurexIntegrationTest, CurrentChineseDocumentationLayoutIsStable)
 
 TEST_F(AurexIntegrationTest, CurrentDocumentationExplainsTheActiveRoadmap)
 {
+    expect_document_contains("README.md", "docs/zh/README.md");
+    expect_document_missing("README.md", "docs/en/README.md");
     expect_document_contains("docs/README.md", "这一版只维护中文文档");
     expect_document_contains("docs/zh/README.md", "本目录是 Aurex 当前唯一维护的文档版本");
     expect_document_contains("docs/zh/progress.md", "泛型语法和实例化闭环");

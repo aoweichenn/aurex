@@ -138,11 +138,12 @@ syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& f
     if (this->check(TokenKind::dot) || this->check_generic_left_angle()) {
         return this->parse_explicit_enum_case_pattern(first);
     }
+    const bool recovered_legacy_generic = this->recover_legacy_bracket_generic();
 
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::binding;
     pattern.binding_name = first.text();
-    pattern.range = first.range;
+    pattern.range = recovered_legacy_generic ? this->merge(first.range, this->previous().range) : first.range;
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
@@ -150,6 +151,14 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
 {
     std::vector<syntax::Token> parts;
     parts.push_back(first);
+
+    const auto make_binding = [&]() {
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::binding;
+        pattern.binding_name = first.text();
+        pattern.range = this->merge(first.range, this->previous().range);
+        return this->session_.module.push_pattern(std::move(pattern));
+    };
 
     const auto make_pattern = [&](const syntax::TypeId enum_type, const syntax::Token& case_name) {
         syntax::PatternNode pattern;
@@ -183,6 +192,9 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
         return make_pattern(enum_type, case_name);
     }
+    if (this->recover_legacy_bracket_generic()) {
+        return make_binding();
+    }
 
     while (this->match(TokenKind::dot)) {
         parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT)));
@@ -204,6 +216,9 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             const syntax::Token& case_name =
                 this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
             return make_pattern(enum_type, case_name);
+        }
+        if (this->recover_legacy_bracket_generic()) {
+            return make_binding();
         }
     }
 

@@ -1,6 +1,7 @@
 #include <aurex/frontend/lex/lexer.hpp>
 #include <aurex/frontend/parse/parser.hpp>
 #include <aurex/frontend/parse/parser_item_part.hpp>
+#include <aurex/frontend/parse/parser_messages.hpp>
 #include <aurex/frontend/parse/parser_part_ranges.hpp>
 #include <aurex/frontend/parse/recovery.hpp>
 #include <aurex/frontend/parse/token_cursor.hpp>
@@ -4524,34 +4525,50 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
 
 TEST(CoreUnit, ParserKeepsBracketSyntaxOutOfGenerics)
 {
+    constexpr std::string_view legacy_generic = parse::PARSER_LEGACY_BRACKET_GENERIC;
     expect_parse_error("module parser.bracket_generic_params_fn;\n"
                        "fn id" "[T](x: T) -> T { return x; }\n",
-        "expected '(' after function name");
+        legacy_generic);
     expect_parse_error("module parser.bracket_generic_params_struct;\n"
                        "struct Box[T] { value: T; }\n",
-        "expected '{' after struct name");
+        legacy_generic);
     expect_parse_error("module parser.bracket_generic_params_enum;\n"
                        "enum Maybe[T] { some(T), none }\n",
-        "expected '{' after enum name");
+        legacy_generic);
     expect_parse_error("module parser.bracket_generic_params_trait;\n"
                        "trait Reader[T] { fn read(self: &T) -> i32; }\n",
-        "expected '{' after trait name");
+        legacy_generic);
+    expect_parse_error("module parser.bracket_generic_params_impl;\n"
+                       "struct Box<T> { value: T; }\n"
+                       "impl[T] Box<T> { fn get(self: &Box<T>) -> T { return self.value; } }\n",
+        legacy_generic);
     expect_parse_error("module parser.bracket_type_args;\n"
                        "struct Pair<A, B> { first: A; second: B; }\n"
                        "type Bad = Pair[i32, bool];\n",
-        "expected ';' after type alias declaration");
+        legacy_generic);
+    expect_parse_error("module parser.bracket_type_args_in_decl;\n"
+                       "struct Box<T> { value: T; }\n"
+                       "fn main(value: Box[i32]) -> i32 { return 0; }\n",
+        legacy_generic);
     expect_parse_error("module parser.bracket_dyn_trait_args;\n"
                        "type Bad = &dyn Draw[i32];\n",
-        "expected ';' after type alias declaration");
+        legacy_generic);
     expect_parse_error("module parser.bracket_associated_trait_args;\n"
                        "type Bad = &dyn Iterator[Item = i32];\n",
-        "expected ';' after type alias declaration");
+        legacy_generic);
     expect_parse_error("module parser.bracket_enum_case_pattern;\n"
                        "enum Maybe<T> { some(T), none }\n"
                        "fn main(value: Maybe<i32>) -> i32 {\n"
                        "  return match value { Maybe[i32].some(x) => x, Maybe<i32>.none => 0 };\n"
                        "}\n",
-        "expected ',' or '}' after match arm");
+        legacy_generic);
+    expect_parse_error("module parser.bracket_qualified_enum_case_pattern;\n"
+                       "enum Maybe<T> { some(T), none }\n"
+                       "fn main(value: Maybe<i32>) -> i32 {\n"
+                       "  return match value { parser.bracket_qualified_enum_case_pattern.Maybe[i32].some(x) => x, "
+                       "Maybe<i32>.none => 0 };\n"
+                       "}\n",
+        legacy_generic);
 }
 
 TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)

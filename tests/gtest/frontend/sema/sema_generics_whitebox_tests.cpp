@@ -648,6 +648,109 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     EXPECT_TRUE(query::is_valid(discard_checked.functions.at(signature.semantic_key).generic_instance_key));
     EXPECT_EQ(discard_checked.functions.at(signature.semantic_key).generic_instance_key, instance.generic_instance_key);
 }
+
+TEST(CoreUnit, SemanticWhiteBoxGenericBuiltinTypeOperandsRetainInstanceSideTables)
+{
+    constexpr std::string_view source =
+        "module generic_builtin_side_tables;\n"
+        "fn builtin_ops<T>(value: T, addr: usize) -> usize where T: Sized + Copy {\n"
+        "  let size: usize = sizeof<T>();\n"
+        "  let align: usize = alignof<T>();\n"
+        "  let raw: *const T = unsafe { ptrat<*const T>(addr) };\n"
+        "  let casted: *const T = unsafe { ptrcast<*const T>(raw) };\n"
+        "  let recast: *const T = unsafe { bitcast<*const T>(casted) };\n"
+        "  if ptraddr(recast) == 0usize { return size; }\n"
+        "  return size + align;\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let value: i32 = 1;\n"
+        "  return (builtin_ops<i32>(value, ptraddr(&value))) as i32;\n"
+        "}\n";
+
+    syntax::AstModule module = parse_const_generic_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << diagnostic_messages(diagnostics) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+
+    const sema::GenericFunctionInstanceInfo* builtin_ops = nullptr;
+    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
+        if (instance.signature.name == "builtin_ops") {
+            builtin_ops = &instance;
+            break;
+        }
+    }
+    ASSERT_NE(builtin_ops, nullptr);
+    EXPECT_EQ(sema::function_display_name(checked.types, builtin_ops->signature), "builtin_ops<i32>");
+
+    const sema::GenericSideTables& side_tables = builtin_ops->side_tables;
+    EXPECT_TRUE(side_tables.local_dense);
+    EXPECT_FALSE(side_tables.syntax_type_handles.empty());
+    EXPECT_TRUE(side_tables.sparse_syntax_type_handles.empty());
+
+    auto side_table_has_type_display = [&](const std::string_view expected) {
+        for (const TypeHandle handle : side_tables.syntax_type_handles) {
+            if (sema::is_valid(handle) && checked.types.display_name(handle) == expected) {
+                return true;
+            }
+        }
+        for (const auto& entry : side_tables.sparse_syntax_type_handles) {
+            if (sema::is_valid(entry.second) && checked.types.display_name(entry.second) == expected) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto side_table_has_expr_display = [&](const std::string_view expected) {
+        for (const TypeHandle handle : side_tables.expr_types) {
+            if (sema::is_valid(handle) && checked.types.display_name(handle) == expected) {
+                return true;
+            }
+        }
+        for (const auto& entry : side_tables.sparse_expr_types) {
+            if (sema::is_valid(entry.second) && checked.types.display_name(entry.second) == expected) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    EXPECT_TRUE(side_table_has_type_display("i32"));
+    EXPECT_TRUE(side_table_has_type_display("*const i32"));
+    EXPECT_TRUE(side_table_has_expr_display("usize"));
+    EXPECT_TRUE(side_table_has_expr_display("*const i32"));
+
+    base::usize layout_type_operand_count = 0;
+    base::usize pointer_type_operand_count = 0;
+    for (base::usize index = 0; index < analyzer.ctx_.module.exprs.size(); ++index) {
+        const syntax::ExprKind kind = analyzer.ctx_.module.exprs.kind(index);
+        if (kind != syntax::ExprKind::size_of && kind != syntax::ExprKind::align_of
+            && kind != syntax::ExprKind::paddr && kind != syntax::ExprKind::pcast
+            && kind != syntax::ExprKind::bcast) {
+            continue;
+        }
+        const syntax::CastExprPayload* const payload = analyzer.ctx_.module.exprs.cast_payload(index);
+        ASSERT_NE(payload, nullptr);
+        ASSERT_TRUE(syntax::is_valid(payload->type));
+        const base::usize local_type_index = side_tables.local_type_index(payload->type);
+        ASSERT_NE(local_type_index, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+        ASSERT_LT(local_type_index, side_tables.syntax_type_handles.size());
+        ASSERT_TRUE(sema::is_valid(side_tables.syntax_type_handles[local_type_index]));
+        const std::string display = checked.types.display_name(side_tables.syntax_type_handles[local_type_index]);
+        if (kind == syntax::ExprKind::size_of || kind == syntax::ExprKind::align_of) {
+            ++layout_type_operand_count;
+            EXPECT_EQ(display, "i32");
+        } else {
+            ++pointer_type_operand_count;
+            EXPECT_EQ(display, "*const i32");
+        }
+    }
+    EXPECT_EQ(layout_type_operand_count, 2U);
+    EXPECT_EQ(pointer_type_operand_count, 3U);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
 {
     syntax::AstModule first_module;

@@ -201,7 +201,6 @@ See:
 
 - `docs/README.md`
 - `docs/zh/README.md`
-- `docs/en/README.md`
 
-The documentation is now organized by topic and language instead of one file
-per small 0.1.x increment.
+The documentation is now organized by topic under the maintained Chinese
+documentation tree instead of one file per small 0.1.x increment.

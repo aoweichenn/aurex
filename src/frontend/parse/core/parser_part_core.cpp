@@ -1,9 +1,16 @@
 #include <aurex/frontend/parse/parser.hpp>
+#include <aurex/frontend/parse/parser_messages.hpp>
 #include <aurex/frontend/parse/parser_part_core.hpp>
 
 #include <utility>
 
 namespace aurex::parse {
+
+namespace {
+
+using syntax::TokenKind;
+
+} // namespace
 
 ParserPartCore::ParserPartCore(Parser& parser) noexcept : parser_(parser), session_(parser.session_)
 {
@@ -152,6 +159,33 @@ void ParserPartCore::report_at(const syntax::Token& token, std::string message) 
 void ParserPartCore::report_note_at(const syntax::Token& token, std::string message) const
 {
     this->parser_.report_note_at(token, std::move(message));
+}
+
+bool ParserPartCore::recover_legacy_bracket_generic() const
+{
+    if (!this->check(TokenKind::l_bracket)) {
+        return false;
+    }
+
+    this->report_here(std::string(PARSER_LEGACY_BRACKET_GENERIC));
+    base::usize bracket_depth = 0;
+    while (!this->is_eof()) {
+        const TokenKind kind = this->advance().kind;
+        if (kind == TokenKind::l_bracket) {
+            ++bracket_depth;
+            continue;
+        }
+        if (kind == TokenKind::r_bracket) {
+            if (bracket_depth > 0) {
+                --bracket_depth;
+            }
+            if (bracket_depth == 0) {
+                break;
+            }
+        }
+    }
+    this->reset_panic();
+    return true;
 }
 
 void ParserPartCore::reset_panic() const noexcept

@@ -69,6 +69,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"for_in_non_copy_element", "for-in element type must be Copy"},
     {"for_in_unsupported", "for-in iterable must be an array or slice"},
     {"generic_ptrat_non_pointer", "ptrat target type must be a pointer"},
+    {"generic_alignof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
     {"generic_sizeof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"increment_syntax", "increment operator is not supported"},

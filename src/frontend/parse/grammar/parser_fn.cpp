@@ -105,6 +105,9 @@ syntax::ItemId ItemParser::parse_fn_decl(
 std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params()
 {
     std::vector<syntax::GenericParamDecl> params;
+    if (this->recover_legacy_bracket_generic()) {
+        return params;
+    }
     if (!this->check_generic_left_angle()) {
         return params;
     }

@@ -445,6 +445,8 @@ syntax::TypeId TypeParser::parse_named_type()
         const syntax::Token& end = this->expect_generic_right_angle_recovered_after(
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, generic_begin);
         type.range = this->merge(type.range, end.range);
+    } else {
+        static_cast<void>(this->recover_legacy_bracket_generic());
     }
     return this->session_.module.push_type(type);
 }
@@ -512,6 +514,8 @@ syntax::TypeId TypeParser::parse_dyn_trait_principal_type(const base::SourceRang
         const syntax::Token& end = this->expect_generic_right_angle_recovered_after(
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, args_begin);
         type.range = this->merge(type.range, end.range);
+    } else {
+        static_cast<void>(this->recover_legacy_bracket_generic());
     }
     return this->session_.module.push_type(std::move(type));
 }

@@ -121,16 +121,16 @@ struct ProcessResult final {
 {
     std::string source;
     source += "module bench.compare.generics;\n\n"
-              "struct Box[T] {\n"
+              "struct Box<T> {\n"
               "    value: T;\n"
               "}\n\n"
-              "fn id[T](value: T) -> T {\n"
+              "fn id<T>(value: T) -> T {\n"
               "    return value;\n"
               "}\n\n"
-              "fn make_box[T](value: T) -> Box[T] {\n"
-              "    return Box[T] { value: value };\n"
+              "fn make_box<T>(value: T) -> Box<T> {\n"
+              "    return Box<T> { value: value };\n"
               "}\n\n"
-              "fn unwrap_box[T](box: Box[T]) -> T where T: Copy {\n"
+              "fn unwrap_box<T>(box: Box<T>) -> T where T: Copy {\n"
               "    return box.value;\n"
               "}\n\n";
     for (std::int64_t index = 0; index < item_count; ++index) {
@@ -148,17 +148,17 @@ struct ProcessResult final {
         source += " = Payload";
         source += suffix;
         source += " { value: seed };\n"
-                  "    let boxed: Box[Payload";
+                  "    let boxed: Box<Payload";
         source += suffix;
-        source += "] = make_box[Payload";
+        source += "> = make_box<Payload";
         source += suffix;
-        source += "](payload);\n"
+        source += ">(payload);\n"
                   "    let unwrapped: Payload";
         source += suffix;
-        source += " = unwrap_box[Payload";
+        source += " = unwrap_box<Payload";
         source += suffix;
-        source += "](boxed);\n"
-                  "    return id[i32](unwrapped.value);\n"
+        source += ">(boxed);\n"
+                  "    return id<i32>(unwrapped.value);\n"
                   "}\n\n";
     }
     source += "fn main() -> i32 {\n"

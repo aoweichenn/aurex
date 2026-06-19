@@ -2,7 +2,42 @@
 
 ## 最高优先级
 
-泛型语法修正、protocol iterator for-in、一等 `range(...)` value 和 str byte iteration 已经收口；下一步优先推进 for-in 剩余边界和低层 builtin 设计。
+当前第一优先级切换为架构与耦合重构。泛型语法修正、protocol iterator for-in、一等 `range(...)` value 和 str byte iteration 已经收口；下一步不继续优先堆新语言表面，而是先把当前高耦合实现整理成更清晰、更安全、更容易学习和扩展的结构。
+
+本轮重构目标：
+
+- 降低高耦合大文件里的隐式依赖，尤其是 sema、IR lowering、checked module dump/clone、borrow/place/drop cleanup 路径。
+- 把混在同一函数里的“分类、计划构造、诊断、side-table 记录、lowering 细节”拆成更小的策略、builder、value object 或局部协作者。
+- 用设计模式只解决真实问题：Strategy 用于可替换 lowering/analysis policy，Builder 用于复杂 plan 构造，Facade/Adapter 用于跨阶段 side-table 和 checked fact 访问；不引入空泛继承层级、service locator 或全局 registry。
+- 优先消除会阻碍后续功能的耦合，而不是做无行为价值的格式化 churn。
+- 保持性能不退化：不新增重复 AST/IR 扫描，不在热路径复制大对象，不把 O(1) fact 查询改成线性搜索。
+- 保持行为不变：每一批重构必须有构建、聚焦测试、完整回归或明确说明为什么不需要完整测试。
+
+第一批重构候选按顺序处理：
+
+1. **for-in plan / lowering 解耦**：把 `counted_range`、`range_value`、array/slice/str iterable、protocol iterator 的 sema plan 构造和 IR lowering 分支拆成清晰策略，减少 `sema_statement_analyzer.cpp` 和 `lower_ast_stmt.cpp` 继续膨胀。
+2. **CheckedModule dumping / clone 分层**：`checked_module.cpp` 同时承担 clone、layout、dump、debug name 等职责，优先拆出稳定 helper，降低新增 checked fact 时的连锁修改风险。
+3. **borrow/place/drop cleanup 协作边界**：梳理 move analysis、place state、borrow flow graph、dropck facts 的事实流向，减少同一语义在多个遍历中重复编码。
+4. **IR lowering helper API 收敛**：把 string/slice/range/protocol 等 source 抽象成统一 value-source / address-source helper，避免后续 reference item iteration 或 range literal 再复制 loop 结构。
+5. **大型 analyzer 的函数级拆分**：对 `sema_generic_analyzer.cpp`、`sema_statement_analyzer.cpp`、`sema_trait_analyzer.cpp` 中新增功能最常触碰的函数做局部抽取，形成可读、可测、可定位的责任块。
+
+重构准入标准：
+
+- 先读完整相关代码路径和调用点，再改代码。
+- 每次只改一个明确边界，避免跨模块大范围重写。
+- 新 helper / class 必须有清晰职责名和数据所有权，不引入隐藏全局状态。
+- 新增或修改的 C++ 成员访问遵守 `this->` 规则。
+- 魔法数字、魔法字符串、重复 switch 名称要收敛为命名常量或局部转换函数。
+- 修改生产代码必须跑相关 build/test；触碰跨阶段契约时必须跑完整 `ctest`。
+
+本轮非目标：
+
+- 不借重构之名改变语言语义。
+- 不先做 mutable/reference item iteration、range literal 或 closure trait。
+- 不为了“套设计模式”引入不必要的抽象层。
+- 不恢复旧文档、英文镜像或阶段流水账。
+
+## 后续功能线
 
 泛型保留边界：
 

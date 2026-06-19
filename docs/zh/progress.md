@@ -2,11 +2,14 @@
 
 版本：0.1.9
 
-当前开发线收敛到三块：
+当前开发线先切到架构与耦合重构。新语言表面继续保留在计划中，但第一优先级是把已经落地的泛型、for-in、closure、borrow/drop 和 IR lowering 路径整理成更低耦合、更容易验证、更适合后续扩展的结构。
 
-1. for-in 剩余语义：mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter。
-2. 低层 builtin 表面和安全边界设计。
-3. closure trait、borrowed-view capture 和 escape/lifetime 专题。
+当前开发线收敛到四块：
+
+1. 架构与耦合重构：优先处理 sema、checked fact、borrow/place/drop cleanup、IR lowering 中的高耦合大函数和重复 fact 流。
+2. for-in 剩余语义：mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter。
+3. 低层 builtin 表面和安全边界设计。
+4. closure trait、borrowed-view capture 和 escape/lifetime 专题。
 
 ## 已完成
 
@@ -36,5 +39,6 @@
 - `progress.md` 和 `version.md` 不再承担历史流水账职责，只记录当前版本边界。
 - 被删除的历史设计如果后续仍有实现价值，应重新整理进当前执行文档，而不是恢复旧目录。
 - 泛型语法修正专题已关闭，旧 `[]` 泛型兼容不得重新进入语义路径。
+- 当前 sema、checked module dump/clone、borrow/place/drop cleanup 和 IR lowering 都存在大文件高耦合风险；继续叠加新语言表面前，需要先做行为保持型重构，避免后续功能反复复制分支和 side-table 访问逻辑。
 - mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter 尚未设计；当前 range value、str byte iteration 和 protocol iterator 已支持直接 lowering，protocol iterator 支持直接 iterator、`iter()`、inherent/static trait dispatch 和 generic where dispatch。
 - closure trait、borrowed-view capture 和更完整 escape/lifetime 仍是后续专题。

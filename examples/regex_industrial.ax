@@ -359,7 +359,7 @@ fn require_errors() -> i32 {
     return require_true(CASE_ERRORS + 80, invalid_flag.status == regex.RegexStatus.syntax_error);
 }
 
-fn main() -> i32 {
+pub fn run_regex_industrial() -> i32 {
     let flags_code: i32 = require_flags();
     if flags_code != 0 {
         return flags_code;
@@ -389,4 +389,8 @@ fn main() -> i32 {
         return api_code;
     }
     return require_errors();
+}
+
+fn main() -> i32 {
+    return run_regex_industrial();
 }

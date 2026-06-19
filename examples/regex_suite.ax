@@ -1,0 +1,69 @@
+module regex_suite;
+
+import regex.api as regex;
+import regex_demo as demo;
+import regex_phase1 as phase1;
+import regex_industrial as industrial;
+import regex_advanced as advanced;
+import regex_stress as stress;
+
+const SUITE_PHASE1_BASE: i32 = 10000;
+const SUITE_INDUSTRIAL_BASE: i32 = 20000;
+const SUITE_ADVANCED_BASE: i32 = 30000;
+const SUITE_STRESS_BASE: i32 = 40000;
+const SUITE_PATTERN_TOO_LARGE_BASE: i32 = 50000;
+const SUITE_SMALL_PATTERN_LIMIT: usize = 2usize;
+
+fn require_pattern_too_large_limit() -> i32 {
+    var options: regex.RegexOptions = regex.default_options();
+    options.max_pattern_bytes = SUITE_SMALL_PATTERN_LIMIT;
+
+    var compiled: regex.Regex = regex.compile_with_options("aaa", options);
+    defer regex.destroy(&mut compiled);
+
+    let rejected: bool = match compiled.status {
+        .pattern_too_large => true,
+        _ => false,
+    };
+    if !rejected {
+        return 1 + regex.status_code(compiled.status);
+    }
+    if regex.max_pattern_bytes() <= SUITE_SMALL_PATTERN_LIMIT {
+        return 20;
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    let demo_code: i32 = demo.run_regex_demo();
+    if demo_code != 0 {
+        return demo_code;
+    }
+
+    let phase1_code: i32 = phase1.run_regex_phase1();
+    if phase1_code != 0 {
+        return SUITE_PHASE1_BASE + phase1_code;
+    }
+
+    let industrial_code: i32 = industrial.run_regex_industrial();
+    if industrial_code != 0 {
+        return SUITE_INDUSTRIAL_BASE + industrial_code;
+    }
+
+    let advanced_code: i32 = advanced.run_regex_advanced();
+    if advanced_code != 0 {
+        return SUITE_ADVANCED_BASE + advanced_code;
+    }
+
+    let stress_code: i32 = stress.run_regex_stress();
+    if stress_code != 0 {
+        return SUITE_STRESS_BASE + stress_code;
+    }
+
+    let oversized_code: i32 = require_pattern_too_large_limit();
+    if oversized_code != 0 {
+        return SUITE_PATTERN_TOO_LARGE_BASE + oversized_code;
+    }
+
+    return 0;
+}

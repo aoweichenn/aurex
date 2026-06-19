@@ -280,7 +280,7 @@ fn require_set_start_byte_prefilter_surface() -> i32 {
     return 0;
 }
 
-fn main() -> i32 {
+pub fn run_regex_stress() -> i32 {
     var search_pattern: regex.Regex = regex.compile("(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)");
     defer regex.destroy(&mut search_pattern);
     let search_ready: i32 = require_compiled(CASE_SEARCH_BASE, &search_pattern);
@@ -342,4 +342,8 @@ fn main() -> i32 {
         return prefix_code;
     }
     return require_set_start_byte_prefilter_surface();
+}
+
+fn main() -> i32 {
+    return run_regex_stress();
 }

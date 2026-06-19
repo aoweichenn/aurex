@@ -30,6 +30,8 @@ the language-core layer.
   escape diagnostics.
 - `regex_stress.ax`: runs repeated compiled regex searches/fullmatches and
   checks the regex resource budget APIs.
+- `regex_suite.ax`: imports the regex smoke examples and runs their exported
+  `run_*` entry points in one native executable.
 
 Build the native hello example:
 
@@ -51,15 +53,14 @@ Compile a file that imports the shared example modules with:
 build/full-llvm/bin/aurexc -I examples/libs path/to/file.ax --emit=checked
 ```
 
-Build and run the regex example with:
+Build and run the full regex example suite with:
 
 ```sh
-build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
-build/tests/regex_demo
-build/full-llvm/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
-build/tests/regex_phase1
-build/full-llvm/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
-build/tests/regex_industrial
-build/full-llvm/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
-build/tests/regex_stress
+build/full-llvm/bin/aurexc -I examples -I examples/libs examples/regex_suite.ax -o build/tests/regex_suite
+build/tests/regex_suite
 ```
+
+Each regex smoke file also keeps its own `fn main() -> i32`, so individual
+examples can still be built directly while tests use `regex_suite.ax` to avoid
+recompiling the shared regex library for every checked-surface and runtime
+check.

@@ -111,7 +111,7 @@ if(BUILD_TESTING)
         )
 
         function(aurex_add_gtest name)
-            set(one_value_args COST TIMEOUT)
+            set(one_value_args COST PROCESSORS TIMEOUT)
             set(multi_value_args LABELS PATTERNS)
             cmake_parse_arguments(AUREX_GTEST "" "${one_value_args}" "${multi_value_args}" ${ARGN})
             if(AUREX_GTEST_UNPARSED_ARGUMENTS)
@@ -136,6 +136,11 @@ if(BUILD_TESTING)
             if(AUREX_GTEST_LABELS)
                 set_tests_properties("${name}" PROPERTIES
                     LABELS "${AUREX_GTEST_LABELS}"
+                )
+            endif()
+            if(AUREX_GTEST_PROCESSORS)
+                set_tests_properties("${name}" PROPERTIES
+                    PROCESSORS "${AUREX_GTEST_PROCESSORS}"
                 )
             endif()
             if(AUREX_GTEST_TIMEOUT)
@@ -227,27 +232,19 @@ if(BUILD_TESTING)
         )
         aurex_add_gtest(aurex_tests_examples_regex_basic
             PATTERNS
-            "AurexIntegrationTest.ExamplesRegexLibrary*"
-            "AurexIntegrationTest.ExamplesRegexPhase1*"
+            "AurexIntegrationTest.ExamplesRegexSuiteSurface*"
             LABELS slow examples regex
             TIMEOUT 300
-            COST 25
-        )
-        aurex_add_gtest(aurex_tests_examples_regex_advanced
-            PATTERNS
-            "AurexIntegrationTest.ExamplesRegexIndustrial*"
-            "AurexIntegrationTest.ExamplesRegexAdvanced*"
-            LABELS slow examples regex
-            TIMEOUT 300
-            COST 30
+            COST 6
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_examples_regex_stress
             PATTERNS
-            "AurexIntegrationTest.ExamplesRegexStress*"
-            "AurexIntegrationTest.ExamplesRegexRejectsOversizedPattern"
+            "AurexIntegrationTest.ExamplesRegexSuiteCompilesAndRuns"
             LABELS slow examples regex
             TIMEOUT 300
-            COST 20
+            COST 12
+            PROCESSORS 4
         )
         aurex_add_gtest(aurex_tests_native_hello
             PATTERNS
@@ -282,6 +279,7 @@ if(BUILD_TESTING)
             "AurexIntegrationTest.QualifiedStaticMethodRegressions"
             "AurexIntegrationTest.MainAndCliRegressions"
             "AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName"
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_regressions_generics
             PATTERNS
@@ -306,6 +304,7 @@ if(BUILD_TESTING)
             "AurexIntegrationTest.ForStatementAndValueSemantics"
             "AurexIntegrationTest.RecursiveFunctions"
             "AurexIntegrationTest.MethodsAndAssociatedFunctions"
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_control_and_modules
             PATTERNS
@@ -356,6 +355,7 @@ if(BUILD_TESTING)
             LABELS slow sample-suite
             TIMEOUT 300
             COST 5
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_sample_suite_runtime_core
             PATTERNS
@@ -401,6 +401,7 @@ if(BUILD_TESTING)
             "AurexIntegrationTest.SampleSuite_PositiveRuntime_imported_samples"
             LABELS sample-suite
             COST 2
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_sample_suite_negative_diagnostics
             PATTERNS
@@ -408,6 +409,7 @@ if(BUILD_TESTING)
             LABELS slow sample-suite
             TIMEOUT 300
             COST 8
+            PROCESSORS 3
         )
         aurex_add_gtest(aurex_tests_sample_suite_negative_cross_stage
             PATTERNS

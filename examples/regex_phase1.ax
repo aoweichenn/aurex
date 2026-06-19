@@ -226,7 +226,7 @@ fn require_repeated_capture_reuses_slot() -> i32 {
     return 0;
 }
 
-fn main() -> i32 {
+pub fn run_regex_phase1() -> i32 {
     var compiled: regex.Regex = regex.compile("(?<user>\\w+)@(?<domain>\\w+\\.(?:com|net))");
     defer regex.destroy(&mut compiled);
     if !compiled.valid() {
@@ -260,4 +260,8 @@ fn main() -> i32 {
         return repeat_capture_code;
     }
     return require_errors();
+}
+
+fn main() -> i32 {
+    return run_regex_phase1();
 }

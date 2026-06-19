@@ -1344,7 +1344,7 @@ fn require_industrial_api_surface() -> i32 {
     return 0;
 }
 
-fn main() -> i32 {
+pub fn run_regex_advanced() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
         return class_code;
@@ -1418,4 +1418,8 @@ fn main() -> i32 {
         return literal_trie_code;
     }
     return require_industrial_api_surface();
+}
+
+fn main() -> i32 {
+    return run_regex_advanced();
 }

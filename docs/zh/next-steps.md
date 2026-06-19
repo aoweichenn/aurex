@@ -4,6 +4,8 @@
 
 当前第一优先级切换为架构与耦合重构。泛型语法修正、protocol iterator for-in、一等 `range(...)` value 和 str byte iteration 已经收口；下一步不继续优先堆新语言表面，而是先把当前高耦合实现整理成更清晰、更安全、更容易学习和扩展的结构。
 
+先把已落地语法面的边界继续收紧，再推进新的语言表面；所有后续功能都必须建立在更清晰的目录、测试和阶段边界之上。
+
 本轮重构目标：
 
 - 降低高耦合大文件里的隐式依赖，尤其是 sema、IR lowering、checked module dump/clone、borrow/place/drop cleanup 路径。

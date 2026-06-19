@@ -94,7 +94,9 @@ cmake --build build/frontend-tests --target aurex_frontend_tests -j20
 build/frontend-tests/bin/aurex_frontend_tests
 
 cmake --build build/full-llvm-fedora --target aurexc aurex_tests -j20
-build/full-llvm-fedora/bin/aurex_tests
+ctest --test-dir build/full-llvm-fedora --parallel 8 --output-on-failure
 ```
+
+推荐用 `tools/run_tests.sh` 跑完整测试。脚本会自动配置、构建并按 CPU 数量并发调度 CTest；需要手动限制并发时设置 `AUREX_CTEST_JOBS=4`。
 
 提交前至少运行触及面的 focused tests、完整 frontend tests、完整 integration/gtest suite 和 `git diff --check`。

@@ -1687,7 +1687,10 @@ sema::OwnedUseMode Lowerer::expr_owned_use_mode(const syntax::ExprId expr) const
         if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
             && this->active_side_tables_.expr_owned_use_modes != nullptr
             && local < this->active_side_tables_.expr_owned_use_modes->size()) {
-            return (*this->active_side_tables_.expr_owned_use_modes)[local];
+            const sema::OwnedUseMode local_mode = (*this->active_side_tables_.expr_owned_use_modes)[local];
+            if (local_mode != sema::OwnedUseMode::none) {
+                return local_mode;
+            }
         }
         const auto found = this->active_side_tables_.generic->sparse_expr_owned_use_modes.find(expr.value);
         if (found != this->active_side_tables_.generic->sparse_expr_owned_use_modes.end()) {

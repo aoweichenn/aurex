@@ -190,8 +190,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
 
     sema::GenericSideTables dense_side_tables;
     analyzer.state_.flow.current_side_tables.side_tables = &dense_side_tables;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
-    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    static_cast<void>(analyzer.record_expr_types(expr_id, i32, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::owned_copy);
     analyzer.record_expr_c_name(expr_id, "dense_expr");
@@ -313,8 +312,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         sema::GenericNodeSpan{stmt_id.value, 1U});
     analyzer.state_.flow.current_side_tables.side_tables = &local_side_tables;
     analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
-    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    static_cast<void>(analyzer.record_expr_types(expr_id, i32, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::shared_borrow);
     analyzer.record_expr_c_name(expr_id, "local_expr");
@@ -341,8 +339,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(local_side_tables.expr_intrinsic_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
-    EXPECT_TRUE(local_side_tables.expr_owned_use_modes.empty());
-    EXPECT_EQ(local_side_tables.sparse_expr_owned_use_modes.at(expr_id.value), sema::OwnedUseMode::shared_borrow);
+    ASSERT_GT(local_side_tables.expr_owned_use_modes.size(), local_expr);
+    EXPECT_EQ(local_side_tables.expr_owned_use_modes[local_expr], sema::OwnedUseMode::shared_borrow);
+    EXPECT_TRUE(local_side_tables.sparse_expr_owned_use_modes.empty());
     EXPECT_EQ(analyzer.cached_expr_owned_use_mode(expr_id), sema::OwnedUseMode::shared_borrow);
     EXPECT_EQ(analyzer.state_.checked.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
     EXPECT_EQ(
@@ -393,8 +392,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     analyzer.state_.flow.current_side_tables.side_tables = &sparse_local_side_tables;
     analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
-    static_cast<void>(analyzer.record_expr_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
+    static_cast<void>(analyzer.record_expr_types(ExprId{sparse_expr_ids.front() + 1U}, i32, i32));
     analyzer.record_expr_expected_type(ExprId{sparse_expr_ids.front() + 1U}, i64);
     analyzer.record_expr_owned_use_mode(ExprId{sparse_expr_ids.front() + 1U}, sema::OwnedUseMode::mutable_borrow);
     analyzer.record_expr_c_name(ExprId{sparse_expr_ids.front() + 1U}, "sparse_local_expr");

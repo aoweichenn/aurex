@@ -26,6 +26,8 @@ public:
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
 
 private:
+    [[nodiscard]] const GenericSideTables* current_side_tables() const noexcept;
+
     const SemanticAnalyzerCore& core_;
 };
 
@@ -59,6 +61,8 @@ public:
     [[nodiscard]] SemaTypeTable& active_stmt_local_types() noexcept;
 
 private:
+    [[nodiscard]] GenericSideTables* current_side_tables() noexcept;
+
     SemanticAnalyzerCore& core_;
 };
 

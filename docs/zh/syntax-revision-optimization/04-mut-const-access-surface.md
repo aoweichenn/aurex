@@ -89,7 +89,7 @@ Aurex 不做空格敏感语法。只要 token 序列相同，含义就相同：
 - `src/frontend/parse/grammar/parser_type.cpp`
 - `src/frontend/sema/types/type.cpp`
 - `tests/samples/negative/types/slice_legacy_const_type.ax`
-- `tests/gtest/integration/sample_suite_tests.cpp`
+- `tests/gtest/integration/sample_suite/`
 
 当前 display name：
 

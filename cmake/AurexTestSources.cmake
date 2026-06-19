@@ -1,0 +1,128 @@
+set(AUREX_BASE_TEST_SOURCES
+    tests/gtest/infrastructure/base/base_tests.cpp
+)
+
+set(AUREX_QUERY_TEST_SOURCES
+    tests/gtest/infrastructure/query/const_generic_design_gate_tests.cpp
+    tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
+    tests/gtest/infrastructure/query/dyn_ownership_runtime_boundary_gate_tests.cpp
+    tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
+    tests/gtest/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts_tests.cpp
+    tests/gtest/infrastructure/query/macro_design_gate_tests.cpp
+    tests/gtest/infrastructure/query/macro_expansion_facts_tests.cpp
+    tests/gtest/infrastructure/query/owned_dyn_drop_allocator_identity_gate_tests.cpp
+    tests/gtest/infrastructure/query/owned_dyn_ir_shape_prototype_gate_tests.cpp
+    tests/gtest/infrastructure/query/owned_dyn_runtime_admission_gate_tests.cpp
+    tests/gtest/infrastructure/query/owned_dyn_runtime_lowering_abi_gate_tests.cpp
+    tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
+    tests/gtest/infrastructure/query/query_key_tests.cpp
+    tests/gtest/infrastructure/query/query_robustness_tests.cpp
+    tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
+)
+
+set(AUREX_LEXER_TEST_SOURCES
+    tests/gtest/frontend/lex/lexer_tests.cpp
+)
+
+set(AUREX_FRONTEND_ONLY_TEST_SOURCES
+    ${AUREX_BASE_TEST_SOURCES}
+    tests/gtest/frontend/syntax/ast_dump_tests.cpp
+    ${AUREX_LEXER_TEST_SOURCES}
+    tests/gtest/frontend/macro/early_item_expansion_tests.cpp
+    tests/gtest/frontend/macro/output_contract_admission_tests.cpp
+    tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
+    tests/gtest/frontend/parse/parser_tests.cpp
+    tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
+    tests/gtest/frontend/sema/default_named_argument_tests.cpp
+    tests/gtest/frontend/sema/identifier_tests.cpp
+    tests/gtest/frontend/sema/lifetime_tests.cpp
+    tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
+    tests/gtest/frontend/sema/place_state_tests.cpp
+    tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_generics_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_lookup_modules_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_resources_dropck_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
+    tests/gtest/frontend/sema/sema_whitebox_tests.cpp
+    tests/gtest/frontend/sema/statement_tests.cpp
+    tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp
+    tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp
+    tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
+    tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
+    tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
+    tests/gtest/application/tooling/ide_tooling_tests.cpp
+    tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
+)
+
+set(AUREX_BACKEND_LLVM_TEST_SOURCES
+    tests/gtest/backend/llvm/llvm_constants_tests.cpp
+    tests/gtest/backend/llvm/llvm_runtime_tests.cpp
+    tests/gtest/backend/llvm/llvm_types_whitebox_tests.cpp
+    tests/gtest/backend/llvm/llvm_utility_tests.cpp
+)
+
+set(AUREX_DRIVER_TEST_SOURCES
+    tests/gtest/application/driver/cli_argument_tests.cpp
+    tests/gtest/application/driver/cli_driver_tests.cpp
+    tests/gtest/application/driver/install_and_import_tests.cpp
+    tests/gtest/application/driver/native_toolchain_tests.cpp
+    tests/gtest/application/driver/project_model_tests.cpp
+)
+
+set(AUREX_INTEGRATION_TEST_SOURCES
+    tests/gtest/integration/documentation_tests.cpp
+    tests/gtest/integration/examples_tests.cpp
+    tests/gtest/integration/native_execution_tests.cpp
+    tests/gtest/integration/randomized_integration_tests.cpp
+    tests/gtest/integration/regression_tests.cpp
+    tests/gtest/integration/sample_suite/sample_suite_negative_tests.cpp
+    tests/gtest/integration/sample_suite/sample_suite_positive_tests.cpp
+    tests/gtest/integration/sample_suite/sample_suite_runtime_tests.cpp
+    tests/gtest/integration/sample_suite/sample_suite_support.cpp
+    tests/gtest/integration/struct_field_reference_tests.cpp
+)
+
+set(AUREX_MIDEND_IR_TEST_SOURCES
+    tests/gtest/midend/ir/analysis_manager_tests.cpp
+    tests/gtest/midend/ir/ir_dump_tests.cpp
+    tests/gtest/midend/ir/ir_fingerprint_tests.cpp
+    tests/gtest/midend/ir/ir_verifier_edge_tests.cpp
+    tests/gtest/midend/ir/ir_verifier_structural_tests.cpp
+    tests/gtest/midend/ir/lower_ast_aggregate_rollback_tests.cpp
+    tests/gtest/midend/ir/lower_ast_dyn_trait_tests.cpp
+    tests/gtest/midend/ir/lower_ast_whitebox_tests.cpp
+    tests/gtest/midend/ir/owned_dyn_drop_allocator_identity_tests.cpp
+    tests/gtest/midend/ir/owned_dyn_ir_shape_prototype_tests.cpp
+    tests/gtest/midend/ir/owned_dyn_runtime_lowering_abi_tests.cpp
+    tests/gtest/midend/ir/pass_pipeline_tests.cpp
+    tests/gtest/midend/ir/type_table_tests.cpp
+)
+
+set(AUREX_FRONTEND_PARSE_FULL_TEST_SOURCES
+    tests/gtest/frontend/parse/randomized_frontend_tests.cpp
+)
+
+set(AUREX_FRONTEND_SEMA_FULL_TEST_SOURCES
+    tests/gtest/frontend/sema/block_expression_tests.cpp
+    tests/gtest/frontend/sema/error_handling_tests.cpp
+    tests/gtest/frontend/sema/functions_tests.cpp
+    tests/gtest/frontend/sema/if_expression_tests.cpp
+    tests/gtest/frontend/sema/inference_tests.cpp
+    tests/gtest/frontend/sema/modules_visibility_tests.cpp
+    tests/gtest/frontend/sema/pattern_matching_tests.cpp
+    tests/gtest/frontend/sema/trait_tests.cpp
+    tests/gtest/frontend/sema/type_alias_tests.cpp
+)
+
+set(AUREX_FULL_TEST_SOURCES
+    tests/support/test_support.cpp
+    ${AUREX_BACKEND_LLVM_TEST_SOURCES}
+    ${AUREX_FRONTEND_ONLY_TEST_SOURCES}
+    ${AUREX_DRIVER_TEST_SOURCES}
+    ${AUREX_INTEGRATION_TEST_SOURCES}
+    ${AUREX_MIDEND_IR_TEST_SOURCES}
+    ${AUREX_QUERY_TEST_SOURCES}
+    ${AUREX_FRONTEND_PARSE_FULL_TEST_SOURCES}
+    ${AUREX_FRONTEND_SEMA_FULL_TEST_SOURCES}
+)

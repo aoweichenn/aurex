@@ -229,7 +229,7 @@ unsafe { strraw(data, len) }
 
 - `tests/gtest/frontend/parse/parser_tests.cpp`
 - `tests/gtest/frontend/sema/functions_tests.cpp`
-- `tests/gtest/integration/sample_suite_tests.cpp`
+- `tests/gtest/integration/sample_suite/`
 - `tests/samples/positive/**`
 - `tests/samples/negative/**`
 

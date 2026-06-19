@@ -27,7 +27,7 @@
 
 第一批重构候选按顺序处理：
 
-1. **目录/文件组织与测试脚本治理**：先拆 `tests/gtest/integration/sample_suite/` 和 `cmake/AurexTestSources.cmake`，再按同样方式处理 `early_item_expansion_tests.cpp`、`query_key_tests.cpp`、`cli_driver_tests.cpp`、`parser_tests.cpp` 等超大测试文件。
+1. **目录/文件组织与测试脚本治理**：`tests/gtest/integration/sample_suite/`、`cmake/AurexTestSources.cmake` 和 `tests/gtest/frontend/macro/early_item_expansion/` 已完成拆分；继续按同样方式处理 `query_key_tests.cpp`、`cli_driver_tests.cpp`、`parser_tests.cpp` 等超大测试文件。
 2. **for-in plan / lowering 解耦**：把 `counted_range`、`range_value`、array/slice/str iterable、protocol iterator 的 sema plan 构造和 IR lowering 分支拆成清晰策略，减少 `sema_statement_analyzer.cpp` 和 `lower_ast_stmt.cpp` 继续膨胀。
 3. **CheckedModule dumping / clone 分层**：`checked_module.cpp` 同时承担 clone、layout、dump、debug name 等职责，优先拆出稳定 helper，降低新增 checked fact 时的连锁修改风险。
 4. **borrow/place/drop cleanup 协作边界**：梳理 move analysis、place state、borrow flow graph、dropck facts 的事实流向，减少同一语义在多个遍历中重复编码。

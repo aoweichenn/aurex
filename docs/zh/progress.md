@@ -24,6 +24,7 @@
 - 函数闭包已切到 C++ 风格 capture-list，支持 `[]`、显式值/共享引用/可变引用捕获、`[=]` / `[&]` 默认捕获、显式覆盖、init-capture 和 move capture。
 - 样例套件集成测试已从单个 `sample_suite_tests.cpp` 拆到 `tests/gtest/integration/sample_suite/`，正例扫描、native runtime smoke、负例矩阵和共享 helper 分开维护。
 - 测试 CMake 源清单已拆到 `cmake/AurexTestSources.cmake`，`cmake/AurexTests.cmake` 保留目标、依赖、CTest 过滤、标签和执行策略。
+- `early_item_expansion_tests.cpp` 已拆到 `tests/gtest/frontend/macro/early_item_expansion/`，按枚举/identity、noop 基线、契约漂移、builtin derive M22-M26 和 Aurex macro surface 分文件维护；共享查询 helper 拆成薄支撑头，避免继续使用单个宏扩展万能测试入口。
 
 ## 当前保留文档集
 
@@ -42,6 +43,6 @@
 - 被删除的历史设计如果后续仍有实现价值，应重新整理进当前执行文档，而不是恢复旧目录。
 - 泛型语法修正专题已关闭，旧 `[]` 泛型兼容不得重新进入语义路径。
 - 当前 sema、checked module dump/clone、borrow/place/drop cleanup、IR lowering、测试代码和测试脚本都存在大文件高耦合风险；继续叠加新语言表面前，需要先做行为保持型重构，避免后续功能反复复制分支、side-table 访问逻辑和测试样板。
-- `early_item_expansion_tests.cpp`、`query_key_tests.cpp`、`cli_driver_tests.cpp`、`parser_tests.cpp`、`functions_tests.cpp` 等测试文件仍偏大，需要按模块/语义领域继续拆分，不能继续作为新增用例的默认落点。
+- `query_key_tests.cpp`、`cli_driver_tests.cpp`、`parser_tests.cpp`、`functions_tests.cpp` 等测试文件仍偏大，需要按模块/语义领域继续拆分，不能继续作为新增用例的默认落点。
 - mutable/reference item iteration、range literal、标准库 iterable adapter 和 Unicode scalar / char iteration adapter 尚未设计；当前 range value、str byte iteration 和 protocol iterator 已支持直接 lowering，protocol iterator 支持直接 iterator、`iter()`、inherent/static trait dispatch 和 generic where dispatch。
 - closure trait、borrowed-view capture 和更完整 escape/lifetime 仍是后续专题。

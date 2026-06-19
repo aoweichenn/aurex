@@ -28,7 +28,27 @@ set(AUREX_FRONTEND_ONLY_TEST_SOURCES
     ${AUREX_BASE_TEST_SOURCES}
     tests/gtest/frontend/syntax/ast_dump_tests.cpp
     ${AUREX_LEXER_TEST_SOURCES}
-    tests/gtest/frontend/macro/early_item_expansion_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_aurex_macro_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_builtin_derive_m22_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_builtin_derive_m23_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_builtin_derive_m24_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_builtin_derive_m25_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_builtin_derive_m26_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_attribute_stub_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_noop_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_parser_gate_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_parser_report_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_readiness_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_contract_token_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_enum_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_identity_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_builtin_derive_dry_run_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_builtin_derive_m22_m23_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_core_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_output_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_parser_contract_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_summary_tests.cpp
+    tests/gtest/frontend/macro/early_item_expansion/early_item_expansion_noop_token_record_tests.cpp
     tests/gtest/frontend/macro/output_contract_admission_tests.cpp
     tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
     tests/gtest/frontend/parse/parser_tests.cpp

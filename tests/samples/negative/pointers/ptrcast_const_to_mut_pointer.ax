@@ -1,0 +1,11 @@
+module ptrcast_const_to_mut_pointer;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let shared: *const i32 = unsafe { ptrat<*const i32>(ptraddr(&value)) };
+    let mutable: *mut i32 = unsafe { ptrcast<*mut i32>(shared) };
+    unsafe {
+        *mutable = 2;
+    }
+    return value;
+}

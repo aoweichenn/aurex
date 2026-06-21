@@ -1,0 +1,11 @@
+module intrinsic_bit_cast_const_to_mut_pointer;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let shared: *const i32 = unsafe { intrinsic.ptr_at<*const i32>(intrinsic.addr(&value)) };
+    let mutable: *mut i32 = unsafe { intrinsic.bit_cast<*mut i32>(shared) };
+    unsafe {
+        *mutable = 2;
+    }
+    return value;
+}

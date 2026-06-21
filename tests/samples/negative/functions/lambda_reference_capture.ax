@@ -1,0 +1,9 @@
+module lambda_reference_capture;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let read = [&value]() -> i32 {
+        return value;
+    };
+    return read();
+}

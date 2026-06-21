@@ -1,0 +1,10 @@
+module intrinsic_ptr_cast_const_to_mut_pointer;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let mutable: *mut i32 = unsafe { intrinsic.ptr_cast<*mut i32>(&value) };
+    unsafe {
+        *mutable = 2;
+    }
+    return value;
+}

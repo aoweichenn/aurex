@@ -1,0 +1,117 @@
+module regex.compile.database part shape;
+
+import regex.config.limits as limits;
+import regex.core.types as t;
+
+fn has_set_magic(data: *const u8, len: usize) -> bool {
+    if len < MAGIC_BYTES {
+        return false;
+    }
+    return unsafe { data[0usize] } == MAGIC_0
+        && unsafe { data[1usize] } == MAGIC_1
+        && unsafe { data[2usize] } == MAGIC_2
+        && unsafe { data[3usize] } == MAGIC_3
+        && unsafe { data[4usize] } == MAGIC_4
+        && unsafe { data[5usize] } == MAGIC_5
+        && unsafe { data[6usize] } == MAGIC_6
+        && unsafe { data[7usize] } == MAGIC_7;
+}
+
+fn has_regex_magic(data: *const u8, len: usize) -> bool {
+    if len < MAGIC_BYTES {
+        return false;
+    }
+    return unsafe { data[0usize] } == MAGIC_0
+        && unsafe { data[1usize] } == MAGIC_1
+        && unsafe { data[2usize] } == MAGIC_2
+        && unsafe { data[3usize] } == MAGIC_3
+        && unsafe { data[4usize] } == REGEX_MAGIC_4
+        && unsafe { data[5usize] } == MAGIC_5
+        && unsafe { data[6usize] } == MAGIC_6
+        && unsafe { data[7usize] } == MAGIC_7;
+}
+
+fn regex_database_shape_is_valid(
+    pattern_len: usize,
+    start: usize,
+    accept: usize,
+    state_len: usize,
+    range_len: usize,
+    capture_len: usize,
+    bytes_len: usize,
+    options: t.RegexOptions
+) -> bool {
+    if pattern_len > options.max_pattern_bytes ||
+        pattern_len > limits.MAX_PATTERN_BYTES ||
+        state_len == 0usize ||
+        state_len > options.max_state_capacity ||
+        state_len > limits.MAX_STATE_CAPACITY ||
+        range_len > options.max_range_capacity ||
+        range_len > limits.MAX_RANGE_CAPACITY ||
+        capture_len == 0usize ||
+        capture_len > options.max_capture_groups + limits.RESERVED_CAPTURE_INFO_COUNT ||
+        capture_len > limits.MAX_CAPTURE_GROUPS + limits.RESERVED_CAPTURE_INFO_COUNT {
+        return false;
+    }
+    if start == t.NO_STATE || start >= state_len || accept == t.NO_STATE || accept >= state_len {
+        return false;
+    }
+    return bytes_len == REGEX_HEADER_BYTES
+        + pattern_len
+        + state_len * STATE_ENCODED_BYTES
+        + range_len * RANGE_ENCODED_BYTES
+        + capture_len * CAPTURE_ENCODED_BYTES;
+}
+
+fn database_shape_is_valid(
+    pattern_count: usize,
+    start: usize,
+    state_len: usize,
+    range_len: usize,
+    literal_node_len: usize,
+    literal_terminal_len: usize,
+    literal_max_byte_len: usize,
+    bytes_len: usize
+) -> bool {
+    if pattern_count > limits.MAX_SET_PATTERNS ||
+        state_len > limits.MAX_STATE_CAPACITY ||
+        range_len > limits.MAX_RANGE_CAPACITY {
+        return false;
+    }
+    if start != t.NO_STATE && start >= state_len {
+        return false;
+    }
+    if pattern_count == 0usize && (state_len != 0usize || range_len != 0usize || start != t.NO_STATE) {
+        return false;
+    }
+    if literal_node_len == 0usize {
+        if literal_terminal_len != 0usize || literal_max_byte_len != 0usize {
+            return false;
+        }
+    } else {
+        if literal_terminal_len == 0usize ||
+            literal_terminal_len > pattern_count ||
+            literal_node_len > state_len ||
+            literal_max_byte_len == 0usize {
+            return false;
+        }
+    }
+    return bytes_len == HEADER_BYTES
+        + state_len * STATE_ENCODED_BYTES
+        + range_len * RANGE_ENCODED_BYTES
+        + literal_node_len * LITERAL_NODE_ENCODED_BYTES
+        + literal_terminal_len * LITERAL_TERMINAL_ENCODED_BYTES;
+}
+
+fn options_shape_is_valid(options: t.RegexOptions) -> bool {
+    if options.newline_mode != t.NEWLINE_UNICODE && options.newline_mode != t.NEWLINE_LF &&
+        options.newline_mode != t.NEWLINE_CRLF {
+        return false;
+    }
+    if options.max_pattern_bytes == 0usize || options.max_state_capacity == 0usize ||
+        options.max_range_capacity == 0usize || options.max_workspace_states == 0usize ||
+        options.max_capture_groups == 0usize {
+        return false;
+    }
+    return true;
+}

@@ -1,0 +1,62 @@
+module regex.compile.parser part cursor;
+
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+fn is_bytes_mode(parser: &Parser) -> bool {
+    return parser.compiled.mode == t.MODE_BYTES;
+}
+
+fn pattern_slice_equals(pattern: str, start: usize, len: usize, expected: str) -> bool {
+    if len != expected.len {
+        return false;
+    }
+    let pattern_data: *const u8 = pattern.ptr;
+    let expected_data: *const u8 = expected.ptr;
+    for offset in range(len) {
+        if unsafe { pattern_data[start + offset] } != unsafe { expected_data[offset] } {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn skip_ignored(parser: &mut Parser) -> void {
+    if !has_flag(parser.flags, t.FLAG_EXTENDED) {
+        return;
+    }
+    while !at_end(parser) {
+        let value: u8 = peek(parser);
+        let decoded: unicode.Decode = unicode.decode_at(parser.pattern, parser.at);
+        if unicode.property_matches(unicode.PROPERTY_WHITE_SPACE, decoded.value) {
+            parser.at = decoded.next;
+        } else if value == ascii.HASH {
+            while !at_end(parser) && peek(parser) != ascii.LINE_FEED {
+                parser.at = unicode.next_boundary(parser.pattern, parser.at);
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+fn starts_quantifier(value: u8) -> bool {
+    return value == ascii.STAR || value == ascii.PLUS || value == ascii.QUESTION || value == ascii.LBRACE;
+}
+
+fn is_sequence_end(value: u8) -> bool {
+    return value == ascii.PIPE || value == ascii.RPAREN;
+}
+
+fn at_end(parser: &Parser) -> bool {
+    return parser.at >= parser.pattern.len;
+}
+
+fn peek(parser: &Parser) -> u8 {
+    return ascii.byte_at(parser.pattern, parser.at);
+}
+
+fn advance(parser: &mut Parser) -> void {
+    parser.at += 1usize;
+}

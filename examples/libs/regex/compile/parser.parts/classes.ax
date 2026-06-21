@@ -1,0 +1,396 @@
+module regex.compile.parser part classes;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+fn parse_class_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    advance(parser);
+    var negated: bool = false;
+    if !at_end(parser) && peek(parser) == ascii.CARET {
+        negated = true;
+        advance(parser);
+    }
+    let range_start: usize = parser.compiled.range_len;
+    var expr: ClassExpr = parse_class_difference(parser, false);
+    if parser.compiled.status != t.RegexStatus.ok {
+        return t.invalid_fragment();
+    }
+    if at_end(parser) || peek(parser) != ascii.RBRACKET || !expr.valid || expr.len == 0usize {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNCLOSED_CLASS);
+        return t.invalid_fragment();
+    }
+    if negated {
+        if prog.add_class_expr_op(&mut parser.compiled, t.CLASS_EXPR_COMPLEMENT) {
+            expr.len += 1usize;
+        }
+    }
+    advance(parser);
+    let state: usize = prog.add_class_flags(&mut parser.compiled, range_start, expr.len, false, class_flags(parser));
+    return single_state_atom(parser, state, source_start, parser.at);
+}
+
+fn parse_class_difference(parser: &mut Parser, nested: bool) -> ClassExpr {
+    var left: ClassExpr = parse_class_intersection(parser, nested);
+    while left.valid && starts_class_operator(parser, ascii.HYPHEN, ascii.HYPHEN) {
+        advance(parser);
+        advance(parser);
+        let right: ClassExpr = parse_class_intersection(parser, nested);
+        if !right.valid {
+            return right;
+        }
+        left = combine_class_expr(parser, left, right, t.CLASS_EXPR_DIFFERENCE);
+    }
+    return left;
+}
+
+fn parse_class_intersection(parser: &mut Parser, nested: bool) -> ClassExpr {
+    var left: ClassExpr = parse_class_symmetric_difference(parser, nested);
+    while left.valid && starts_class_operator(parser, ascii.AMPERSAND, ascii.AMPERSAND) {
+        advance(parser);
+        advance(parser);
+        let right: ClassExpr = parse_class_symmetric_difference(parser, nested);
+        if !right.valid {
+            return right;
+        }
+        left = combine_class_expr(parser, left, right, t.CLASS_EXPR_INTERSECTION);
+    }
+    return left;
+}
+
+fn parse_class_symmetric_difference(parser: &mut Parser, nested: bool) -> ClassExpr {
+    var left: ClassExpr = parse_class_union(parser, nested);
+    while left.valid && starts_class_operator(parser, ascii.TILDE, ascii.TILDE) {
+        advance(parser);
+        advance(parser);
+        let right: ClassExpr = parse_class_union(parser, nested);
+        if !right.valid {
+            return right;
+        }
+        left = combine_class_expr(parser, left, right, t.CLASS_EXPR_SYMMETRIC_DIFFERENCE);
+    }
+    return left;
+}
+
+fn parse_class_union(parser: &mut Parser, nested: bool) -> ClassExpr {
+    var has_piece: bool = false;
+    var result: ClassExpr = invalid_class_expr();
+    while parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && !class_expr_end(parser, nested, has_piece) &&
+        !starts_any_class_operator(parser) {
+        let piece: ClassExpr = parse_class_primary(parser);
+        if !piece.valid {
+            return piece;
+        }
+        if has_piece {
+            result = combine_class_expr(parser, result, piece, t.CLASS_EXPR_UNION);
+        } else {
+            result = piece;
+            has_piece = true;
+        }
+    }
+    if has_piece {
+        return result;
+    }
+    return invalid_class_expr();
+}
+
+fn parse_class_primary(parser: &mut Parser) -> ClassExpr {
+    if !at_end(parser) && peek(parser) == ascii.LBRACKET && !can_start_posix_class(parser) {
+        return parse_nested_class_expr(parser);
+    }
+    let item: ClassItem = parse_class_item(parser);
+    if (parser.compiled.status != t.RegexStatus.ok) {
+        return invalid_class_expr();
+    }
+    if can_start_range(parser, item) {
+        advance(parser);
+        let last: ClassItem = parse_class_item(parser);
+        if parser.compiled.status != t.RegexStatus.ok ||
+            item.kind != CLASS_ITEM_SCALAR ||
+            last.kind != CLASS_ITEM_SCALAR ||
+            item.negated ||
+            last.negated ||
+            last.value < item.value {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_INVALID_RANGE);
+            return invalid_class_expr();
+        }
+        if prog.add_range(&mut parser.compiled, item.value, last.value) {
+            return ClassExpr { len: 1usize, valid: true };
+        }
+        return invalid_class_expr();
+    }
+    return emit_class_item(parser, item);
+}
+
+fn parse_nested_class_expr(parser: &mut Parser) -> ClassExpr {
+    advance(parser);
+    var negated: bool = false;
+    if !at_end(parser) && peek(parser) == ascii.CARET {
+        negated = true;
+        advance(parser);
+    }
+    var expr: ClassExpr = parse_class_difference(parser, true);
+    if at_end(parser) || peek(parser) != ascii.RBRACKET || !expr.valid {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNCLOSED_CLASS);
+        return invalid_class_expr();
+    }
+    if negated && prog.add_class_expr_op(&mut parser.compiled, t.CLASS_EXPR_COMPLEMENT) {
+        expr.len += 1usize;
+    }
+    advance(parser);
+    return expr;
+}
+
+fn parse_class_item(parser: &mut Parser) -> ClassItem {
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_EOF);
+        return ClassItem { kind: CLASS_ITEM_SCALAR, value: 0usize, negated: false };
+    }
+    let value: u8 = peek(parser);
+    if value == ascii.LBRACKET && can_start_posix_class(parser) {
+        return parse_posix_class_item(parser);
+    }
+    if value == ascii.BACKSLASH {
+        advance(parser);
+        if at_end(parser) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_EOF);
+            return ClassItem { kind: CLASS_ITEM_SCALAR, value: 0usize, negated: false };
+        }
+        let escaped: u8 = peek(parser);
+        advance(parser);
+        if escaped == ascii.LOWER_D {
+            return property_class_item(unicode.PROPERTY_GC_ND, false);
+        }
+        if escaped == ascii.LOWER_W {
+            return property_class_item(unicode.PROPERTY_WORD, false);
+        }
+        if escaped == ascii.LOWER_S {
+            return property_class_item(unicode.PROPERTY_WHITE_SPACE, false);
+        }
+        if escaped == ascii.UPPER_D {
+            return property_class_item(unicode.PROPERTY_GC_ND, true);
+        }
+        if escaped == ascii.UPPER_W {
+            return property_class_item(unicode.PROPERTY_WORD, true);
+        }
+        if escaped == ascii.UPPER_S {
+            return property_class_item(unicode.PROPERTY_WHITE_SPACE, true);
+        }
+        if escaped == ascii.LOWER_P {
+            return parse_property_class_item(parser, false);
+        }
+        if escaped == ascii.UPPER_P {
+            return parse_property_class_item(parser, true);
+        }
+        if escaped == ascii.LOWER_X {
+            return parse_hex_class_item(parser);
+        }
+        if escaped == ascii.LOWER_O {
+            return parse_octal_class_item(parser);
+        }
+        if escaped == ascii.LOWER_C {
+            return parse_control_class_item(parser);
+        }
+        if escaped == ascii.LOWER_U {
+            return parse_unicode_class_item(parser);
+        }
+        if escaped == ascii.UPPER_U {
+            return parse_unicode_long_class_item(parser);
+        }
+        if ascii.is_alpha(escaped) && !ascii.is_simple_escape(escaped) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, parser.at - 2usize, t.ERROR_KIND_INVALID_ESCAPE);
+            return ClassItem { kind: CLASS_ITEM_SCALAR, value: 0usize, negated: false };
+        }
+        return scalar_class_item(byte_scalar(ascii.escaped_byte(escaped)));
+    }
+    if is_bytes_mode(parser) {
+        let value_byte: usize = byte_scalar(peek(parser));
+        advance(parser);
+        return scalar_class_item(value_byte);
+    }
+    let decoded: unicode.Decode = unicode.decode_at(parser.pattern, parser.at);
+    parser.at = decoded.next;
+    return scalar_class_item(decoded.value);
+}
+
+fn predefined_class_atom(parser: &mut Parser, property_kind: usize, negated: bool, source_start: usize, source_end: usize) -> t.Fragment {
+    let range_start: usize = parser.compiled.range_len;
+    let ranges: usize = if prog.add_property(&mut parser.compiled, property_kind, negated) { 1usize } else { 0usize };
+    let state: usize = prog.add_class_flags(&mut parser.compiled, range_start, ranges, false, class_flags(parser));
+    return single_state_atom(parser, state, source_start, source_end);
+}
+
+fn emit_class_item(parser: &mut Parser, item: ClassItem) -> ClassExpr {
+    if item.kind == CLASS_ITEM_SCALAR {
+        if prog.add_range(&mut parser.compiled, item.value, item.value) {
+            return ClassExpr { len: 1usize, valid: true };
+        }
+        return invalid_class_expr();
+    }
+    if item.kind == CLASS_ITEM_PROPERTY {
+        if prog.add_property(&mut parser.compiled, item.value, item.negated) {
+            return ClassExpr { len: 1usize, valid: true };
+        }
+        return invalid_class_expr();
+    }
+    prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+    return invalid_class_expr();
+}
+
+fn can_start_range(parser: &Parser, item: ClassItem) -> bool {
+    if item.kind != CLASS_ITEM_SCALAR || item.negated {
+        return false;
+    }
+    if parser.at >= parser.pattern.len || peek(parser) != ascii.HYPHEN {
+        return false;
+    }
+    let next_at: usize = parser.at + 1usize;
+    if next_at >= parser.pattern.len {
+        return false;
+    }
+    return ascii.byte_at(parser.pattern, next_at) != ascii.RBRACKET &&
+        ascii.byte_at(parser.pattern, next_at) != ascii.HYPHEN;
+}
+
+fn can_start_posix_class(parser: &Parser) -> bool {
+    let next_at: usize = parser.at + 1usize;
+    if next_at >= parser.pattern.len {
+        return false;
+    }
+    return ascii.byte_at(parser.pattern, next_at) == ascii.COLON;
+}
+
+fn parse_posix_class_item(parser: &mut Parser) -> ClassItem {
+    advance(parser);
+    advance(parser);
+    var negated: bool = false;
+    if !at_end(parser) && peek(parser) == ascii.CARET {
+        negated = true;
+        advance(parser);
+    }
+    let name_start: usize = parser.at;
+    while !at_end(parser) && peek(parser) != ascii.COLON {
+        advance(parser);
+    }
+    let name_len: usize = parser.at - name_start;
+    if at_end(parser) || peek(parser) != ascii.COLON {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, name_start, t.ERROR_KIND_UNCLOSED_CLASS);
+        return scalar_class_item(0usize);
+    }
+    advance(parser);
+    if at_end(parser) || peek(parser) != ascii.RBRACKET {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, name_start, t.ERROR_KIND_UNCLOSED_CLASS);
+        return scalar_class_item(0usize);
+    }
+    advance(parser);
+    let kind: usize = unicode.property_kind_from_name(parser.pattern, name_start, name_len);
+    if kind == unicode.PROPERTY_NONE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, name_start, t.ERROR_KIND_UNSUPPORTED_ESCAPE);
+        return scalar_class_item(0usize);
+    }
+    return property_class_item(kind, negated);
+}
+
+fn parse_property_class_item(parser: &mut Parser, negated: bool) -> ClassItem {
+    let name_start: usize = property_name_start(parser);
+    let kind: usize = parse_property_kind(parser);
+    if kind == unicode.PROPERTY_NONE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, name_start, t.ERROR_KIND_UNSUPPORTED_ESCAPE);
+        return scalar_class_item(0usize);
+    }
+    return property_class_item(kind, negated);
+}
+
+fn parse_hex_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = parse_hex_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn parse_octal_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = parse_octal_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn parse_control_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = parse_control_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn parse_unicode_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        parse_braced_codepoint(parser, source_start)
+    } else {
+        parse_fixed_hex(parser, source_start, 4usize)
+    };
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn parse_unicode_long_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        parse_braced_codepoint(parser, source_start)
+    } else {
+        parse_fixed_hex(parser, source_start, 8usize)
+    };
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn scalar_class_item(value: usize) -> ClassItem {
+    return ClassItem { kind: CLASS_ITEM_SCALAR, value: value, negated: false };
+}
+
+fn property_class_item(value: usize, negated: bool) -> ClassItem {
+    return ClassItem { kind: CLASS_ITEM_PROPERTY, value: value, negated: negated };
+}
+
+fn invalid_class_expr() -> ClassExpr {
+    return ClassExpr { len: 0usize, valid: false };
+}
+
+fn combine_class_expr(parser: &mut Parser, left: ClassExpr, right: ClassExpr, kind: u8) -> ClassExpr {
+    if !left.valid || !right.valid || !prog.add_class_expr_op(&mut parser.compiled, kind) {
+        return invalid_class_expr();
+    }
+    return ClassExpr { len: left.len + right.len + 1usize, valid: true };
+}
+
+fn class_expr_end(parser: &Parser, nested: bool, has_piece: bool) -> bool {
+    if at_end(parser) || peek(parser) != ascii.RBRACKET {
+        return false;
+    }
+    return nested || has_piece;
+}
+
+fn starts_any_class_operator(parser: &Parser) -> bool {
+    return starts_class_operator(parser, ascii.AMPERSAND, ascii.AMPERSAND) ||
+        starts_class_operator(parser, ascii.HYPHEN, ascii.HYPHEN) ||
+        starts_class_operator(parser, ascii.TILDE, ascii.TILDE);
+}
+
+fn starts_class_operator(parser: &Parser, first: u8, second: u8) -> bool {
+    let next_at: usize = parser.at + 1usize;
+    if at_end(parser) || next_at >= parser.pattern.len {
+        return false;
+    }
+    return peek(parser) == first && ascii.byte_at(parser.pattern, next_at) == second;
+}

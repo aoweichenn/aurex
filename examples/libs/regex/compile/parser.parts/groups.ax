@@ -1,0 +1,194 @@
+module regex.compile.parser part groups;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+
+fn parse_group_spec(parser: &mut Parser, source_start: usize) -> GroupSpec {
+    let restore_flags: u8 = parser.flags;
+    if at_end(parser) || peek(parser) != ascii.QUESTION {
+        let capture_index: usize = capture_index_for_group(parser, source_start, 0usize, 0usize);
+        return GroupSpec {
+            capturing: true,
+            mode_only: false,
+            capture_index: capture_index,
+            name_start: 0usize,
+            name_len: 0usize,
+            restore_flags: restore_flags,
+            valid: capture_index != t.NO_CAPTURE,
+        };
+    }
+    advance(parser);
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNEXPECTED_EOF);
+        return invalid_group_spec();
+    }
+    if peek(parser) == ascii.COLON {
+        advance(parser);
+        return GroupSpec {
+            capturing: false,
+            mode_only: false,
+            capture_index: t.NO_CAPTURE,
+            name_start: 0usize,
+            name_len: 0usize,
+            restore_flags: restore_flags,
+            valid: true,
+        };
+    }
+    if peek(parser) == ascii.HASH {
+        advance(parser);
+        while !at_end(parser) && peek(parser) != ascii.RPAREN {
+            advance(parser);
+        }
+        if at_end(parser) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNCLOSED_GROUP);
+            return invalid_group_spec();
+        }
+        advance(parser);
+        return GroupSpec {
+            capturing: false,
+            mode_only: true,
+            capture_index: t.NO_CAPTURE,
+            name_start: 0usize,
+            name_len: 0usize,
+            restore_flags: restore_flags,
+            valid: true,
+        };
+    }
+    if peek(parser) == ascii.UPPER_P {
+        advance(parser);
+        if at_end(parser) || peek(parser) != ascii.LESS {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+            return invalid_group_spec();
+        }
+        advance(parser);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.GREATER);
+    }
+    if peek(parser) == ascii.LESS {
+        advance(parser);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.GREATER);
+    }
+    if peek(parser) == ascii.APOSTROPHE {
+        advance(parser);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.APOSTROPHE);
+    }
+    if starts_flag_spec(peek(parser)) || peek(parser) == ascii.HYPHEN {
+        let parsed_flags: u8 = parse_flag_spec(parser, restore_flags);
+        if parser.compiled.status != t.RegexStatus.ok {
+            return invalid_group_spec();
+        }
+        if !at_end(parser) && peek(parser) == ascii.COLON {
+            advance(parser);
+            parser.flags = parsed_flags;
+            return GroupSpec {
+                capturing: false,
+                mode_only: false,
+                capture_index: t.NO_CAPTURE,
+                name_start: 0usize,
+                name_len: 0usize,
+                restore_flags: restore_flags,
+                valid: true,
+            };
+        }
+        if !at_end(parser) && peek(parser) == ascii.RPAREN {
+            advance(parser);
+            parser.flags = parsed_flags;
+            return GroupSpec {
+                capturing: false,
+                mode_only: true,
+                capture_index: t.NO_CAPTURE,
+                name_start: 0usize,
+                name_len: 0usize,
+                restore_flags: parser.flags,
+                valid: true,
+            };
+        }
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+        return invalid_group_spec();
+    }
+    prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, parser.at, t.ERROR_KIND_UNSUPPORTED_ESCAPE);
+    return invalid_group_spec();
+}
+
+fn parse_named_group_spec(parser: &mut Parser, source_start: usize, restore_flags: u8, terminator: u8) -> GroupSpec {
+    let name_start: usize = parser.at;
+    if at_end(parser) || !ascii.is_name_start(peek(parser)) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.invalid_group_name, parser.at, t.ERROR_KIND_INVALID_GROUP_NAME);
+        return invalid_group_spec();
+    }
+    while !at_end(parser) && ascii.is_name_continue(peek(parser)) {
+        advance(parser);
+    }
+    let name_len: usize = parser.at - name_start;
+    if at_end(parser) || peek(parser) != terminator {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.invalid_group_name, parser.at, t.ERROR_KIND_INVALID_GROUP_NAME);
+        return invalid_group_spec();
+    }
+    advance(parser);
+    let capture_index: usize = capture_index_for_group(parser, source_start, name_start, name_len);
+    return GroupSpec {
+        capturing: true,
+        mode_only: false,
+        capture_index: capture_index,
+        name_start: name_start,
+        name_len: name_len,
+        restore_flags: restore_flags,
+        valid: capture_index != t.NO_CAPTURE,
+    };
+}
+
+fn capture_index_for_group(parser: &mut Parser, source_start: usize, name_start: usize, name_len: usize) -> usize {
+    if parser.reuse_captures {
+        let found: usize = find_capture_by_source_start(&parser.compiled, source_start);
+        if found == t.NO_CAPTURE {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_TRAILING_INPUT);
+        }
+        return found;
+    }
+    if name_len > 0usize && duplicate_capture_name(&parser.compiled, parser.pattern, name_start, name_len) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.invalid_group_name, name_start, t.ERROR_KIND_INVALID_GROUP_NAME);
+        return t.NO_CAPTURE;
+    }
+    return prog.add_capture_info(&mut parser.compiled, name_start, name_len, source_start, source_start);
+}
+
+fn find_capture_by_source_start(compiled: &t.Regex, source_start: usize) -> usize {
+    for index in range(1usize, compiled.capture_len) {
+        if unsafe { compiled.captures[index].source_start } == source_start {
+            return index;
+        }
+    }
+    return t.NO_CAPTURE;
+}
+
+fn duplicate_capture_name(compiled: &t.Regex, pattern: str, name_start: usize, name_len: usize) -> bool {
+    for index in range(1usize, compiled.capture_len) {
+        if unsafe { compiled.captures[index].name_len } == name_len && name_matches_capture(compiled, pattern, index, name_start, name_len) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn name_matches_capture(compiled: &t.Regex, pattern: str, index: usize, name_start: usize, name_len: usize) -> bool {
+    let existing_start: usize = unsafe { compiled.captures[index].name_start };
+    let data: *const u8 = pattern.ptr;
+    for offset in range(name_len) {
+        if unsafe { data[existing_start + offset] } != unsafe { data[name_start + offset] } {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn invalid_group_spec() -> GroupSpec {
+    return GroupSpec {
+        capturing: false,
+        mode_only: false,
+        capture_index: t.NO_CAPTURE,
+        name_start: 0usize,
+        name_len: 0usize,
+        restore_flags: t.FLAGS_NONE,
+        valid: false,
+    };
+}

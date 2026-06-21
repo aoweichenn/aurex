@@ -1,0 +1,289 @@
+module regex.compile.database part read;
+
+import regex.core.types as t;
+
+fn read_options(data: *const u8, len: usize, cursor: *mut usize) -> t.RegexOptions {
+    var options: t.RegexOptions = t.default_options();
+    options.flags = read_u8(data, len, cursor);
+    options.newline_mode = read_u8(data, len, cursor);
+    let max_pattern: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_pattern.next; }
+    let max_states: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_states.next; }
+    let max_ranges: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_ranges.next; }
+    let max_workspace: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_workspace.next; }
+    let max_repeat: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_repeat.next; }
+    let max_captures: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_captures.next; }
+    let stream_history: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = stream_history.next; }
+    if !max_pattern.valid || !max_states.valid || !max_ranges.valid || !max_workspace.valid ||
+        !max_repeat.valid || !max_captures.valid || !stream_history.valid {
+        options.newline_mode = 255u8;
+        return options;
+    }
+    options.max_pattern_bytes = max_pattern.value;
+    options.max_state_capacity = max_states.value;
+    options.max_range_capacity = max_ranges.value;
+    options.max_workspace_states = max_workspace.value;
+    options.max_bounded_repeat = max_repeat.value;
+    options.max_capture_groups = max_captures.value;
+    options.stream_history_limit = stream_history.value;
+    return options;
+}
+
+fn read_u8(data: *const u8, len: usize, cursor: *mut usize) -> u8 {
+    if unsafe { *cursor } >= len {
+        return 0u8;
+    }
+    let value: u8 = unsafe { data[*cursor] };
+    unsafe {
+        *cursor = *cursor + 1usize;
+    }
+    return value;
+}
+
+fn read_usize(data: *const u8, len: usize, cursor: usize) -> ReadUsize {
+    if cursor + USIZE_BYTES > len {
+        return ReadUsize { value: 0usize, next: cursor, valid: false };
+    }
+    var value: usize = 0usize;
+    for offset in range(USIZE_BYTES) {
+        let shift: usize = offset * BYTE_BITS;
+        value = value | (((unsafe { data[cursor + offset] }) as usize) << shift);
+    }
+    return ReadUsize { value: value, next: cursor + USIZE_BYTES, valid: true };
+}
+
+fn read_state(data: *const u8, len: usize, cursor: *mut usize, state: *mut t.State) -> bool {
+    if unsafe { *cursor } + STATE_ENCODED_BYTES > len {
+        return false;
+    }
+    unsafe {
+        state.opcode = read_u8(data, len, cursor);
+        state.flags = read_u8(data, len, cursor);
+    }
+    let value: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value.valid {
+        return false;
+    }
+    unsafe {
+        state.value = value.value;
+        *cursor = value.next;
+    }
+    let value_to: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value_to.valid {
+        return false;
+    }
+    unsafe {
+        state.value_to = value_to.value;
+        *cursor = value_to.next;
+    }
+    let out1: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !out1.valid {
+        return false;
+    }
+    unsafe {
+        state.out1 = out1.value;
+        *cursor = out1.next;
+    }
+    let out2: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !out2.valid {
+        return false;
+    }
+    unsafe {
+        state.out2 = out2.value;
+        *cursor = out2.next;
+    }
+    let class_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !class_start.valid {
+        return false;
+    }
+    unsafe {
+        state.class_start = class_start.value;
+        *cursor = class_start.next;
+    }
+    let class_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !class_len.valid {
+        return false;
+    }
+    unsafe {
+        state.class_len = class_len.value;
+        *cursor = class_len.next;
+    }
+    return true;
+}
+
+fn read_range(data: *const u8, len: usize, cursor: *mut usize, range: *mut t.ClassRange) -> bool {
+    if unsafe { *cursor } + RANGE_ENCODED_BYTES > len {
+        return false;
+    }
+    unsafe {
+        range.kind = read_u8(data, len, cursor);
+    }
+    let first: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first.valid {
+        return false;
+    }
+    unsafe {
+        range.first = first.value;
+        *cursor = first.next;
+    }
+    let last: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !last.valid {
+        return false;
+    }
+    unsafe {
+        range.last = last.value;
+        *cursor = last.next;
+    }
+    return true;
+}
+
+fn read_capture(data: *const u8, len: usize, cursor: *mut usize, capture: *mut t.CaptureInfo) -> bool {
+    if unsafe { *cursor } + CAPTURE_ENCODED_BYTES > len {
+        return false;
+    }
+    let name_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !name_start.valid {
+        return false;
+    }
+    unsafe {
+        capture.name_start = name_start.value;
+        *cursor = name_start.next;
+    }
+    let name_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !name_len.valid {
+        return false;
+    }
+    unsafe {
+        capture.name_len = name_len.value;
+        *cursor = name_len.next;
+    }
+    let source_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !source_start.valid {
+        return false;
+    }
+    unsafe {
+        capture.source_start = source_start.value;
+        *cursor = source_start.next;
+    }
+    let source_end: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !source_end.valid {
+        return false;
+    }
+    unsafe {
+        capture.source_end = source_end.value;
+        *cursor = source_end.next;
+    }
+    return true;
+}
+
+fn read_literal_node(data: *const u8, len: usize, cursor: *mut usize, node: *mut t.SetLiteralNode) -> bool {
+    if unsafe { *cursor } + LITERAL_NODE_ENCODED_BYTES > len {
+        return false;
+    }
+    let value: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value.valid {
+        return false;
+    }
+    unsafe {
+        node.value = value.value;
+        *cursor = value.next;
+    }
+    let first_child: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first_child.valid {
+        return false;
+    }
+    unsafe {
+        node.first_child = first_child.value;
+        *cursor = first_child.next;
+    }
+    let next_sibling: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !next_sibling.valid {
+        return false;
+    }
+    unsafe {
+        node.next_sibling = next_sibling.value;
+        *cursor = next_sibling.next;
+    }
+    let first_terminal: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first_terminal.valid {
+        return false;
+    }
+    unsafe {
+        node.first_terminal = first_terminal.value;
+        *cursor = first_terminal.next;
+    }
+    let last_terminal: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !last_terminal.valid {
+        return false;
+    }
+    unsafe {
+        node.last_terminal = last_terminal.value;
+        *cursor = last_terminal.next;
+    }
+    let fail: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !fail.valid {
+        return false;
+    }
+    unsafe {
+        node.fail = fail.value;
+        *cursor = fail.next;
+    }
+    let output: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !output.valid {
+        return false;
+    }
+    unsafe {
+        node.output = output.value;
+        *cursor = output.next;
+    }
+    return true;
+}
+
+fn read_literal_terminal(data: *const u8, len: usize, cursor: *mut usize, terminal: *mut t.SetLiteralTerminal) -> bool {
+    if unsafe { *cursor } + LITERAL_TERMINAL_ENCODED_BYTES > len {
+        return false;
+    }
+    let pattern_id: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !pattern_id.valid {
+        return false;
+    }
+    unsafe {
+        terminal.pattern_id = pattern_id.value;
+        *cursor = pattern_id.next;
+    }
+    let byte_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !byte_len.valid {
+        return false;
+    }
+    unsafe {
+        terminal.byte_len = byte_len.value;
+        *cursor = byte_len.next;
+    }
+    let next: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !next.valid {
+        return false;
+    }
+    unsafe {
+        terminal.next = next.value;
+        *cursor = next.next;
+    }
+    return true;
+}
+
+fn copy_database_bytes(data: *const u8, start: usize, out: *mut u8, len: usize) -> void {
+    for offset in range(len) {
+        unsafe {
+            out[offset] = data[start + offset];
+        }
+    }
+}
+
+fn database_item_ptr<T>(items: *mut T, index: usize) -> *mut T where T: Sized {
+    return unsafe { ptrat<*mut T>(ptraddr(items) + index * sizeof<T>()) };
+}

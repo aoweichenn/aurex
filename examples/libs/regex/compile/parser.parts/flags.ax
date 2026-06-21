@@ -1,0 +1,129 @@
+module regex.compile.parser part flags;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+
+fn starts_flag_spec(value: u8) -> bool {
+    return value == ascii.LOWER_I ||
+        value == ascii.LOWER_A ||
+        value == ascii.LOWER_M ||
+        value == ascii.LOWER_S ||
+        value == ascii.LOWER_X ||
+        value == ascii.LOWER_U ||
+        value == ascii.UPPER_U;
+}
+
+fn parse_flag_spec(parser: &mut Parser, base_flags: u8) -> u8 {
+    var flags: u8 = base_flags;
+    var removing: bool = false;
+    var consumed: bool = false;
+    var removed_flag: bool = false;
+    while !at_end(parser) {
+        let value: u8 = peek(parser);
+        if value == ascii.HYPHEN {
+            if removing {
+                prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+                return flags;
+            }
+            removing = true;
+            consumed = true;
+            advance(parser);
+        } else if starts_flag_spec(value) {
+            let flag: u8 = flag_for_byte(value);
+            if removing {
+                flags = clear_flag(flags, flag);
+                removed_flag = true;
+            } else {
+                flags = set_flag_with_mode(flags, flag);
+            }
+            consumed = true;
+            advance(parser);
+        } else {
+            break;
+        }
+    }
+    if !consumed {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+    }
+    if removing && !removed_flag {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+    }
+    return flags;
+}
+
+fn flag_for_byte(value: u8) -> u8 {
+    if value == ascii.LOWER_I {
+        return t.FLAG_CASE_INSENSITIVE;
+    }
+    if value == ascii.LOWER_A {
+        return t.FLAG_ASCII;
+    }
+    if value == ascii.LOWER_M {
+        return t.FLAG_MULTILINE;
+    }
+    if value == ascii.LOWER_S {
+        return t.FLAG_DOTALL;
+    }
+    if value == ascii.LOWER_X {
+        return t.FLAG_EXTENDED;
+    }
+    if value == ascii.UPPER_U {
+        return t.FLAG_UNGREEDY;
+    }
+    if value == ascii.LOWER_U {
+        return t.FLAG_UNICODE;
+    }
+    return t.FLAGS_NONE;
+}
+
+fn has_flag(flags: u8, flag: u8) -> bool {
+    return (flags & flag) != t.FLAGS_NONE;
+}
+
+fn set_flag(flags: u8, flag: u8) -> u8 {
+    return flags | flag;
+}
+
+fn set_flag_with_mode(flags: u8, flag: u8) -> u8 {
+    if flag == t.FLAG_ASCII {
+        return clear_flag(flags | flag, t.FLAG_UNICODE);
+    }
+    if flag == t.FLAG_UNICODE {
+        return clear_flag(flags | flag, t.FLAG_ASCII);
+    }
+    return flags | flag;
+}
+
+fn clear_flag(flags: u8, flag: u8) -> u8 {
+    return flags & ~flag;
+}
+
+fn literal_flags(parser: &Parser) -> u8 {
+    var flags: u8 = t.FLAGS_NONE;
+    if has_flag(parser.flags, t.FLAG_CASE_INSENSITIVE) {
+        flags = flags | t.FLAG_CASE_INSENSITIVE;
+    }
+    if has_flag(parser.flags, t.FLAG_ASCII) {
+        flags = flags | t.FLAG_ASCII;
+    }
+    return flags;
+}
+
+fn class_flags(parser: &Parser) -> u8 {
+    return literal_flags(parser);
+}
+
+fn dot_flags(parser: &Parser) -> u8 {
+    if has_flag(parser.flags, t.FLAG_DOTALL) {
+        return t.FLAG_DOTALL;
+    }
+    return t.FLAGS_NONE;
+}
+
+fn anchor_flags(parser: &Parser) -> u8 {
+    if has_flag(parser.flags, t.FLAG_MULTILINE) {
+        return t.FLAG_MULTILINE;
+    }
+    return t.FLAGS_NONE;
+}

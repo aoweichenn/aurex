@@ -1,0 +1,68 @@
+module regex.compile.parser part literals;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+fn literal_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let literal: t.Fragment = single_literal_atom(parser, value, source_start, source_end);
+    if !should_full_fold_literal(parser, value) {
+        return literal;
+    }
+    let folded: t.Fragment = full_fold_sequence_atom(parser, value, source_start, source_end);
+    if parser.compiled.status != t.RegexStatus.ok {
+        return folded;
+    }
+    return prog.alternate(&mut parser.compiled, literal, folded);
+}
+
+fn single_literal_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let state: usize = prog.add_literal_flags(&mut parser.compiled, value, literal_flags(parser));
+    return single_state_atom(parser, state, source_start, source_end);
+}
+
+fn should_full_fold_literal(parser: &Parser, value: usize) -> bool {
+    return !is_bytes_mode(parser) &&
+        has_flag(parser.flags, t.FLAG_CASE_INSENSITIVE) &&
+        !has_flag(parser.flags, t.FLAG_ASCII) &&
+        unicode.full_fold_len(value) > 1usize;
+}
+
+fn full_fold_sequence_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let len: usize = unicode.full_fold_len(value);
+    var offset: usize = 0usize;
+    var result: t.Fragment = t.invalid_fragment();
+    while offset < len {
+        let folded: usize = unicode.full_fold_at(value, offset);
+        let piece: t.Fragment = single_literal_atom(parser, folded, source_start, source_end);
+        if parser.compiled.status != t.RegexStatus.ok {
+            return piece;
+        }
+        if offset == 0usize {
+            result = piece;
+        } else {
+            result = prog.concat(&mut parser.compiled, result, piece);
+        }
+        offset += 1usize;
+    }
+    return result;
+}
+
+fn single_state_atom(parser: &mut Parser, state: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let end: usize = prog.add_epsilon(&mut parser.compiled);
+    prog.patch(&mut parser.compiled, state, end);
+    return prog.fragment(state, end, source_start, source_end);
+}
+
+fn byte_scalar(value: u8) -> usize {
+    return ((value) as usize);
+}
+
+fn is_octal_digit(value: u8) -> bool {
+    return ascii.DIGIT_0 <= value && value <= b'7';
+}
+
+fn octal_value(value: u8) -> usize {
+    return ((value - ascii.DIGIT_0) as usize);
+}

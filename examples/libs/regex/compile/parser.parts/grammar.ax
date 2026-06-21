@@ -1,0 +1,173 @@
+module regex.compile.parser part grammar;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+fn parse_expression(parser: &mut Parser) -> t.Fragment {
+    var left: t.Fragment = parse_sequence(parser);
+    while parser.compiled.status == t.RegexStatus.ok && peek(parser) == ascii.PIPE {
+        advance(parser);
+        let right: t.Fragment = parse_sequence(parser);
+        left = prog.alternate(&mut parser.compiled, left, right);
+    }
+    return left;
+}
+
+fn parse_sequence(parser: &mut Parser) -> t.Fragment {
+    var has_piece: bool = false;
+    var result: t.Fragment = t.invalid_fragment();
+    skip_ignored(parser);
+    while parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && !is_sequence_end(peek(parser)) {
+        let piece: t.Fragment = parse_piece(parser);
+        if has_piece {
+            result = prog.concat(&mut parser.compiled, result, piece);
+        } else {
+            result = piece;
+            has_piece = true;
+        }
+        skip_ignored(parser);
+    }
+    if has_piece {
+        return result;
+    }
+    return prog.empty_fragment(&mut parser.compiled, parser.at);
+}
+
+fn parse_piece(parser: &mut Parser) -> t.Fragment {
+    skip_ignored(parser);
+    let atom: t.Fragment = parse_atom(parser);
+    if parser.compiled.status != t.RegexStatus.ok {
+        return atom;
+    }
+    skip_ignored(parser);
+    if at_end(parser) || is_sequence_end(peek(parser)) {
+        return atom;
+    }
+    let quantifier: u8 = peek(parser);
+    var result: t.Fragment = atom;
+    var has_quantifier: bool = false;
+    var lazy: bool = false;
+    if quantifier == ascii.STAR {
+        advance(parser);
+        has_quantifier = true;
+    } else if quantifier == ascii.PLUS {
+        advance(parser);
+        has_quantifier = true;
+    } else if quantifier == ascii.QUESTION {
+        advance(parser);
+        has_quantifier = true;
+    } else if quantifier == ascii.LBRACE {
+        let repeat: RepeatSpec = parse_repeat_spec(parser);
+        if !repeat.valid {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, repeat.error_offset, t.ERROR_KIND_INVALID_REPEAT);
+            return result;
+        }
+        has_quantifier = true;
+        skip_ignored(parser);
+        if parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && peek(parser) == ascii.QUESTION {
+            lazy = true;
+            advance(parser);
+        }
+        if has_flag(parser.flags, t.FLAG_UNGREEDY) {
+            lazy = !lazy;
+        }
+        result = apply_repeat(parser, atom, repeat, lazy);
+    }
+    if has_quantifier && quantifier != ascii.LBRACE {
+        skip_ignored(parser);
+        if parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && peek(parser) == ascii.QUESTION {
+            lazy = true;
+            advance(parser);
+        }
+        if has_flag(parser.flags, t.FLAG_UNGREEDY) {
+            lazy = !lazy;
+        }
+        if quantifier == ascii.STAR {
+            result = if lazy { prog.zero_or_more_lazy(&mut parser.compiled, atom) } else { prog.zero_or_more(&mut parser.compiled, atom) };
+        } else if quantifier == ascii.PLUS {
+            result = if lazy { prog.one_or_more_lazy(&mut parser.compiled, atom) } else { prog.one_or_more(&mut parser.compiled, atom) };
+        } else {
+            result = if lazy { prog.zero_or_one_lazy(&mut parser.compiled, atom) } else { prog.zero_or_one(&mut parser.compiled, atom) };
+        }
+    }
+    skip_ignored(parser);
+    if parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && starts_quantifier(peek(parser)) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_UNEXPECTED_TOKEN);
+    }
+    return result;
+}
+
+fn parse_atom(parser: &mut Parser) -> t.Fragment {
+    let source_start: usize = parser.at;
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNEXPECTED_EOF);
+        return t.invalid_fragment();
+    }
+    let value: u8 = peek(parser);
+    if starts_quantifier(value) || value == ascii.RBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNEXPECTED_TOKEN);
+        return t.invalid_fragment();
+    }
+    if value == ascii.LPAREN {
+        advance(parser);
+        let group: GroupSpec = parse_group_spec(parser, source_start);
+        if !group.valid {
+            return t.invalid_fragment();
+        }
+        if group.mode_only {
+            return prog.empty_fragment(&mut parser.compiled, source_start);
+        }
+        let nested: t.Fragment = parse_expression(parser);
+        if parser.compiled.status != t.RegexStatus.ok {
+            parser.flags = group.restore_flags;
+            return nested;
+        }
+        if at_end(parser) || peek(parser) != ascii.RPAREN {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNCLOSED_GROUP);
+            parser.flags = group.restore_flags;
+            return nested;
+        }
+        advance(parser);
+        parser.flags = group.restore_flags;
+        if group.capturing {
+            let source_end: usize = parser.at;
+            unsafe {
+                parser.compiled.captures[group.capture_index].source_end = source_end;
+            }
+            return prog.capture(&mut parser.compiled, nested, group.capture_index, source_start, source_end);
+        }
+        return prog.fragment(nested.start, nested.end, source_start, parser.at);
+    }
+    if value == ascii.LBRACKET {
+        return parse_class_atom(parser, source_start);
+    }
+    if value == ascii.DOT {
+        advance(parser);
+        return single_state_atom(parser, prog.add_any_flags(&mut parser.compiled, dot_flags(parser)), source_start, parser.at);
+    }
+    if value == ascii.CARET {
+        advance(parser);
+        return single_state_atom(parser, prog.add_assert_start_flags(&mut parser.compiled, anchor_flags(parser)), source_start, parser.at);
+    }
+    if value == ascii.DOLLAR {
+        advance(parser);
+        return single_state_atom(parser, prog.add_assert_end_flags(&mut parser.compiled, anchor_flags(parser)), source_start, parser.at);
+    }
+    if value == ascii.BACKSLASH {
+        return parse_escape_atom(parser, source_start);
+    }
+    if value == ascii.PIPE || value == ascii.RPAREN {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNEXPECTED_TOKEN);
+        return t.invalid_fragment();
+    }
+    if is_bytes_mode(parser) {
+        let value_byte: usize = byte_scalar(peek(parser));
+        advance(parser);
+        return literal_atom(parser, value_byte, source_start, parser.at);
+    }
+    let decoded: unicode.Decode = unicode.decode_at(parser.pattern, parser.at);
+    parser.at = decoded.next;
+    return literal_atom(parser, decoded.value, source_start, parser.at);
+}

@@ -1,0 +1,215 @@
+module regex.compile.database part storage;
+
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+
+fn allocate_regex(
+    mode: u8,
+    options: t.RegexOptions,
+    pattern_len: usize,
+    state_len: usize,
+    range_len: usize,
+    capture_len: usize
+) -> t.Regex {
+    var owned_pattern: *mut u8 = null;
+    var pattern: str = "";
+    if pattern_len > 0usize {
+        owned_pattern = alloc.alloc_zeroed<u8>(pattern_len, sizeof<u8>());
+        if owned_pattern == null {
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+        pattern = unsafe { strraw(ptrcast<*const u8>(owned_pattern), pattern_len) };
+    }
+    var states: *mut t.State = null;
+    var ranges: *mut t.ClassRange = null;
+    var captures: *mut t.CaptureInfo = null;
+    if state_len > 0usize {
+        states = alloc.alloc_zeroed<t.State>(state_len, sizeof<t.State>());
+        if states == null {
+            alloc.free_bytes(owned_pattern);
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if range_len > 0usize {
+        ranges = alloc.alloc_zeroed<t.ClassRange>(range_len, sizeof<t.ClassRange>());
+        if ranges == null {
+            alloc.free_bytes(owned_pattern);
+            alloc.free_typed<t.State>(states);
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if capture_len > 0usize {
+        captures = alloc.alloc_zeroed<t.CaptureInfo>(capture_len, sizeof<t.CaptureInfo>());
+        if captures == null {
+            alloc.free_bytes(owned_pattern);
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    return t.Regex {
+        pattern: pattern,
+        owned_pattern: owned_pattern,
+        mode: mode,
+        options: options,
+        states: states,
+        state_len: state_len,
+        state_capacity: state_len,
+        ranges: ranges,
+        range_len: range_len,
+        range_capacity: range_len,
+        captures: captures,
+        capture_len: capture_len,
+        capture_capacity: capture_len,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: t.RegexStatus.ok,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
+    };
+}
+
+fn allocate_set(
+    mode: u8,
+    options: t.RegexOptions,
+    pattern_count: usize,
+    state_len: usize,
+    range_len: usize,
+    literal_node_len: usize,
+    literal_terminal_len: usize
+) -> t.RegexSet {
+    var states: *mut t.State = null;
+    var ranges: *mut t.ClassRange = null;
+    var literal_nodes: *mut t.SetLiteralNode = null;
+    var literal_terminals: *mut t.SetLiteralTerminal = null;
+    if state_len > 0usize {
+        states = alloc.alloc_zeroed<t.State>(state_len, sizeof<t.State>());
+        if states == null {
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if range_len > 0usize {
+        ranges = alloc.alloc_zeroed<t.ClassRange>(range_len, sizeof<t.ClassRange>());
+        if ranges == null {
+            alloc.free_typed<t.State>(states);
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if literal_node_len > 0usize {
+        literal_nodes = alloc.alloc_zeroed<t.SetLiteralNode>(literal_node_len, sizeof<t.SetLiteralNode>());
+        if literal_nodes == null {
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if literal_terminal_len > 0usize {
+        literal_terminals = alloc.alloc_zeroed<t.SetLiteralTerminal>(literal_terminal_len, sizeof<t.SetLiteralTerminal>());
+        if literal_terminals == null {
+            alloc.free_typed<t.State>(states);
+            alloc.free_typed<t.ClassRange>(ranges);
+            alloc.free_typed<t.SetLiteralNode>(literal_nodes);
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    return t.RegexSet {
+        mode: mode,
+        options: options,
+        states: states,
+        state_len: state_len,
+        state_capacity: state_len,
+        ranges: ranges,
+        range_len: range_len,
+        range_capacity: range_len,
+        pattern_count: pattern_count,
+        literal_nodes: literal_nodes,
+        literal_node_len: literal_node_len,
+        literal_terminals: literal_terminals,
+        literal_terminal_len: literal_terminal_len,
+        literal_max_byte_len: 0usize,
+        start: t.NO_STATE,
+        status: t.RegexStatus.ok,
+        error_index: t.CAPTURE_MISSING,
+    };
+}
+
+fn empty_regex(mode: u8, status: t.RegexStatus) -> t.Regex {
+    return t.Regex {
+        pattern: "",
+        owned_pattern: null,
+        mode: mode,
+        options: t.default_options(),
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        captures: null,
+        capture_len: 0usize,
+        capture_capacity: 0usize,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: status,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
+    };
+}
+
+fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
+    return t.RegexSet {
+        mode: mode,
+        options: t.default_options(),
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        pattern_count: 0usize,
+        literal_nodes: null,
+        literal_node_len: 0usize,
+        literal_terminals: null,
+        literal_terminal_len: 0usize,
+        literal_max_byte_len: 0usize,
+        start: t.NO_STATE,
+        status: status,
+        error_index: t.CAPTURE_MISSING,
+    };
+}
+
+fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
+    alloc.free_bytes(compiled.owned_pattern);
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.CaptureInfo>(compiled.captures);
+    compiled.pattern = "";
+    compiled.owned_pattern = null;
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.captures = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+    compiled.capture_len = 0usize;
+    compiled.capture_capacity = 0usize;
+}
+
+fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.SetLiteralNode>(compiled.literal_nodes);
+    alloc.free_typed<t.SetLiteralTerminal>(compiled.literal_terminals);
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.literal_nodes = null;
+    compiled.literal_terminals = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+    compiled.literal_node_len = 0usize;
+    compiled.literal_terminal_len = 0usize;
+    compiled.literal_max_byte_len = 0usize;
+}

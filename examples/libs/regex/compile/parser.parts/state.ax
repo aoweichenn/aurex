@@ -1,0 +1,48 @@
+module regex.compile.parser part state;
+
+import regex.core.types as t;
+
+const CLASS_ITEM_SCALAR: u8 = 1u8;
+const CLASS_ITEM_PROPERTY: u8 = 2u8;
+
+struct Parser {
+    pattern: str;
+    at: usize;
+    flags: u8;
+    reuse_captures: bool;
+    compiled: t.Regex;
+}
+
+struct ClassItem {
+    kind: u8;
+    value: usize;
+    negated: bool;
+}
+
+struct ClassExpr {
+    len: usize;
+    valid: bool;
+}
+
+struct RepeatSpec {
+    min: usize;
+    max: usize;
+    unbounded: bool;
+    valid: bool;
+    error_offset: usize;
+}
+
+struct GroupSpec {
+    capturing: bool;
+    mode_only: bool;
+    capture_index: usize;
+    name_start: usize;
+    name_len: usize;
+    restore_flags: u8;
+    valid: bool;
+}
+
+struct CodepointSpec {
+    value: usize;
+    valid: bool;
+}

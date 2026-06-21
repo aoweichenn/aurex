@@ -1,0 +1,358 @@
+module regex.compile.parser part escapes;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    advance(parser);
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_UNEXPECTED_EOF);
+        return t.invalid_fragment();
+    }
+    let escaped: u8 = peek(parser);
+    advance(parser);
+    if escaped == ascii.LOWER_D {
+        return predefined_class_atom(parser, unicode.PROPERTY_GC_ND, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_D {
+        return predefined_class_atom(parser, unicode.PROPERTY_GC_ND, true, source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_W {
+        return predefined_class_atom(parser, unicode.PROPERTY_WORD, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_W {
+        return predefined_class_atom(parser, unicode.PROPERTY_WORD, true, source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_S {
+        return predefined_class_atom(parser, unicode.PROPERTY_WHITE_SPACE, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_S {
+        return predefined_class_atom(parser, unicode.PROPERTY_WHITE_SPACE, true, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_A {
+        return single_state_atom(parser, prog.add_assert_absolute_start(&mut parser.compiled), source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_G {
+        return single_state_atom(parser, prog.add_assert_search_start(&mut parser.compiled), source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_Z || escaped == ascii.UPPER_Z {
+        return single_state_atom(parser, prog.add_assert_absolute_end(&mut parser.compiled), source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_B {
+        return word_boundary_atom(parser, source_start);
+    }
+    if escaped == ascii.UPPER_B {
+        return single_state_atom(parser, prog.add_assert_not_word_boundary_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_N {
+        return newline_negated_class_atom(parser, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_R {
+        return newline_sequence_atom(parser, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_X {
+        return grapheme_cluster_atom(parser, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_Q {
+        return quoted_literal_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_X {
+        return hex_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_O {
+        return octal_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_C {
+        return control_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_U {
+        return unicode_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.UPPER_U {
+        return unicode_long_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_P {
+        return property_escape_atom(parser, false, source_start);
+    }
+    if escaped == ascii.UPPER_P {
+        return property_escape_atom(parser, true, source_start);
+    }
+    if ascii.is_alpha(escaped) && !ascii.is_simple_escape(escaped) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return t.invalid_fragment();
+    }
+    return literal_atom(parser, byte_scalar(ascii.escaped_byte(escaped)), source_start, parser.at);
+}
+
+fn property_escape_atom(parser: &mut Parser, negated: bool, source_start: usize) -> t.Fragment {
+    let name_start: usize = property_name_start(parser);
+    let kind: usize = parse_property_kind(parser);
+    if kind == unicode.PROPERTY_NONE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, name_start, t.ERROR_KIND_UNSUPPORTED_ESCAPE);
+        return t.invalid_fragment();
+    }
+    return predefined_class_atom(parser, kind, negated, source_start, parser.at);
+}
+
+fn property_name_start(parser: &Parser) -> usize {
+    if parser.at < parser.pattern.len && ascii.byte_at(parser.pattern, parser.at) == ascii.LBRACE {
+        return parser.at + 1usize;
+    }
+    return parser.at;
+}
+
+fn parse_property_kind(parser: &mut Parser) -> usize {
+    if at_end(parser) || peek(parser) != ascii.LBRACE {
+        return unicode.PROPERTY_NONE;
+    }
+    advance(parser);
+    let name_start: usize = parser.at;
+    while !at_end(parser) && peek(parser) != ascii.RBRACE {
+        advance(parser);
+    }
+    if at_end(parser) || parser.at == name_start {
+        return unicode.PROPERTY_NONE;
+    }
+    let name_len: usize = parser.at - name_start;
+    advance(parser);
+    return unicode.property_kind_from_name(parser.pattern, name_start, name_len);
+}
+
+fn word_boundary_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        let name_start: usize = parser.at + 1usize;
+        advance(parser);
+        while !at_end(parser) && peek(parser) != ascii.RBRACE {
+            advance(parser);
+        }
+        if at_end(parser) || parser.at == name_start {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return t.invalid_fragment();
+        }
+        let name_len: usize = parser.at - name_start;
+        advance(parser);
+        if pattern_slice_equals(parser.pattern, name_start, name_len, "start") {
+            return single_state_atom(parser, prog.add_assert_word_start_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
+        }
+        if pattern_slice_equals(parser.pattern, name_start, name_len, "end") {
+            return single_state_atom(parser, prog.add_assert_word_end_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
+        }
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return t.invalid_fragment();
+    }
+    return single_state_atom(parser, prog.add_assert_word_boundary_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
+}
+
+fn quoted_literal_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    var has_piece: bool = false;
+    var result: t.Fragment = t.invalid_fragment();
+    while !at_end(parser) {
+        if peek(parser) == ascii.BACKSLASH && parser.at + 1usize < parser.pattern.len &&
+            ascii.byte_at(parser.pattern, parser.at + 1usize) == ascii.UPPER_E {
+            parser.at += 2usize;
+            if has_piece {
+                return result;
+            }
+            return prog.empty_fragment(&mut parser.compiled, source_start);
+        }
+        let at_before: usize = parser.at;
+        let piece: t.Fragment = if is_bytes_mode(parser) {
+            let value_byte: usize = byte_scalar(peek(parser));
+            advance(parser);
+            literal_atom(parser, value_byte, at_before, parser.at)
+        } else {
+            let decoded: unicode.Decode = unicode.decode_at(parser.pattern, parser.at);
+            parser.at = decoded.next;
+            literal_atom(parser, decoded.value, at_before, parser.at)
+        };
+        if has_piece {
+            result = prog.concat(&mut parser.compiled, result, piece);
+        } else {
+            result = piece;
+            has_piece = true;
+        }
+    }
+    if has_piece {
+        return result;
+    }
+    return prog.empty_fragment(&mut parser.compiled, source_start);
+}
+
+fn hex_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = parse_hex_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn octal_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = parse_octal_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn control_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = parse_control_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn unicode_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        parse_braced_codepoint(parser, source_start)
+    } else {
+        parse_fixed_hex(parser, source_start, 4usize)
+    };
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn unicode_long_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        parse_braced_codepoint(parser, source_start)
+    } else {
+        parse_fixed_hex(parser, source_start, 8usize)
+    };
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn parse_hex_escape_value(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    if !at_end(parser) && peek(parser) == ascii.LBRACE {
+        return parse_braced_codepoint(parser, source_start);
+    }
+    return parse_fixed_hex(parser, source_start, 2usize);
+}
+
+fn parse_octal_escape_value(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    if at_end(parser) || peek(parser) != ascii.LBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    if at_end(parser) || !is_octal_digit(peek(parser)) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    var value: usize = 0usize;
+    while !at_end(parser) && peek(parser) != ascii.RBRACE {
+        if !is_octal_digit(peek(parser)) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+        value = value * 8usize + octal_value(peek(parser));
+        advance(parser);
+        if value > unicode.CODEPOINT_MAX {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+    }
+    if at_end(parser) || peek(parser) != ascii.RBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    return validate_codepoint(parser, source_start, value);
+}
+
+fn parse_control_escape_value(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    let value: u8 = peek(parser);
+    if value > 0x7fu8 {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    return CodepointSpec { value: ((value & 0x1fu8) as usize), valid: true };
+}
+
+fn parse_fixed_hex(parser: &mut Parser, source_start: usize, count: usize) -> CodepointSpec {
+    var value: usize = 0usize;
+    for _ in range(count) {
+        if at_end(parser) || !ascii.is_hex_digit(peek(parser)) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+        value = value * 16usize + ascii.hex_value(peek(parser));
+        advance(parser);
+    }
+    return validate_codepoint(parser, source_start, value);
+}
+
+fn parse_braced_codepoint(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    advance(parser);
+    if at_end(parser) || !ascii.is_hex_digit(peek(parser)) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    var value: usize = 0usize;
+    while !at_end(parser) && peek(parser) != ascii.RBRACE {
+        if !ascii.is_hex_digit(peek(parser)) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+        value = value * 16usize + ascii.hex_value(peek(parser));
+        advance(parser);
+        if value > unicode.CODEPOINT_MAX {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+    }
+    if at_end(parser) || peek(parser) != ascii.RBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    return validate_codepoint(parser, source_start, value);
+}
+
+fn validate_codepoint(parser: &mut Parser, source_start: usize, value: usize) -> CodepointSpec {
+    if value > unicode.CODEPOINT_MAX ||
+        (unicode.CODEPOINT_SURROGATE_FIRST <= value && value <= unicode.CODEPOINT_SURROGATE_LAST) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    return CodepointSpec { value: value, valid: true };
+}
+
+fn codepoint_atom(parser: &mut Parser, codepoint: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    if is_bytes_mode(parser) && codepoint > 0xffusize {
+        return utf8_codepoint_atom(parser, codepoint, source_start, source_end);
+    }
+    return literal_atom(parser, codepoint, source_start, source_end);
+}
+
+fn utf8_codepoint_atom(parser: &mut Parser, codepoint: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    if codepoint <= 0x7ffusize {
+        let first: t.Fragment = literal_atom(parser, 0xc0usize + codepoint / 64usize, source_start, source_end);
+        let second: t.Fragment = literal_atom(parser, 0x80usize + codepoint % 64usize, source_start, source_end);
+        return prog.concat(&mut parser.compiled, first, second);
+    }
+    if codepoint <= 0xffffusize {
+        let first3: t.Fragment = literal_atom(parser, 0xe0usize + codepoint / 4096usize, source_start, source_end);
+        let second3: t.Fragment = literal_atom(parser, 0x80usize + (codepoint / 64usize) % 64usize, source_start, source_end);
+        let third3: t.Fragment = literal_atom(parser, 0x80usize + codepoint % 64usize, source_start, source_end);
+        return prog.concat(&mut parser.compiled, prog.concat(&mut parser.compiled, first3, second3), third3);
+    }
+    let first4: t.Fragment = literal_atom(parser, 0xf0usize + codepoint / 262144usize, source_start, source_end);
+    let second4: t.Fragment = literal_atom(parser, 0x80usize + (codepoint / 4096usize) % 64usize, source_start, source_end);
+    let third4: t.Fragment = literal_atom(parser, 0x80usize + (codepoint / 64usize) % 64usize, source_start, source_end);
+    let fourth4: t.Fragment = literal_atom(parser, 0x80usize + codepoint % 64usize, source_start, source_end);
+    let head: t.Fragment = prog.concat(&mut parser.compiled, first4, second4);
+    let tail: t.Fragment = prog.concat(&mut parser.compiled, third4, fourth4);
+    return prog.concat(&mut parser.compiled, head, tail);
+}

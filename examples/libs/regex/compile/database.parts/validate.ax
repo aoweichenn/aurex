@@ -1,0 +1,149 @@
+module regex.compile.database part validate;
+
+import regex.core.types as t;
+
+fn validate_regex_program(compiled: &t.Regex) -> bool {
+    if compiled.state_len == 0usize ||
+        compiled.states == null ||
+        compiled.captures == null ||
+        compiled.accept >= compiled.state_len ||
+        unsafe { compiled.states[compiled.accept].opcode } != t.OP_MATCH {
+        return false;
+    }
+    for state in range(compiled.state_len) {
+        if !validate_regex_state(compiled, unsafe { compiled.states[state] }) {
+            return false;
+        }
+    }
+    for capture in range(compiled.capture_len) {
+        if !validate_capture(compiled, unsafe { compiled.captures[capture] }) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn validate_regex_state(compiled: &t.Regex, state: t.State) -> bool {
+    if state.out1 != t.NO_STATE && state.out1 >= compiled.state_len {
+        return false;
+    }
+    if state.out2 != t.NO_STATE && state.out2 >= compiled.state_len {
+        return false;
+    }
+    if state.opcode == t.OP_CLASS {
+        if state.class_start > compiled.range_len {
+            return false;
+        }
+        if state.class_len > compiled.range_len - state.class_start {
+            return false;
+        }
+    }
+    if state.opcode == t.OP_SAVE && state.class_start >= compiled.capture_len * 2usize {
+        return false;
+    }
+    return state.opcode <= t.OP_SAVE;
+}
+
+fn validate_capture(compiled: &t.Regex, capture: t.CaptureInfo) -> bool {
+    let pattern_len: usize = compiled.pattern.len;
+    if capture.name_start > pattern_len || capture.name_len > pattern_len - capture.name_start {
+        return false;
+    }
+    if capture.source_start > pattern_len || capture.source_end > pattern_len || capture.source_start > capture.source_end {
+        return false;
+    }
+    return true;
+}
+
+fn validate_set_program(compiled: &t.RegexSet) -> bool {
+    if compiled.state_len == 0usize {
+        return compiled.start == t.NO_STATE && validate_literal_automaton(compiled);
+    }
+    for state in range(compiled.state_len) {
+        if !validate_state(compiled, unsafe { compiled.states[state] }) {
+            return false;
+        }
+    }
+    return validate_literal_automaton(compiled);
+}
+
+fn validate_state(compiled: &t.RegexSet, state: t.State) -> bool {
+    if state.out1 != t.NO_STATE && state.out1 >= compiled.state_len {
+        return false;
+    }
+    if state.out2 != t.NO_STATE && state.out2 >= compiled.state_len {
+        return false;
+    }
+    if state.opcode == t.OP_CLASS {
+        if state.class_start > compiled.range_len {
+            return false;
+        }
+        if state.class_len > compiled.range_len - state.class_start {
+            return false;
+        }
+    }
+    if state.opcode == t.OP_MATCH && state.value >= compiled.pattern_count {
+        return false;
+    }
+    return state.opcode <= t.OP_SAVE;
+}
+
+fn validate_literal_automaton(compiled: &t.RegexSet) -> bool {
+    if compiled.literal_node_len == 0usize {
+        return compiled.literal_nodes == null &&
+            compiled.literal_terminals == null &&
+            compiled.literal_terminal_len == 0usize &&
+            compiled.literal_max_byte_len == 0usize;
+    }
+    if compiled.literal_nodes == null ||
+        compiled.literal_terminals == null ||
+        compiled.literal_terminal_len == 0usize ||
+        compiled.literal_max_byte_len == 0usize ||
+        compiled.literal_terminal_len > compiled.pattern_count {
+        return false;
+    }
+    if unsafe { compiled.literal_nodes[0usize].fail } != 0usize {
+        return false;
+    }
+    for node in range(compiled.literal_node_len) {
+        if !validate_literal_node(compiled, unsafe { compiled.literal_nodes[node] }) {
+            return false;
+        }
+    }
+    for terminal in range(compiled.literal_terminal_len) {
+        if !validate_literal_terminal(compiled, unsafe { compiled.literal_terminals[terminal] }) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn validate_literal_node(compiled: &t.RegexSet, node: t.SetLiteralNode) -> bool {
+    if !literal_node_ref_is_valid(node.first_child, compiled.literal_node_len) ||
+        !literal_node_ref_is_valid(node.next_sibling, compiled.literal_node_len) ||
+        !literal_terminal_ref_is_valid(node.first_terminal, compiled.literal_terminal_len) ||
+        !literal_terminal_ref_is_valid(node.last_terminal, compiled.literal_terminal_len) ||
+        node.fail >= compiled.literal_node_len ||
+        !literal_node_ref_is_valid(node.output, compiled.literal_node_len) {
+        return false;
+    }
+    return true;
+}
+
+fn validate_literal_terminal(compiled: &t.RegexSet, terminal: t.SetLiteralTerminal) -> bool {
+    if terminal.pattern_id >= compiled.pattern_count ||
+        terminal.byte_len == 0usize ||
+        terminal.byte_len > compiled.literal_max_byte_len ||
+        !literal_terminal_ref_is_valid(terminal.next, compiled.literal_terminal_len) {
+        return false;
+    }
+    return true;
+}
+
+fn literal_node_ref_is_valid(value: usize, node_len: usize) -> bool {
+    return value == t.CAPTURE_MISSING || value < node_len;
+}
+
+fn literal_terminal_ref_is_valid(value: usize, terminal_len: usize) -> bool {
+    return value == t.CAPTURE_MISSING || value < terminal_len;
+}

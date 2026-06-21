@@ -1,0 +1,101 @@
+module regex.compile.database part write;
+
+import regex.core.types as t;
+
+fn write_set_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
+    write_u8(out, out_capacity, cursor, MAGIC_0);
+    write_u8(out, out_capacity, cursor, MAGIC_1);
+    write_u8(out, out_capacity, cursor, MAGIC_2);
+    write_u8(out, out_capacity, cursor, MAGIC_3);
+    write_u8(out, out_capacity, cursor, MAGIC_4);
+    write_u8(out, out_capacity, cursor, MAGIC_5);
+    write_u8(out, out_capacity, cursor, MAGIC_6);
+    write_u8(out, out_capacity, cursor, MAGIC_7);
+}
+
+fn write_regex_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
+    write_u8(out, out_capacity, cursor, MAGIC_0);
+    write_u8(out, out_capacity, cursor, MAGIC_1);
+    write_u8(out, out_capacity, cursor, MAGIC_2);
+    write_u8(out, out_capacity, cursor, MAGIC_3);
+    write_u8(out, out_capacity, cursor, REGEX_MAGIC_4);
+    write_u8(out, out_capacity, cursor, MAGIC_5);
+    write_u8(out, out_capacity, cursor, MAGIC_6);
+    write_u8(out, out_capacity, cursor, MAGIC_7);
+}
+
+fn write_pattern_bytes(out: *mut u8, out_capacity: usize, cursor: *mut usize, pattern: str) -> void {
+    for value in pattern {
+        write_u8(out, out_capacity, cursor, value);
+    }
+}
+
+fn write_state(out: *mut u8, out_capacity: usize, cursor: *mut usize, state: t.State) -> void {
+    write_u8(out, out_capacity, cursor, state.opcode);
+    write_u8(out, out_capacity, cursor, state.flags);
+    write_usize(out, out_capacity, cursor, state.value);
+    write_usize(out, out_capacity, cursor, state.value_to);
+    write_usize(out, out_capacity, cursor, state.out1);
+    write_usize(out, out_capacity, cursor, state.out2);
+    write_usize(out, out_capacity, cursor, state.class_start);
+    write_usize(out, out_capacity, cursor, state.class_len);
+}
+
+fn write_range(out: *mut u8, out_capacity: usize, cursor: *mut usize, range: t.ClassRange) -> void {
+    write_u8(out, out_capacity, cursor, range.kind);
+    write_usize(out, out_capacity, cursor, range.first);
+    write_usize(out, out_capacity, cursor, range.last);
+}
+
+fn write_capture(out: *mut u8, out_capacity: usize, cursor: *mut usize, capture: t.CaptureInfo) -> void {
+    write_usize(out, out_capacity, cursor, capture.name_start);
+    write_usize(out, out_capacity, cursor, capture.name_len);
+    write_usize(out, out_capacity, cursor, capture.source_start);
+    write_usize(out, out_capacity, cursor, capture.source_end);
+}
+
+fn write_literal_node(out: *mut u8, out_capacity: usize, cursor: *mut usize, node: t.SetLiteralNode) -> void {
+    write_usize(out, out_capacity, cursor, node.value);
+    write_usize(out, out_capacity, cursor, node.first_child);
+    write_usize(out, out_capacity, cursor, node.next_sibling);
+    write_usize(out, out_capacity, cursor, node.first_terminal);
+    write_usize(out, out_capacity, cursor, node.last_terminal);
+    write_usize(out, out_capacity, cursor, node.fail);
+    write_usize(out, out_capacity, cursor, node.output);
+}
+
+fn write_literal_terminal(out: *mut u8, out_capacity: usize, cursor: *mut usize, terminal: t.SetLiteralTerminal) -> void {
+    write_usize(out, out_capacity, cursor, terminal.pattern_id);
+    write_usize(out, out_capacity, cursor, terminal.byte_len);
+    write_usize(out, out_capacity, cursor, terminal.next);
+}
+
+fn write_options(out: *mut u8, out_capacity: usize, cursor: *mut usize, options: t.RegexOptions) -> void {
+    write_u8(out, out_capacity, cursor, options.flags);
+    write_u8(out, out_capacity, cursor, options.newline_mode);
+    write_usize(out, out_capacity, cursor, options.max_pattern_bytes);
+    write_usize(out, out_capacity, cursor, options.max_state_capacity);
+    write_usize(out, out_capacity, cursor, options.max_range_capacity);
+    write_usize(out, out_capacity, cursor, options.max_workspace_states);
+    write_usize(out, out_capacity, cursor, options.max_bounded_repeat);
+    write_usize(out, out_capacity, cursor, options.max_capture_groups);
+    write_usize(out, out_capacity, cursor, options.stream_history_limit);
+}
+
+fn write_u8(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: u8) -> void {
+    if unsafe { *cursor } < out_capacity && out != null {
+        unsafe {
+            out[*cursor] = value;
+        }
+    }
+    unsafe {
+        *cursor = *cursor + 1usize;
+    }
+}
+
+fn write_usize(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: usize) -> void {
+    for offset in range(USIZE_BYTES) {
+        let shift: usize = offset * BYTE_BITS;
+        write_u8(out, out_capacity, cursor, (((value >> shift) & BYTE_MASK) as u8));
+    }
+}

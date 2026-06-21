@@ -1,0 +1,45 @@
+module regex.compile.parser part entry;
+
+import regex.compile.program as prog;
+import regex.core.types as t;
+
+pub fn compile(pattern: str) -> t.Regex {
+    return compile_with_options(pattern, t.default_options());
+}
+
+pub fn compile_bytes(pattern: str) -> t.Regex {
+    return compile_bytes_with_options(pattern, t.default_options());
+}
+
+pub fn compile_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return compile_with_mode(pattern, t.MODE_TEXT, options);
+}
+
+pub fn compile_bytes_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return compile_with_mode(pattern, t.MODE_BYTES, options);
+}
+
+fn compile_with_mode(pattern: str, mode: u8, options: t.RegexOptions) -> t.Regex {
+    let compiled: t.Regex = prog.create_with_options(pattern, mode, options);
+    if compiled.status != t.RegexStatus.ok {
+        return compiled;
+    }
+    var parser: Parser = Parser {
+        pattern: pattern,
+        at: 0usize,
+        flags: options.flags,
+        reuse_captures: false,
+        compiled: compiled,
+    };
+    let body: t.Fragment = parse_expression(&mut parser);
+    if parser.compiled.status == t.RegexStatus.ok && parser.at != pattern.len {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_TRAILING_INPUT);
+    }
+    if parser.compiled.status == t.RegexStatus.ok {
+        let accept: usize = prog.add_match(&mut parser.compiled);
+        prog.patch(&mut parser.compiled, body.end, accept);
+        parser.compiled.start = body.start;
+        parser.compiled.accept = accept;
+    }
+    return parser.compiled;
+}

@@ -328,7 +328,7 @@ def make_source(function_count: int, body_variant: int) -> str:
         source.append("// cache-bypass change outside query subjects\n")
     source.append("\n")
     source.append(
-        "struct Box[T] {\n"
+        "struct Box<T> {\n"
         "    value: T;\n"
         "}\n\n"
     )
@@ -339,7 +339,7 @@ def make_source(function_count: int, body_variant: int) -> str:
         seed_value = "helper_0()"
     else:
         seed_value = "0"
-    source.append(f"    let box: Box[i32] = Box[i32] {{ value: {seed_value} }};\n")
+    source.append(f"    let box: Box<i32> = Box<i32> {{ value: {seed_value} }};\n")
     if body_variant == 0 or body_variant == 2:
         source.append("    return box.value;\n")
     elif body_variant == 1:

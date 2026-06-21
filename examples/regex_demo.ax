@@ -40,7 +40,7 @@ fn require_match(code: i32, result: regex.MatchResult) -> i32 {
     };
 }
 
-fn main() -> i32 {
+pub fn run_regex_demo() -> i32 {
     let searcher: Matcher = regex.search;
     let fullmatcher: Matcher = regex.fullmatch;
 
@@ -87,7 +87,7 @@ fn main() -> i32 {
     if require_match(CASE_COMPILED_MATCH, result) != 0 {
         return CASE_COMPILED_MATCH;
     }
-    if result.start != 0usize || result.end != strblen("abcdab") {
+    if result.start != 0usize || result.end != "abcdab".len {
         return CASE_COMPILED_SPAN;
     }
 
@@ -101,4 +101,8 @@ fn main() -> i32 {
         return CASE_REPEAT_LIMIT_BASE + regex.status_code(bad.status);
     }
     return 0;
+}
+
+fn main() -> i32 {
+    return run_regex_demo();
 }

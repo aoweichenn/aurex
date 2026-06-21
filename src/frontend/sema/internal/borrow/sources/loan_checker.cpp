@@ -201,6 +201,7 @@ void push_precheck_statement_children(const syntax::AstModule& module, const syn
             push_precheck_expr(pending_exprs, module, stmt.range_start);
             push_precheck_expr(pending_exprs, module, stmt.range_end);
             push_precheck_expr(pending_exprs, module, stmt.range_step);
+            push_precheck_expr(pending_exprs, module, stmt.range_iterable);
             push_precheck_stmt(pending_stmts, module, stmt.body);
             break;
         case syntax::StmtKind::while_:
@@ -1453,6 +1454,7 @@ private:
             case TypeKind::associated_projection:
                 return true;
             case TypeKind::array:
+            case TypeKind::range:
             case TypeKind::tuple:
             case TypeKind::struct_:
             case TypeKind::enum_:
@@ -2015,6 +2017,9 @@ private:
                 case TypeKind::array:
                     pending.push_back(info.array_element);
                     break;
+                case TypeKind::range:
+                    pending.push_back(info.range_element);
+                    break;
                 case TypeKind::tuple:
                     pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                     break;
@@ -2298,6 +2303,9 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
             case TypeKind::array:
                 pending.push_back(info.array_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                 break;
@@ -2356,7 +2364,8 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_need_local_loan_check(
         case syntax::StmtKind::for_range:
             return this->expr_may_need_local_loan_check(stmt.range_start)
                 || this->expr_may_need_local_loan_check(stmt.range_end)
-                || this->expr_may_need_local_loan_check(stmt.range_step);
+                || this->expr_may_need_local_loan_check(stmt.range_step)
+                || this->expr_may_need_local_loan_check(stmt.range_iterable);
         case syntax::StmtKind::defer:
         case syntax::StmtKind::expr:
             return this->expr_may_need_local_loan_check(stmt.init);

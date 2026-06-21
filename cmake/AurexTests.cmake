@@ -1,10 +1,11 @@
 include(CTest)
+include("${CMAKE_CURRENT_LIST_DIR}/AurexTestSources.cmake")
 
 if(BUILD_TESTING)
     find_package(GTest REQUIRED)
 
     add_executable(aurex_base_tests
-        tests/gtest/infrastructure/base/base_tests.cpp
+        ${AUREX_BASE_TEST_SOURCES}
     )
     target_link_libraries(aurex_base_tests PRIVATE
         GTest::gtest_main
@@ -19,21 +20,7 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_query_tests
-        tests/gtest/infrastructure/query/const_generic_design_gate_tests.cpp
-        tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
-        tests/gtest/infrastructure/query/dyn_ownership_runtime_boundary_gate_tests.cpp
-        tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
-        tests/gtest/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts_tests.cpp
-        tests/gtest/infrastructure/query/macro_design_gate_tests.cpp
-        tests/gtest/infrastructure/query/macro_expansion_facts_tests.cpp
-        tests/gtest/infrastructure/query/owned_dyn_drop_allocator_identity_gate_tests.cpp
-        tests/gtest/infrastructure/query/owned_dyn_ir_shape_prototype_gate_tests.cpp
-        tests/gtest/infrastructure/query/owned_dyn_runtime_admission_gate_tests.cpp
-        tests/gtest/infrastructure/query/owned_dyn_runtime_lowering_abi_gate_tests.cpp
-        tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
-        tests/gtest/infrastructure/query/query_key_tests.cpp
-        tests/gtest/infrastructure/query/query_robustness_tests.cpp
-        tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
+        ${AUREX_QUERY_TEST_SOURCES}
     )
     target_link_libraries(aurex_query_tests PRIVATE
         GTest::gtest_main
@@ -48,7 +35,7 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_lexer_tests
-        tests/gtest/frontend/lex/lexer_tests.cpp
+        ${AUREX_LEXER_TEST_SOURCES}
     )
     target_link_libraries(aurex_lexer_tests PRIVATE
         GTest::gtest_main
@@ -66,34 +53,7 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_frontend_tests
-        tests/gtest/infrastructure/base/base_tests.cpp
-        tests/gtest/frontend/syntax/ast_dump_tests.cpp
-        tests/gtest/frontend/lex/lexer_tests.cpp
-        tests/gtest/frontend/macro/early_item_expansion_tests.cpp
-        tests/gtest/frontend/macro/output_contract_admission_tests.cpp
-        tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
-        tests/gtest/frontend/parse/parser_tests.cpp
-        tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
-        tests/gtest/frontend/sema/default_named_argument_tests.cpp
-        tests/gtest/frontend/sema/identifier_tests.cpp
-        tests/gtest/frontend/sema/lifetime_tests.cpp
-        tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
-        tests/gtest/frontend/sema/place_state_tests.cpp
-        tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_generics_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_lookup_modules_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_resources_dropck_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
-        tests/gtest/frontend/sema/sema_whitebox_tests.cpp
-        tests/gtest/frontend/sema/statement_tests.cpp
-        tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp
-        tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp
-        tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
-        tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
-        tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
-        tests/gtest/application/tooling/ide_tooling_tests.cpp
-        tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
+        ${AUREX_FRONTEND_ONLY_TEST_SOURCES}
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
@@ -116,89 +76,7 @@ if(BUILD_TESTING)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
         add_executable(aurex_tests
-            tests/support/test_support.cpp
-            tests/gtest/backend/llvm/llvm_constants_tests.cpp
-            tests/gtest/backend/llvm/llvm_runtime_tests.cpp
-            tests/gtest/backend/llvm/llvm_types_whitebox_tests.cpp
-            tests/gtest/backend/llvm/llvm_utility_tests.cpp
-            tests/gtest/infrastructure/base/base_tests.cpp
-            tests/gtest/application/driver/cli_argument_tests.cpp
-            tests/gtest/application/driver/cli_driver_tests.cpp
-            tests/gtest/application/driver/install_and_import_tests.cpp
-            tests/gtest/application/driver/native_toolchain_tests.cpp
-            tests/gtest/application/driver/project_model_tests.cpp
-            tests/gtest/frontend/syntax/ast_dump_tests.cpp
-            tests/gtest/frontend/parse/randomized_frontend_tests.cpp
-            tests/gtest/frontend/lex/lexer_tests.cpp
-            tests/gtest/frontend/macro/early_item_expansion_tests.cpp
-            tests/gtest/frontend/macro/output_contract_admission_tests.cpp
-            tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
-            tests/gtest/frontend/parse/parser_tests.cpp
-            tests/gtest/frontend/parse/trait_supertrait_parse_tests.cpp
-            tests/gtest/integration/documentation_tests.cpp
-            tests/gtest/integration/examples_tests.cpp
-            tests/gtest/integration/native_execution_tests.cpp
-            tests/gtest/integration/randomized_integration_tests.cpp
-            tests/gtest/integration/regression_tests.cpp
-            tests/gtest/integration/sample_suite_tests.cpp
-            tests/gtest/integration/struct_field_reference_tests.cpp
-            tests/gtest/midend/ir/analysis_manager_tests.cpp
-            tests/gtest/midend/ir/ir_dump_tests.cpp
-            tests/gtest/midend/ir/ir_fingerprint_tests.cpp
-            tests/gtest/midend/ir/ir_verifier_edge_tests.cpp
-            tests/gtest/midend/ir/ir_verifier_structural_tests.cpp
-            tests/gtest/midend/ir/lower_ast_aggregate_rollback_tests.cpp
-            tests/gtest/midend/ir/lower_ast_dyn_trait_tests.cpp
-            tests/gtest/midend/ir/lower_ast_whitebox_tests.cpp
-            tests/gtest/midend/ir/owned_dyn_drop_allocator_identity_tests.cpp
-            tests/gtest/midend/ir/owned_dyn_ir_shape_prototype_tests.cpp
-            tests/gtest/midend/ir/owned_dyn_runtime_lowering_abi_tests.cpp
-            tests/gtest/midend/ir/pass_pipeline_tests.cpp
-            tests/gtest/midend/ir/type_table_tests.cpp
-            tests/gtest/infrastructure/query/query_key_tests.cpp
-            tests/gtest/infrastructure/query/const_generic_design_gate_tests.cpp
-            tests/gtest/infrastructure/query/dyn_advanced_design_gate_tests.cpp
-            tests/gtest/infrastructure/query/dyn_ownership_runtime_boundary_gate_tests.cpp
-            tests/gtest/infrastructure/query/dyn_ownership_runtime_facts_tests.cpp
-            tests/gtest/infrastructure/query/dyn_ownership_runtime_ir_verifier_facts_tests.cpp
-            tests/gtest/infrastructure/query/macro_design_gate_tests.cpp
-            tests/gtest/infrastructure/query/macro_expansion_facts_tests.cpp
-            tests/gtest/infrastructure/query/owned_dyn_drop_allocator_identity_gate_tests.cpp
-            tests/gtest/infrastructure/query/owned_dyn_ir_shape_prototype_gate_tests.cpp
-            tests/gtest/infrastructure/query/owned_dyn_runtime_admission_gate_tests.cpp
-            tests/gtest/infrastructure/query/owned_dyn_runtime_lowering_abi_gate_tests.cpp
-            tests/gtest/infrastructure/query/principal_set_composition_facts_tests.cpp
-            tests/gtest/infrastructure/query/query_robustness_tests.cpp
-            tests/gtest/infrastructure/query/trait_object_upcast_key_tests.cpp
-            tests/gtest/frontend/sema/block_expression_tests.cpp
-            tests/gtest/frontend/sema/error_handling_tests.cpp
-            tests/gtest/frontend/sema/default_named_argument_tests.cpp
-            tests/gtest/frontend/sema/functions_tests.cpp
-            tests/gtest/frontend/sema/identifier_tests.cpp
-            tests/gtest/frontend/sema/if_expression_tests.cpp
-            tests/gtest/frontend/sema/inference_tests.cpp
-            tests/gtest/frontend/sema/lifetime_tests.cpp
-            tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
-            tests/gtest/frontend/sema/place_state_tests.cpp
-            tests/gtest/frontend/sema/modules_visibility_tests.cpp
-            tests/gtest/frontend/sema/pattern_matching_tests.cpp
-            tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_generics_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_lookup_modules_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_resources_dropck_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
-            tests/gtest/frontend/sema/sema_whitebox_tests.cpp
-            tests/gtest/frontend/sema/statement_tests.cpp
-            tests/gtest/frontend/sema/dyn_trait_composition_tests.cpp
-            tests/gtest/frontend/sema/dyn_trait_composition_supertrait_tests.cpp
-            tests/gtest/frontend/sema/dyn_trait_whitebox_tests.cpp
-            tests/gtest/frontend/sema/dyn_trait_upcast_tests.cpp
-            tests/gtest/frontend/sema/trait_tests.cpp
-            tests/gtest/frontend/sema/trait_supertrait_facts_tests.cpp
-            tests/gtest/frontend/sema/type_alias_tests.cpp
-            tests/gtest/application/tooling/ide_tooling_tests.cpp
-            tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
+            ${AUREX_FULL_TEST_SOURCES}
         )
         target_link_libraries(aurex_tests PRIVATE
             GTest::gtest_main
@@ -232,66 +110,311 @@ if(BUILD_TESTING)
             BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
         )
 
-        function(aurex_add_gtest name filter)
+        function(aurex_add_gtest name)
+            set(one_value_args COST PROCESSORS TIMEOUT)
+            set(multi_value_args LABELS PATTERNS)
+            cmake_parse_arguments(AUREX_GTEST "" "${one_value_args}" "${multi_value_args}" ${ARGN})
+            if(AUREX_GTEST_UNPARSED_ARGUMENTS)
+                message(FATAL_ERROR "unexpected aurex_add_gtest arguments: ${AUREX_GTEST_UNPARSED_ARGUMENTS}")
+            endif()
+            if(NOT AUREX_GTEST_PATTERNS)
+                message(FATAL_ERROR "aurex_add_gtest(${name}) requires at least one PATTERNS entry")
+            endif()
+            list(JOIN AUREX_GTEST_PATTERNS ":" filter)
             add_test(
                 NAME "${name}"
                 COMMAND aurex_tests --gtest_color=auto "--gtest_filter=${filter}"
             )
+            set_tests_properties("${name}" PROPERTIES
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            )
+            if(AUREX_GTEST_COST)
+                set_tests_properties("${name}" PROPERTIES
+                    COST "${AUREX_GTEST_COST}"
+                )
+            endif()
+            if(AUREX_GTEST_LABELS)
+                set_tests_properties("${name}" PROPERTIES
+                    LABELS "${AUREX_GTEST_LABELS}"
+                )
+            endif()
+            if(AUREX_GTEST_PROCESSORS)
+                set_tests_properties("${name}" PROPERTIES
+                    PROCESSORS "${AUREX_GTEST_PROCESSORS}"
+                )
+            endif()
+            if(AUREX_GTEST_TIMEOUT)
+                set_tests_properties("${name}" PROPERTIES
+                    TIMEOUT "${AUREX_GTEST_TIMEOUT}"
+                )
+            endif()
         endfunction()
 
         aurex_add_gtest(aurex_tests_core_unit
+            PATTERNS
             "CoreUnit.*"
         )
         aurex_add_gtest(aurex_tests_query_unit_full
+            PATTERNS
             "QueryUnit.*"
         )
-        aurex_add_gtest(aurex_tests_driver_and_regressions
-            "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.IncrementalCache*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.ModuleLoader*:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.M4ReleaseDocumentationIsClosed:AurexIntegrationTest.M5ReleaseDocumentationIsClosed:AurexIntegrationTest.M6ResourceSemanticsWp2ThroughWp7AreClosed:AurexIntegrationTest.M8DynTraitDesignDocumentationIsCurrent:AurexIntegrationTest.M9DynAbiToolingDesignDocumentationIsCurrent:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.Diagnostic*:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.M2UnsafeBoundaries:AurexIntegrationTest.M2SafeReferences:AurexIntegrationTest.StringCheckedBoundary:AurexIntegrationTest.ArrayLiteralRegressions:AurexIntegrationTest.SliceRegressions:AurexIntegrationTest.TupleRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.EnumAdtRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.M2Generic*:AurexIntegrationTest.Randomized*"
+        aurex_add_gtest(aurex_tests_docs_current
+            PATTERNS
+            "AurexIntegrationTest.CurrentChineseDocumentationLayoutIsStable"
+            "AurexIntegrationTest.CurrentDocumentationExplainsTheActiveRoadmap"
+            "AurexIntegrationTest.SyntaxRevisionDocumentationMatchesCurrentSurface"
+            LABELS docs
+        )
+        aurex_add_gtest(aurex_tests_cli_driver
+            PATTERNS
+            "AurexIntegrationTest.Cli*"
+            "AurexIntegrationTest.Compiler*"
+        )
+        aurex_add_gtest(aurex_tests_incremental_cache_core
+            PATTERNS
+            "AurexIntegrationTest.IncrementalCacheWritesValidatesInvalidatesAndReusesCheck"
+            "AurexIntegrationTest.IncrementalCacheReportsWriteOpenFailure"
+            "AurexIntegrationTest.IncrementalCachePipelineReportsWriteFailureAtEmitStopPoints"
+            "AurexIntegrationTest.IncrementalCacheWritesQueryRowsInDependencyScheduleOrder"
+            "AurexIntegrationTest.IncrementalCacheParsesQueryDependencyEdgeRows"
+            "AurexIntegrationTest.IncrementalCacheRejectsMalformedMismatchedAndBlockedCacheFiles"
+        )
+        aurex_add_gtest(aurex_tests_incremental_cache_pruning
+            PATTERNS
+            "AurexIntegrationTest.IncrementalCacheQueryPruning*"
+            "AurexIntegrationTest.IncrementalCacheWritesGeneric*"
+            "AurexIntegrationTest.IncrementalCacheRecordsTraitDefaultMethodInstanceRows"
+            "AurexIntegrationTest.IncrementalCacheLowerIRRowsUseOptimizedIrUnitFingerprint"
+        )
+        aurex_add_gtest(aurex_tests_incremental_cache_modules
+            PATTERNS
+            "AurexIntegrationTest.IncrementalCacheItemSignature*"
+            "AurexIntegrationTest.IncrementalCacheModule*"
+            "AurexIntegrationTest.IncrementalCacheKeys*"
+            "AurexIntegrationTest.IncrementalCacheReusesUnusedImportPathManifestSourceRoot"
+            "AurexIntegrationTest.IncrementalCacheRejectsImportPathManifestIdentityChanges"
+            "AurexIntegrationTest.IncrementalCacheSemanticSubjectsUseModuleIdPackagesForSplitLogicalNames"
+            "AurexIntegrationTest.IncrementalCacheTracksImportPathAndDependencyFingerprints"
+        )
+        aurex_add_gtest(aurex_tests_module_loader_core
+            PATTERNS
+            "AurexIntegrationTest.InstallAndImportPaths"
+            "AurexIntegrationTest.ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes"
+            "AurexIntegrationTest.ModuleLoaderLoadsPrimarySidecarParts"
+            "AurexIntegrationTest.ModuleLoaderRecordsModulePartKeys"
+            "AurexIntegrationTest.ModuleLoaderDiscoversOwningPrimaryForPartCheck"
+            "AurexIntegrationTest.ModuleLoaderDiagnostics*"
+            "AurexIntegrationTest.ModuleLoaderRejectsAmbiguousImportCandidates"
+            "AurexIntegrationTest.ModuleLoaderRejectsDuplicateItemsAcrossParts"
+        )
+        aurex_add_gtest(aurex_tests_module_loader_packages
+            PATTERNS
+            "AurexIntegrationTest.ModuleLoaderImportVisibilityChangesGraphAndExportsOnly"
+            "AurexIntegrationTest.ModuleLoaderSelectiveUseReexportChangesGraphAndExportsOnly"
+            "AurexIntegrationTest.ModuleLoaderPackageImportVisibilityChangesPackageExportsOnly"
+            "AurexIntegrationTest.ModuleLoaderAssignsImportPathModulesToDistinctPackages"
+            "AurexIntegrationTest.ModuleLoaderUses*"
+            "AurexIntegrationTest.ModuleLoaderRejectsManifestSourceRootPathTopologyMismatches"
+            "AurexIntegrationTest.ModuleLoaderPackageManifestIdentityHandlesSyntaxAndFallbacks"
+        )
+        aurex_add_gtest(aurex_tests_project_model
+            PATTERNS
+            "AurexIntegrationTest.ModuleLoaderProjectModel*"
+            "AurexIntegrationTest.IncrementalCacheSourceStageRecordsSupportLosslessToolingMode"
+        )
+        aurex_add_gtest(aurex_tests_examples_core
+            PATTERNS
+            "AurexIntegrationTest.ExamplesHello*"
+            "AurexIntegrationTest.ExamplesCommon*"
+            "AurexIntegrationTest.ExamplesDocumentation*"
+            "AurexIntegrationTest.ExamplesDiagnostic*"
+            LABELS examples
+        )
+        aurex_add_gtest(aurex_tests_examples_regex_basic
+            PATTERNS
+            "AurexIntegrationTest.ExamplesRegexSuiteSurface*"
+            LABELS slow examples regex
+            TIMEOUT 300
+            COST 6
+            PROCESSORS 2
+        )
+        aurex_add_gtest(aurex_tests_examples_regex_stress
+            PATTERNS
+            "AurexIntegrationTest.ExamplesRegexSuiteCompilesAndRuns"
+            LABELS slow examples regex
+            TIMEOUT 300
+            COST 12
+            PROCESSORS 4
+        )
+        aurex_add_gtest(aurex_tests_native_hello
+            PATTERNS
+            "AurexIntegrationTest.NativeHello*"
+            LABELS native
+        )
+        aurex_add_gtest(aurex_tests_native_dyn_traits
+            PATTERNS
+            "AurexIntegrationTest.NativeDefaultAndNamedArgumentsUseCheckedOrder"
+            "AurexIntegrationTest.NativeDynTrait*"
+            "AurexIntegrationTest.NativeMutableDynTrait*"
+            LABELS native
+        )
+        aurex_add_gtest(aurex_tests_randomized_driver
+            PATTERNS
+            "AurexIntegrationTest.Randomized*"
+            LABELS randomized
+        )
+        aurex_add_gtest(aurex_tests_regressions_core
+            PATTERNS
+            "AurexIntegrationTest.StructAndEnumValidationRegressions"
+            "AurexIntegrationTest.Diagnostic*"
+            "AurexIntegrationTest.IntegerLiteralRegressions"
+            "AurexIntegrationTest.M2UnsafeBoundaries"
+            "AurexIntegrationTest.M2SafeReferences"
+            "AurexIntegrationTest.StringCheckedBoundary"
+            "AurexIntegrationTest.ArrayLiteralRegressions"
+            "AurexIntegrationTest.SliceRegressions"
+            "AurexIntegrationTest.TupleRegressions"
+            "AurexIntegrationTest.EnumConstructorMatchArmRegressions"
+            "AurexIntegrationTest.EnumAdtRegressions"
+            "AurexIntegrationTest.QualifiedStaticMethodRegressions"
+            "AurexIntegrationTest.MainAndCliRegressions"
+            "AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName"
+            PROCESSORS 2
+        )
+        aurex_add_gtest(aurex_tests_regressions_generics
+            PATTERNS
+            "AurexIntegrationTest.M2Generic*"
+            "AurexIntegrationTest.BuiltinDeriveCapability*"
+        )
+        aurex_add_gtest(aurex_tests_struct_field_references
+            PATTERNS
+            "AurexIntegrationTest.StructFieldReferences*"
         )
         aurex_add_gtest(aurex_tests_functions
-            "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.MultiParameterFunctionAcceptsCIdentifier:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.AbiCollisionDiagnosticsIncludePreviousDeclaration:AurexIntegrationTest.FunctionTypesAndIndirectCalls:AurexIntegrationTest.PublicFunctionsRequireExplicitReturnType:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
+            PATTERNS
+            "AurexIntegrationTest.BlockExpression"
+            "AurexIntegrationTest.TryExpression*"
+            "AurexIntegrationTest.FunctionPrototypes"
+            "AurexIntegrationTest.MultiParameterFunctionAcceptsCIdentifier"
+            "AurexIntegrationTest.VariadicExternCFunctions"
+            "AurexIntegrationTest.AbiCollisionDiagnosticsIncludePreviousDeclaration"
+            "AurexIntegrationTest.FunctionTypesAndIndirectCalls"
+            "AurexIntegrationTest.PublicFunctionsRequireExplicitReturnType"
+            "AurexIntegrationTest.DeferScopes"
+            "AurexIntegrationTest.ForStatementAndValueSemantics"
+            "AurexIntegrationTest.RecursiveFunctions"
+            "AurexIntegrationTest.MethodsAndAssociatedFunctions"
+            PROCESSORS 2
         )
         aurex_add_gtest(aurex_tests_control_and_modules
-            "AurexIntegrationTest.IfExpression:AurexIntegrationTest.LocalTypeInference:AurexIntegrationTest.FunctionReturnInference:AurexIntegrationTest.ModuleVisibility:AurexIntegrationTest.PublicImportReexport:AurexIntegrationTest.DefaultPrivateVisibility"
+            PATTERNS
+            "AurexIntegrationTest.IfExpression"
+            "AurexIntegrationTest.LocalTypeInference"
+            "AurexIntegrationTest.FunctionReturnInference"
+            "AurexIntegrationTest.ModuleVisibility"
+            "AurexIntegrationTest.PublicImportReexport"
+            "AurexIntegrationTest.DefaultPrivateVisibility"
         )
         aurex_add_gtest(aurex_tests_pattern_and_types
-            "AurexIntegrationTest.MatchExpression:AurexIntegrationTest.EnumPayloadAndMatchBinding:AurexIntegrationTest.MatchWildcardAndScopedCases:AurexIntegrationTest.StructuralMatchExhaustiveness:AurexIntegrationTest.MatchOrPattern:AurexIntegrationTest.PatternRemainingSliceLetElseAndBindingOr:AurexIntegrationTest.MatchLiteralPattern:AurexIntegrationTest.MatchGuard:AurexIntegrationTest.LayoutAlignment:AurexIntegrationTest.TypeAlias"
+            PATTERNS
+            "AurexIntegrationTest.MatchExpression"
+            "AurexIntegrationTest.EnumPayloadAndMatchBinding"
+            "AurexIntegrationTest.MatchWildcardAndScopedCases"
+            "AurexIntegrationTest.StructuralMatchExhaustiveness"
+            "AurexIntegrationTest.MatchOrPattern"
+            "AurexIntegrationTest.PatternRemainingSliceLetElseAndBindingOr"
+            "AurexIntegrationTest.MatchLiteralPattern"
+            "AurexIntegrationTest.MatchGuard"
+            "AurexIntegrationTest.LayoutAlignment"
+            "AurexIntegrationTest.TypeAlias"
         )
         aurex_add_gtest(aurex_tests_visibility_borrow_remaining
-            "AurexIntegrationTest.ExportedSignatureSurfacesRejectPrivateTypes:AurexIntegrationTest.M2NestedGenericInstantiationRegressions:AurexIntegrationTest.M7bBlockExpressionPrecheckScansInternalStatements:AurexIntegrationTest.M7bBorrowContractsUseDeclaredCalleeBoundaries:AurexIntegrationTest.M7bReturnedBorrowViewsParticipateInLocalLoanChecking:AurexIntegrationTest.M7dBorrowEscapeFallbackCoversPatternStorageGuard:AurexIntegrationTest.ModulePartImportsDoNotLeakAcrossPrimaryOrParts:AurexIntegrationTest.ModulePartPrivateItemsStayHiddenFromExternalModules:AurexIntegrationTest.ModulePartPublicImportsDoNotBecomeModuleReexports:AurexIntegrationTest.ModulePartsSharePrivateModuleSurface:AurexIntegrationTest.ModulePartsUsePartLocalImportsAndSharedItems:AurexIntegrationTest.PackageVisibilityControlsPackageReexports:AurexIntegrationTest.PackageVisibilityControlsPackageSurface:AurexIntegrationTest.PackageVisibilitySurfaceLeaksUseVisibilityAwareDiagnostics:AurexIntegrationTest.PublicMethodsOnPrivateTypesAreNotExportedSurfaces:AurexIntegrationTest.SelectiveUseReexport:AurexIntegrationTest.SelectiveUseReexportGenericItems:AurexIntegrationTest.TraitImplRegistrySamples"
+            PATTERNS
+            "AurexIntegrationTest.ExportedSignatureSurfacesRejectPrivateTypes"
+            "AurexIntegrationTest.M2NestedGenericInstantiationRegressions"
+            "AurexIntegrationTest.M7bBlockExpressionPrecheckScansInternalStatements"
+            "AurexIntegrationTest.M7bBorrowContractsUseDeclaredCalleeBoundaries"
+            "AurexIntegrationTest.M7bReturnedBorrowViewsParticipateInLocalLoanChecking"
+            "AurexIntegrationTest.M7dBorrowEscapeFallbackCoversPatternStorageGuard"
+            "AurexIntegrationTest.ModulePartImportsDoNotLeakAcrossPrimaryOrParts"
+            "AurexIntegrationTest.ModulePartPrivateItemsStayHiddenFromExternalModules"
+            "AurexIntegrationTest.ModulePartPublicImportsDoNotBecomeModuleReexports"
+            "AurexIntegrationTest.ModulePartsSharePrivateModuleSurface"
+            "AurexIntegrationTest.ModulePartsUsePartLocalImportsAndSharedItems"
+            "AurexIntegrationTest.PackageVisibilityControlsPackageReexports"
+            "AurexIntegrationTest.PackageVisibilityControlsPackageSurface"
+            "AurexIntegrationTest.PackageVisibilitySurfaceLeaksUseVisibilityAwareDiagnostics"
+            "AurexIntegrationTest.PublicMethodsOnPrivateTypesAreNotExportedSurfaces"
+            "AurexIntegrationTest.SelectiveUseReexport"
+            "AurexIntegrationTest.SelectiveUseReexportGenericItems"
+            "AurexIntegrationTest.TraitImplRegistrySamples"
         )
-        add_test(
-            NAME aurex_tests_sample_suite_positive
-            COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Positive*
-        )
-        add_test(
-            NAME aurex_tests_sample_suite_negative
-            COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Negative*
-        )
-        set_tests_properties(
-            aurex_tests_core_unit
-            aurex_tests_query_unit_full
-            aurex_tests_driver_and_regressions
-            aurex_tests_functions
-            aurex_tests_control_and_modules
-            aurex_tests_pattern_and_types
-            aurex_tests_visibility_borrow_remaining
-            PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        )
-        set_tests_properties(
-            aurex_tests_sample_suite_positive
-            PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            LABELS "slow;sample-suite"
+        aurex_add_gtest(aurex_tests_sample_suite_positive_static
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveSamples"
+            LABELS slow sample-suite
             TIMEOUT 300
+            COST 5
+            PROCESSORS 2
         )
-        set_tests_properties(
-            aurex_tests_sample_suite_negative
-            PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            LABELS "slow;sample-suite"
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_core
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_pointer*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_eval*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_const_binary"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_builtins"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_compound_assignment"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_block_expression"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_lambdas
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_lambda*"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_for
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_for*"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_types_patterns
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_tuple*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_str*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_pattern*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_const_pattern"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_generics
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_generic*"
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_method_local*"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_traits
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_trait*"
+            LABELS sample-suite
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_runtime_imports
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_PositiveRuntime_imported_samples"
+            LABELS sample-suite
+            COST 2
+            PROCESSORS 2
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_negative_diagnostics
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_NegativeSamples"
+            LABELS slow sample-suite
             TIMEOUT 300
+            COST 8
+            PROCESSORS 3
+        )
+        aurex_add_gtest(aurex_tests_sample_suite_negative_cross_stage
+            PATTERNS
+            "AurexIntegrationTest.SampleSuite_NegativeCrossStageSamples"
+            LABELS sample-suite
         )
         if(AUREX_ENABLE_REGEX_CONFORMANCE)
             add_test(

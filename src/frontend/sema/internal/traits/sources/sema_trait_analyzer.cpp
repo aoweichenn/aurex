@@ -40,6 +40,7 @@ enum class TraitTypeSubstitutionActionKind {
     build_reference,
     build_array,
     build_slice,
+    build_range,
     build_tuple,
     build_function,
     build_associated_projection,
@@ -92,6 +93,13 @@ struct TraitTypeSubstitutionAction {
     TraitTypeSubstitutionAction action;
     action.kind = TraitTypeSubstitutionActionKind::build_array;
     action.array_count = count;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_range() noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::build_range;
     return action;
 }
 
@@ -170,6 +178,12 @@ struct TraitTypeSubstitutionAction {
                 values.push_back(types.slice(action.mutability, element));
                 continue;
             }
+            case TraitTypeSubstitutionActionKind::build_range: {
+                const TypeHandle element = values.back();
+                values.pop_back();
+                values.push_back(types.range(element));
+                continue;
+            }
             case TraitTypeSubstitutionActionKind::build_tuple: {
                 std::vector<TypeHandle> elements(action.child_count, INVALID_TYPE_HANDLE);
                 for (base::usize index = action.child_count; index > 0; --index) {
@@ -234,6 +248,10 @@ struct TraitTypeSubstitutionAction {
                 actions.push_back(
                     trait_substitution_unary(TraitTypeSubstitutionActionKind::build_slice, info.slice_mutability));
                 actions.push_back(trait_substitution_visit(info.slice_element));
+                break;
+            case TypeKind::range:
+                actions.push_back(trait_substitution_range());
+                actions.push_back(trait_substitution_visit(info.range_element));
                 break;
             case TypeKind::tuple:
                 actions.push_back(trait_substitution_tuple(info.tuple_elements.size()));
@@ -403,6 +421,9 @@ void append_supertrait_args_to_writer(SemanticAnalyzerCore& core,
                 break;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 for (const TypeHandle element : info.tuple_elements) {

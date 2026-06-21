@@ -1,0 +1,38 @@
+module for_in_protocol_iter_method;
+
+struct Range {
+    start: i32;
+    end: i32;
+}
+
+struct RangeIter {
+    current: i32;
+    end: i32;
+}
+
+impl Range {
+    fn iter(self: &Range) -> RangeIter {
+        return RangeIter { current: self.start, end: self.end };
+    }
+}
+
+impl RangeIter {
+    fn has_next(self: &mut RangeIter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut RangeIter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    let range: Range = Range { start: 2, end: 6 };
+    var total: i32 = 0;
+    for value in range {
+        total = total + value;
+    }
+    return total - 14;
+}

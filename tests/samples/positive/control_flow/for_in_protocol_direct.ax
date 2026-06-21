@@ -1,0 +1,39 @@
+module for_in_protocol_direct;
+
+struct Box {
+    value: i32;
+}
+
+impl Drop for Box {
+    fn drop(self: deinit Box) -> void {}
+}
+
+struct Counter {
+    current: i32;
+    end: i32;
+}
+
+impl Counter {
+    fn has_next(self: &mut Counter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut Counter) -> Box {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return Box { value: value };
+    }
+}
+
+fn sum_counter() -> i32 {
+    let counter: Counter = Counter { current: 1, end: 5 };
+    var total: i32 = 0;
+    for box in counter {
+        total = total + box.value;
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    return sum_counter() - 10;
+}

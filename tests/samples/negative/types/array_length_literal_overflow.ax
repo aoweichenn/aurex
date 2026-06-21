@@ -1,5 +1,5 @@
 module array_length_literal_overflow;
 
 fn main() -> i32 {
-  return cast<i32>(sizeof<[18446744073709551616]u8>);
+  return ((sizeof<[18446744073709551616]u8>()) as i32);
 }

@@ -29,7 +29,7 @@ fn type_examples() -> i32 {
     let count: i32 = true;
     let pair = Pair { left: true, missing: 2 };
     let bytes: [2]u8 = [1, 300];
-    return count + pair.left + cast<i32>(bytes[0]);
+    return count + pair.left + ((bytes[0]) as i32);
 }
 
 fn expression_examples() -> i32 {

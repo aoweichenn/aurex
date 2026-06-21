@@ -1,0 +1,29 @@
+module for_in_protocol_iter_missing_next;
+
+struct Range {
+    start: i32;
+}
+
+struct RangeIter {
+    current: i32;
+}
+
+impl Range {
+    fn iter(self: &Range) -> RangeIter {
+        return RangeIter { current: self.start };
+    }
+}
+
+impl RangeIter {
+    fn has_next(self: &mut RangeIter) -> bool {
+        return self.current < 3;
+    }
+}
+
+fn main() -> i32 {
+    let range: Range = Range { start: 0 };
+    for value in range {
+        return value;
+    }
+    return 0;
+}

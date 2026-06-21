@@ -1,9 +1,10 @@
 module lambda_reference_capture;
 
 fn main() -> i32 {
-    let value: i32 = 1;
-    let read = [&value]() -> i32 {
-        return value;
+    let base: i32 = 1;
+    let set_base = [&mut base](value: i32) -> i32 {
+        base = value;
+        return base;
     };
-    return read();
+    return set_base(2);
 }

@@ -14,6 +14,8 @@ namespace aurex::ir::detail {
 namespace {
 
 constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
+constexpr std::string_view IR_LOWER_RANGE_RECORD_NAME_PREFIX = "range.";
+constexpr std::string_view IR_LOWER_RANGE_RECORD_SYMBOL_PREFIX = "__aurex_range_";
 constexpr base::usize IR_LOWER_PRINCIPAL_SET_MIN_WITNESS_COUNT = 2;
 
 [[nodiscard]] bool trait_object_vtable_slot_less(
@@ -146,6 +148,9 @@ template <typename Layouts>
             case sema::TypeKind::slice:
                 pending.push_back(info.slice_element);
                 break;
+            case sema::TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case sema::TypeKind::tuple:
                 for (const sema::TypeHandle element : info.tuple_elements) {
                     pending.push_back(element);
@@ -226,6 +231,8 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
         &this->checked_.pattern_c_name_ids,
         &this->checked_.syntax_type_handles,
         &this->checked_.stmt_local_types,
+        &this->checked_.range_value_plans,
+        &this->checked_.for_in_iteration_plans,
     };
     this->index_enum_cases();
 }
@@ -304,6 +311,32 @@ void Lowerer::lower_record_layouts()
                 info.tuple_elements[field_index],
             });
         }
+        this->module_.record_indices[type.value] = add_record(this->module_, record);
+    }
+
+    for (base::usize i = 0; i < this->module_.types.size(); ++i) {
+        const sema::TypeHandle type{base::checked_u32(i, IR_LOWER_TYPE_ID_CONTEXT)};
+        const sema::TypeInfo& info = this->module_.types.get(type);
+        if (info.kind != sema::TypeKind::range || type_contains_generic_param(this->module_.types, type)) {
+            continue;
+        }
+        RecordLayout record = this->module_.make_record_layout();
+        record.type = type;
+        record.name = this->module_.intern(std::string(IR_LOWER_RANGE_RECORD_NAME_PREFIX) + std::to_string(i));
+        record.symbol = this->module_.intern(std::string(IR_LOWER_RANGE_RECORD_SYMBOL_PREFIX) + std::to_string(i));
+        record.fields.reserve(sema::SEMA_RANGE_VALUE_FIELD_COUNT);
+        record.fields.push_back(RecordField{
+            this->module_.intern(sema::SEMA_RANGE_VALUE_START_FIELD),
+            info.range_element,
+        });
+        record.fields.push_back(RecordField{
+            this->module_.intern(sema::SEMA_RANGE_VALUE_END_FIELD),
+            info.range_element,
+        });
+        record.fields.push_back(RecordField{
+            this->module_.intern(sema::SEMA_RANGE_VALUE_STEP_FIELD),
+            info.range_element,
+        });
         this->module_.record_indices[type.value] = add_record(this->module_, record);
     }
 

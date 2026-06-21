@@ -547,6 +547,9 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_for_range_statement(
     this->push_scope();
     this->bind_storage(stmt.name_id, this->local_origin(stmt.name_id, stmt.range, syntax::INVALID_EXPR_ID));
     this->bind_borrowed_value(stmt.name_id, {});
+    if (syntax::is_valid(stmt.range_iterable)) {
+        static_cast<void>(this->borrowed_carrier_origin(stmt.range_iterable));
+    }
 
     const ScopeList loop_baseline = this->scopes_;
     std::vector<Task> body_tasks;
@@ -1423,6 +1426,9 @@ bool SemanticAnalyzerCore::BorrowSummaryBuilder::type_can_contain_borrow(const T
                 break;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());

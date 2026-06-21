@@ -313,7 +313,7 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions)
         "module overflow;\n"
         "fn main() -> i32 {\n"
         "  let value: u8 = 300;\n"
-        "  return cast<i32>(value);\n"
+        "  return ((value) as i32);\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(overflow)).output, "initializer type does not match declared type");
@@ -1251,7 +1251,7 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
         "module generic_float_eq_rejected;\n"
         "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
         "fn main() -> i32 {\n"
-        "  return accept_eq(cast<f64>(1));\n"
+        "  return accept_eq(((1) as f64));\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(float_eq)).output, "type f64 does not satisfy capability `Eq`");
@@ -1263,7 +1263,7 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
         "  return 0;\n"
         "}\n"
         "fn main() -> i32 {\n"
-        "  return less_than(cast<f64>(1), cast<f64>(2));\n"
+        "  return less_than(((1) as f64), ((2) as f64));\n"
         "}\n");
     expect_contains(
         require_failure(aurexc() + " --check " + q(float_ord)).output, "type f64 does not satisfy capability `Ord`");
@@ -1404,7 +1404,7 @@ TEST_F(AurexIntegrationTest, BuiltinDeriveCapabilityDiagnostics)
         "struct Box<T> { value: T; }\n"
         "fn accept_eq<T>(value: T) -> i32 where T: Eq { return 1; }\n"
         "fn main() -> i32 {\n"
-        "  let value = Box<f64> { value: cast<f64>(1) };\n"
+        "  let value = Box<f64> { value: ((1) as f64) };\n"
         "  return accept_eq(value);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_unsatisfied)).output,
@@ -1710,8 +1710,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "  let same_ptr = ptr_id(ptr);\n"
         "  let values: *mut [2]i32 = null;\n"
         "  let same_values = array_ptr_id(values);\n"
-        "  let size: usize = sizeof<ArrayBox<i32>>;\n"
-        "  return unsafe { *same_ptr } + unsafe { (*same_values)[0] } + cast<i32>(size) - 9;\n"
+        "  let size: usize = sizeof<ArrayBox<i32>>();\n"
+        "  return unsafe { *same_ptr } + unsafe { (*same_values)[0] } + ((size) as i32) - 9;\n"
         "}\n");
     require_success(aurexc() + " --check " + q(generic_inference_edges));
 
@@ -1756,8 +1756,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "  let boxed = wrap_ptr(ptr);\n"
         "  let values: *mut [2]i32 = null;\n"
         "  let array_boxed = wrap_array(values);\n"
-        "  let size: usize = sizeof<Box<*const i32>> + sizeof<Box<*mut [2]i32>>;\n"
-        "  return cast<i32>(size) - cast<i32>(sizeof<Box<*const i32>> + sizeof<Box<*mut [2]i32>>);\n"
+        "  let size: usize = sizeof<Box<*const i32>>() + sizeof<Box<*mut [2]i32>>();\n"
+        "  return ((size) as i32) - ((sizeof<Box<*const i32>>() + sizeof<Box<*mut [2]i32>>()) as i32);\n"
         "}\n");
     require_success(aurexc() + " --check " + q(generic_placeholder_edges));
 
@@ -1810,8 +1810,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module generic_struct_duplicate_field;\n"
         "struct Bad<T> { value: T; value: T; }\n"
         "fn main() -> i32 {\n"
-        "  let size: usize = sizeof<Bad<i32>>;\n"
-        "  return cast<i32>(size);\n"
+        "  let size: usize = sizeof<Bad<i32>>();\n"
+        "  return ((size) as i32);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_struct_duplicate_field)).output,
         "duplicate struct field: value");
@@ -1820,8 +1820,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module generic_struct_invalid_field;\n"
         "struct Bad<T> { value: void; }\n"
         "fn main() -> i32 {\n"
-        "  let size: usize = sizeof<Bad<i32>>;\n"
-        "  return cast<i32>(size);\n"
+        "  let size: usize = sizeof<Bad<i32>>();\n"
+        "  return ((size) as i32);\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_struct_invalid_field)).output,
         "field type is not valid storage");

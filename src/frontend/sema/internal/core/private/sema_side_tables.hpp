@@ -20,10 +20,14 @@ public:
         syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] TypeHandle cached_stmt_local_type(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] const RangeValuePlan* cached_range_value_plan(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] const ForInIterationPlan* cached_for_in_iteration_plan(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
 
 private:
+    [[nodiscard]] const GenericSideTables* current_side_tables() const noexcept;
+
     const SemanticAnalyzerCore& core_;
 };
 
@@ -32,6 +36,8 @@ public:
     explicit SemanticSideTableStore(SemanticAnalyzerCore& core) noexcept;
 
     void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type);
+    void record_range_value_plan(syntax::ExprId expr, const RangeValuePlan& plan);
+    void record_for_in_iteration_plan(syntax::StmtId stmt, const ForInIterationPlan& plan);
     void record_expr_c_name(syntax::ExprId expr, std::string_view c_name);
     void record_pattern_c_name(syntax::PatternId pattern, std::string_view c_name);
     void record_pattern_case_name(syntax::PatternId pattern, std::string_view c_name);
@@ -55,6 +61,8 @@ public:
     [[nodiscard]] SemaTypeTable& active_stmt_local_types() noexcept;
 
 private:
+    [[nodiscard]] GenericSideTables* current_side_tables() noexcept;
+
     SemanticAnalyzerCore& core_;
 };
 

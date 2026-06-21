@@ -43,6 +43,7 @@ struct StmtNode {
     ExprId range_start = INVALID_EXPR_ID;
     ExprId range_end = INVALID_EXPR_ID;
     ExprId range_step = INVALID_EXPR_ID;
+    ExprId range_iterable = INVALID_EXPR_ID;
     StmtId then_block = INVALID_STMT_ID;
     StmtId else_block = INVALID_STMT_ID;
     StmtId else_if = INVALID_STMT_ID;
@@ -95,6 +96,7 @@ struct ForRangeStmtPayload {
     ExprId start = INVALID_EXPR_ID;
     ExprId end = INVALID_EXPR_ID;
     ExprId step = INVALID_EXPR_ID;
+    ExprId iterable = INVALID_EXPR_ID;
     StmtId body = INVALID_STMT_ID;
 };
 

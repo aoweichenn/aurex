@@ -63,18 +63,6 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
     return this->session_.module.push_cast_like_expr(kind, this->merge(begin.range, end.range), type, value);
 }
 
-syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind)
-{
-    const syntax::Token& begin = this->previous();
-    const std::string name{begin.text()};
-    const syntax::Token& type_begin = this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
-    const syntax::TypeId type = this->parse_type();
-    const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name), type_begin);
-
-    return this->session_.module.push_cast_like_expr(
-        kind, this->merge(begin.range, end.range), type, syntax::INVALID_EXPR_ID);
-}
-
 syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context)
 {
     const syntax::Token& begin = this->previous();

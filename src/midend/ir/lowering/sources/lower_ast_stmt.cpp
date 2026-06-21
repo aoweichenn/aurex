@@ -1,6 +1,7 @@
 #include <aurex/midend/ir/enum_layout.hpp>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <optional>
 #include <string>
@@ -15,6 +16,21 @@ namespace {
 
 constexpr std::string_view IR_FOR_RANGE_ZERO_LITERAL = "0";
 constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
+constexpr std::string_view IR_FOR_RANGE_VALUE_SLOT_NAME = "for.range.value";
+constexpr std::string_view IR_FOR_ITERABLE_COND_BLOCK_PREFIX = "for.iterable.cond";
+constexpr std::string_view IR_FOR_ITERABLE_BODY_BLOCK_PREFIX = "for.iterable.body";
+constexpr std::string_view IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX = "for.iterable.update";
+constexpr std::string_view IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX = "for.iterable.exit";
+constexpr std::string_view IR_FOR_ITERABLE_CURSOR_SLOT_NAME = "for.iterable.cursor";
+constexpr std::string_view IR_FOR_ITERABLE_END_SLOT_NAME = "for.iterable.end";
+constexpr std::string_view IR_FOR_STR_DATA_NAME = "for.str.data";
+constexpr std::string_view IR_FOR_STR_LEN_NAME = "for.str.len";
+constexpr std::string_view IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME = "for.iterator";
+constexpr std::string_view IR_FOR_PROTOCOL_SOURCE_SLOT_NAME = "for.iterable.source";
+constexpr std::string_view IR_FOR_PROTOCOL_COND_BLOCK_PREFIX = "for.protocol.cond";
+constexpr std::string_view IR_FOR_PROTOCOL_BODY_BLOCK_PREFIX = "for.protocol.body";
+constexpr std::string_view IR_FOR_PROTOCOL_UPDATE_BLOCK_PREFIX = "for.protocol.update";
+constexpr std::string_view IR_FOR_PROTOCOL_EXIT_BLOCK_PREFIX = "for.protocol.exit";
 constexpr std::string_view IR_DROP_FLAG_VALUE_NAME = "drop.flag";
 constexpr std::string_view IR_DROP_THEN_BLOCK_PREFIX = "drop.then";
 constexpr std::string_view IR_DROP_JOIN_BLOCK_PREFIX = "drop.join";
@@ -24,6 +40,17 @@ constexpr std::string_view IR_DROP_ENUM_PAYLOAD_PREFIX = "drop.payload.";
 constexpr char IR_DROP_TUPLE_FIELD_PREFIX[] = "";
 constexpr int IR_LOCAL_PLACE_TUPLE_FIELD_DECIMAL_BASE = 10;
 constexpr std::string_view IR_LOCAL_PLACE_TUPLE_FIELD_INDEX_CONTEXT = "ir local place tuple field index";
+
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
 
 struct DropGlueFrame {
     ValueId address = INVALID_VALUE_ID;
@@ -84,6 +111,67 @@ struct DropGlueFrame {
 [[nodiscard]] std::string tuple_field_name(const base::usize index)
 {
     return std::to_string(index);
+}
+
+[[nodiscard]] bool for_in_iteration_plan_is_iterable(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::array_value || plan.kind == sema::ForInIterationKind::slice_value
+        || plan.kind == sema::ForInIterationKind::str_bytes
+        || plan.kind == sema::ForInIterationKind::protocol_iterator;
+}
+
+[[nodiscard]] bool for_in_iteration_plan_is_counted_range(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::counted_range;
+}
+
+[[nodiscard]] bool for_in_iteration_plan_is_range_value(const sema::ForInIterationPlan& plan) noexcept
+{
+    return plan.kind == sema::ForInIterationKind::range_value;
+}
+
+[[nodiscard]] sema::ForInIterationPlan fallback_counted_range_plan(
+    const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::TypeHandle range_type) noexcept
+{
+    sema::ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = sema::ForInIterationKind::counted_range;
+    plan.start_expr = stmt.range_start;
+    plan.end_expr = stmt.range_end;
+    plan.step_expr = stmt.range_step;
+    plan.item_type = range_type;
+    plan.range_type = range_type;
+    plan.requires_copy_item = false;
+    return plan;
+}
+
+[[nodiscard]] sema::ForInIterationPlan fallback_iterable_plan(const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt, const sema::TypeTable& types, const sema::TypeHandle iterable_type,
+    const sema::TypeHandle item_type) noexcept
+{
+    sema::ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.item_type = item_type;
+    plan.index_type = types.builtin(sema::BuiltinType::usize);
+    if (sema::is_valid(iterable_type) && types.is_array(iterable_type)) {
+        plan.kind = sema::ForInIterationKind::array_value;
+        return plan;
+    }
+    if (sema::is_valid(iterable_type) && types.is_slice(iterable_type)) {
+        const sema::TypeInfo& slice = types.get(iterable_type);
+        plan.kind = sema::ForInIterationKind::slice_value;
+        plan.element_access = slice.slice_mutability;
+        return plan;
+    }
+    if (sema::is_valid(iterable_type) && types.is_str(iterable_type)) {
+        plan.kind = sema::ForInIterationKind::str_bytes;
+        plan.item_type = types.builtin(sema::BuiltinType::u8);
+        plan.element_access = sema::PointerMutability::const_;
+        plan.requires_copy_item = false;
+    }
+    return plan;
 }
 
 [[nodiscard]] std::string cleanup_child_flag_name(
@@ -206,8 +294,23 @@ void Lowerer::lower_capturing_lambda_body(const FunctionId function_id, const se
 
     for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
         const IrTextId field_name = this->module_.intern(capture.field_name.view());
+        const sema::TypeHandle field_type =
+            sema::is_valid(capture.field_type) ? capture.field_type : capture.type;
         const ValueId field_address =
-            this->append_field_address(env_param, field_name, capture.type, sema::PointerMutability::mut);
+            this->append_field_address(env_param, field_name, field_type, sema::PointerMutability::mut);
+        if (lambda_capture_kind_is_reference(capture.kind)) {
+            const ValueId captured_slot =
+                this->append_load(field_address, field_type, this->module_.intern(capture.name.view()));
+            LocalBinding binding{
+                .slot = captured_slot,
+                .cleanup_flag = INVALID_VALUE_ID,
+                .type = capture.type,
+                .is_mutable = lambda_capture_kind_is_mutable(capture.kind),
+                .field_cleanups = {},
+            };
+            this->bind_local(capture.name_id, binding);
+            continue;
+        }
         const ValueId field_value =
             this->append_load(field_address, capture.type, this->module_.intern(capture.name.view()));
         Value slot = this->module_.make_value();
@@ -287,6 +390,8 @@ void Lowerer::lower_generic_function_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->range_value_plans,
+        &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
     this->active_side_tables_ = previous_tables;
@@ -307,6 +412,8 @@ void Lowerer::lower_trait_default_method_body(
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
         &body.side_tables->stmt_local_types,
+        &body.side_tables->range_value_plans,
+        &body.side_tables->for_in_iteration_plans,
     };
     this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
     this->active_side_tables_ = previous_tables;
@@ -672,6 +779,139 @@ ValueId Lowerer::append_for_range_condition(
     return this->append_binary_value(BinaryOp::logical_or, bool_type, forward_active, backward_active);
 }
 
+std::optional<ForIterableSource> Lowerer::lower_for_iterable_source(const sema::ForInIterationPlan& plan)
+{
+    if (!syntax::is_valid(plan.iterable_expr) || !sema::is_valid(plan.iterable_type)
+        || !sema::is_valid(plan.item_type)) {
+        return std::nullopt;
+    }
+
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    if (plan.kind == sema::ForInIterationKind::array_value && this->module_.types.is_array(plan.iterable_type)) {
+        const sema::TypeInfo& array = this->module_.types.get(plan.iterable_type);
+        const PlaceAddress iterable = this->lower_object_place_or_value(plan.iterable_expr);
+        if (!is_valid(iterable.address)) {
+            return std::nullopt;
+        }
+        return ForIterableSource{
+            .base_address = iterable.address,
+            .length = this->append_integer_literal(std::to_string(array.array_count), usize_type),
+            .element_type = plan.item_type,
+            .mutability = iterable.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_,
+        };
+    }
+
+    if (plan.kind == sema::ForInIterationKind::slice_value && this->module_.types.is_slice(plan.iterable_type)) {
+        const sema::TypeInfo& slice = this->module_.types.get(plan.iterable_type);
+        const ValueId slice_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+        if (!is_valid(slice_value)) {
+            return std::nullopt;
+        }
+        return ForIterableSource{
+            .base_address = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element),
+            .length = this->append_slice_len(slice_value),
+            .element_type = plan.item_type,
+            .mutability = plan.element_access,
+        };
+    }
+
+    if (plan.kind == sema::ForInIterationKind::str_bytes && this->module_.types.is_str(plan.iterable_type)) {
+        const ValueId str_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+        if (!is_valid(str_value)) {
+            return std::nullopt;
+        }
+        Value data = this->module_.make_value();
+        data.kind = ValueKind::str_data;
+        data.type = this->module_.types.pointer(
+            sema::PointerMutability::const_, this->module_.types.builtin(sema::BuiltinType::u8));
+        data.name = this->module_.intern(IR_FOR_STR_DATA_NAME);
+        data.object = str_value;
+        Value length = this->module_.make_value();
+        length.kind = ValueKind::str_byte_len;
+        length.type = usize_type;
+        length.name = this->module_.intern(IR_FOR_STR_LEN_NAME);
+        length.object = str_value;
+        return ForIterableSource{
+            .base_address = this->append_value(data),
+            .length = this->append_value(length),
+            .element_type = plan.item_type,
+            .mutability = sema::PointerMutability::const_,
+        };
+    }
+
+    return std::nullopt;
+}
+
+ValueId Lowerer::append_for_iterable_element_address(
+    const ForIterableSource& source, const ValueId index, const IrTextId name)
+{
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::index_addr;
+    value.type = this->module_.types.pointer(source.mutability, source.element_type);
+    value.name = name;
+    value.object = source.base_address;
+    value.index = index;
+    return this->append_value(value);
+}
+
+CallTarget Lowerer::call_target(const sema::FunctionLookupKey& function)
+{
+    if (!sema::is_valid(function)) {
+        return {};
+    }
+    const auto signature = this->checked_.functions.find(function);
+    if (signature == this->checked_.functions.end() || signature->second.c_name.empty()) {
+        return {};
+    }
+    const IrTextId symbol = this->module_.intern(signature->second.c_name.view());
+    const auto found = this->function_symbols_.find(symbol);
+    if (found == this->function_symbols_.end()) {
+        return CallTarget{INVALID_FUNCTION_ID, symbol};
+    }
+    return CallTarget{found->second, symbol};
+}
+
+ValueId Lowerer::append_for_protocol_receiver(
+    const sema::ForInProtocolCallPlan& call, const ValueId receiver_slot, const sema::TypeHandle receiver_storage_type)
+{
+    if (!is_valid(receiver_slot) || !sema::is_valid(receiver_storage_type) || !sema::is_valid(call.param_type)) {
+        return INVALID_VALUE_ID;
+    }
+    if (this->module_.types.is_pointer(call.param_type) || this->module_.types.is_reference(call.param_type)) {
+        if (this->module_.types.is_pointer(receiver_storage_type)
+            || this->module_.types.is_reference(receiver_storage_type)) {
+            return this->coerce_value(
+                this->append_load(receiver_slot, receiver_storage_type, this->module_.intern(call.method_name.view())),
+                call.param_type);
+        }
+        return this->coerce_value(receiver_slot, call.param_type);
+    }
+    return this->coerce_value(
+        this->append_load(receiver_slot, receiver_storage_type, this->module_.intern(call.method_name.view())),
+        call.param_type);
+}
+
+ValueId Lowerer::append_for_protocol_call(
+    const sema::ForInProtocolCallPlan& call, const ValueId receiver_slot, const sema::TypeHandle receiver_storage_type)
+{
+    const CallTarget target = this->call_target(call.function_key);
+    const sema::TypeHandle return_type = sema::is_valid(call.return_type)
+        ? call.return_type
+        : this->module_.types.builtin(sema::BuiltinType::void_);
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::call;
+    value.type = return_type;
+    value.name = target.symbol;
+    value.call_target = target.function;
+    const sema::TypeHandle param_type =
+        is_valid(target.function) ? this->call_param_type(target.function, 0U) : call.param_type;
+    const ValueId receiver = this->append_for_protocol_receiver(call, receiver_slot, receiver_storage_type);
+    if (is_valid(receiver)) {
+        value.args.push_back(this->coerce_value(receiver, param_type));
+    }
+    return this->append_value(value);
+}
+
 sema::ResourceSemanticsSummary Lowerer::resource_summary(const sema::TypeHandle type)
 {
     if (!sema::is_valid(type)) {
@@ -913,6 +1153,11 @@ bool Lowerer::type_may_emit_runtime_drop(const sema::TypeHandle type, const Clea
                     pending.push_back(info.array_element);
                 }
                 break;
+            case sema::TypeKind::range:
+                if (this->cleanup_required(info.range_element)) {
+                    pending.push_back(info.range_element);
+                }
+                break;
             case sema::TypeKind::enum_:
                 for (const auto& entry : this->checked_.enum_cases) {
                     const sema::EnumCaseInfo& enum_case = entry.second;
@@ -960,6 +1205,7 @@ CleanupAbiPolicy Lowerer::cleanup_abi_policy(const sema::TypeHandle type, const 
         case sema::TypeKind::enum_:
         case sema::TypeKind::tuple:
         case sema::TypeKind::array:
+        case sema::TypeKind::range:
             return CleanupAbiPolicy::structural_static;
         case sema::TypeKind::builtin:
         case sema::TypeKind::pointer:
@@ -1074,6 +1320,23 @@ bool Lowerer::append_runtime_drop_glue(
                         DropGlueFrame{this->append_value(element), info.array_element, element.name, true});
                 }
                 break;
+            case sema::TypeKind::range: {
+                if (!this->cleanup_required(info.range_element)) {
+                    break;
+                }
+                const std::array<std::string_view, sema::SEMA_RANGE_VALUE_FIELD_COUNT> field_names{
+                    sema::SEMA_RANGE_VALUE_START_FIELD,
+                    sema::SEMA_RANGE_VALUE_END_FIELD,
+                    sema::SEMA_RANGE_VALUE_STEP_FIELD,
+                };
+                for (const std::string_view field_name_text : field_names) {
+                    const IrTextId field_name = this->module_.intern(field_name_text);
+                    const ValueId field_address = this->append_field_address(
+                        frame.address, field_name, info.range_element, sema::PointerMutability::mut);
+                    pending.push_back(DropGlueFrame{field_address, info.range_element, field_name, true});
+                }
+                break;
+            }
             case sema::TypeKind::enum_: {
                 if (!is_payload_enum(this->module_.types, frame.type)) {
                     break;
@@ -1565,18 +1828,34 @@ void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
+    const bool plan_is_iterable = checked_plan != nullptr && for_in_iteration_plan_is_iterable(*checked_plan);
+    const bool plan_is_counted_range =
+        checked_plan != nullptr && for_in_iteration_plan_is_counted_range(*checked_plan);
+    if (checked_plan != nullptr && for_in_iteration_plan_is_range_value(*checked_plan)) {
+        this->lower_for_range_value(stmt_id, stmt, *checked_plan);
+        return;
+    }
+    if (plan_is_iterable || (!plan_is_counted_range && syntax::is_valid(stmt.range_iterable))) {
+        this->lower_for_iterable(stmt_id, stmt);
+        return;
+    }
+
     this->push_local_scope();
     const base::usize scope_depth = this->cleanup_scopes_.size();
     this->cleanup_scopes_.push_back({});
 
-    const sema::TypeHandle range_type = this->stmt_local_type(stmt_id);
-    const ValueId start_value = syntax::is_valid(stmt.range_start)
-        ? this->lower_expr(stmt.range_start, range_type)
+    const sema::ForInIterationPlan fallback =
+        fallback_counted_range_plan(stmt_id, stmt, this->stmt_local_type(stmt_id));
+    const sema::ForInIterationPlan& plan = plan_is_counted_range ? *checked_plan : fallback;
+    const sema::TypeHandle range_type = plan.range_type;
+    const ValueId start_value = syntax::is_valid(plan.start_expr)
+        ? this->lower_expr(plan.start_expr, range_type)
         : this->append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, range_type);
-    const ValueId end_value = this->lower_expr(stmt.range_end, range_type);
+    const ValueId end_value = this->lower_expr(plan.end_expr, range_type);
     ValueId step_slot = INVALID_VALUE_ID;
-    if (syntax::is_valid(stmt.range_step)) {
-        const ValueId step_value = this->lower_expr(stmt.range_step, range_type);
+    if (syntax::is_valid(plan.step_expr)) {
+        const ValueId step_value = this->lower_expr(plan.step_expr, range_type);
         step_slot = this->append_temp_alloca("for.range.step", range_type);
         this->append_store(step_slot, step_value);
     }
@@ -1630,6 +1909,292 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->append_store(cursor_slot, next);
     this->append_branch_if_open(condition_block);
     this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_range_value(
+    const syntax::StmtId, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan)
+{
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    const sema::TypeHandle range_value_type = plan.iterable_type;
+    const sema::TypeHandle range_type = plan.range_type;
+    const ValueId range_value = this->lower_expr(plan.iterable_expr, range_value_type);
+    const ValueId range_slot = this->append_temp_alloca(IR_FOR_RANGE_VALUE_SLOT_NAME, range_value_type);
+    this->append_store(range_slot, range_value);
+
+    const auto load_range_field = [&](const std::string_view field_name) -> ValueId {
+        const IrTextId field = this->module_.intern(field_name);
+        const ValueId address =
+            this->append_field_address(range_slot, field, range_type, sema::PointerMutability::const_);
+        return this->append_load(address, range_type, field);
+    };
+    const ValueId start_value = load_range_field(sema::SEMA_RANGE_VALUE_START_FIELD);
+    const ValueId end_value = load_range_field(sema::SEMA_RANGE_VALUE_END_FIELD);
+    const ValueId step_value = load_range_field(sema::SEMA_RANGE_VALUE_STEP_FIELD);
+
+    const ValueId cursor_slot = this->append_temp_alloca("for.range.cursor", range_type);
+    const ValueId end_slot = this->append_temp_alloca("for.range.end", range_type);
+    const ValueId step_slot = this->append_temp_alloca("for.range.step", range_type);
+    this->append_store(cursor_slot, start_value);
+    this->append_store(end_slot, end_value);
+    this->append_store(step_slot, step_value);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        "for.range.cond" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        "for.range.body" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        "for.range.update" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        "for.range.exit" + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const ValueId condition = this->append_for_range_condition(cursor_slot, end_slot, step_slot, range_type);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->cleanup_scopes_.size()});
+    this->current_block_ = body_block;
+    const IrTextId loop_name = this->module_.intern(stmt.name);
+    const ValueId loop_value = this->append_load(cursor_slot, range_type, loop_name);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, range_type);
+    this->bind_local(stmt.name_id,
+        LocalBinding{
+            .slot = loop_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = range_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
+    this->append_store(loop_slot, loop_value);
+    this->lower_block(stmt.body);
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    const ValueId current = this->append_load(cursor_slot, range_type, this->module_.intern("for.range.cursor"));
+    const ValueId step = this->append_load(step_slot, range_type, this->module_.intern("for.range.step"));
+    const ValueId next = this->append_binary_value(BinaryOp::add, range_type, current, step);
+    this->append_store(cursor_slot, next);
+    this->append_branch_if_open(condition_block);
+    this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_iterable(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
+{
+    const sema::ForInIterationPlan* const checked_plan = this->for_in_iteration_plan(stmt_id);
+    if (checked_plan != nullptr && checked_plan->kind == sema::ForInIterationKind::protocol_iterator) {
+        this->lower_for_protocol_iterator(stmt_id, stmt, *checked_plan);
+        return;
+    }
+
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    const sema::ForInIterationPlan fallback =
+        fallback_iterable_plan(stmt_id, stmt, this->module_.types, this->expr_type(stmt.range_iterable),
+            this->stmt_local_type(stmt_id));
+    const sema::ForInIterationPlan& plan =
+        checked_plan != nullptr && for_in_iteration_plan_is_iterable(*checked_plan) ? *checked_plan : fallback;
+    const sema::TypeHandle element_type = plan.item_type;
+    const std::optional<ForIterableSource> source = this->lower_for_iterable_source(plan);
+    if (!source.has_value()) {
+        if (!this->has_terminator(this->current_block_)) {
+            this->emit_cleanup_scopes(scope_depth);
+        }
+        this->cleanup_scopes_.resize(scope_depth);
+        this->pop_local_scope();
+        return;
+    }
+
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    const ValueId cursor_slot = this->append_temp_alloca(IR_FOR_ITERABLE_CURSOR_SLOT_NAME, usize_type);
+    const ValueId end_slot = this->append_temp_alloca(IR_FOR_ITERABLE_END_SLOT_NAME, usize_type);
+    this->append_store(cursor_slot, this->append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, usize_type));
+    this->append_store(end_slot, source->length);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_COND_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_BODY_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_UPDATE_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_ITERABLE_EXIT_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const sema::TypeHandle bool_type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    const ValueId cursor_condition =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId end_condition =
+        this->append_load(end_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_END_SLOT_NAME));
+    const ValueId condition =
+        this->append_binary_value(BinaryOp::less, bool_type, cursor_condition, end_condition);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->cleanup_scopes_.size()});
+    this->current_block_ = body_block;
+    const IrTextId loop_name = this->module_.intern(stmt.name);
+    const ValueId element_index =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId element_address = this->append_for_iterable_element_address(*source, element_index, loop_name);
+    const ValueId element_value = this->append_load(element_address, element_type, loop_name);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, element_type);
+    this->bind_local(stmt.name_id,
+        LocalBinding{
+            .slot = loop_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = element_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
+    this->append_store(loop_slot, element_value);
+    this->lower_block(stmt.body);
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    const ValueId current =
+        this->append_load(cursor_slot, usize_type, this->module_.intern(IR_FOR_ITERABLE_CURSOR_SLOT_NAME));
+    const ValueId one = this->append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, usize_type);
+    const ValueId next = this->append_binary_value(BinaryOp::add, usize_type, current, one);
+    this->append_store(cursor_slot, next);
+    this->append_branch_if_open(condition_block);
+    this->loop_contexts_.pop_back();
+
+    this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+}
+
+void Lowerer::lower_for_protocol_iterator(
+    const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan)
+{
+    static_cast<void>(stmt_id);
+    this->push_local_scope();
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+
+    ValueId source_slot = INVALID_VALUE_ID;
+    if (plan.protocol_source == sema::ForInProtocolSourceKind::iter_method) {
+        if (plan.iter_call.receiver_access == sema::ReceiverAccessKind::consuming) {
+            const ValueId source_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+            source_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_SOURCE_SLOT_NAME, plan.iterable_type);
+            this->append_store(source_slot, this->coerce_value(source_value, plan.iterable_type));
+        } else {
+            const PlaceAddress source_place = this->lower_place_address(plan.iterable_expr);
+            source_slot = source_place.address;
+            if (!is_valid(source_slot)) {
+                const ValueId source_value = this->lower_expr(plan.iterable_expr, plan.iterable_type);
+                source_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_SOURCE_SLOT_NAME, plan.iterable_type);
+                this->append_store(source_slot, this->coerce_value(source_value, plan.iterable_type));
+                LocalBinding source_binding{
+                    .slot = source_slot,
+                    .cleanup_flag = INVALID_VALUE_ID,
+                    .type = plan.iterable_type,
+                    .is_mutable = false,
+                    .field_cleanups = {},
+                };
+                this->register_local_cleanup(source_binding, IR_FOR_PROTOCOL_SOURCE_SLOT_NAME);
+            }
+        }
+    }
+
+    const ValueId iterator_slot = this->append_temp_alloca(IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME, plan.iterator_type);
+    ValueId iterator_value = INVALID_VALUE_ID;
+    if (plan.protocol_source == sema::ForInProtocolSourceKind::iter_method) {
+        iterator_value = this->append_for_protocol_call(plan.iter_call, source_slot, plan.iterable_type);
+    } else {
+        iterator_value = this->lower_expr(plan.iterable_expr, plan.iterator_type);
+    }
+    this->append_store(iterator_slot, this->coerce_value(iterator_value, plan.iterator_type));
+    LocalBinding iterator_binding{
+        .slot = iterator_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = plan.iterator_type,
+        .is_mutable = true,
+        .field_cleanups = {},
+    };
+    this->register_local_cleanup(iterator_binding, IR_FOR_PROTOCOL_ITERATOR_SLOT_NAME);
+
+    const BlockId condition_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_COND_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_BODY_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_UPDATE_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_FOR_PROTOCOL_EXIT_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+
+    this->append_branch_if_open(condition_block);
+    this->current_block_ = condition_block;
+    const ValueId condition =
+        this->append_for_protocol_call(plan.has_next_call, iterator_slot, plan.iterator_type);
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    this->set_terminator(this->current_block_, cond);
+
+    this->current_block_ = body_block;
+    this->push_local_scope();
+    const base::usize iteration_scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, iteration_scope_depth});
+
+    const ValueId loop_value = this->append_for_protocol_call(plan.next_call, iterator_slot, plan.iterator_type);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, plan.item_type);
+    this->append_store(loop_slot, this->coerce_value(loop_value, plan.item_type));
+    LocalBinding loop_binding{
+        .slot = loop_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = plan.item_type,
+        .is_mutable = false,
+        .field_cleanups = {},
+    };
+    this->register_local_cleanup(loop_binding, stmt.name);
+    this->bind_local(stmt.name_id, loop_binding);
+    this->lower_block_contents(stmt.body);
+    this->loop_contexts_.pop_back();
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(iteration_scope_depth);
+    }
+    this->cleanup_scopes_.resize(iteration_scope_depth);
+    this->pop_local_scope();
+    this->append_branch_if_open(update_block);
+
+    this->current_block_ = update_block;
+    this->append_branch_if_open(condition_block);
 
     this->current_block_ = exit_block;
     if (!this->has_terminator(this->current_block_)) {

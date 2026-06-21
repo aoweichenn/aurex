@@ -36,13 +36,13 @@ struct CopyState {
 }
 
 fn same_text(left: str, right: str) -> bool {
-    if strblen(left) != strblen(right) {
+    if left.len != right.len {
         return false;
     }
-    let left_ptr: *const u8 = strptr(left);
-    let right_ptr: *const u8 = strptr(right);
+    let left_ptr: *const u8 = left.ptr;
+    let right_ptr: *const u8 = right.ptr;
     var offset: usize = 0usize;
-    while offset < strblen(left) {
+    while offset < left.len {
         if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
             return false;
         }
@@ -86,11 +86,11 @@ fn copy_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, requi
 }
 
 fn copy_text(text: str, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
-    let data: *const u8 = strptr(text);
+    let data: *const u8 = text.ptr;
     var next_written: usize = written;
     var next_required: usize = required;
     var offset: usize = 0usize;
-    while offset < strblen(text) {
+    while offset < text.len {
         let copied: CopyState = copy_byte(unsafe { data[offset] }, out, out_capacity, next_written, next_required);
         next_written = copied.written;
         next_required = copied.required;
@@ -531,8 +531,8 @@ fn require_regex_set_scan_and_vectored() -> i32 {
     let left_view: []u8 = bytes_left[:];
     let right_view: []u8 = bytes_right[:];
     let byte_chunks: [2]bytes.RegexChunk = [
-        bytes.RegexChunk { data: sliceptr(left_view), len: slicelen(left_view) },
-        bytes.RegexChunk { data: sliceptr(right_view), len: slicelen(right_view) },
+        bytes.RegexChunk { data: left_view.ptr, len: left_view.len },
+        bytes.RegexChunk { data: right_view.ptr, len: right_view.len },
     ];
     let byte_patterns: [2]str = ["ab", "cd"];
     var byte_set: bytes.RegexSet = bytes.compile_set(byte_patterns[:]);
@@ -832,7 +832,7 @@ fn require_streaming() -> i32 {
         return CASE_STREAM + 10 + regex.status_code(long_stream.status);
     }
     let long_found: regex.MatchResult = regex.stream_next(&mut long_stream);
-    if !long_found.ok() || long_found.end != strblen(long_chunk) {
+    if !long_found.ok() || long_found.end != long_chunk.len {
         return CASE_STREAM + 11 + regex.status_code(long_found.status);
     }
     return ensure(CASE_STREAM + 12, regex.stream_buffer_bytes(&long_stream) == STREAM_MIN_CAPACITY);
@@ -899,8 +899,8 @@ fn require_prefilter_surface() -> i32 {
     defer regex.destroy(&mut literal);
     let literal_result: regex.MatchResult = regex.search_compiled(&literal, "xxxxx needleXYZ tail");
     if !literal_result.ok() ||
-        literal_result.start != strblen("xxxxx ") ||
-        literal_result.end != strblen("xxxxx needleXYZ") {
+        literal_result.start != "xxxxx ".len ||
+        literal_result.end != "xxxxx needleXYZ".len {
         return CASE_PREFILTER + 1 + regex.status_code(literal_result.status);
     }
 
@@ -949,8 +949,8 @@ fn require_prefilter_surface() -> i32 {
     defer regex.destroy(&mut class_prefilter);
     let class_result: regex.MatchResult = regex.search_compiled(&class_prefilter, "aaaaaaaaaaaaaaaa7needle");
     if !class_result.ok() ||
-        class_result.start != strblen("aaaaaaaaaaaaaaaa") ||
-        class_result.end != strblen("aaaaaaaaaaaaaaaa7needle") {
+        class_result.start != "aaaaaaaaaaaaaaaa".len ||
+        class_result.end != "aaaaaaaaaaaaaaaa7needle".len {
         return CASE_PREFILTER + 7 + regex.status_code(class_result.status);
     }
 
@@ -958,8 +958,8 @@ fn require_prefilter_surface() -> i32 {
     defer regex.destroy(&mut unicode_literal);
     let unicode_result: regex.MatchResult = regex.search_compiled(&unicode_literal, "ascii prefix Ωmega");
     if !unicode_result.ok() ||
-        unicode_result.start != strblen("ascii prefix ") ||
-        unicode_result.end != strblen("ascii prefix Ωmega") {
+        unicode_result.start != "ascii prefix ".len ||
+        unicode_result.end != "ascii prefix Ωmega".len {
         return CASE_PREFILTER + 8 + regex.status_code(unicode_result.status);
     }
     return 0;
@@ -1025,7 +1025,7 @@ fn require_unicode_full_fold_and_grapheme() -> i32 {
         return CASE_UNICODE_CLUSTER + 9 + regex.status_code(cluster.status);
     }
     let decomposed: regex.MatchResult = regex.search_compiled(&cluster, "e\u{0301}x");
-    if !decomposed.ok() || decomposed.start != 0usize || decomposed.end != strblen("e\u{0301}") {
+    if !decomposed.ok() || decomposed.start != 0usize || decomposed.end != "e\u{0301}".len {
         return CASE_UNICODE_CLUSTER + 10 + regex.status_code(decomposed.status);
     }
     let emoji: regex.MatchResult = regex.fullmatch_compiled(&cluster, "👩‍💻");
@@ -1091,8 +1091,8 @@ fn require_regex_set_all_span_and_overlap() -> i32 {
     let left_view: []u8 = bytes_left[:];
     let right_view: []u8 = bytes_right[:];
     let byte_chunks: [2]bytes.RegexChunk = [
-        bytes.RegexChunk { data: sliceptr(left_view), len: slicelen(left_view) },
-        bytes.RegexChunk { data: sliceptr(right_view), len: slicelen(right_view) },
+        bytes.RegexChunk { data: left_view.ptr, len: left_view.len },
+        bytes.RegexChunk { data: right_view.ptr, len: right_view.len },
     ];
     var byte_set: bytes.RegexSet = bytes.compile_set(patterns[:]);
     defer bytes.destroy_set(&mut byte_set);
@@ -1344,7 +1344,7 @@ fn require_industrial_api_surface() -> i32 {
     return 0;
 }
 
-fn main() -> i32 {
+pub fn run_regex_advanced() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
         return class_code;
@@ -1418,4 +1418,8 @@ fn main() -> i32 {
         return literal_trie_code;
     }
     return require_industrial_api_surface();
+}
+
+fn main() -> i32 {
+    return run_regex_advanced();
 }

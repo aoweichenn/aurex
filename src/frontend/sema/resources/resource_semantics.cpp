@@ -94,6 +94,9 @@ struct ClassificationFrame {
     if (info.kind == TypeKind::reference || info.kind == TypeKind::slice) {
         return borrowed_view_summary();
     }
+    if (info.kind == TypeKind::range) {
+        return trivial_owned_summary();
+    }
     if (info.kind == TypeKind::function) {
         return trivial_owned_summary();
     }
@@ -102,8 +105,8 @@ struct ClassificationFrame {
 
 [[nodiscard]] bool is_structural_type(const TypeInfo& info) noexcept
 {
-    return info.kind == TypeKind::array || info.kind == TypeKind::tuple || info.kind == TypeKind::struct_
-        || info.kind == TypeKind::enum_;
+    return info.kind == TypeKind::array || info.kind == TypeKind::range || info.kind == TypeKind::tuple
+        || info.kind == TypeKind::struct_ || info.kind == TypeKind::enum_;
 }
 
 } // namespace
@@ -247,6 +250,9 @@ std::optional<std::vector<TypeHandle>> ResourceSemanticsClassifier::structural_c
     switch (info.kind) {
         case TypeKind::array:
             components.push_back(info.array_element);
+            break;
+        case TypeKind::range:
+            components.push_back(info.range_element);
             break;
         case TypeKind::tuple:
             components.insert(components.end(), info.tuple_elements.begin(), info.tuple_elements.end());

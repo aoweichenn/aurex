@@ -1,0 +1,39 @@
+module for_in_protocol_iter_mut_method;
+
+struct Range {
+    start: i32;
+    end: i32;
+}
+
+struct RangeIter {
+    current: i32;
+    end: i32;
+}
+
+impl Range {
+    fn iter(self: &mut Range) -> RangeIter {
+        self.start = self.start + 1;
+        return RangeIter { current: self.start, end: self.end };
+    }
+}
+
+impl RangeIter {
+    fn has_next(self: &mut RangeIter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut RangeIter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    var range: Range = Range { start: 0, end: 5 };
+    var total: i32 = 0;
+    for value in range {
+        total = total + value;
+    }
+    return total + range.start - 11;
+}

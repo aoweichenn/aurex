@@ -471,8 +471,8 @@ fn expand_replacement(
     var next_written: usize = written;
     var next_required: usize = required;
     var at: usize = 0usize;
-    let replacement_len: usize = strblen(replacement);
-    let replacement_data: *const u8 = strptr(replacement);
+    let replacement_len: usize = replacement.len;
+    let replacement_data: *const u8 = replacement.ptr;
     while at < replacement_len {
         let value: u8 = unsafe { replacement_data[at] };
         if value == ascii.BACKSLASH {
@@ -522,7 +522,7 @@ fn expand_replacement_escape(
     written: usize,
     required: usize
 ) -> TemplateExpansion {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     let marker_at: usize = slash_at + 1usize;
     if marker_at >= replacement_len {
         return TemplateExpansion { written: written, required: required, next_at: slash_at, status: t.RegexStatus.replacement_error };
@@ -574,13 +574,13 @@ fn expand_template(
     written: usize,
     required: usize
 ) -> TemplateExpansion {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     let next_at: usize = dollar_at + 1usize;
     if next_at >= replacement_len {
         let copied: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
         return template_result(copied, replacement_len, t.RegexStatus.ok);
     }
-    let data: *const u8 = strptr(replacement);
+    let data: *const u8 = replacement.ptr;
     let marker: u8 = unsafe { data[next_at] };
     if marker == ascii.DOLLAR {
         let copied_dollar: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
@@ -615,7 +615,7 @@ fn expand_named_template(
     required: usize
 ) -> TemplateExpansion {
     var at: usize = name_start;
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     while at < replacement_len && ascii.byte_at(replacement, at) != ascii.RBRACE {
         at += 1usize;
     }
@@ -646,7 +646,7 @@ fn expand_named_template(
 }
 
 fn parse_replacement_hex_escape(replacement: str, start: usize, fixed_digits: usize, allow_braced: bool) -> ParsedScalar {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     if allow_braced && start < replacement_len && ascii.byte_at(replacement, start) == ascii.LBRACE {
         return parse_replacement_braced_hex(replacement, start + 1usize);
     }
@@ -672,7 +672,7 @@ fn parse_replacement_hex_escape(replacement: str, start: usize, fixed_digits: us
 }
 
 fn parse_replacement_braced_hex(replacement: str, start: usize) -> ParsedScalar {
-    let replacement_len: usize = strblen(replacement);
+    let replacement_len: usize = replacement.len;
     var at: usize = start;
     var value: usize = 0usize;
     var digits: usize = 0usize;
@@ -764,26 +764,26 @@ fn copy_scalar_utf8(value: usize, out: *mut u8, out_capacity: usize, written: us
         return CopyState { written: written, required: required, status: t.RegexStatus.replacement_error };
     }
     if value <= 0x7fusize {
-        return copy_byte(cast<u8>(value), out, out_capacity, written, required);
+        return copy_byte(((value) as u8), out, out_capacity, written, required);
     }
     if value <= 0x7ffusize {
-        let first: u8 = cast<u8>(0xc0usize | (value >> 6usize));
-        let second: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
+        let first: u8 = ((0xc0usize | (value >> 6usize)) as u8);
+        let second: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
         let copied_first: CopyState = copy_byte(first, out, out_capacity, written, required);
         return copy_byte(second, out, out_capacity, copied_first.written, copied_first.required);
     }
     if value <= 0xffffusize {
-        let first3: u8 = cast<u8>(0xe0usize | (value >> 12usize));
-        let second3: u8 = cast<u8>(0x80usize | ((value >> 6usize) & 0x3fusize));
-        let third3: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
+        let first3: u8 = ((0xe0usize | (value >> 12usize)) as u8);
+        let second3: u8 = ((0x80usize | ((value >> 6usize) & 0x3fusize)) as u8);
+        let third3: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
         let copied_first3: CopyState = copy_byte(first3, out, out_capacity, written, required);
         let copied_second3: CopyState = copy_byte(second3, out, out_capacity, copied_first3.written, copied_first3.required);
         return copy_byte(third3, out, out_capacity, copied_second3.written, copied_second3.required);
     }
-    let first4: u8 = cast<u8>(0xf0usize | (value >> 18usize));
-    let second4: u8 = cast<u8>(0x80usize | ((value >> 12usize) & 0x3fusize));
-    let third4: u8 = cast<u8>(0x80usize | ((value >> 6usize) & 0x3fusize));
-    let fourth4: u8 = cast<u8>(0x80usize | (value & 0x3fusize));
+    let first4: u8 = ((0xf0usize | (value >> 18usize)) as u8);
+    let second4: u8 = ((0x80usize | ((value >> 12usize) & 0x3fusize)) as u8);
+    let third4: u8 = ((0x80usize | ((value >> 6usize) & 0x3fusize)) as u8);
+    let fourth4: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
     let copied_first4: CopyState = copy_byte(first4, out, out_capacity, written, required);
     let copied_second4: CopyState = copy_byte(second4, out, out_capacity, copied_first4.written, copied_first4.required);
     let copied_third4: CopyState = copy_byte(third4, out, out_capacity, copied_second4.written, copied_second4.required);

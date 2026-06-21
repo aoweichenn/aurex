@@ -44,6 +44,7 @@ protected:
     void report_here(std::string message) const;
     void report_at(const syntax::Token& token, std::string message) const;
     void report_note_at(const syntax::Token& token, std::string message) const;
+    [[nodiscard]] bool recover_legacy_bracket_generic() const;
     void reset_panic() const noexcept;
 
     Parser& parser_;

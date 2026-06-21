@@ -271,7 +271,7 @@ def emit_regex_set_properties(lines: list[str]) -> None:
         lines.append(f"    var set_ids_{index}: [{capacity}]usize = [0usize; {capacity}];")
         lines.append(
             f"    let set_matches_{index}: regex.SetMatchesResult = regex.matches_set_compiled("
-            f"&set_{index}, {aurex_string(text)}, unsafe {{ ptrcast[*mut usize](ptrat[*mut [{capacity}]usize](ptraddr(&mut set_ids_{index}))) }}, {capacity}usize);"
+            f"&set_{index}, {aurex_string(text)}, unsafe {{ ptrcast<*mut usize>(ptrat<*mut [{capacity}]usize>(ptraddr(&mut set_ids_{index}))) }}, {capacity}usize);"
         )
         if matched_ids:
             lines.append(
@@ -378,7 +378,7 @@ def emit_grapheme(lines: list[str], cases: list[tuple[str, list[int]]]) -> None:
                 lines.append(f"        return {code} + regex.status_code(g_{index}_{boundary_index}.status);")
                 lines.append("    }")
                 lines.append(f"    cursor_{index} = g_{index}_{boundary_index}.end;")
-            lines.append(f"    if cursor_{index} != strblen({aurex_string(text)}) {{")
+            lines.append(f"    if cursor_{index} != {aurex_string(text)}.len {{")
             lines.append(f"        return {code} + 900;")
             lines.append("    }")
         lines.append("    return 0;")

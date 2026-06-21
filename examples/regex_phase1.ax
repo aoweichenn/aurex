@@ -32,13 +32,13 @@ const ERROR_UNCLOSED_CLASS_OFFSET: usize = 3usize;
 const INVALID_NAME_OFFSET: usize = 3usize;
 
 fn same_text(left: str, right: str) -> bool {
-    if strblen(left) != strblen(right) {
+    if left.len != right.len {
         return false;
     }
-    let left_ptr: *const u8 = strptr(left);
-    let right_ptr: *const u8 = strptr(right);
+    let left_ptr: *const u8 = left.ptr;
+    let right_ptr: *const u8 = right.ptr;
     var offset: usize = 0usize;
-    while offset < strblen(left) {
+    while offset < left.len {
         if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
             return false;
         }
@@ -63,7 +63,7 @@ fn require_captures(compiled: &regex.Regex) -> i32 {
         return CASE_CAPTURE_WHOLE + regex.status_code(captures.status);
     }
     let whole: regex.CaptureSpan = regex.capture_at(&captures, 0usize);
-    if !whole.matched || whole.start != strblen("mail: ") || whole.end != strblen("mail: team@example.com") {
+    if !whole.matched || whole.start != "mail: ".len || whole.end != "mail: team@example.com".len {
         return CASE_CAPTURE_WHOLE;
     }
     if !same_text(regex.capture_text("mail: team@example.com; cc: root@test.net", &captures, 1usize), "team") {
@@ -89,7 +89,7 @@ fn require_captures(compiled: &regex.Regex) -> i32 {
 fn require_find_iter(compiled: &regex.Regex) -> i32 {
     var iter: regex.FindIter = regex.find_iter(compiled, "team@example.com root@test.net");
     let first: regex.MatchResult = regex.find_next(&mut iter);
-    if !first.ok() || first.start != 0usize || first.end != strblen("team@example.com") {
+    if !first.ok() || first.start != 0usize || first.end != "team@example.com".len {
         return CASE_FIND_ITER + 1;
     }
     let second: regex.MatchResult = regex.find_next(&mut iter);
@@ -226,7 +226,7 @@ fn require_repeated_capture_reuses_slot() -> i32 {
     return 0;
 }
 
-fn main() -> i32 {
+pub fn run_regex_phase1() -> i32 {
     var compiled: regex.Regex = regex.compile("(?<user>\\w+)@(?<domain>\\w+\\.(?:com|net))");
     defer regex.destroy(&mut compiled);
     if !compiled.valid() {
@@ -260,4 +260,8 @@ fn main() -> i32 {
         return repeat_capture_code;
     }
     return require_errors();
+}
+
+fn main() -> i32 {
+    return run_regex_phase1();
 }

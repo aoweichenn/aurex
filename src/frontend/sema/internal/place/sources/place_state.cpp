@@ -623,6 +623,7 @@ bool SemanticAnalyzerCore::PlaceStateAnalyzer::may_need_check(
                     push_precheck_expr(pending_exprs, this->core_.ctx_.module, stmt->range_start);
                     push_precheck_expr(pending_exprs, this->core_.ctx_.module, stmt->range_end);
                     push_precheck_expr(pending_exprs, this->core_.ctx_.module, stmt->range_step);
+                    push_precheck_expr(pending_exprs, this->core_.ctx_.module, stmt->range_iterable);
                     push_precheck_stmt(pending_stmts, this->core_.ctx_.module, stmt->body);
                     break;
                 case syntax::StmtKind::while_:

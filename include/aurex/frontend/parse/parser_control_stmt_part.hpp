@@ -23,6 +23,10 @@ public:
 private:
     [[nodiscard]] bool next_for_is_range_loop() const noexcept;
     [[nodiscard]] syntax::StmtId parse_for_range_stmt(const syntax::Token& begin);
+    [[nodiscard]] syntax::StmtId finish_for_range_call_stmt(
+        const syntax::Token& begin, const syntax::Token& name, const syntax::Token& callee);
+    [[nodiscard]] syntax::StmtId finish_for_iterable_stmt(
+        const syntax::Token& begin, const syntax::Token& name, syntax::ExprId iterable);
     void parse_range_args(std::vector<syntax::ExprId>& args);
     [[nodiscard]] bool recover_range_arg_separator() const;
     [[nodiscard]] syntax::StmtId parse_for_init_clause() const;

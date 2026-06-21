@@ -23,6 +23,7 @@ private:
     };
 
     [[nodiscard]] bool lambda_head_follows() const noexcept;
+    [[nodiscard]] bool lambda_initializer_generic_suffix_follows_at(base::usize offset) const noexcept;
     [[nodiscard]] syntax::ExprId parse_lambda_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId finish_lambda_expr(LambdaHead head, ExprContext context);
     [[nodiscard]] std::vector<syntax::LambdaCaptureDecl> parse_lambda_capture_list();

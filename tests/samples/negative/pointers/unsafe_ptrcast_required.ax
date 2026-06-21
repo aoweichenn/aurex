@@ -8,5 +8,5 @@ fn main() -> i32 {
     var value: i32 = 1;
     let ptr: *mut i32 = as_mut_ptr(&mut value);
     let erased: *mut void = ptrcast<*mut void>(ptr);
-    return cast<i32>(ptraddr(erased));
+    return ((ptraddr(erased)) as i32);
 }

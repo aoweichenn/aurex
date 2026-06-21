@@ -1,9 +1,7 @@
 #include <support/test_support.hpp>
 
-#include <cstddef>
 #include <fstream>
 #include <string>
-#include <string_view>
 
 namespace aurex::test {
 namespace {
@@ -17,9 +15,6 @@ namespace {
 {
     return "-I " + q(examples_root() / "libs");
 }
-
-constexpr std::size_t REGEX_MAX_PATTERN_BYTES = 4096U;
-constexpr std::size_t REGEX_OVERSIZED_PATTERN_BYTES = REGEX_MAX_PATTERN_BYTES + 1U;
 
 } // namespace
 
@@ -65,11 +60,10 @@ TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly)
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns)
+TEST_F(AurexIntegrationTest, ExamplesRegexSuiteSurfaceCompiles)
 {
-    const fs::path output = test_bin_root() / "regex_demo";
-    const std::string checked = require_success(
-        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax"))
+    const std::string checked = require_success(aurexc() + " -I " + q(examples_root()) + " "
+        + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_suite.ax"))
                                     .output;
     expect_contains_all(checked,
         {
@@ -99,27 +93,9 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns)
             "fn method regex.core.types.Regex.valid -> bool",
             "fn method regex.core.types.MatchResult.ok -> bool",
             "type priv Matcher = fn(str, str) -> bool",
-        });
-    require_success(
-        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_demo.ax") + " -o " + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "");
-}
-
-TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns)
-{
-    const fs::path output = test_bin_root() / "regex_phase1";
-    const std::string checked = require_success(
-        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_phase1.ax"))
-                                    .output;
-    expect_contains_all(checked,
-        {
-            "struct Captures fields=7",
-            "struct FindIter fields=5",
+            "fn run_regex_demo -> i32",
             "struct CaptureIter fields=5",
-            "struct SplitPart fields=4",
-            "struct ReplaceResult fields=4",
             "case RegexStatus_invalid_group_name",
-            "case RegexStatus_buffer_too_small",
             "fn capture_index -> usize",
             "fn capture_text -> str",
             "fn find_iter -> regex.core.types.FindIter",
@@ -128,20 +104,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns)
             "fn replace_all -> regex.core.types.ReplaceResult",
             "fn error_offset -> usize",
             "fn error_kind_code -> i32",
-        });
-    require_success(
-        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_phase1.ax") + " -o " + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "");
-}
-
-TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns)
-{
-    const fs::path output = test_bin_root() / "regex_industrial";
-    const std::string checked = require_success(
-        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_industrial.ax"))
-                                    .output;
-    expect_contains_all(checked,
-        {
+            "fn run_regex_phase1 -> i32",
             "fn priv require_flags -> i32",
             "fn priv require_lazy -> i32",
             "fn priv require_boundaries -> i32",
@@ -154,20 +117,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns)
             "fn captures -> regex.core.types.Captures",
             "fn replace -> regex.core.types.ReplaceResult",
             "case RegexStatus_unsupported",
-        });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_industrial.ax") + " -o "
-        + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "");
-}
-
-TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns)
-{
-    const fs::path output = test_bin_root() / "regex_advanced";
-    const std::string checked = require_success(
-        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_advanced.ax"))
-                                    .output;
-    expect_contains_all(checked,
-        {
+            "fn run_regex_industrial -> i32",
             "struct RegexSet fields=17",
             "struct SetMatchesResult fields=4",
             "struct RegexStream fields=10",
@@ -205,20 +155,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns)
             "fn priv require_regex_set_literal_trie_optimizer -> i32",
             "fn captures_compiled_from_into -> regex.core.types.RegexStatus",
             "fn match_workspace_status -> regex.core.types.RegexStatus",
-        });
-    require_success(
-        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_advanced.ax") + " -o " + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "");
-}
-
-TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns)
-{
-    const fs::path output = test_bin_root() / "regex_stress";
-    const std::string checked = require_success(
-        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_stress.ax"))
-                                    .output;
-    expect_contains_all(checked,
-        {
+            "fn run_regex_advanced -> i32",
             "type priv CompiledCheck = fn(&regex.core.types.Regex, str) -> regex.core.types.MatchResult",
             "struct priv StressCase fields=4",
             "fn priv run_repeated_searches -> i32",
@@ -232,35 +169,17 @@ TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns)
             "fn program_bytes -> usize",
             "fn workspace_bytes -> usize",
             "fn max_state_capacity -> usize",
+            "fn run_regex_stress -> i32",
+            "fn priv require_pattern_too_large_limit -> i32",
         });
-    require_success(
-        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_stress.ax") + " -o " + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexRejectsOversizedPattern)
+TEST_F(AurexIntegrationTest, ExamplesRegexSuiteCompilesAndRuns)
 {
-    const fs::path source = tmp_root() / "regex_oversized_pattern.ax";
-    std::ofstream out(source);
-    out << "module regex_oversized_pattern;\n"
-        << "import regex.api as regex;\n"
-        << "fn main() -> i32 {\n"
-        << "    var compiled: regex.Regex = regex.compile(\"" << std::string(REGEX_OVERSIZED_PATTERN_BYTES, 'a')
-        << "\");\n"
-        << "    defer regex.destroy(&mut compiled);\n"
-        << "    let rejected: bool = match compiled.status {\n"
-        << "        .pattern_too_large => true,\n"
-        << "        _ => false,\n"
-        << "    };\n"
-        << "    if rejected && regex.max_pattern_bytes() == " << REGEX_MAX_PATTERN_BYTES << "usize {\n"
-        << "        return 0;\n"
-        << "    }\n"
-        << "    return 1 + regex.status_code(compiled.status);\n"
-        << "}\n";
-    out.close();
-
-    const fs::path output = test_bin_root() / "regex_oversized_pattern";
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(source) + " -o " + q(output));
+    const fs::path output = test_bin_root() / "regex_suite";
+    require_success(
+        aurexc() + " -I " + q(examples_root()) + " " + examples_import_flags() + " "
+        + q(examples_root() / "regex_suite.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
@@ -340,6 +259,7 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent)
     EXPECT_TRUE(fs::exists(examples_root() / "regex_phase1.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_industrial.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_stress.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "regex_suite.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "system"));
     EXPECT_FALSE(fs::exists(examples_root() / "m1"));
 }

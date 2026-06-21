@@ -80,7 +80,7 @@ fn compile_with_mode(pattern: str, mode: u8, options: t.RegexOptions) -> t.Regex
         compiled: compiled,
     };
     let body: t.Fragment = parse_expression(&mut parser);
-    if parser.compiled.status == t.RegexStatus.ok && parser.at != strblen(pattern) {
+    if parser.compiled.status == t.RegexStatus.ok && parser.at != pattern.len {
         prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, parser.at, t.ERROR_KIND_TRAILING_INPUT);
     }
     if parser.compiled.status == t.RegexStatus.ok {
@@ -759,11 +759,11 @@ fn can_start_range(parser: &Parser, item: ClassItem) -> bool {
     if item.kind != CLASS_ITEM_SCALAR || item.negated {
         return false;
     }
-    if parser.at >= strblen(parser.pattern) || peek(parser) != ascii.HYPHEN {
+    if parser.at >= parser.pattern.len || peek(parser) != ascii.HYPHEN {
         return false;
     }
     let next_at: usize = parser.at + 1usize;
-    if next_at >= strblen(parser.pattern) {
+    if next_at >= parser.pattern.len {
         return false;
     }
     return ascii.byte_at(parser.pattern, next_at) != ascii.RBRACKET &&
@@ -772,7 +772,7 @@ fn can_start_range(parser: &Parser, item: ClassItem) -> bool {
 
 fn can_start_posix_class(parser: &Parser) -> bool {
     let next_at: usize = parser.at + 1usize;
-    if next_at >= strblen(parser.pattern) {
+    if next_at >= parser.pattern.len {
         return false;
     }
     return ascii.byte_at(parser.pattern, next_at) == ascii.COLON;
@@ -883,7 +883,7 @@ fn property_escape_atom(parser: &mut Parser, negated: bool, source_start: usize)
 }
 
 fn property_name_start(parser: &Parser) -> usize {
-    if parser.at < strblen(parser.pattern) && ascii.byte_at(parser.pattern, parser.at) == ascii.LBRACE {
+    if parser.at < parser.pattern.len && ascii.byte_at(parser.pattern, parser.at) == ascii.LBRACE {
         return parser.at + 1usize;
     }
     return parser.at;
@@ -940,14 +940,14 @@ fn starts_any_class_operator(parser: &Parser) -> bool {
 
 fn starts_class_operator(parser: &Parser, first: u8, second: u8) -> bool {
     let next_at: usize = parser.at + 1usize;
-    if at_end(parser) || next_at >= strblen(parser.pattern) {
+    if at_end(parser) || next_at >= parser.pattern.len {
         return false;
     }
     return peek(parser) == first && ascii.byte_at(parser.pattern, next_at) == second;
 }
 
 fn byte_scalar(value: u8) -> usize {
-    return cast<usize>(value);
+    return ((value) as usize);
 }
 
 fn is_octal_digit(value: u8) -> bool {
@@ -955,7 +955,7 @@ fn is_octal_digit(value: u8) -> bool {
 }
 
 fn octal_value(value: u8) -> usize {
-    return cast<usize>(value - ascii.DIGIT_0);
+    return ((value - ascii.DIGIT_0) as usize);
 }
 
 fn newline_negated_class_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
@@ -1307,7 +1307,7 @@ fn quoted_literal_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     var has_piece: bool = false;
     var result: t.Fragment = t.invalid_fragment();
     while !at_end(parser) {
-        if peek(parser) == ascii.BACKSLASH && parser.at + 1usize < strblen(parser.pattern) &&
+        if peek(parser) == ascii.BACKSLASH && parser.at + 1usize < parser.pattern.len &&
             ascii.byte_at(parser.pattern, parser.at + 1usize) == ascii.UPPER_E {
             parser.at += 2usize;
             if has_piece {
@@ -1435,7 +1435,7 @@ fn parse_control_escape_value(parser: &mut Parser, source_start: usize) -> Codep
         return CodepointSpec { value: 0usize, valid: false };
     }
     advance(parser);
-    return CodepointSpec { value: cast<usize>(value & 0x1fu8), valid: true };
+    return CodepointSpec { value: ((value & 0x1fu8) as usize), valid: true };
 }
 
 fn parse_fixed_hex(parser: &mut Parser, source_start: usize, count: usize) -> CodepointSpec {
@@ -1689,7 +1689,7 @@ fn duplicate_capture_name(compiled: &t.Regex, pattern: str, name_start: usize, n
 
 fn name_matches_capture(compiled: &t.Regex, pattern: str, index: usize, name_start: usize, name_len: usize) -> bool {
     let existing_start: usize = unsafe { compiled.captures[index].name_start };
-    let data: *const u8 = strptr(pattern);
+    let data: *const u8 = pattern.ptr;
     var offset: usize = 0usize;
     while offset < name_len {
         if unsafe { data[existing_start + offset] } != unsafe { data[name_start + offset] } {
@@ -1816,11 +1816,11 @@ fn is_bytes_mode(parser: &Parser) -> bool {
 }
 
 fn pattern_slice_equals(pattern: str, start: usize, len: usize, expected: str) -> bool {
-    if len != strblen(expected) {
+    if len != expected.len {
         return false;
     }
-    let pattern_data: *const u8 = strptr(pattern);
-    let expected_data: *const u8 = strptr(expected);
+    let pattern_data: *const u8 = pattern.ptr;
+    let expected_data: *const u8 = expected.ptr;
     var offset: usize = 0usize;
     while offset < len {
         if unsafe { pattern_data[start + offset] } != unsafe { expected_data[offset] } {
@@ -1888,7 +1888,7 @@ fn is_sequence_end(value: u8) -> bool {
 }
 
 fn at_end(parser: &Parser) -> bool {
-    return parser.at >= strblen(parser.pattern);
+    return parser.at >= parser.pattern.len;
 }
 
 fn peek(parser: &Parser) -> u8 {

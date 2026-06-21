@@ -3,6 +3,7 @@
 #include <aurex/frontend/sema/function.hpp>
 #include <aurex/frontend/sema/storage.hpp>
 #include <aurex/frontend/sema/type.hpp>
+#include <aurex/frontend/syntax/ast/nodes.hpp>
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/query/generic_instance_key.hpp>
 #include <aurex/infrastructure/query/principal_set_composition_facts.hpp>
@@ -200,6 +201,9 @@ struct CheckedLambdaInfo {
         InternedText field_name;
         IdentId field_name_id = INVALID_IDENT_ID;
         TypeHandle type = INVALID_TYPE_HANDLE;
+        TypeHandle field_type = INVALID_TYPE_HANDLE;
+        syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+        syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
         base::SourceRange use_range{};
         base::SourceRange declaration_range{};
     };
@@ -1314,6 +1318,100 @@ struct CoercionRecord {
     CoercionKind kind = CoercionKind::contextual_integer_literal;
 };
 
+inline constexpr std::string_view SEMA_RANGE_VALUE_START_FIELD = "start";
+inline constexpr std::string_view SEMA_RANGE_VALUE_END_FIELD = "end";
+inline constexpr std::string_view SEMA_RANGE_VALUE_STEP_FIELD = "step";
+inline constexpr base::usize SEMA_RANGE_VALUE_FIELD_COUNT = 3;
+
+struct RangeValuePlan {
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId start_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId end_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId step_expr = syntax::INVALID_EXPR_ID;
+    TypeHandle element_type = INVALID_TYPE_HANDLE;
+    TypeHandle range_type = INVALID_TYPE_HANDLE;
+    bool default_start = false;
+    bool default_step = false;
+};
+
+using RangeValuePlanMap = SemaMap<base::u32, RangeValuePlan>;
+
+enum class ForInIterationKind : base::u8 {
+    none,
+    counted_range,
+    range_value,
+    array_value,
+    slice_value,
+    str_bytes,
+    protocol_iterator,
+};
+
+enum class ForInItemMode : base::u8 {
+    immutable_value_copy,
+};
+
+enum class ForInProtocolSourceKind : base::u8 {
+    direct_iterator,
+    iter_method,
+};
+
+enum class ForInProtocolCallKind : base::u8 {
+    none,
+    inherent_method,
+    trait_static_method,
+};
+
+struct ForInProtocolCallPlan {
+    ForInProtocolCallKind kind = ForInProtocolCallKind::none;
+    TraitMethodDispatchKind trait_dispatch = TraitMethodDispatchKind::param_env;
+    FunctionLookupKey function_key;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle self_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandle param_type = INVALID_TYPE_HANDLE;
+    InternedText method_name;
+    IdentId method_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    query::StableFingerprint128 predicate_fingerprint;
+    TraitImplLookupKey impl_key;
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    bool receiver_auto_borrow = false;
+    bool receiver_two_phase_eligible = false;
+};
+
+struct ForInIterationPlan {
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    ForInIterationKind kind = ForInIterationKind::none;
+    ForInItemMode item_mode = ForInItemMode::immutable_value_copy;
+    syntax::ExprId start_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId end_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId step_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId iterable_expr = syntax::INVALID_EXPR_ID;
+    TypeHandle iterable_type = INVALID_TYPE_HANDLE;
+    TypeHandle item_type = INVALID_TYPE_HANDLE;
+    TypeHandle index_type = INVALID_TYPE_HANDLE;
+    TypeHandle range_type = INVALID_TYPE_HANDLE;
+    TypeHandle iterator_type = INVALID_TYPE_HANDLE;
+    PointerMutability element_access = PointerMutability::const_;
+    ForInProtocolSourceKind protocol_source = ForInProtocolSourceKind::direct_iterator;
+    ForInProtocolCallPlan iter_call;
+    ForInProtocolCallPlan has_next_call;
+    ForInProtocolCallPlan next_call;
+    bool evaluates_source_once = true;
+    bool consumes_iterable = false;
+    bool requires_copy_item = true;
+};
+
+using ForInIterationPlanMap = SemaMap<base::u32, ForInIterationPlan>;
+
+[[nodiscard]] std::string_view for_in_iteration_kind_name(ForInIterationKind kind) noexcept;
+[[nodiscard]] std::string_view for_in_item_mode_name(ForInItemMode mode) noexcept;
+[[nodiscard]] std::string_view for_in_protocol_source_kind_name(ForInProtocolSourceKind kind) noexcept;
+[[nodiscard]] std::string_view for_in_protocol_call_kind_name(ForInProtocolCallKind kind) noexcept;
+
 struct GenericNodeSpan {
     base::u32 begin = 0;
     base::u32 count = 0;
@@ -1434,6 +1532,8 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaMap<base::u32, TypeHandle> sparse_syntax_type_handles;
     SemaMap<base::u32, TypeHandle> sparse_stmt_local_types;
+    RangeValuePlanMap range_value_plans;
+    ForInIterationPlanMap for_in_iteration_plans;
     GenericSparseFallbackStats sparse_fallbacks;
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
@@ -1611,6 +1711,8 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaTypeTable syntax_type_handles;
     SemaTypeTable stmt_local_types;
+    RangeValuePlanMap range_value_plans;
+    ForInIterationPlanMap for_in_iteration_plans;
     SemaIdentTable item_c_name_ids;
     SemaVector<CoercionRecord> coercions;
     SemaVector<CheckedLambdaInfo> lambdas;
@@ -1750,6 +1852,9 @@ public:
     [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
+    [[nodiscard]] RangeValuePlan clone_range_value_plan(const RangeValuePlan& other) const;
+    [[nodiscard]] ForInIterationPlan clone_for_in_iteration_plan(const ForInIterationPlan& other);
+    [[nodiscard]] ForInProtocolCallPlan clone_for_in_protocol_call_plan(const ForInProtocolCallPlan& other);
     [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);
     [[nodiscard]] FunctionCallBinding clone_function_call_binding(const FunctionCallBinding& other) const;
     [[nodiscard]] TraitObjectMethodSlotFact clone_trait_object_method_slot_fact(

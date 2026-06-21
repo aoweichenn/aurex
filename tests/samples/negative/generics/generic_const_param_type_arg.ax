@@ -1,0 +1,10 @@
+module generic_const_param_type_arg;
+
+struct ArrayBox<T, const N: usize> {
+    value: T;
+}
+
+fn main() -> i32 {
+    let value: ArrayBox<i32, bool> = ArrayBox<i32, 4> { value: 1 };
+    return 0;
+}

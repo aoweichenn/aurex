@@ -1,0 +1,11 @@
+module range_value_type_mismatch;
+
+fn main() -> i32 {
+    let start: i32 = 0;
+    let end: i64 = 3;
+    let values = range(start, end);
+    for value in values {
+        return value;
+    }
+    return 0;
+}

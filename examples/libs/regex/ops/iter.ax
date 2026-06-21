@@ -45,8 +45,8 @@ pub fn bytes_find_iter(compiled: &t.Regex, input: []u8) -> t.BytesFindIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat<*const t.Regex>(ptraddr(compiled)) };
     return t.BytesFindIter {
         compiled: compiled_ptr,
-        data: sliceptr(input),
-        len: slicelen(input),
+        data: input.ptr,
+        len: input.len,
         next_start: 0usize,
         finished: false,
         status: t.RegexStatus.ok,
@@ -94,8 +94,8 @@ pub fn bytes_captures_iter(compiled: &t.Regex, input: []u8) -> t.BytesCaptureIte
     let compiled_ptr: *const t.Regex = unsafe { ptrat<*const t.Regex>(ptraddr(compiled)) };
     return t.BytesCaptureIter {
         compiled: compiled_ptr,
-        data: sliceptr(input),
-        len: slicelen(input),
+        data: input.ptr,
+        len: input.len,
         next_start: 0usize,
         finished: false,
         status: t.RegexStatus.ok,

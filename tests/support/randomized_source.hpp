@@ -137,11 +137,11 @@ template <base::usize Size>
             return "helper_" + std::to_string(random.index(RANDOM_SOURCE_MAX_EXTRA_HELPERS)) + "("
                 + integer_literal(random) + ")";
         case 2:
-            return "cast<i32>(" + integer_literal(random) + ")";
+            return "((" + integer_literal(random) + ") as i32)";
         case 3:
-            return "cast<i32>(sizeof<" + type_name(random) + ">)";
+            return "((sizeof<" + type_name(random) + ">()) as i32)";
         case 4:
-            return "cast<i32>(alignof<" + type_name(random) + ">)";
+            return "((alignof<" + type_name(random) + ">()) as i32)";
         case 5:
             return "- " + integer_literal(random);
         case 6:

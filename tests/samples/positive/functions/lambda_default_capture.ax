@@ -1,0 +1,44 @@
+module lambda_default_capture;
+
+fn value_default(value: i32) -> i32 {
+    let base: i32 = 10;
+    let add = [=](next: i32) -> i32 => next + base;
+    return add(value);
+}
+
+fn reference_default() -> i32 {
+    var base: i32 = 10;
+    let read = [&](next: i32) -> i32 => next + base;
+    let before: i32 = read(1);
+    base = 20;
+    let after: i32 = read(1);
+    return before * 10 + after;
+}
+
+fn value_default_with_reference_override() -> i32 {
+    let base: i32 = 2;
+    var adjust: i32 = 3;
+    let apply = [=, &adjust](value: i32) -> i32 => value + base + adjust;
+    let before: i32 = apply(5);
+    adjust = 4;
+    let after: i32 = apply(5);
+    return before * 10 + after;
+}
+
+fn reference_default_with_value_override() -> i32 {
+    var base: i32 = 7;
+    let copied: i32 = 11;
+    let apply = [&, copied](value: i32) -> i32 => value + base + copied;
+    let before: i32 = apply(1);
+    base = 8;
+    let after: i32 = apply(1);
+    return before * 10 + after;
+}
+
+fn main() -> i32 {
+    return value_default(5)
+        + reference_default()
+        + value_default_with_reference_override()
+        + reference_default_with_value_override()
+        - 467;
+}

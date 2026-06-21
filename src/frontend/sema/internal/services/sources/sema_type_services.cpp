@@ -1222,6 +1222,10 @@ bool SemanticTypeValidator::is_valid_storage_type(const TypeHandle type) const
             pending.push_back(info.slice_element);
             continue;
         }
+        if (info.kind == TypeKind::range) {
+            pending.push_back(info.range_element);
+            continue;
+        }
         if (info.kind == TypeKind::reference) {
             if (is_valid(info.pointee)
                 && this->core_.state_.checked.types.get(info.pointee).kind == TypeKind::trait_object) {
@@ -1482,6 +1486,34 @@ void SemanticAbiChecker::validate_type_layouts() const
             result.align = max_align;
             return result;
         }
+        if (info.kind == TypeKind::range) {
+            const LayoutResult element = cached_result(info.range_element);
+            if (!element.ok) {
+                return LayoutResult{SEMA_ABI_INVALID_SIZE, std::max(SEMA_ABI_MIN_ALIGNMENT, element.align), false};
+            }
+            base::u64 offset = SEMA_ABI_INVALID_SIZE;
+            for (base::usize field_index = 0; field_index < SEMA_RANGE_VALUE_FIELD_COUNT; ++field_index) {
+                base::u64 aligned_offset = SEMA_ABI_INVALID_SIZE;
+                if (!checked_align_forward(offset, element.align, aligned_offset)) {
+                    this->core_.report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    result.ok = false;
+                }
+                base::u64 next_offset = SEMA_ABI_INVALID_SIZE;
+                if (!checked_add_u64(aligned_offset, element.size, next_offset)) {
+                    this->core_.report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    result.ok = false;
+                }
+                offset = next_offset;
+            }
+            base::u64 size = SEMA_ABI_INVALID_SIZE;
+            if (!checked_align_forward(offset, element.align, size)) {
+                this->core_.report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                result.ok = false;
+            }
+            result.size = size;
+            result.align = element.align;
+            return result;
+        }
         if (info.kind == TypeKind::struct_) {
             const StructInfo* struct_info = this->core_.find_struct(type);
             if (struct_info == nullptr || struct_info->is_opaque) {
@@ -1597,6 +1629,10 @@ void SemanticAbiChecker::validate_type_layouts() const
         const TypeInfo& info = this->core_.state_.checked.types.get(type);
         if (info.kind == TypeKind::array) {
             push_dependency(stack, info.array_element, range);
+            return;
+        }
+        if (info.kind == TypeKind::range) {
+            push_dependency(stack, info.range_element, range);
             return;
         }
         if (info.kind == TypeKind::tuple) {
@@ -1768,6 +1804,15 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
                 }
                 return SemanticAnalyzerCore::TypeAbiLayout{align_forward(offset, max_align), max_align};
             }
+            case TypeKind::range: {
+                const SemanticAnalyzerCore::TypeAbiLayout element = cached(layouts, info.range_element);
+                base::u64 offset = SEMA_ABI_INVALID_SIZE;
+                for (base::usize field_index = 0; field_index < SEMA_RANGE_VALUE_FIELD_COUNT; ++field_index) {
+                    offset = align_forward(offset, element.align);
+                    offset = add_saturating(offset, element.size);
+                }
+                return SemanticAnalyzerCore::TypeAbiLayout{align_forward(offset, element.align), element.align};
+            }
             case TypeKind::enum_: {
                 const SemanticAnalyzerCore::TypeAbiLayout tag = cached(layouts, info.enum_underlying);
                 if (!is_valid(info.enum_payload_storage)) {
@@ -1834,6 +1879,9 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
         switch (info.kind) {
             case TypeKind::array:
                 push_dependency(stack, info.array_element, states, layouts);
+                break;
+            case TypeKind::range:
+                push_dependency(stack, info.range_element, states, layouts);
                 break;
             case TypeKind::tuple:
                 for (auto element = info.tuple_elements.rbegin(); element != info.tuple_elements.rend(); ++element) {

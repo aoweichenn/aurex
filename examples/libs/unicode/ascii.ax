@@ -78,7 +78,7 @@ pub const RBRACE: u8 = b'}';
 pub const TILDE: u8 = b'~';
 
 pub fn byte_at(text_value: str, index: usize) -> u8 {
-    let data: *const u8 = strptr(text_value);
+    let data: *const u8 = text_value.ptr;
     return unsafe { data[index] };
 }
 
@@ -136,9 +136,9 @@ pub fn hex_value(value: u8) -> usize {
         return decimal_value(value);
     }
     if UPPER_A <= value && value <= UPPER_F {
-        return cast<usize>(value - UPPER_A) + 10usize;
+        return ((value - UPPER_A) as usize) + 10usize;
     }
-    return cast<usize>(value - LOWER_A) + 10usize;
+    return ((value - LOWER_A) as usize) + 10usize;
 }
 
 pub fn is_name_start(value: u8) -> bool {
@@ -150,7 +150,7 @@ pub fn is_name_continue(value: u8) -> bool {
 }
 
 pub fn decimal_value(value: u8) -> usize {
-    return cast<usize>(value - DIGIT_0);
+    return ((value - DIGIT_0) as usize);
 }
 
 pub fn escaped_byte(value: u8) -> u8 {

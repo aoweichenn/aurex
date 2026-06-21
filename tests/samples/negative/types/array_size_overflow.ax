@@ -5,5 +5,5 @@ struct S {
 }
 
 fn main() -> i32 {
-  return cast<i32>(sizeof<S>);
+  return ((sizeof<S>()) as i32);
 }

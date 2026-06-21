@@ -113,10 +113,19 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
 {
     const syntax::Token& name = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_FOR_RANGE_VARIABLE));
     this->expect(TokenKind::kw_in, std::string(PARSER_EXPECT_IN_AFTER_LOOP_VARIABLE));
-    const syntax::Token& callee = this->expect_identifier_recovered(std::string(PARSER_EXPECT_RANGE_AFTER_IN));
-    if (callee.text() != PARSER_FOR_RANGE_CALLEE) {
-        this->report_at(callee, std::string(PARSER_M2_RANGE_FOR_ONLY_RANGE));
+    if (this->check(TokenKind::identifier) && this->peek().text() == PARSER_FOR_RANGE_CALLEE
+        && this->check_next(TokenKind::l_paren)) {
+        const syntax::Token& callee = this->advance();
+        return this->finish_for_range_call_stmt(begin, name, callee);
     }
+
+    const syntax::ExprId iterable = this->parse_expr(ExprContext::no_struct_literal);
+    return this->finish_for_iterable_stmt(begin, name, iterable);
+}
+
+syntax::StmtId ControlStmtParser::finish_for_range_call_stmt(
+    const syntax::Token& begin, const syntax::Token& name, const syntax::Token& callee)
+{
     std::vector<syntax::ExprId> args;
     const bool has_range_arguments = this->check(TokenKind::l_paren);
     this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_RANGE_CALL_START));
@@ -145,6 +154,20 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
             stmt.range_step = args[2];
         }
     }
+    stmt.body = body;
+    return this->session_.module.push_stmt(std::move(stmt));
+}
+
+syntax::StmtId ControlStmtParser::finish_for_iterable_stmt(
+    const syntax::Token& begin, const syntax::Token& name, const syntax::ExprId iterable)
+{
+    const syntax::StmtId body = this->parse_block();
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::for_range;
+    stmt.range = this->merge(begin.range, this->stmt_range_or(body, this->expr_range_or(iterable, begin.range)));
+    stmt.name = name.text();
+    stmt.range_iterable = iterable;
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));
 }

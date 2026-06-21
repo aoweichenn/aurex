@@ -1,43 +1,37 @@
-# 设计实现文档
+# 实现说明
 
 ## 模块加载
 
-`ModuleLoader` 把根文件和 import 文件合并为一个 `AstModule`。加载器记录正在加载和已经加载的文件，防止循环导入和重复合并。导入文件必须声明与 import 路径一致的 `module`。
+`ModuleLoader` 把根文件和 import 文件合并为一个 `AstModule`。导入文件必须声明与 import 路径一致的 `module`。查找路径只有导入者目录和显式 `-I`，没有标准库自动注入。
 
-查找路径只有导入者目录和显式 `-I`。标准库自动注入已删除。
+## 前端
 
-## 语义分析
+前端分成 lexer、parser、AST 和 sema：
 
-语义层当前负责：
+- lexer 生成 token、保留 source range，并识别当前关键字。
+- parser 使用递归下降和 recovery 生成 AST；语法规则不依赖空格或注释。
+- AST dump 用于测试和调试，必须稳定反映当前语法。
+- sema 负责名称、类型、泛型、trait/capability、borrow/resource、控制流和错误诊断。
 
-- 名称、模块、可见性和 re-export。
-- 类型解析、const 检查、layout 检查。
-- generic function/struct 实例化。
-- ADT-first enum、显式 C-like/repr enum，以及 pattern matching 与 exhaustiveness。
-- 普通值语义检查，以及数组/含数组类型不能作为函数 by-value 参数/返回、赋值目标或 enum payload 的限制。
-- `for`、`defer`、`break`、`continue` 的控制流和 lowering 前约束。
+诊断在创建时携带结构化 kind、category 和 code；message 只负责展示，不能作为语义判断依据。
 
-诊断在创建时直接携带结构化 kind、`DiagnosticCategory` 和
-`DiagnosticCode`。message 只负责面向用户的展示，不再参与语义分类；这样 CLI 文本、
-`--diagnostics=json` 和后续 LSP / diagnostics query 可以复用同一事件流。
+## 语义和 lowering
 
-M1 的 `noncopy` / `move` / use-after-move 语义已从 M2 当前实现删除。std 专用 ownership hardcode 也已移除。当前实现不维护语言级 copy/drop/move 状态；后续资源约束作为独立资源语义专题重新设计。
+语义阶段会记录 checked 类型、lambda 信息、泛型实例、函数签名、borrow summary、move/resource facts 和语句局部类型。IR lowering 从这些 checked facts 生成 Aurex IR。
 
-## M2.5 前端方向
+当前新增语法必须至少完成：
 
-M2.5 第一批 [Query Key 设计](m2.5-query-key-design.md) 已经落到默认增量缓存主路径：
-当前 typed identity 和 diagnostics 元数据已经固定为 query-safe 数据，并明确
-Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
-GenericInstanceKey、diagnostics query 和 red-green fingerprint 的边界。
-
-file parse、module graph、item signature、function body、generic instance 和
-diagnostics 已有第一批 query row/edge、replay 和 provider-skip profile 覆盖。
-lossless CST、局部增量解析和 IDE-native 入口必须建立在这条主线上，不保留第二套并行前端。
+- parser 接受/拒绝形状。
+- AST 保存并 dump 关键节点。
+- sema 验证类型和语义边界。
+- borrow/move/place/generic 扫描能看到新增表达式或语句字段。
+- IR lowering 生成可验证 IR。
+- positive/negative sample 覆盖运行或诊断。
 
 ## 后端
 
-AST 先 lowering 到 Aurex IR，再通过 pass pipeline 和 LLVM backend 生成 LLVM IR。native 输出由 clang 完成。executable 模式不再追加任何标准库 support source。
+Aurex IR 通过 pass pipeline 和 LLVM backend 生成 LLVM IR。native 输出由 clang 完成。executable 模式只编译当前 Aurex 程序生成的 LLVM IR，不自动追加 host support 源。
 
-## 测试实现
+## 测试
 
-测试 harness 会把可缓存的 compiler 调用直接走 C++ driver，避免每个用例都启动脚本/进程。native 输出仍需要实际调用 clang 和执行生成的二进制。
+测试覆盖 parser、sema、IR、integration sample、negative diagnostics 和 native execution。新增语言语法必须优先补样例和 focused integration 测试，再跑相关 gtest 和完整 suite。

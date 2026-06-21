@@ -139,14 +139,14 @@ def diagnostic_templates(index: int) -> list[str]:
         f"    let bad_payload_field_{suffix} = Payload.item;\n",
         f"    let bad_payload_arity_{suffix} = Payload.item(1, 2);\n",
         f"    let bad_addr_{suffix} = ptraddr(1);\n",
-        f"    let bad_from_{suffix} = ptrat[i32](true);\n",
-        f"    let bad_sizeof_void_{suffix}: usize = sizeof[void];\n",
-        f"    let bad_strptr_{suffix} = strptr(1);\n",
-        f"    let bad_strblen_{suffix} = strblen(1);\n",
+        f"    let bad_from_{suffix} = ptrat<i32>(true);\n",
+        f"    let bad_sizeof_void_{suffix}: usize = sizeof<void>();\n",
+        f"    let bad_str_ptr_field_{suffix} = 1.ptr;\n",
+        f"    let bad_str_len_field_{suffix} = 1.len;\n",
         f"    let bad_strfrom_{suffix} = strfromutf8(1);\n",
-        f"    let bad_strraw_data_{suffix} = strraw(1, cast[usize](1));\n",
+        f"    let bad_strraw_data_{suffix} = strraw(1, ((1) as usize));\n",
         f"    let bad_strraw_len_{suffix} = strraw(c\"bytes\", true);\n",
-        f"    let bad_generic_apply_{suffix} = id[i32];\n",
+        f"    let bad_generic_apply_{suffix} = id<i32>;\n",
         f"    let bad_array_unknown_{suffix} = [missing_name_{suffix}];\n",
         f"    let bad_array_storage_{suffix} = [touch()];\n",
         f"    let bad_if_void_{suffix} = if true {{ touch() }} else {{ touch() }};\n",
@@ -179,7 +179,7 @@ def make_mixed_diagnostic_stress_source(error_count: int) -> str:
         "fn takes(value: i32, pair: Pair) -> i32 {\n"
         "    return value;\n"
         "}\n\n",
-        "fn id[T](value: T) -> T {\n"
+        "fn id<T>(value: T) -> T {\n"
         "    return value;\n"
         "}\n\n",
         "fn main() -> i32 {\n",

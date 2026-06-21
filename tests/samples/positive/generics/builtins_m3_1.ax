@@ -5,7 +5,7 @@ fn layout_sum<T>(value: T) -> usize where T: Sized {
     if value_addr == 0usize {
         return 99usize;
     }
-    return sizeof<T> + alignof<T>;
+    return sizeof<T>() + alignof<T>();
 }
 
 fn pointer_ops<T>(value: &T) -> bool where T: Sized {
@@ -24,8 +24,16 @@ fn slice_ops<T>(values: []T) -> usize where T: Sized {
     return values.len;
 }
 
+fn mut_slice_ops<T>(values: []mut T) -> usize where T: Sized {
+    let data: *mut T = values.ptr;
+    if ptraddr(data) == 0usize {
+        return 99usize;
+    }
+    return values.len;
+}
+
 fn utf8_ops<T>(marker: T, bytes: []u8) -> usize where T: Sized {
-    if sizeof<T> == 0usize {
+    if sizeof<T>() == 0usize {
         return 99usize;
     }
     if ptraddr(&marker) == 0usize {
@@ -43,12 +51,12 @@ fn cast_inside_generic<T>(value: T, number: usize) -> i32 where T: Sized {
     if ptraddr(&value) == 0usize {
         return -1;
     }
-    return cast<i32>(number);
+    return ((number) as i32);
 }
 
 fn main() -> i32 {
     let value: i32 = 7;
-    let numbers: [3]i32 = [1, 2, 3];
+    var numbers: [3]i32 = [1, 2, 3];
     let bytes: [3]u8 = b"abc";
 
     if layout_sum<i32>(value) != 8usize {
@@ -59,6 +67,13 @@ fn main() -> i32 {
     }
     if slice_ops<i32>(numbers[:]) != 3usize {
         return 3;
+    }
+    if mut_slice_ops<i32>(numbers[:]) != 3usize {
+        return 6;
+    }
+    let view: []mut i32 = numbers[1:3];
+    if view.len != 2usize || ptraddr(view.ptr) != ptraddr(&numbers[1]) {
+        return 7;
     }
     if utf8_ops<i32>(value, bytes[:]) != 3usize {
         return 4;

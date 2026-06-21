@@ -52,7 +52,6 @@ private:
     [[nodiscard]] ParsedVisibility parse_visibility() const;
     void parse_use_alias(syntax::UseDecl& use);
     [[nodiscard]] std::vector<syntax::GenericParamDecl> parse_optional_generic_params();
-    void reject_legacy_bracket_generic_params() const;
     void parse_generic_params(std::vector<syntax::GenericParamDecl>& params);
     [[nodiscard]] std::optional<syntax::GenericParamDecl> parse_generic_param();
     [[nodiscard]] bool recover_generic_param_separator() const;

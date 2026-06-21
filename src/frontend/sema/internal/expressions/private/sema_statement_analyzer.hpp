@@ -1,8 +1,17 @@
 #pragma once
 
+#include <optional>
+
 #include <frontend/sema/internal/core/private/sema_core.hpp>
 
 namespace aurex::sema {
+
+struct ForInProtocolMethodResolution {
+    ForInProtocolCallPlan call;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    bool found = false;
+};
 
 class SemanticAnalyzerCore::StatementAnalyzer final {
 public:
@@ -27,6 +36,20 @@ public:
         const syntax::StmtId block, std::vector<StatementAnalysisAction>& stack);
     void analyze_for_condition(const syntax::StmtId stmt_id);
     TypeHandle analyze_for_range_bounds(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
+    [[nodiscard]] std::optional<ForInIterationPlan> analyze_for_in_protocol_plan(
+        syntax::StmtId stmt_id, const syntax::StmtNode& stmt, TypeHandle iterable_type, bool& reported_failure);
+    [[nodiscard]] std::optional<ForInIterationPlan> analyze_direct_iterator_protocol_plan(
+        syntax::StmtId stmt_id, const syntax::StmtNode& stmt, TypeHandle iterable_type, bool report_failure);
+    [[nodiscard]] std::optional<ForInIterationPlan> analyze_iter_method_protocol_plan(
+        syntax::StmtId stmt_id, const syntax::StmtNode& stmt, TypeHandle iterable_type, bool& reported_failure);
+    [[nodiscard]] ForInProtocolMethodResolution resolve_for_in_protocol_method(
+        TypeHandle receiver_type, std::string_view method_name, const base::SourceRange& range, bool report_failure);
+    [[nodiscard]] bool type_has_for_in_protocol_signal(TypeHandle receiver_type, const base::SourceRange& range);
+    [[nodiscard]] bool for_in_receiver_matches(const ForInProtocolCallPlan& call, TypeHandle receiver_type,
+        syntax::ExprId receiver_expr, const base::SourceRange& range, bool synthetic_mutable_place,
+        bool report_failure);
+    [[nodiscard]] bool complete_iterator_protocol_plan(
+        ForInIterationPlan& plan, TypeHandle iterator_type, const base::SourceRange& range, bool report_failure);
     void define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type);
     void define_local_pattern(
         const syntax::PatternId pattern_id, const TypeHandle type, const bool is_mutable, const bool allow_refutable);

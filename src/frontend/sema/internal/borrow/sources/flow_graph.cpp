@@ -525,6 +525,7 @@ private:
                 this->push_return_scan_expr(pending_exprs, stmt.range_start);
                 this->push_return_scan_expr(pending_exprs, stmt.range_end);
                 this->push_return_scan_expr(pending_exprs, stmt.range_step);
+                this->push_return_scan_expr(pending_exprs, stmt.range_iterable);
                 this->push_return_scan_stmt(pending_stmts, stmt.body);
                 break;
             case syntax::StmtKind::while_:
@@ -1296,6 +1297,7 @@ private:
                 BodyFlowExpressionStep{stmt.range_start, BodyFlowExprContext::value},
                 BodyFlowExpressionStep{stmt.range_end, BodyFlowExprContext::value},
                 BodyFlowExpressionStep{stmt.range_step, BodyFlowExprContext::value},
+                BodyFlowExpressionStep{stmt.range_iterable, BodyFlowExprContext::value},
             },
             entry, range_done, return_continuation);
         this->add_point_action(
@@ -1957,6 +1959,9 @@ private:
                     return true;
                 case TypeKind::array:
                     pending.push_back(info.array_element);
+                    break;
+                case TypeKind::range:
+                    pending.push_back(info.range_element);
                     break;
                 case TypeKind::tuple:
                     pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());

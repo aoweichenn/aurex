@@ -1,0 +1,9 @@
+module generic_function_const_param_type_arg;
+
+fn id<T, const N: usize>(value: T) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    return id<i32, bool>(1);
+}

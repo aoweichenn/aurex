@@ -61,6 +61,7 @@ enum class TypeKind {
     reference,
     array,
     slice,
+    range,
     tuple,
     function,
     struct_,
@@ -125,6 +126,7 @@ struct TypeInfo {
     TypeHandle array_element = INVALID_TYPE_HANDLE;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeHandle slice_element = INVALID_TYPE_HANDLE;
+    TypeHandle range_element = INVALID_TYPE_HANDLE;
     TypeHandleList tuple_elements;
     FunctionCallConv function_call_conv = FunctionCallConv::aurex;
     bool function_is_unsafe = false;
@@ -174,6 +176,7 @@ public:
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
     [[nodiscard]] TypeHandle array_with_length(ArrayLengthInfo length, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
+    [[nodiscard]] TypeHandle range(TypeHandle element);
     [[nodiscard]] TypeHandle tuple(std::span<const TypeHandle> elements);
     [[nodiscard]] TypeHandle tuple(const std::vector<TypeHandle>& elements);
     [[nodiscard]] TypeHandle tuple(std::initializer_list<TypeHandle> elements);
@@ -225,6 +228,7 @@ public:
     [[nodiscard]] bool is_reference(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_slice(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_range(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_tuple(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_function(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_trait_object(TypeHandle type) const noexcept;
@@ -274,6 +278,15 @@ private:
         [[nodiscard]] bool operator==(const SliceKey& other) const noexcept
         {
             return element == other.element && mutability == other.mutability;
+        }
+    };
+
+    struct RangeKey {
+        base::u32 element = TypeHandle::INVALID_VALUE;
+
+        [[nodiscard]] bool operator==(const RangeKey& other) const noexcept
+        {
+            return element == other.element;
         }
     };
 
@@ -336,6 +349,10 @@ private:
         [[nodiscard]] std::size_t operator()(const SliceKey& key) const noexcept;
     };
 
+    struct RangeKeyHash {
+        [[nodiscard]] std::size_t operator()(const RangeKey& key) const noexcept;
+    };
+
     struct FunctionKeyHash {
         [[nodiscard]] std::size_t operator()(const FunctionKey& key) const noexcept;
     };
@@ -376,6 +393,7 @@ private:
     SemaMap<ReferenceKey, TypeHandle, ReferenceKeyHash> reference_types_;
     SemaMap<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
     SemaMap<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
+    SemaMap<RangeKey, TypeHandle, RangeKeyHash> range_types_;
     SemaMap<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
     SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
     IdentifierInterner texts_;

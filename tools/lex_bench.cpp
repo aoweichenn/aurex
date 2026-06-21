@@ -53,7 +53,7 @@ constexpr std::string_view identifier_benchmark_snippet =
     "module import as pub priv extern export c fn struct opaque enum const type impl match "
     "let var if else for while break continue defer return true false null "
     "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
-    "ptrcast bitcast sizeof alignof ptraddr ptrat strptr strblen strraw\n";
+    "ptrcast bitcast sizeof alignof ptraddr ptrat strvalid strfromutf8 strraw\n";
 
 constexpr std::string_view number_benchmark_snippet = "0 1 12 123 1_000 123_456_789 0x2A 0XFF 0xCAFE_BABE "
                                                       "0b1010 0B1111_0000 1.0 12.34 1e10 1e+10 1.25e-2\n";

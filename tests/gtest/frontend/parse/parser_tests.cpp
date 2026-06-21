@@ -1,6 +1,7 @@
 #include <aurex/frontend/lex/lexer.hpp>
 #include <aurex/frontend/parse/parser.hpp>
 #include <aurex/frontend/parse/parser_item_part.hpp>
+#include <aurex/frontend/parse/parser_messages.hpp>
 #include <aurex/frontend/parse/parser_part_ranges.hpp>
 #include <aurex/frontend/parse/recovery.hpp>
 #include <aurex/frontend/parse/token_cursor.hpp>
@@ -182,9 +183,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         syntax::Token{syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 6U, 6U}, ""},
     };
     parse::TokenCursor generic_open_cursor{std::span<const syntax::Token>{generic_open_tokens}};
-    EXPECT_TRUE(generic_open_cursor.match_generic_left_angle());
-    EXPECT_EQ(generic_open_cursor.previous().kind, syntax::TokenKind::less);
-    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::equal));
+    EXPECT_FALSE(generic_open_cursor.check_generic_left_angle());
+    EXPECT_FALSE(generic_open_cursor.match_generic_left_angle());
+    EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::less_equal));
     EXPECT_TRUE(generic_open_cursor.match(syntax::TokenKind::identifier));
 
     constexpr std::string_view source =
@@ -248,7 +249,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let p: *mut i32 = unsafe { ptrat<*mut i32>(ptraddr(argv)) };\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
-        "  let size: usize = sizeof<*mut i32>;\n"
+        "  let size: usize = sizeof<*mut i32>();\n"
         "  let data: *const u8 = s.ptr;\n"
         "  let len: usize = s.len;\n"
         "  let raw: str = unsafe { strraw(data, len) };\n"
@@ -261,7 +262,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
         "  let reps: [2]u8 = [b'a'; 2];\n"
-        "  let a: i32 = cast<i32>(argc) + unsafe { bitcast<i32>(argc) } + alignof<*mut i32>;\n"
+        "  let a: i32 = ((argc) as i32) + unsafe { bitcast<i32>(argc) } + alignof<*mut i32>();\n"
         "  let q: *mut i32 = unsafe { ptrcast<*mut i32>(p) };\n"
         "  let make_text: UnsafeText = unchecked_string;\n"
         "  let from_fn_ptr: str = unsafe { make_text(data, len) };\n"
@@ -294,7 +295,6 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
             "kw_null",
             "kw_ptrcast",
             "kw_bitcast",
-            "kw_alignof",
             "kw_ptraddr",
             "kw_ptrat",
             "ellipsis",
@@ -359,7 +359,7 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
         "  let raw: str = unsafe { strraw(\"abc\".ptr, \"abc\".len) };\n"
         "  let slice = values[0:2];\n"
         "  let idx = values[1];\n"
-        "  let computed = -input + callee(pair.left, idx) * cast<i32>(sizeof<*const i32>);\n"
+        "  let computed = -input + callee(pair.left, idx) * ((sizeof<*const i32>()) as i32);\n"
         "  return if flag { computed } else { pair.right };\n"
         "}\n";
 
@@ -446,6 +446,7 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes)
 TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
 {
     constexpr std::string_view source = "module parser.lambda_literals;\n"
+                                        "fn id<T>(value: T) -> T where T: Sized { return value; }\n"
                                         "fn main() -> i32 {\n"
                                         "  let inc: fn(i32) -> i32 = [](value: i32) -> i32 => value + 1;\n"
                                         "  let add_two: fn(i32) -> i32 = [](value: i32) -> i32 {\n"
@@ -459,6 +460,13 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
                                         "  let by_value = [base](value: i32) -> i32 => value + base;\n"
                                         "  let by_ref = [&base](value: i32) -> i32 => value + base;\n"
                                         "  let by_mut_ref = [&mut base](value: i32) -> i32 => value + base;\n"
+                                        "  let default_value = [=](value: i32) -> i32 => value + base;\n"
+                                        "  let default_ref = [&](value: i32) -> i32 => value + base;\n"
+                                        "  let mixed_value = [=, &base](value: i32) -> i32 => value + base;\n"
+                                        "  let mixed_ref = [&, base](value: i32) -> i32 => value + base;\n"
+                                        "  let init_capture = [captured = add(1, 2)](value: i32) -> i32 => value + captured;\n"
+                                        "  let generic_init_capture = [captured = id<i32>(3)](value: i32) -> i32 => value + captured;\n"
+                                        "  let move_capture = [move owned](value: i32) -> i32 => value + owned;\n"
                                         "  return inc(40) + add_two(0) + one() + add(1, 2) - 46;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -472,6 +480,12 @@ TEST(CoreUnit, ParserAcceptsLambdaFunctionLiterals)
             "lambda [base](value: i32) -> i32",
             "lambda [&base](value: i32) -> i32",
             "lambda [&mut base](value: i32) -> i32",
+            "lambda [=](value: i32) -> i32",
+            "lambda [&](value: i32) -> i32",
+            "lambda [=, &base](value: i32) -> i32",
+            "lambda [&, base](value: i32) -> i32",
+            "lambda [captured = expr#",
+            "lambda [move owned](value: i32) -> i32",
             "stmt #",
             "return",
             "binary",
@@ -2476,7 +2490,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
     constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID{19};
     constexpr std::string_view source = "module parser.builtin_arg_recovery;\n"
                                         "fn recovered(argc: i32) -> i32 {\n"
-                                        "  let value = cast<i32 @>(argc);\n"
+                                        "  let value = sizeof<i32, u32>();\n"
                                         "  let broken = ;\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -2496,7 +2510,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected '>' after cast type");
+    expect_contains(messages, "layout query expects exactly one type argument");
     expect_contains(messages, "expected expression");
 }
 
@@ -2897,7 +2911,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
                                         "}\n"
                                         "fn opened @(a: i32) -> i32 { return a; }\n"
                                         "fn recovered(value: i32) -> i32 {\n"
-                                        "  let casted = cast @<i32>(value);\n"
+                                        "  let casted = value as @;\n"
                                         "  let broken_builtin = ptrat @<*mut i32>(casted);\n"
                                         "  let broken = ;\n"
                                         "  return casted;\n"
@@ -2920,7 +2934,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
     }
     expect_contains(messages, "expected '(' after function decorator");
     expect_contains(messages, "expected '(' after function name");
-    expect_contains(messages, "expected '<' after cast builtin");
+    expect_contains(messages, "expected type");
     expect_contains(messages, "expected '<' after ptrat");
     expect_contains(messages, "expected expression");
 }
@@ -3347,6 +3361,7 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
     constexpr std::string_view source = "module parser.for_range;\n"
                                         "fn main(limit: i32) -> i32 {\n"
                                         "  var total: i32 = 0;\n"
+                                        "  let values: [3]i32 = [1, 2, 3];\n"
                                         "  for i in range(limit) {\n"
                                         "    total += i;\n"
                                         "  }\n"
@@ -3356,6 +3371,12 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
                                         "  for k in range(1, limit, 2) {\n"
                                         "    total += k;\n"
                                         "  }\n"
+                                        "  for value in values {\n"
+                                        "    total += value;\n"
+                                        "  }\n"
+                                        "  for value in values[:] {\n"
+                                        "    total += value;\n"
+                                        "  }\n"
                                         "  return total;\n"
                                         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -3364,31 +3385,52 @@ TEST(CoreUnit, ParserParsesForRangeStatements)
     ASSERT_NE(main, nullptr);
     ASSERT_TRUE(syntax::is_valid(main->body));
     const syntax::StmtNode& body = module.stmts[main->body.value];
-    ASSERT_GE(body.statements.size(), 4U);
+    ASSERT_GE(body.statements.size(), 7U);
 
-    const syntax::StmtNode& end_loop = module.stmts[body.statements[1].value];
+    const syntax::StmtNode& end_loop = module.stmts[body.statements[2].value];
     ASSERT_EQ(end_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(end_loop.name, "i");
     EXPECT_FALSE(syntax::is_valid(end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(end_loop.range_end));
     EXPECT_FALSE(syntax::is_valid(end_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(end_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(end_loop.body));
 
-    const syntax::StmtNode& start_end_loop = module.stmts[body.statements[2].value];
+    const syntax::StmtNode& start_end_loop = module.stmts[body.statements[3].value];
     ASSERT_EQ(start_end_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(start_end_loop.name, "j");
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_end));
     EXPECT_FALSE(syntax::is_valid(start_end_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(start_end_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.body));
 
-    const syntax::StmtNode& stepped_loop = module.stmts[body.statements[3].value];
+    const syntax::StmtNode& stepped_loop = module.stmts[body.statements[4].value];
     ASSERT_EQ(stepped_loop.kind, syntax::StmtKind::for_range);
     EXPECT_EQ(stepped_loop.name, "k");
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_end));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.range_step));
+    EXPECT_FALSE(syntax::is_valid(stepped_loop.range_iterable));
     EXPECT_TRUE(syntax::is_valid(stepped_loop.body));
+
+    const syntax::StmtNode& array_loop = module.stmts[body.statements[5].value];
+    ASSERT_EQ(array_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(array_loop.name, "value");
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_start));
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(array_loop.range_step));
+    EXPECT_TRUE(syntax::is_valid(array_loop.range_iterable));
+    EXPECT_TRUE(syntax::is_valid(array_loop.body));
+
+    const syntax::StmtNode& slice_loop = module.stmts[body.statements[6].value];
+    ASSERT_EQ(slice_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(slice_loop.name, "value");
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_start));
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(slice_loop.range_step));
+    EXPECT_TRUE(syntax::is_valid(slice_loop.range_iterable));
+    EXPECT_TRUE(syntax::is_valid(slice_loop.body));
 }
 
 TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
@@ -3400,13 +3442,6 @@ TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
                        "  return 0;\n"
                        "}\n",
         "expected ',' or ')' after range argument");
-    expect_parse_error("module parser.for_range_missing_args;\n"
-                       "fn main() -> i32 {\n"
-                       "  for i in range {\n"
-                       "  }\n"
-                       "  return 0;\n"
-                       "}\n",
-        "expected '(' after range");
     expect_parse_error("module parser.for_range_empty_args;\n"
                        "fn main() -> i32 {\n"
                        "  for i in range() {\n"
@@ -3570,6 +3605,13 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
     expect_parse_error("module parser.bad_type;\n"
                        "fn f(value: ) -> i32 { return 0; }\n",
         "expected type");
+    expect_parse_error("module parser.bad_move_capture;\n"
+                       "fn main() -> i32 {\n"
+                       "  let value: i32 = 1;\n"
+                       "  let run = [move value = value + 1]() -> i32 => value;\n"
+                       "  return run();\n"
+                       "}\n",
+        "move capture initializer must be written as 'name = move expr' or 'move name'");
     expect_parse_error("module parser.bad_import;\n"
                        "import c.;\n",
         "expected identifier after '.'");
@@ -3631,11 +3673,8 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_true,
             TokenKind::kw_false,
             TokenKind::kw_null,
-            TokenKind::kw_cast,
             TokenKind::kw_ptrcast,
             TokenKind::kw_bitcast,
-            TokenKind::kw_sizeof,
-            TokenKind::kw_alignof,
             TokenKind::kw_ptraddr,
             TokenKind::kw_ptrat,
             TokenKind::kw_strvalid,
@@ -3927,7 +3966,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
                                         "  let text: str = \"hello\";\n"
                                         "  let data: *const u8 = text.ptr;\n"
                                         "  let len: usize = text.len;\n"
-                                        "  let broken_cast: i32 = cast<i32>(1 @);\n"
+                                        "  let broken_size: usize = sizeof<i32>(1);\n"
                                         "  let broken_str: str = strraw(data len);\n"
                                         "  return 0;\n"
                                         "}\n";
@@ -3947,7 +3986,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
         messages += diagnostic.message;
         messages.push_back('\n');
     }
-    expect_contains(messages, "expected ')' after cast expression");
+    expect_contains(messages, "layout query expects empty parentheses");
     expect_contains(messages, "expected ',' after strraw data");
 }
 
@@ -4484,23 +4523,52 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists)
         "expected ',' or '}' after match arm");
 }
 
-TEST(CoreUnit, ParserRejectsLegacyBracketGenericSyntax)
+TEST(CoreUnit, ParserKeepsBracketSyntaxOutOfGenerics)
 {
-    constexpr std::string_view message =
-        "generic parameters and type arguments use '<...>'; '[' and ']' are reserved";
-    expect_parse_error("module parser.legacy_bracket_generic_params;\n"
-                       "fn id[T](x: T) -> T { return x; }\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_type_args;\n"
+    constexpr std::string_view legacy_generic = parse::PARSER_LEGACY_BRACKET_GENERIC;
+    expect_parse_error("module parser.bracket_generic_params_fn;\n"
+                       "fn id" "[T](x: T) -> T { return x; }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_generic_params_struct;\n"
+                       "struct Box[T] { value: T; }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_generic_params_enum;\n"
+                       "enum Maybe[T] { some(T), none }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_generic_params_trait;\n"
+                       "trait Reader[T] { fn read(self: &T) -> i32; }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_generic_params_impl;\n"
+                       "struct Box<T> { value: T; }\n"
+                       "impl[T] Box<T> { fn get(self: &Box<T>) -> T { return self.value; } }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_type_args;\n"
                        "struct Pair<A, B> { first: A; second: B; }\n"
                        "type Bad = Pair[i32, bool];\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_dyn_trait_args;\n"
+        legacy_generic);
+    expect_parse_error("module parser.bracket_type_args_in_decl;\n"
+                       "struct Box<T> { value: T; }\n"
+                       "fn main(value: Box[i32]) -> i32 { return 0; }\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_dyn_trait_args;\n"
                        "type Bad = &dyn Draw[i32];\n",
-        message);
-    expect_parse_error("module parser.legacy_bracket_associated_trait_args;\n"
+        legacy_generic);
+    expect_parse_error("module parser.bracket_associated_trait_args;\n"
                        "type Bad = &dyn Iterator[Item = i32];\n",
-        message);
+        legacy_generic);
+    expect_parse_error("module parser.bracket_enum_case_pattern;\n"
+                       "enum Maybe<T> { some(T), none }\n"
+                       "fn main(value: Maybe<i32>) -> i32 {\n"
+                       "  return match value { Maybe[i32].some(x) => x, Maybe<i32>.none => 0 };\n"
+                       "}\n",
+        legacy_generic);
+    expect_parse_error("module parser.bracket_qualified_enum_case_pattern;\n"
+                       "enum Maybe<T> { some(T), none }\n"
+                       "fn main(value: Maybe<i32>) -> i32 {\n"
+                       "  return match value { parser.bracket_qualified_enum_case_pattern.Maybe[i32].some(x) => x, "
+                       "Maybe<i32>.none => 0 };\n"
+                       "}\n",
+        legacy_generic);
 }
 
 TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
@@ -4594,7 +4662,7 @@ TEST(CoreUnit, ParserRecoversMalformedAssociatedTypeConstraints)
                             "}\n",
         "expected '=' in associated type constraint");
     expect_parse_diagnostic("module parser.bad_where_associated_name;\n"
-                            "fn recovered<T>(value: T) -> T where T: Iterator<= i32> {\n"
+                            "fn recovered<T>(value: T) -> T where T: Iterator< = i32> {\n"
                             "  return value;\n"
                             "}\n",
         "expected associated type constraint name");

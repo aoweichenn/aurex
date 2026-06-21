@@ -2,7 +2,7 @@
 
 日期：2026-06-13
 状态：语法修正优化第一批落地设计记录
-关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P0 `[]` 过载和 P0 大小写启发式影响 parsing
+关联问题：泛型 `[]` 过载和大小写启发式影响 parsing
 
 本文固定 Aurex 泛型语法的第一项修正：泛型参数、泛型实参、associated type equality、type-operand builtin 和泛型表达式调用统一使用 C++ 风格的 `<...>` 表面。
 
@@ -50,33 +50,30 @@ let xs: Vec<Box<i32>> = make_vec<Box<i32>>();
 let y: Result<Vec<i32>, Error> = parse(input);
 ```
 
-旧 `[]` 泛型写法不保留兼容入口。第一批修改直接删除 `[]` 的泛型职责，下面这些写法只作为 legacy syntax 诊断输入：
+`[]` 不属于 Aurex 泛型语法。bracket 形式只保留数组、slice、index 相关语义；parser 不提供 bracket 泛型兼容分支，也不把它们恢复成泛型 AST。
 
 ```aurex
-Box[T]
-fn f[T](x: T) -> T
-Source[Item = i32]
-cast[i32](x)
-sizeof[*mut Pair]
+let item = values[index];
+let view = values[start:end];
 ```
 
-当前唯一合法写法：
+当前泛型唯一合法写法：
 
 ```aurex
 Box<T>
 fn f<T>(x: T) -> T
 Source<Item = i32>
-cast<i32>(x)
-sizeof<*mut Pair>
+((x) as i32)
+sizeof<*mut Pair>()
 ```
 
-`sizeof<T>` / `alignof<T>` 当前保持 builtin type operand 形态，不追加 `()`；`cast<T>(x)`、`ptrat<T>(addr)`、`ptrcast<T>(p)`、`bitcast<T>(x)` 是带 value argument 的 builtin call。后续若 builtin 降级为 intrinsic namespace，可自然变成：
+`sizeof<T>()` / `alignof<T>()` 当前使用普通泛型调用外形，必须写空参数列表；`x as T` 是表达式 cast；`ptrat<T>(addr)`、`ptrcast<T>(p)`、`bitcast<T>(x)` 是带 value argument 的 builtin call。
 
 ```aurex
-intrinsic.sizeof<*mut Pair>()
-intrinsic.alignof<Pair>()
-intrinsic.cast<i32>(x)
-intrinsic.ptr_at<*mut Pair>(addr)
+sizeof<*mut Pair>()
+alignof<Pair>()
+value as i32
+ptrat<*mut Pair>(addr)
 ```
 
 ## 不采用的部分
@@ -284,7 +281,7 @@ Vec<Box<i32> >
 
 ### 规则 7：const generic 第一批只支持 atom
 
-第一批 const generic 保持当前 M16 check-only 子集：const argument 只接受 integer / bool / char scalar literal，或当前 generic context 中同类型 const parameter name。
+第一批 const generic 保持当前 check-only 子集：const argument 只接受 integer / bool / char scalar literal，或当前 generic context 中同类型 const parameter name。
 
 ```aurex
 struct Array<T, const N: usize> {
@@ -334,9 +331,9 @@ GenericContinuation  = "(" | "{" | "."
 
 ## 第一批落地策略
 
-### 直接切换，不保留双语法
+### 当前语法只定义 `<...>`
 
-本批不做“新旧两套语法同时可用”的中间态。parser 只接受：
+parser 只接受：
 
 ```aurex
 Box<T>
@@ -344,14 +341,6 @@ fn f<T>(...)
 impl<T> Box<T> { ... }
 trait Source<T> { ... }
 foo<T>(bar)
-```
-
-旧 `[]` 泛型写法只进入 focused legacy diagnostic：
-
-```text
-generic arguments should use '<...>'; replace Box[T] with Box<T>
-generic parameters should use '<...>'; replace fn f[T] with fn f<T>
-associated type constraints should use '<...>'; replace Source[Item = i32] with Source<Item = i32>
 ```
 
 `foo[bar]` 只解析为 index/slice。泛型函数调用只能写：
@@ -374,9 +363,9 @@ lexer 不需要为泛型提供空格敏感信息。trivia 仍应保留给 format
 
 需要新增或调整：
 
-- generic parameter list parser：从 `[` / `]` 切换到 `<` / generic right-angle close。
-- named type generic args parser：从 `[` / `]` 切换到 `<` / generic right-angle close。
-- dyn trait associated type constraints：从 `dyn Trait[Item = T]` 迁移到 `dyn Trait<Item = T>`。
+- generic parameter list parser：只接受 `<` / generic right-angle close。
+- named type generic args parser：只接受 `<` / generic right-angle close。
+- dyn trait associated type constraints：只接受 `dyn Trait<Item = T>`。
 - expression postfix parser：新增 angle generic suffix；删除 `[]` generic apply 分类。
 - expression postfix parser：对 `ExprPath <` 做可回滚的 generic suffix 试探解析；试探成功只取决于 generic args 是否闭合，以及后续 token 是否为 `(` / `{` / `.`。
 - expression postfix parser：不得用 whitespace、newline、comment 或 identifier 首字母大小写参与 `<...>` 判定。
@@ -387,7 +376,7 @@ lexer 不需要为泛型提供空格敏感信息。trivia 仍应保留给 format
 
 AST 里的 `GenericParamDecl`、`GenericArgDecl`、`TypeNode::generic_args`、`GenericApplyExprPayload` 等语义结构不需要改模型，只需要更新 source range 和 parser 构造路径。
 
-Sema / IR 不应依赖旧 delimiter。若有诊断文本、dump golden 或 syntax fixture，需同步更新。
+Sema / IR 不应依赖 delimiter 文本。若有诊断文本、dump golden 或 syntax fixture，需同步更新。
 
 ### Docs / Samples / Tests
 
@@ -395,7 +384,7 @@ Sema / IR 不应依赖旧 delimiter。若有诊断文本、dump golden 或 synta
 
 - `docs/zh/language-manual.md`
 - `docs/zh/language-feature-inventory.md`
-- `docs/zh/m27c-syntax-ergonomics-review.md`
+- 当前语法修正优化目录
 - `tests/samples/**`
 - `tests/gtest/frontend/**`
 - `examples/**`
@@ -469,13 +458,14 @@ let b: Array<i32, 4> = value;
 let c: Array<i32, (N >> 1)> = value; // future, not first batch
 ```
 
-旧语法诊断：
+bracket 形式不是泛型：
 
 ```aurex
-struct Box[T] { value: T; }
-fn id[T](x: T) -> T { return x; }
-let x: Box[i32] = value;
+let item = values[index];
+let view = values[start:end];
 ```
+
+泛型声明、类型实参和表达式泛型调用都必须使用 `<...>`。
 
 ## 成功标准
 

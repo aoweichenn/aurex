@@ -62,6 +62,60 @@ std::string_view owned_use_mode_name(const OwnedUseMode mode) noexcept
     return "<invalid>";
 }
 
+std::string_view for_in_iteration_kind_name(const ForInIterationKind kind) noexcept
+{
+    switch (kind) {
+        case ForInIterationKind::none:
+            return "none";
+        case ForInIterationKind::counted_range:
+            return "counted_range";
+        case ForInIterationKind::range_value:
+            return "range_value";
+        case ForInIterationKind::array_value:
+            return "array_value";
+        case ForInIterationKind::slice_value:
+            return "slice_value";
+        case ForInIterationKind::str_bytes:
+            return "str_bytes";
+        case ForInIterationKind::protocol_iterator:
+            return "protocol_iterator";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_item_mode_name(const ForInItemMode mode) noexcept
+{
+    switch (mode) {
+        case ForInItemMode::immutable_value_copy:
+            return "immutable_value_copy";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_protocol_source_kind_name(const ForInProtocolSourceKind kind) noexcept
+{
+    switch (kind) {
+        case ForInProtocolSourceKind::direct_iterator:
+            return "direct_iterator";
+        case ForInProtocolSourceKind::iter_method:
+            return "iter_method";
+    }
+    return "<invalid>";
+}
+
+std::string_view for_in_protocol_call_kind_name(const ForInProtocolCallKind kind) noexcept
+{
+    switch (kind) {
+        case ForInProtocolCallKind::none:
+            return "none";
+        case ForInProtocolCallKind::inherent_method:
+            return "inherent_method";
+        case ForInProtocolCallKind::trait_static_method:
+            return "trait_static_method";
+    }
+    return "<invalid>";
+}
+
 std::string_view receiver_access_kind_name(const ReceiverAccessKind kind) noexcept
 {
     switch (kind) {
@@ -268,7 +322,9 @@ GenericSideTables::GenericSideTables()
       sparse_expr_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_pattern_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_syntax_type_handles(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
-      sparse_stmt_local_types(make_sema_map<base::u32, TypeHandle>(*this->arena_))
+      sparse_stmt_local_types(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
+      range_value_plans(make_sema_map<base::u32, RangeValuePlan>(*this->arena_)),
+      for_in_iteration_plans(make_sema_map<base::u32, ForInIterationPlan>(*this->arena_))
 {
 }
 
@@ -394,6 +450,8 @@ void GenericSideTables::configure_local_dense(const GenericSideTableLocalLayoutV
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
+    this->range_value_plans.clear();
+    this->for_in_iteration_plans.clear();
     this->sparse_fallbacks = {};
 }
 
@@ -434,6 +492,8 @@ void GenericSideTables::configure_local_dense(const GenericSideTableLayout& shar
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
+    this->range_value_plans.clear();
+    this->for_in_iteration_plans.clear();
     this->sparse_fallbacks = {};
 }
 
@@ -497,6 +557,8 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept
     swap(this->pattern_case_name_ids, other.pattern_case_name_ids);
     this->sparse_syntax_type_handles.swap(other.sparse_syntax_type_handles);
     this->sparse_stmt_local_types.swap(other.sparse_stmt_local_types);
+    this->range_value_plans.swap(other.range_value_plans);
+    this->for_in_iteration_plans.swap(other.for_in_iteration_plans);
     swap(this->sparse_fallbacks, other.sparse_fallbacks);
     swap(this->arena_, other.arena_);
     swap(this->analysis_arena_, other.analysis_arena_);
@@ -537,6 +599,16 @@ void GenericSideTables::copy_from(const GenericSideTables& other)
     this->pattern_case_name_ids = other.pattern_case_name_ids;
     this->sparse_syntax_type_handles = other.sparse_syntax_type_handles;
     this->sparse_stmt_local_types = other.sparse_stmt_local_types;
+    this->range_value_plans.clear();
+    this->range_value_plans.reserve(other.range_value_plans.size());
+    for (const auto& entry : other.range_value_plans) {
+        this->range_value_plans.emplace(entry.first, entry.second);
+    }
+    this->for_in_iteration_plans.clear();
+    this->for_in_iteration_plans.reserve(other.for_in_iteration_plans.size());
+    for (const auto& entry : other.for_in_iteration_plans) {
+        this->for_in_iteration_plans.emplace(entry.first, entry.second);
+    }
     this->sparse_fallbacks = other.sparse_fallbacks;
 }
 
@@ -549,6 +621,8 @@ CheckedModule::CheckedModule()
       pattern_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       syntax_type_handles(make_sema_vector<TypeHandle>(*this->arena_)),
       stmt_local_types(make_sema_vector<TypeHandle>(*this->arena_)),
+      range_value_plans(make_sema_map<base::u32, RangeValuePlan>(*this->arena_)),
+      for_in_iteration_plans(make_sema_map<base::u32, ForInIterationPlan>(*this->arena_)),
       item_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       coercions(make_sema_vector<CoercionRecord>(*this->arena_)),
       lambdas(make_sema_vector<CheckedLambdaInfo>(*this->arena_)),
@@ -666,6 +740,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     swap(this->pattern_case_name_ids, other.pattern_case_name_ids);
     this->syntax_type_handles.swap(other.syntax_type_handles);
     this->stmt_local_types.swap(other.stmt_local_types);
+    this->range_value_plans.swap(other.range_value_plans);
+    this->for_in_iteration_plans.swap(other.for_in_iteration_plans);
     this->item_c_name_ids.swap(other.item_c_name_ids);
     this->coercions.swap(other.coercions);
     this->lambdas.swap(other.lambdas);
@@ -736,6 +812,16 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->pattern_case_name_ids = other.pattern_case_name_ids;
     this->syntax_type_handles.assign(other.syntax_type_handles.begin(), other.syntax_type_handles.end());
     this->stmt_local_types.assign(other.stmt_local_types.begin(), other.stmt_local_types.end());
+    this->range_value_plans.clear();
+    this->range_value_plans.reserve(other.range_value_plans.size());
+    for (const auto& entry : other.range_value_plans) {
+        this->range_value_plans.emplace(entry.first, this->clone_range_value_plan(entry.second));
+    }
+    this->for_in_iteration_plans.clear();
+    this->for_in_iteration_plans.reserve(other.for_in_iteration_plans.size());
+    for (const auto& entry : other.for_in_iteration_plans) {
+        this->for_in_iteration_plans.emplace(entry.first, this->clone_for_in_iteration_plan(entry.second));
+    }
     this->item_c_name_ids.assign(other.item_c_name_ids.begin(), other.item_c_name_ids.end());
     this->coercions.assign(other.coercions.begin(), other.coercions.end());
     this->lambdas.clear();
@@ -1387,6 +1473,9 @@ CheckedLambdaInfo CheckedModule::clone_lambda_info(const CheckedLambdaInfo& othe
             this->intern_text(capture.field_name),
             capture.field_name_id,
             capture.type,
+            capture.field_type,
+            capture.kind,
+            capture.initializer,
             capture.use_range,
             capture.declaration_range,
         });
@@ -1616,6 +1705,27 @@ TraitObligation CheckedModule::clone_trait_obligation(const TraitObligation& oth
 TraitEvidence CheckedModule::clone_trait_evidence(const TraitEvidence& other) const
 {
     return other;
+}
+
+RangeValuePlan CheckedModule::clone_range_value_plan(const RangeValuePlan& other) const
+{
+    return other;
+}
+
+ForInProtocolCallPlan CheckedModule::clone_for_in_protocol_call_plan(const ForInProtocolCallPlan& other)
+{
+    ForInProtocolCallPlan copy = other;
+    copy.method_name = this->intern_text(other.method_name);
+    return copy;
+}
+
+ForInIterationPlan CheckedModule::clone_for_in_iteration_plan(const ForInIterationPlan& other)
+{
+    ForInIterationPlan copy = other;
+    copy.iter_call = this->clone_for_in_protocol_call_plan(other.iter_call);
+    copy.has_next_call = this->clone_for_in_protocol_call_plan(other.has_next_call);
+    copy.next_call = this->clone_for_in_protocol_call_plan(other.next_call);
+    return copy;
 }
 
 TraitMethodCallBinding CheckedModule::clone_trait_method_call_binding(const TraitMethodCallBinding& other)
@@ -2939,6 +3049,17 @@ std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& i
     return display;
 }
 
+std::string_view pointer_mutability_dump_name(const PointerMutability mutability) noexcept
+{
+    switch (mutability) {
+        case PointerMutability::const_:
+            return "const";
+        case PointerMutability::mut:
+            return "mut";
+    }
+    return "<invalid>";
+}
+
 std::string dump_checked_module(const CheckedModule& checked)
 {
     std::ostringstream out;
@@ -2952,6 +3073,96 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << "    resource #" << index << " " << checked.types.display_name(type) << " "
             << resource_semantics_debug_string(summary)
             << " fingerprint=" << query::debug_string(resource_semantics_fingerprint(summary)) << "\n";
+    }
+    std::vector<const RangeValuePlan*> range_value_plans;
+    range_value_plans.reserve(checked.range_value_plans.size());
+    for (const auto& entry : checked.range_value_plans) {
+        range_value_plans.push_back(&entry.second);
+    }
+    std::sort(range_value_plans.begin(), range_value_plans.end(),
+        [](const RangeValuePlan* lhs, const RangeValuePlan* rhs) {
+            return lhs->expr.value < rhs->expr.value;
+        });
+    if (!range_value_plans.empty()) {
+        out << "  range_value_plans " << range_value_plans.size() << "\n";
+        for (const RangeValuePlan* const plan_ptr : range_value_plans) {
+            const RangeValuePlan& plan = *plan_ptr;
+            out << "    range_value #" << plan.expr.value
+                << " type=" << checked.types.display_name(plan.range_type)
+                << " element=" << checked.types.display_name(plan.element_type) << " exprs=(start=";
+            if (syntax::is_valid(plan.start_expr)) {
+                out << "#" << plan.start_expr.value;
+            } else {
+                out << "<implicit>";
+            }
+            out << ", end=";
+            if (syntax::is_valid(plan.end_expr)) {
+                out << "#" << plan.end_expr.value;
+            } else {
+                out << "<invalid>";
+            }
+            out << ", step=";
+            if (syntax::is_valid(plan.step_expr)) {
+                out << "#" << plan.step_expr.value;
+            } else {
+                out << "<implicit>";
+            }
+            out << ") default_start=" << (plan.default_start ? "true" : "false")
+                << " default_step=" << (plan.default_step ? "true" : "false") << "\n";
+        }
+    }
+    std::vector<const ForInIterationPlan*> for_in_plans;
+    for_in_plans.reserve(checked.for_in_iteration_plans.size());
+    for (const auto& entry : checked.for_in_iteration_plans) {
+        for_in_plans.push_back(&entry.second);
+    }
+    std::sort(for_in_plans.begin(), for_in_plans.end(),
+        [](const ForInIterationPlan* lhs, const ForInIterationPlan* rhs) {
+            return lhs->stmt.value < rhs->stmt.value;
+        });
+    if (!for_in_plans.empty()) {
+        out << "  for_in_iteration_plans " << for_in_plans.size() << "\n";
+        for (const ForInIterationPlan* const plan_ptr : for_in_plans) {
+            const ForInIterationPlan& plan = *plan_ptr;
+            out << "    for_in #" << plan.stmt.value << " " << for_in_iteration_kind_name(plan.kind)
+                << " item=" << checked.types.display_name(plan.item_type)
+                << " mode=" << for_in_item_mode_name(plan.item_mode);
+            if (syntax::is_valid(plan.iterable_expr)) {
+                out << " iterable_expr=#" << plan.iterable_expr.value
+                    << " iterable_type=" << checked.types.display_name(plan.iterable_type)
+                    << " access=" << pointer_mutability_dump_name(plan.element_access);
+                if (plan.kind == ForInIterationKind::protocol_iterator) {
+                    out << " iterator=" << checked.types.display_name(plan.iterator_type)
+                        << " source=" << for_in_protocol_source_kind_name(plan.protocol_source)
+                        << " iter_call=" << for_in_protocol_call_kind_name(plan.iter_call.kind)
+                        << " has_next_call=" << for_in_protocol_call_kind_name(plan.has_next_call.kind)
+                        << " next_call=" << for_in_protocol_call_kind_name(plan.next_call.kind);
+                }
+            } else {
+                out << " range_exprs=(start=";
+                if (syntax::is_valid(plan.start_expr)) {
+                    out << "#" << plan.start_expr.value;
+                } else {
+                    out << "<implicit>";
+                }
+                out << ", end=";
+                if (syntax::is_valid(plan.end_expr)) {
+                    out << "#" << plan.end_expr.value;
+                } else {
+                    out << "<invalid>";
+                }
+                out << ", step=";
+                if (syntax::is_valid(plan.step_expr)) {
+                    out << "#" << plan.step_expr.value;
+                } else {
+                    out << "<implicit>";
+                }
+                out << ")";
+            }
+            out << " eval_once=" << (plan.evaluates_source_once ? "true" : "false")
+                << " consumes=" << (plan.consumes_iterable ? "true" : "false")
+                << " copy_item=" << (plan.requires_copy_item ? "true" : "false") << "\n";
+        }
     }
     const bool show_parts = checked_has_non_primary_parts(checked);
 

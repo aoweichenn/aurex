@@ -21,6 +21,14 @@ void ensure_side_table_slot<TypeHandle>(SemaVector<TypeHandle>& table, const bas
     }
 }
 
+template <>
+void ensure_side_table_slot<OwnedUseMode>(SemaVector<OwnedUseMode>& table, const base::usize index)
+{
+    if (index >= table.size()) {
+        table.resize(index + 1, OwnedUseMode::none);
+    }
+}
+
 template <typename T>
 [[nodiscard]] bool record_local_dense_slot(SemaVector<T>& table, const base::usize index, const T value)
 {
@@ -51,27 +59,28 @@ SemanticSideTableReader::SemanticSideTableReader(const SemanticAnalyzerCore& cor
 {
 }
 
+const GenericSideTables* SemanticSideTableReader::current_side_tables() const noexcept
+{
+    return this->core_.state_.flow.current_side_tables.side_tables;
+}
+
 TypeHandle SemanticSideTableReader::cached_expr_intrinsic_type(const syntax::ExprId expr) const noexcept
 {
     if (!syntax::is_valid(expr)) {
         return INVALID_TYPE_HANDLE;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
         if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
-            && local_index < this->core_.state_.flow.current_side_tables.side_tables->expr_intrinsic_types.size()) {
-            return this->core_.state_.flow.current_side_tables.side_tables->expr_intrinsic_types[local_index];
+            && local_index < side_tables->expr_intrinsic_types.size()) {
+            return side_tables->expr_intrinsic_types[local_index];
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_intrinsic_types.find(expr.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_intrinsic_types.end()
-            ? INVALID_TYPE_HANDLE
-            : found->second;
+        const auto found = side_tables->sparse_expr_intrinsic_types.find(expr.value);
+        return found == side_tables->sparse_expr_intrinsic_types.end() ? INVALID_TYPE_HANDLE : found->second;
     }
-    const SemaTypeTable& expr_intrinsic_types = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_intrinsic_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_intrinsic_types;
+    const SemaTypeTable& expr_intrinsic_types =
+        side_tables == nullptr ? this->core_.state_.checked.expr_intrinsic_types : side_tables->expr_intrinsic_types;
     return expr.value < expr_intrinsic_types.size() ? expr_intrinsic_types[expr.value] : INVALID_TYPE_HANDLE;
 }
 
@@ -80,21 +89,17 @@ TypeHandle SemanticSideTableReader::cached_expr_type(const syntax::ExprId expr) 
     if (!syntax::is_valid(expr)) {
         return INVALID_TYPE_HANDLE;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-        if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
-            && local_index < this->core_.state_.flow.current_side_tables.side_tables->expr_types.size()) {
-            return this->core_.state_.flow.current_side_tables.side_tables->expr_types[local_index];
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
+        if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX && local_index < side_tables->expr_types.size()) {
+            return side_tables->expr_types[local_index];
         }
-        const auto found = this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_types.find(expr.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_types.end()
-            ? INVALID_TYPE_HANDLE
-            : found->second;
+        const auto found = side_tables->sparse_expr_types.find(expr.value);
+        return found == side_tables->sparse_expr_types.end() ? INVALID_TYPE_HANDLE : found->second;
     }
-    const SemaTypeTable& expr_types = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_types;
+    const SemaTypeTable& expr_types =
+        side_tables == nullptr ? this->core_.state_.checked.expr_types : side_tables->expr_types;
     return expr.value < expr_types.size() ? expr_types[expr.value] : INVALID_TYPE_HANDLE;
 }
 
@@ -103,22 +108,18 @@ TypeHandle SemanticSideTableReader::cached_expr_expected_type(const syntax::Expr
     if (!syntax::is_valid(expr)) {
         return INVALID_TYPE_HANDLE;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
         if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
-            && local_index < this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types.size()) {
-            return this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types[local_index];
+            && local_index < side_tables->expr_expected_types.size()) {
+            return side_tables->expr_expected_types[local_index];
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_expected_types.find(expr.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_expected_types.end()
-            ? INVALID_TYPE_HANDLE
-            : found->second;
+        const auto found = side_tables->sparse_expr_expected_types.find(expr.value);
+        return found == side_tables->sparse_expr_expected_types.end() ? INVALID_TYPE_HANDLE : found->second;
     }
-    const SemaTypeTable& expr_expected_types = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_expected_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types;
+    const SemaTypeTable& expr_expected_types =
+        side_tables == nullptr ? this->core_.state_.checked.expr_expected_types : side_tables->expr_expected_types;
     return expr.value < expr_expected_types.size() ? expr_expected_types[expr.value] : INVALID_TYPE_HANDLE;
 }
 
@@ -127,25 +128,19 @@ OwnedUseMode SemanticSideTableReader::cached_expr_owned_use_mode(const syntax::E
     if (!syntax::is_valid(expr)) {
         return OwnedUseMode::none;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
         const OwnedUseMode local =
-            cached_local_dense_slot(this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes,
-                local_index, OwnedUseMode::none);
+            cached_local_dense_slot(side_tables->expr_owned_use_modes, local_index, OwnedUseMode::none);
         if (local != OwnedUseMode::none) {
             return local;
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes.find(expr.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes.end()
-            ? OwnedUseMode::none
-            : found->second;
+        const auto found = side_tables->sparse_expr_owned_use_modes.find(expr.value);
+        return found == side_tables->sparse_expr_owned_use_modes.end() ? OwnedUseMode::none : found->second;
     }
     const SemaOwnedUseModeTable& expr_owned_use_modes =
-        this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_owned_use_modes
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes;
+        side_tables == nullptr ? this->core_.state_.checked.expr_owned_use_modes : side_tables->expr_owned_use_modes;
     return expr.value < expr_owned_use_modes.size() ? expr_owned_use_modes[expr.value] : OwnedUseMode::none;
 }
 
@@ -165,22 +160,18 @@ TypeHandle SemanticSideTableReader::cached_syntax_type(const syntax::TypeId type
     if (!syntax::is_valid(type) || !this->core_.state_.flow.current_side_tables.cache_syntax_types) {
         return INVALID_TYPE_HANDLE;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_type_index(type);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_type_index(type);
         if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
-            && local_index < this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles.size()) {
-            return this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles[local_index];
+            && local_index < side_tables->syntax_type_handles.size()) {
+            return side_tables->syntax_type_handles[local_index];
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_syntax_type_handles.find(type.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_syntax_type_handles.end()
-            ? INVALID_TYPE_HANDLE
-            : found->second;
+        const auto found = side_tables->sparse_syntax_type_handles.find(type.value);
+        return found == side_tables->sparse_syntax_type_handles.end() ? INVALID_TYPE_HANDLE : found->second;
     }
-    const SemaTypeTable& syntax_type_handles = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.syntax_type_handles
-        : this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles;
+    const SemaTypeTable& syntax_type_handles =
+        side_tables == nullptr ? this->core_.state_.checked.syntax_type_handles : side_tables->syntax_type_handles;
     return type.value < syntax_type_handles.size() ? syntax_type_handles[type.value] : INVALID_TYPE_HANDLE;
 }
 
@@ -189,23 +180,44 @@ TypeHandle SemanticSideTableReader::cached_stmt_local_type(const syntax::StmtId 
     if (!syntax::is_valid(stmt)) {
         return INVALID_TYPE_HANDLE;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_stmt_index(stmt);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_stmt_index(stmt);
         if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
-            && local_index < this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types.size()) {
-            return this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types[local_index];
+            && local_index < side_tables->stmt_local_types.size()) {
+            return side_tables->stmt_local_types[local_index];
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_stmt_local_types.find(stmt.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_stmt_local_types.end()
-            ? INVALID_TYPE_HANDLE
-            : found->second;
+        const auto found = side_tables->sparse_stmt_local_types.find(stmt.value);
+        return found == side_tables->sparse_stmt_local_types.end() ? INVALID_TYPE_HANDLE : found->second;
     }
-    const SemaTypeTable& stmt_local_types = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.stmt_local_types
-        : this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types;
+    const SemaTypeTable& stmt_local_types =
+        side_tables == nullptr ? this->core_.state_.checked.stmt_local_types : side_tables->stmt_local_types;
     return stmt.value < stmt_local_types.size() ? stmt_local_types[stmt.value] : INVALID_TYPE_HANDLE;
+}
+
+const RangeValuePlan* SemanticSideTableReader::cached_range_value_plan(const syntax::ExprId expr) const noexcept
+{
+    if (!syntax::is_valid(expr)) {
+        return nullptr;
+    }
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    const RangeValuePlanMap& plans =
+        side_tables == nullptr ? this->core_.state_.checked.range_value_plans : side_tables->range_value_plans;
+    const auto found = plans.find(expr.value);
+    return found == plans.end() ? nullptr : &found->second;
+}
+
+const ForInIterationPlan* SemanticSideTableReader::cached_for_in_iteration_plan(
+    const syntax::StmtId stmt) const noexcept
+{
+    if (!syntax::is_valid(stmt)) {
+        return nullptr;
+    }
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    const ForInIterationPlanMap& plans = side_tables == nullptr ? this->core_.state_.checked.for_in_iteration_plans
+                                                                : side_tables->for_in_iteration_plans;
+    const auto found = plans.find(stmt.value);
+    return found == plans.end() ? nullptr : &found->second;
 }
 
 std::string_view SemanticSideTableReader::cached_expr_c_name(const syntax::ExprId expr) const noexcept
@@ -213,23 +225,20 @@ std::string_view SemanticSideTableReader::cached_expr_c_name(const syntax::ExprI
     if (!syntax::is_valid(expr)) {
         return {};
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const IdentId local =
-            cached_local_dense_slot(this->core_.state_.flow.current_side_tables.side_tables->expr_c_name_ids,
-                this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr), INVALID_IDENT_ID);
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const IdentId local = cached_local_dense_slot(
+            side_tables->expr_c_name_ids, side_tables->local_expr_index(expr), INVALID_IDENT_ID);
         if (is_valid(local)) {
             return this->core_.state_.checked.c_name_text(local);
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_c_name_ids.find(expr.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_c_name_ids.end()
+        const auto found = side_tables->sparse_expr_c_name_ids.find(expr.value);
+        return found == side_tables->sparse_expr_c_name_ids.end()
             ? std::string_view{}
             : this->core_.state_.checked.c_name_text(found->second);
     }
-    const SemaIdentTable& expr_c_name_ids = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_c_name_ids
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_c_name_ids;
+    const SemaIdentTable& expr_c_name_ids =
+        side_tables == nullptr ? this->core_.state_.checked.expr_c_name_ids : side_tables->expr_c_name_ids;
     return expr.value < expr_c_name_ids.size() ? this->core_.state_.checked.c_name_text(expr_c_name_ids[expr.value])
                                                : std::string_view{};
 }
@@ -239,23 +248,20 @@ std::string_view SemanticSideTableReader::cached_pattern_c_name(const syntax::Pa
     if (!syntax::is_valid(pattern)) {
         return {};
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    const GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         const IdentId local = cached_local_dense_slot(
-            this->core_.state_.flow.current_side_tables.side_tables->pattern_c_name_ids,
-            this->core_.state_.flow.current_side_tables.side_tables->local_pattern_index(pattern), INVALID_IDENT_ID);
+            side_tables->pattern_c_name_ids, side_tables->local_pattern_index(pattern), INVALID_IDENT_ID);
         if (is_valid(local)) {
             return this->core_.state_.checked.c_name_text(local);
         }
-        const auto found =
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_pattern_c_name_ids.find(pattern.value);
-        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_pattern_c_name_ids.end()
+        const auto found = side_tables->sparse_pattern_c_name_ids.find(pattern.value);
+        return found == side_tables->sparse_pattern_c_name_ids.end()
             ? std::string_view{}
             : this->core_.state_.checked.c_name_text(found->second);
     }
-    const SemaIdentTable& pattern_c_name_ids = this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.pattern_c_name_ids
-        : this->core_.state_.flow.current_side_tables.side_tables->pattern_c_name_ids;
+    const SemaIdentTable& pattern_c_name_ids =
+        side_tables == nullptr ? this->core_.state_.checked.pattern_c_name_ids : side_tables->pattern_c_name_ids;
     return pattern.value < pattern_c_name_ids.size()
         ? this->core_.state_.checked.c_name_text(pattern_c_name_ids[pattern.value])
         : std::string_view{};
@@ -265,20 +271,22 @@ SemanticSideTableStore::SemanticSideTableStore(SemanticAnalyzerCore& core) noexc
 {
 }
 
+GenericSideTables* SemanticSideTableStore::current_side_tables() noexcept
+{
+    return this->core_.state_.flow.current_side_tables.side_tables;
+}
+
 void SemanticSideTableStore::record_stmt_local_type(const syntax::StmtId stmt, const TypeHandle type)
 {
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         if (syntax::is_valid(stmt)) {
-            const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_stmt_index(stmt);
-            if (record_local_dense_slot(
-                    this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types, local_index, type)) {
+            const base::usize local_index = side_tables->local_stmt_index(stmt);
+            if (record_local_dense_slot(side_tables->stmt_local_types, local_index, type)) {
                 return;
             }
-            record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-                GenericSparseFallbackKind::stmt_local_type, local_index);
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_stmt_local_types[stmt.value] = type;
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::stmt_local_type, local_index);
+            side_tables->sparse_stmt_local_types[stmt.value] = type;
         }
         return;
     }
@@ -289,22 +297,42 @@ void SemanticSideTableStore::record_stmt_local_type(const syntax::StmtId stmt, c
     }
 }
 
+void SemanticSideTableStore::record_for_in_iteration_plan(const syntax::StmtId stmt, const ForInIterationPlan& plan)
+{
+    if (!syntax::is_valid(stmt)) {
+        return;
+    }
+    GenericSideTables* const side_tables = this->current_side_tables();
+    ForInIterationPlanMap& plans = side_tables == nullptr ? this->core_.state_.checked.for_in_iteration_plans
+                                                          : side_tables->for_in_iteration_plans;
+    plans[stmt.value] = plan;
+}
+
+void SemanticSideTableStore::record_range_value_plan(const syntax::ExprId expr, const RangeValuePlan& plan)
+{
+    if (!syntax::is_valid(expr)) {
+        return;
+    }
+    GenericSideTables* const side_tables = this->current_side_tables();
+    RangeValuePlanMap& plans =
+        side_tables == nullptr ? this->core_.state_.checked.range_value_plans : side_tables->range_value_plans;
+    plans[expr.value] = plan;
+}
+
 void SemanticSideTableStore::record_expr_c_name(const syntax::ExprId expr, const std::string_view c_name)
 {
     if (!syntax::is_valid(expr) || c_name.empty()) {
         return;
     }
     const IdentId c_name_id = this->core_.state_.checked.intern_c_name(c_name);
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-        if (record_local_dense_slot(
-                this->core_.state_.flow.current_side_tables.side_tables->expr_c_name_ids, local_index, c_name_id)) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
+        if (record_local_dense_slot(side_tables->expr_c_name_ids, local_index, c_name_id)) {
             return;
         }
-        record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-            GenericSparseFallbackKind::expr_c_name, local_index);
-        this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_c_name_ids[expr.value] = c_name_id;
+        record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_c_name, local_index);
+        side_tables->sparse_expr_c_name_ids[expr.value] = c_name_id;
         return;
     }
     SemaIdentTable& expr_c_name_ids = this->active_expr_c_name_ids();
@@ -318,17 +346,14 @@ void SemanticSideTableStore::record_pattern_c_name(const syntax::PatternId patte
         return;
     }
     const IdentId c_name_id = this->core_.state_.checked.intern_c_name(c_name);
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index =
-            this->core_.state_.flow.current_side_tables.side_tables->local_pattern_index(pattern);
-        if (record_local_dense_slot(
-                this->core_.state_.flow.current_side_tables.side_tables->pattern_c_name_ids, local_index, c_name_id)) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_pattern_index(pattern);
+        if (record_local_dense_slot(side_tables->pattern_c_name_ids, local_index, c_name_id)) {
             return;
         }
-        record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-            GenericSparseFallbackKind::pattern_c_name, local_index);
-        this->core_.state_.flow.current_side_tables.side_tables->sparse_pattern_c_name_ids[pattern.value] = c_name_id;
+        record_sparse_fallback(*side_tables, GenericSparseFallbackKind::pattern_c_name, local_index);
+        side_tables->sparse_pattern_c_name_ids[pattern.value] = c_name_id;
         return;
     }
     SemaIdentTable& pattern_c_name_ids = this->active_pattern_c_name_ids();
@@ -342,16 +367,14 @@ void SemanticSideTableStore::record_pattern_case_name(const syntax::PatternId pa
         return;
     }
     const IdentId c_name_id = this->core_.state_.checked.intern_c_name(c_name);
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->local_dense) {
-        if (const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_pattern_index(pattern);
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->local_dense) {
+        if (const base::usize local_index = side_tables->local_pattern_index(pattern);
             local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
             this->active_pattern_case_name_ids().insert(static_cast<base::u32>(local_index), c_name_id);
             return;
         }
-        this->core_.state_.flow.current_side_tables.side_tables->record_sparse_fallback(
-            GenericSparseFallbackKind::pattern_case_name);
+        side_tables->record_sparse_fallback(GenericSparseFallbackKind::pattern_case_name);
     }
     this->active_pattern_case_name_ids().insert(pattern.value, c_name_id);
 }
@@ -365,23 +388,19 @@ void SemanticSideTableStore::merge_pattern_case_names(
     PatternCaseNameTable& pattern_case_name_ids = this->active_pattern_case_name_ids();
     base::u32 target_index = pattern.value;
     base::u32 alternative_index = alternative.value;
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->local_dense) {
-        const base::usize target_local =
-            this->core_.state_.flow.current_side_tables.side_tables->local_pattern_index(pattern);
-        const base::usize alternative_local =
-            this->core_.state_.flow.current_side_tables.side_tables->local_pattern_index(alternative);
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->local_dense) {
+        const base::usize target_local = side_tables->local_pattern_index(pattern);
+        const base::usize alternative_local = side_tables->local_pattern_index(alternative);
         if (target_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
             target_index = static_cast<base::u32>(target_local);
         } else {
-            this->core_.state_.flow.current_side_tables.side_tables->record_sparse_fallback(
-                GenericSparseFallbackKind::pattern_case_name);
+            side_tables->record_sparse_fallback(GenericSparseFallbackKind::pattern_case_name);
         }
         if (alternative_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
             alternative_index = static_cast<base::u32>(alternative_local);
         } else {
-            this->core_.state_.flow.current_side_tables.side_tables->record_sparse_fallback(
-                GenericSparseFallbackKind::pattern_case_name);
+            side_tables->record_sparse_fallback(GenericSparseFallbackKind::pattern_case_name);
         }
     }
     const auto found = pattern_case_name_ids.find(alternative_index);
@@ -395,18 +414,15 @@ void SemanticSideTableStore::record_syntax_type_handle(const syntax::TypeId type
     if (!this->core_.state_.flow.current_side_tables.cache_syntax_types) {
         return;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         if (syntax::is_valid(type)) {
-            const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_type_index(type);
-            if (record_local_dense_slot(this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles,
-                    local_index, resolved)) {
+            const base::usize local_index = side_tables->local_type_index(type);
+            if (record_local_dense_slot(side_tables->syntax_type_handles, local_index, resolved)) {
                 return;
             }
-            record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-                GenericSparseFallbackKind::syntax_type, local_index);
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_syntax_type_handles[type.value] = resolved;
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::syntax_type, local_index);
+            side_tables->sparse_syntax_type_handles[type.value] = resolved;
         }
         return;
     }
@@ -419,18 +435,15 @@ void SemanticSideTableStore::record_syntax_type_handle(const syntax::TypeId type
 
 TypeHandle SemanticSideTableStore::record_expr_type(const syntax::ExprId expr, const TypeHandle type)
 {
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         if (syntax::is_valid(expr)) {
-            const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-            if (record_local_dense_slot(
-                    this->core_.state_.flow.current_side_tables.side_tables->expr_types, local_index, type)) {
+            const base::usize local_index = side_tables->local_expr_index(expr);
+            if (record_local_dense_slot(side_tables->expr_types, local_index, type)) {
                 return type;
             }
-            record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-                GenericSparseFallbackKind::expr_type, local_index);
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_types[expr.value] = type;
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_type, local_index);
+            side_tables->sparse_expr_types[expr.value] = type;
         }
         return type;
     }
@@ -444,18 +457,15 @@ TypeHandle SemanticSideTableStore::record_expr_type(const syntax::ExprId expr, c
 
 TypeHandle SemanticSideTableStore::record_expr_intrinsic_type(const syntax::ExprId expr, const TypeHandle type)
 {
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         if (syntax::is_valid(expr)) {
-            const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-            if (record_local_dense_slot(
-                    this->core_.state_.flow.current_side_tables.side_tables->expr_intrinsic_types, local_index, type)) {
+            const base::usize local_index = side_tables->local_expr_index(expr);
+            if (record_local_dense_slot(side_tables->expr_intrinsic_types, local_index, type)) {
                 return type;
             }
-            record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-                GenericSparseFallbackKind::expr_intrinsic_type, local_index);
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_intrinsic_types[expr.value] = type;
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_intrinsic_type, local_index);
+            side_tables->sparse_expr_intrinsic_types[expr.value] = type;
         }
         return type;
     }
@@ -470,25 +480,42 @@ TypeHandle SemanticSideTableStore::record_expr_intrinsic_type(const syntax::Expr
 TypeHandle SemanticSideTableStore::record_expr_types(
     const syntax::ExprId expr, const TypeHandle intrinsic_type, const TypeHandle final_type)
 {
-    static_cast<void>(this->record_expr_intrinsic_type(expr, intrinsic_type));
-    return this->record_expr_type(expr, final_type);
+    if (!syntax::is_valid(expr)) {
+        return final_type;
+    }
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
+        if (!record_local_dense_slot(side_tables->expr_intrinsic_types, local_index, intrinsic_type)) {
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_intrinsic_type, local_index);
+            side_tables->sparse_expr_intrinsic_types[expr.value] = intrinsic_type;
+        }
+        if (!record_local_dense_slot(side_tables->expr_types, local_index, final_type)) {
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_type, local_index);
+            side_tables->sparse_expr_types[expr.value] = final_type;
+        }
+        return final_type;
+    }
+    SemaTypeTable& expr_intrinsic_types = this->active_expr_intrinsic_types();
+    SemaTypeTable& expr_types = this->active_expr_types();
+    ensure_side_table_slot(expr_intrinsic_types, expr.value);
+    ensure_side_table_slot(expr_types, expr.value);
+    expr_intrinsic_types[expr.value] = intrinsic_type;
+    expr_types[expr.value] = final_type;
+    return final_type;
 }
 
 void SemanticSideTableStore::record_expr_expected_type(const syntax::ExprId expr, const TypeHandle expected_type)
 {
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
         if (syntax::is_valid(expr)) {
-            const base::usize local_index =
-                this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-            if (record_local_dense_slot(this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types,
-                    local_index, expected_type)) {
+            const base::usize local_index = side_tables->local_expr_index(expr);
+            if (record_local_dense_slot(side_tables->expr_expected_types, local_index, expected_type)) {
                 return;
             }
-            record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-                GenericSparseFallbackKind::expr_expected_type, local_index);
-            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_expected_types[expr.value] =
-                expected_type;
+            record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_expected_type, local_index);
+            side_tables->sparse_expr_expected_types[expr.value] = expected_type;
         }
         return;
     }
@@ -504,12 +531,16 @@ void SemanticSideTableStore::record_expr_owned_use_mode(const syntax::ExprId exp
     if (!syntax::is_valid(expr) || mode == OwnedUseMode::none) {
         return;
     }
-    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
-        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
-        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
-        record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
-            GenericSparseFallbackKind::expr_owned_use_mode, local_index);
-        this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes[expr.value] = mode;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    if (side_tables != nullptr && side_tables->sparse) {
+        const base::usize local_index = side_tables->local_expr_index(expr);
+        if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
+            ensure_side_table_slot(side_tables->expr_owned_use_modes, local_index);
+            side_tables->expr_owned_use_modes[local_index] = mode;
+            return;
+        }
+        record_sparse_fallback(*side_tables, GenericSparseFallbackKind::expr_owned_use_mode, local_index);
+        side_tables->sparse_expr_owned_use_modes[expr.value] = mode;
         return;
     }
     SemaOwnedUseModeTable& expr_owned_use_modes = this->active_expr_owned_use_modes();
@@ -536,65 +567,57 @@ void SemanticSideTableStore::record_coercion(
 
 SemaTypeTable& SemanticSideTableStore::active_expr_types() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_types;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.expr_types : side_tables->expr_types;
 }
 
 SemaTypeTable& SemanticSideTableStore::active_expr_intrinsic_types() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_intrinsic_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_intrinsic_types;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.expr_intrinsic_types : side_tables->expr_intrinsic_types;
 }
 
 SemaTypeTable& SemanticSideTableStore::active_expr_expected_types() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_expected_types
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.expr_expected_types : side_tables->expr_expected_types;
 }
 
 SemaOwnedUseModeTable& SemanticSideTableStore::active_expr_owned_use_modes() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_owned_use_modes
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.expr_owned_use_modes : side_tables->expr_owned_use_modes;
 }
 
 SemaIdentTable& SemanticSideTableStore::active_expr_c_name_ids() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.expr_c_name_ids
-        : this->core_.state_.flow.current_side_tables.side_tables->expr_c_name_ids;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.expr_c_name_ids : side_tables->expr_c_name_ids;
 }
 
 SemaIdentTable& SemanticSideTableStore::active_pattern_c_name_ids() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.pattern_c_name_ids
-        : this->core_.state_.flow.current_side_tables.side_tables->pattern_c_name_ids;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.pattern_c_name_ids : side_tables->pattern_c_name_ids;
 }
 
 PatternCaseNameTable& SemanticSideTableStore::active_pattern_case_name_ids() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.pattern_case_name_ids
-        : this->core_.state_.flow.current_side_tables.side_tables->pattern_case_name_ids;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.pattern_case_name_ids
+                                  : side_tables->pattern_case_name_ids;
 }
 
 SemaTypeTable& SemanticSideTableStore::active_syntax_type_handles() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.syntax_type_handles
-        : this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.syntax_type_handles : side_tables->syntax_type_handles;
 }
 
 SemaTypeTable& SemanticSideTableStore::active_stmt_local_types() noexcept
 {
-    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
-        ? this->core_.state_.checked.stmt_local_types
-        : this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types;
+    GenericSideTables* const side_tables = this->current_side_tables();
+    return side_tables == nullptr ? this->core_.state_.checked.stmt_local_types : side_tables->stmt_local_types;
 }
 
 } // namespace aurex::sema

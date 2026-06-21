@@ -37,6 +37,7 @@ public:
         const GenericTemplateInfo& info, std::span<const syntax::GenericArgDecl> args,
         const base::SourceRange& use_range);
     [[nodiscard]] bool type_arg_is_simple_const_param_name(const syntax::TypeNode& type) const noexcept;
+    [[nodiscard]] bool type_arg_names_current_const_param(const syntax::TypeNode& type) const;
     [[nodiscard]] bool type_satisfies_trait_predicate(
         TypeHandle type, const TraitPredicate& predicate, const base::SourceRange& use_range);
     [[nodiscard]] bool generic_param_has_trait_predicate(TypeHandle param, const TraitPredicate& predicate) const;

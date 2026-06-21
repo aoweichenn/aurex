@@ -1,0 +1,10 @@
+module lambda_reference_capture;
+
+fn main() -> i32 {
+    var base: i32 = 10;
+    let add_base = [&base](value: i32) -> i32 => value + base;
+    let before: i32 = add_base(1);
+    base = 20;
+    let after: i32 = add_base(1);
+    return before * 10 + after - 131;
+}

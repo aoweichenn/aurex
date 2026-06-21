@@ -35,6 +35,7 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"str", syntax::TokenKind::kw_str},
     KeywordEntry{"mut", syntax::TokenKind::kw_mut},
 
+    KeywordEntry{"move", syntax::TokenKind::kw_move},
     KeywordEntry{"priv", syntax::TokenKind::kw_priv},
     KeywordEntry{"enum", syntax::TokenKind::kw_enum},
     KeywordEntry{"type", syntax::TokenKind::kw_type},
@@ -46,7 +47,6 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"void", syntax::TokenKind::kw_void},
     KeywordEntry{"bool", syntax::TokenKind::kw_bool},
     KeywordEntry{"char", syntax::TokenKind::kw_char},
-    KeywordEntry{"cast", syntax::TokenKind::kw_cast},
 
     KeywordEntry{"const", syntax::TokenKind::kw_const},
     KeywordEntry{"trait", syntax::TokenKind::kw_trait},
@@ -70,10 +70,7 @@ inline constexpr std::array KEYWORD_ENTRIES{
     KeywordEntry{"strraw", syntax::TokenKind::kw_strraw},
     KeywordEntry{"strvalid", syntax::TokenKind::kw_strvalid},
 
-    KeywordEntry{"sizeof", syntax::TokenKind::kw_sizeof},
-
     KeywordEntry{"continue", syntax::TokenKind::kw_continue},
-    KeywordEntry{"alignof", syntax::TokenKind::kw_alignof},
     KeywordEntry{"bitcast", syntax::TokenKind::kw_bitcast},
     KeywordEntry{"ptrat", syntax::TokenKind::kw_ptrat},
     KeywordEntry{"ptraddr", syntax::TokenKind::kw_ptraddr},

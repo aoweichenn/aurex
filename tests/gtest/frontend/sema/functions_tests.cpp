@@ -234,6 +234,50 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     require_success(aurexc() + " " + q(returned_closure) + " -o " + q(returned_closure_bin));
     require_success(q(returned_closure_bin));
 
+    const fs::path reference_closure = positive_sample("functions", "lambda_reference_capture.ax");
+    const std::string reference_closure_ir = require_success(aurexc() + " --emit=ir " + q(reference_closure)).output;
+    expect_contains_all(reference_closure_ir, {"aggregate {.__capture_0_base", "load %", "call __aurex_lambda"});
+    const fs::path reference_closure_bin = test_bin_root() / "lambda_reference_capture";
+    require_success(aurexc() + " " + q(reference_closure) + " -o " + q(reference_closure_bin));
+    require_success(q(reference_closure_bin));
+
+    const fs::path mutable_reference_closure = positive_sample("functions", "lambda_mutable_reference_capture.ax");
+    const fs::path mutable_reference_closure_bin = test_bin_root() / "lambda_mutable_reference_capture";
+    require_success(aurexc() + " " + q(mutable_reference_closure) + " -o " + q(mutable_reference_closure_bin));
+    require_success(q(mutable_reference_closure_bin));
+
+    const fs::path default_capture_closure = positive_sample("functions", "lambda_default_capture.ax");
+    const std::string default_capture_ast =
+        require_success(aurexc() + " --emit=ast " + q(default_capture_closure)).output;
+    expect_contains_all(default_capture_ast,
+        {"lambda [=](next: i32) -> i32", "lambda [&](next: i32) -> i32",
+            "lambda [=, &adjust](value: i32) -> i32", "lambda [&, copied](value: i32) -> i32"});
+    const std::string default_capture_ir =
+        require_success(aurexc() + " --emit=ir " + q(default_capture_closure)).output;
+    expect_contains_all(default_capture_ir, {"aggregate {.__capture_0_base", "call __aurex_lambda"});
+    const fs::path default_capture_closure_bin = test_bin_root() / "lambda_default_capture";
+    require_success(aurexc() + " " + q(default_capture_closure) + " -o " + q(default_capture_closure_bin));
+    require_success(q(default_capture_closure_bin));
+
+    const fs::path init_capture_closure = positive_sample("functions", "lambda_init_capture.ax");
+    const std::string init_capture_ast = require_success(aurexc() + " --emit=ast " + q(init_capture_closure)).output;
+    expect_contains_all(
+        init_capture_ast, {"lambda [base = expr#", "lambda [&view = expr#", "lambda [&mut view = expr#"});
+    const std::string init_capture_ir = require_success(aurexc() + " --emit=ir " + q(init_capture_closure)).output;
+    expect_contains_all(init_capture_ir, {"aggregate {.__capture_0_base", "call __aurex_lambda"});
+    const fs::path init_capture_closure_bin = test_bin_root() / "lambda_init_capture";
+    require_success(aurexc() + " " + q(init_capture_closure) + " -o " + q(init_capture_closure_bin));
+    require_success(q(init_capture_closure_bin));
+
+    const fs::path move_capture_closure = positive_sample("functions", "lambda_move_capture.ax");
+    const std::string move_capture_ast = require_success(aurexc() + " --emit=ast " + q(move_capture_closure)).output;
+    expect_contains_all(move_capture_ast, {"lambda [move box]()", "lambda [owned = move expr#"});
+    const std::string move_capture_ir = require_success(aurexc() + " --emit=ir " + q(move_capture_closure)).output;
+    expect_contains_all(move_capture_ir, {"aggregate {.__capture_0_box", "aggregate {.__capture_0_owned"});
+    const fs::path move_capture_closure_bin = test_bin_root() / "lambda_move_capture";
+    require_success(aurexc() + " " + q(move_capture_closure) + " -o " + q(move_capture_closure_bin));
+    require_success(q(move_capture_closure_bin));
+
     const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
     const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
     expect_contains_all(extern_checked,
@@ -267,7 +311,27 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls)
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_reference_capture.ax")))
             .output,
-        "reference capture in closures is not supported yet");
+        "mutable closure capture requires a mutable captured variable");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_duplicate.ax")))
+                        .output,
+        "duplicate closure capture default");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_order.ax")))
+                        .output,
+        "closure capture default must appear first");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_capture_default_redundant.ax")))
+                        .output,
+        "closure capture is redundant with the capture default");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_move_capture_after_move.ax")))
+                        .output,
+        "use of moved value `box`");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("functions", "lambda_move_capture_initializer_prefix.ax")))
+                        .output,
+        "move capture initializer must be written as 'name = move expr' or 'move name'");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "lambda_missing_return.ax"))).output,
         "not all control paths return a value");
@@ -355,6 +419,8 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     require_success(aurexc() + " --emit=llvm-ir " + q(for_source));
 
     const fs::path range_source = positive_sample("control_flow", "for_range.ax");
+    const std::string range_checked = require_success(aurexc() + " --emit=checked " + q(range_source)).output;
+    expect_contains_all(range_checked, {"for_in_iteration_plans", "counted_range", "copy_item=false"});
     const std::string range_ir = require_success(aurexc() + " --emit=ir " + q(range_source)).output;
     expect_contains_all(range_ir,
         {
@@ -369,6 +435,193 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
     const fs::path range_bin = test_bin_root() / "for_range";
     require_success(aurexc() + " " + q(range_source) + " -o " + q(range_bin));
     require_success(q(range_bin));
+
+    const fs::path iterable_source = positive_sample("control_flow", "for_in_array_slice.ax");
+    const std::string iterable_ast = require_success(aurexc() + " --emit=ast " + q(iterable_source)).output;
+    expect_contains_all(iterable_ast, {"for_range value", "slice"});
+    const std::string iterable_checked = require_success(aurexc() + " --emit=checked " + q(iterable_source)).output;
+    expect_contains_all(iterable_checked,
+        {"for_in_iteration_plans", "array_value", "slice_value", "copy_item=true", "eval_once=true"});
+    const std::string iterable_ir = require_success(aurexc() + " --emit=ir " + q(iterable_source)).output;
+    expect_contains_all(iterable_ir,
+        {
+            "for.iterable.cond",
+            "for.iterable.body",
+            "for.iterable.update",
+            "for.iterable.exit",
+            "index_addr",
+            "slice_data",
+            "slice_len",
+        });
+    const fs::path iterable_bin = test_bin_root() / "for_in_array_slice";
+    require_success(aurexc() + " " + q(iterable_source) + " -o " + q(iterable_bin));
+    require_success(q(iterable_bin));
+
+    const fs::path str_iterable_source = positive_sample("control_flow", "for_in_str.ax");
+    const std::string str_iterable_checked =
+        require_success(aurexc() + " --emit=checked " + q(str_iterable_source)).output;
+    expect_contains_all(str_iterable_checked,
+        {"for_in_iteration_plans", "str_bytes", "item=u8", "iterable_type=str", "copy_item=false"});
+    const std::string str_iterable_ir =
+        require_success(aurexc() + " --emit=ir " + q(str_iterable_source)).output;
+    expect_contains_all(str_iterable_ir,
+        {
+            "for.iterable.cond",
+            "for.iterable.body",
+            "for.iterable.update",
+            "for.iterable.exit",
+            "str_data",
+            "str_byte_len",
+            "index_addr",
+        });
+    const fs::path str_iterable_bin = test_bin_root() / "for_in_str";
+    require_success(aurexc() + " " + q(str_iterable_source) + " -o " + q(str_iterable_bin));
+    require_success(q(str_iterable_bin));
+
+    const fs::path direct_protocol_source = positive_sample("control_flow", "for_in_protocol_direct.ax");
+    const std::string direct_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(direct_protocol_source)).output;
+    expect_contains_all(direct_protocol_checked,
+        {
+            "for_in_iteration_plans",
+            "protocol_iterator",
+            "source=direct_iterator",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+            "copy_item=false",
+            "consumes=true",
+        });
+    const std::string direct_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(direct_protocol_source)).output;
+    expect_contains_all(direct_protocol_ir,
+        {
+            "for.protocol.cond",
+            "for.protocol.body",
+            "for.protocol.update",
+            "for.protocol.exit",
+            "call m0_for_in_protocol_direct_Counter_has_next",
+            "call m0_for_in_protocol_direct_Counter_next",
+            "drop_if",
+        });
+    const fs::path direct_protocol_bin = test_bin_root() / "for_in_protocol_direct";
+    require_success(aurexc() + " " + q(direct_protocol_source) + " -o " + q(direct_protocol_bin));
+    require_success(q(direct_protocol_bin));
+
+    const fs::path direct_mut_ref_protocol_source =
+        positive_sample("control_flow", "for_in_protocol_direct_mut_ref.ax");
+    const std::string direct_mut_ref_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(direct_mut_ref_protocol_source)).output;
+    expect_contains_all(direct_mut_ref_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=direct_iterator",
+            "iterable_type=&mut for_in_protocol_direct_mut_ref.Counter",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+        });
+    const std::string direct_mut_ref_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(direct_mut_ref_protocol_source)).output;
+    expect_contains_all(direct_mut_ref_protocol_ir,
+        {
+            "fn consume(iter: &mut for_in_protocol_direct_mut_ref.Counter)",
+            "call m0_for_in_protocol_direct_mut_ref_Counter_has_next",
+            "call m0_for_in_protocol_direct_mut_ref_Counter_next",
+        });
+    const fs::path direct_mut_ref_protocol_bin = test_bin_root() / "for_in_protocol_direct_mut_ref";
+    require_success(aurexc() + " " + q(direct_mut_ref_protocol_source) + " -o " + q(direct_mut_ref_protocol_bin));
+    require_success(q(direct_mut_ref_protocol_bin));
+
+    const fs::path iter_method_protocol_source = positive_sample("control_flow", "for_in_protocol_iter_method.ax");
+    const std::string iter_method_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(iter_method_protocol_source)).output;
+    expect_contains_all(iter_method_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=iter_method",
+            "iter_call=inherent_method",
+            "has_next_call=inherent_method",
+            "next_call=inherent_method",
+            "consumes=false",
+        });
+    const std::string iter_method_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(iter_method_protocol_source)).output;
+    expect_contains_all(iter_method_protocol_ir,
+        {
+            "call m0_for_in_protocol_iter_method_Range_iter",
+            "call m0_for_in_protocol_iter_method_RangeIter_has_next",
+            "call m0_for_in_protocol_iter_method_RangeIter_next",
+        });
+    const fs::path iter_method_protocol_bin = test_bin_root() / "for_in_protocol_iter_method";
+    require_success(aurexc() + " " + q(iter_method_protocol_source) + " -o " + q(iter_method_protocol_bin));
+    require_success(q(iter_method_protocol_bin));
+
+    const fs::path iter_mut_method_protocol_source =
+        positive_sample("control_flow", "for_in_protocol_iter_mut_method.ax");
+    const std::string iter_mut_method_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(iter_mut_method_protocol_source)).output;
+    expect_contains_all(iter_mut_method_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=iter_method",
+            "iter_call=inherent_method",
+            "consumes=false",
+        });
+    const std::string iter_mut_method_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(iter_mut_method_protocol_source)).output;
+    expect_contains_all(iter_mut_method_protocol_ir,
+        {
+            "call m0_for_in_protocol_iter_mut_method_Range_iter",
+            "call m0_for_in_protocol_iter_mut_method_RangeIter_has_next",
+            "call m0_for_in_protocol_iter_mut_method_RangeIter_next",
+        });
+    const fs::path iter_mut_method_protocol_bin = test_bin_root() / "for_in_protocol_iter_mut_method";
+    require_success(aurexc() + " " + q(iter_mut_method_protocol_source) + " -o " + q(iter_mut_method_protocol_bin));
+    require_success(q(iter_mut_method_protocol_bin));
+
+    const fs::path trait_protocol_source = positive_sample("control_flow", "for_in_protocol_trait_direct.ax");
+    const std::string trait_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(trait_protocol_source)).output;
+    expect_contains_all(trait_protocol_checked,
+        {
+            "protocol_iterator",
+            "source=direct_iterator",
+            "has_next_call=trait_static_method",
+            "next_call=trait_static_method",
+        });
+    const std::string trait_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(trait_protocol_source)).output;
+    expect_contains_all(trait_protocol_ir,
+        {
+            "call m0_for_in_protocol_trait_direct_Counter_trait_impl_IterI32__has_next",
+            "call m0_for_in_protocol_trait_direct_Counter_trait_impl_IterI32__next",
+        });
+    const fs::path trait_protocol_bin = test_bin_root() / "for_in_protocol_trait_direct";
+    require_success(aurexc() + " " + q(trait_protocol_source) + " -o " + q(trait_protocol_bin));
+    require_success(q(trait_protocol_bin));
+
+    const fs::path generic_protocol_source = positive_sample("control_flow", "for_in_protocol_generic_trait.ax");
+    const std::string generic_protocol_checked =
+        require_success(aurexc() + " --emit=checked " + q(generic_protocol_source)).output;
+    expect_contains_all(generic_protocol_checked,
+        {
+            "generic_templates",
+            "template priv value consume params=1",
+            "param_envs",
+            "fn priv consume<for_in_protocol_generic_trait.Counter> -> i32",
+            "fn method for_in_protocol_generic_trait.Counter.has_next -> bool",
+            "fn method for_in_protocol_generic_trait.Counter.next -> i32",
+        });
+    const std::string generic_protocol_ir =
+        require_success(aurexc() + " --emit=ir " + q(generic_protocol_source)).output;
+    expect_contains_all(generic_protocol_ir,
+        {
+            "fn consume<for_in_protocol_generic_trait.Counter>",
+            "call m0_for_in_protocol_generic_trait_Counter_trait_impl_IterI32__has_next",
+            "call m0_for_in_protocol_generic_trait_Counter_trait_impl_IterI32__next",
+        });
+    const fs::path generic_protocol_bin = test_bin_root() / "for_in_protocol_generic_trait";
+    require_success(aurexc() + " " + q(generic_protocol_source) + " -o " + q(generic_protocol_bin));
+    require_success(q(generic_protocol_bin));
 
     const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
     expect_contains(
@@ -407,7 +660,40 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics)
         "range expects 1 to 3 arguments");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
-        "M2 range-for only supports range(...); generic iteration is not part of M2 syntax");
+        "for-in iterable must be an array, slice, str, iterator, or expose iter()");
+    expect_contains(require_failure(aurexc() + " --check "
+                                    + q(negative_sample("control_flow", "for_in_non_copy_element.ax")))
+                        .output,
+        "for-in element type must be Copy");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_missing_has_next.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_has_next_non_bool.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_has_next_shared_receiver.ax")))
+            .output,
+        "for-in iterator must define has_next(self: &mut Iterator) -> bool");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_iter_missing_next.ax")))
+            .output,
+        "for-in iterator must define next(self: &mut Iterator) -> Item");
+    expect_contains(
+        require_failure(aurexc() + " --check "
+                        + q(negative_sample("control_flow", "for_in_protocol_iter_mut_immutable_source.ax")))
+            .output,
+        "mutable method receiver requires writable storage");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_protocol_next_void.ax")))
+            .output,
+        "for-in iterator must define next(self: &mut Iterator) -> Item");
 
     const fs::path value_source = positive_sample("types", "value_flow.ax");
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(value_source)).output;

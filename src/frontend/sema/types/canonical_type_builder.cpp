@@ -190,6 +190,15 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
+[[nodiscard]] base::Result<void> lower_range_type(
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
+    target.kind = query::CanonicalTypeKind::range;
+    target.children.resize(1);
+    push_child(pending, info.range_element, target.children.front());
+    return base::Result<void>::ok();
+}
+
 [[nodiscard]] base::Result<void> lower_tuple_type(
     std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
 {
@@ -312,6 +321,8 @@ void push_children_reverse(
             return lower_array_type(pending, info, *frame.target);
         case TypeKind::slice:
             return lower_slice_type(pending, info, *frame.target);
+        case TypeKind::range:
+            return lower_range_type(pending, info, *frame.target);
         case TypeKind::tuple:
             return lower_tuple_type(pending, info, *frame.target);
         case TypeKind::function:

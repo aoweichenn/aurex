@@ -29,24 +29,24 @@ enum Packet: u8 {
 
 fn score(packet: Packet) -> i32 {
     return match packet {
-        .small(value) => cast<i32>(value.value),
+        .small(value) => ((value.value) as i32),
         .none => 0,
     };
 }
 
 fn main() -> i32 {
     let text: str = "hi";
-    let a: i8 = cast<i8>(1);
-    let b: i16 = cast<i16>(2);
-    let scalar_c: isize = cast<isize>(3);
-    let d: f32 = cast<f32>(4);
-    let e: f64 = cast<f64>(5);
+    let a: i8 = ((1) as i8);
+    let b: i16 = ((2) as i16);
+    let scalar_c: isize = ((3) as isize);
+    let d: f32 = ((4) as f32);
+    let e: f64 = ((5) as f64);
     let p: *const u8 = null;
-    let f32_bits: f32 = unsafe { bitcast<f32>(cast<u32>(0)) };
-    let f64_bits: f64 = unsafe { bitcast<f64>(cast<u64>(0)) };
+    let f32_bits: f32 = unsafe { bitcast<f32>(((0) as u32)) };
+    let f64_bits: f64 = unsafe { bitcast<f64>(((0) as u64)) };
     let pointer_bits: usize = ptraddr(p);
-    let small = Small { value: cast<u16>(42) };
-    if sizeof<str> == cast<usize>(0) || alignof<Packet> == cast<usize>(0) {
+    let small = Small { value: ((42) as u16) };
+    if sizeof<str>() == ((0) as usize) || alignof<Packet>() == ((0) as usize) {
         return 3;
     }
     if score(Packet.small(small)) != 42 {
@@ -55,5 +55,5 @@ fn main() -> i32 {
     if score(Packet.none) != 0 {
         return 2;
     }
-    return cast<i32>(a) + cast<i32>(b) + cast<i32>(scalar_c) - 6;
+    return ((a) as i32) + ((b) as i32) + ((scalar_c) as i32) - 6;
 }

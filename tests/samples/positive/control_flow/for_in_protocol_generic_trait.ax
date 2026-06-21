@@ -1,0 +1,36 @@
+module for_in_protocol_generic_trait;
+
+trait IterI32 {
+    fn has_next(self: &mut Self) -> bool;
+    fn next(self: &mut Self) -> i32;
+}
+
+struct Counter {
+    current: i32;
+    end: i32;
+}
+
+impl IterI32 for Counter {
+    fn has_next(self: &mut Counter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut Counter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
+}
+
+fn consume<T>(iter: T) -> i32 where T: IterI32 {
+    var total: i32 = 0;
+    for value in iter {
+        total = total + value;
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    let counter: Counter = Counter { current: 1, end: 6 };
+    return consume<Counter>(counter) - 15;
+}

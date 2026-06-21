@@ -26,11 +26,11 @@ pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> t.Bu
 }
 
 fn escape_with(input: str, out: *mut u8, out_capacity: usize, needs_escape: EscapePredicate) -> t.BufferResult {
-    let data: *const u8 = strptr(input);
+    let data: *const u8 = input.ptr;
     var offset: usize = 0usize;
     var written: usize = 0usize;
     var required: usize = 0usize;
-    while offset < strblen(input) {
+    while offset < input.len {
         let value: u8 = unsafe { data[offset] };
         let copied: CopyState = copy_escaped_byte(value, needs_escape, out, out_capacity, written, required);
         written = copied.written;
@@ -88,7 +88,7 @@ fn copy_escape_pair(value: u8, out: *mut u8, out_capacity: usize, written: usize
 fn copy_hex_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
     let slash: CopyState = copy_byte(ascii.BACKSLASH, out, out_capacity, written, required);
     let x: CopyState = copy_byte(ascii.LOWER_X, out, out_capacity, slash.written, slash.required);
-    let value_usize: usize = cast<usize>(value);
+    let value_usize: usize = ((value) as usize);
     let hi: CopyState = copy_byte(hex_digit(value_usize >> 4usize), out, out_capacity, x.written, x.required);
     return copy_byte(hex_digit(value_usize & 0x0fusize), out, out_capacity, hi.written, hi.required);
 }
@@ -129,7 +129,7 @@ fn is_pattern_meta(value: u8) -> bool {
 
 fn hex_digit(value: usize) -> u8 {
     if value < 10usize {
-        return ascii.DIGIT_0 + cast<u8>(value);
+        return ascii.DIGIT_0 + ((value) as u8);
     }
-    return ascii.UPPER_A + cast<u8>(value - 10usize);
+    return ascii.UPPER_A + ((value - 10usize) as u8);
 }

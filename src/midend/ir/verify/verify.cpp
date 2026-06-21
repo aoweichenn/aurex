@@ -622,7 +622,8 @@ private:
             case CleanupAbiPolicy::structural_static:
             case CleanupAbiPolicy::static_custom_destructor:
                 if (kind != sema::TypeKind::struct_ && kind != sema::TypeKind::enum_
-                    && kind != sema::TypeKind::tuple && kind != sema::TypeKind::array) {
+                    && kind != sema::TypeKind::tuple && kind != sema::TypeKind::array
+                    && kind != sema::TypeKind::range) {
                     this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
                 }
                 break;

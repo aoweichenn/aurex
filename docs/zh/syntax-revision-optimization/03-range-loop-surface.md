@@ -1,16 +1,10 @@
-# Range Loop Surface：拆掉伪 `for-in range(...)`
+# Range Loop Surface：保留 `range(...)`，补齐 for-in 协议
 
-日期：2026-06-13
-状态：语法修正优化第三手改动设计稿
-关联问题：`docs/zh/m27c-syntax-ergonomics-review.md` 中的 P1 `for i in range(...)` 语义不诚实
+日期：2026-06-18
+状态：当前实现
+关联问题：`for i in range(...)` 是 counted range loop 特例；普通表达式位置的 `range(...)` 是一等 range value；`for x in expr` 同时支持 range value、array/slice value iteration、str byte iteration 和用户 protocol iterator。
 
-本文固定 Aurex 第三项语法修正方向：把当前 `for i in range(...)` 从伪通用 `for-in` 表面迁移为诚实的 counted range loop 表面。
-
-核心判断很直接：当前语言没有通用 iterator protocol，却写成了 `for i in ...`。这不是小瑕疵，是语法在承诺一件语言实际没有提供的能力。
-
-## 现状
-
-当前 parser 支持：
+本轮结论：不引入更长的 counted-loop marker，继续使用：
 
 ```aurex
 for i in range(limit) {
@@ -26,593 +20,219 @@ for k in range(1, limit, 2) {
 }
 ```
 
-真实实现不是普通函数调用，也不是通用 iteration。相关入口：
+同时保留并扩展 `for item in expr`：
+
+```aurex
+let values: [4]i32 = [1, 2, 3, 4];
+for value in values {
+    total += value;
+}
+
+let view: []i32 = values[:];
+for value in view {
+    total += value;
+}
+
+let range_values = range(1, 5);
+for value in range_values {
+    total += value;
+}
+
+let text: str = "abc";
+for byte in text {
+    total += ((byte) as i32);
+}
+
+let counter: Counter = Counter { current: 0, end: 4 };
+for value in counter {
+    total += value;
+}
+```
+
+## 当前状态
+
+当前 parser/sema/IR 支持：
+
+- `range(end)`：从 `0` 到 `end`，半开区间。
+- `range(start, end)`：从 `start` 到 `end`，半开区间。
+- `range(start, end, step)`：从 `start` 到 `end`，每次加 `step`。
+- 普通表达式位置的 `range(...)` 生成 `range<T>` value，内部记录 `start`、`end`、`step` 三个 `T` 字段。
+- `for item in range_value { ... }`：按 range value 的三字段 lower 成 counted loop；range value 可复用。
+- `for item in array_expr { ... }`：array 按值迭代。
+- `for item in slice_expr { ... }`：slice 按值迭代。
+- `for item in str_expr { ... }`：`str` 按 UTF-8 存储字节迭代，item 类型是 `u8`。
+- `for item in iterator_expr { ... }`：表达式本身作为 protocol iterator。
+- `for item in iterable_expr { ... }`：如果表达式提供 `iter()` 且返回 protocol iterator，则使用 `iter()` 返回值作为 iterator。
+
+`for i in range(...)` 仍保留 parser 层 counted-loop 快路径；普通表达式位置的 `range(...)` 由 sema 识别为语言内建值构造，不走普通函数调用查找。相关入口：
 
 - `src/frontend/parse/grammar/parser_control_stmt.cpp`
-  - `next_for_is_range_loop()` 只看 `Identifier "in"`。
-  - `parse_for_range_stmt()` 要求 `in` 后面的 callee 文本正好是 `range`。
-  - 非 `range` 会报 `M2 range-for only supports range(...); generic iteration is not part of M2 syntax`。
+  - `next_for_is_range_loop()` 识别 `Identifier "in"`。
+  - `parse_for_range_stmt()` 对 `range(` 走 counted range 分支，否则把 `in` 后表达式记录为 `range_iterable`。
   - 参数数量被限制为 1 到 3。
 - `include/aurex/frontend/syntax/ast/stmt_nodes.hpp`
   - AST 已有专门的 `StmtKind::for_range`。
-  - payload 是 `name`、`range_start`、`range_end`、`range_step`、`body`。
+  - payload 是 `name`、`range_start`、`range_end`、`range_step`、`range_iterable`、`body`。
+- `include/aurex/frontend/sema/checked_module.hpp`
+  - `RangeValuePlan` 记录普通表达式位置 `range(...)` 的 start/end/step 表达式、默认 start/step 和 `range<T>` 类型。
+  - `ForInIterationPlan` 记录 counted range、range value、array value、slice value、str byte iteration 和 protocol iterator 的 checked lowering 事实。
+  - protocol plan 记录 iterator type、item type、source kind、`iter`/`has_next`/`next` 调用 kind 和具体函数 key。
+- `src/frontend/sema/facade/sema_call.cpp`
+  - `analyze_range_value_call_expr()` 在普通 call 表达式位置识别未限定 `range(...)`。
+  - arity、整数类型、bounds 同类型和 step 同类型规则与 counted range 保持一致。
+  - 当前语言内建优先于同名局部函数值。
 - `src/frontend/sema/internal/expressions/sources/sema_statement_analyzer.cpp`
-  - `analyze_for_range_bounds()` 要求 start/end/step 是整数。
-  - start/end 必须同类型，step 必须和 bounds 同类型。
-  - loop local 是不可变局部。
+  - `analyze_for_range_bounds()` 要求 counted range 的 start、end、step 都是整数。
+  - iterable 表达式若是 `range<T>`，生成 `ForInIterationKind::range_value`，item 类型为 `T`。
+  - array/slice 分支要求元素类型满足 `Copy`。
+  - str 分支生成 `ForInIterationKind::str_bytes`，item 类型为 `u8`，不要求用户提供 iterator protocol。
+  - protocol 分支先尝试表达式本身作为 iterator，再尝试 `expr.iter()`。
+  - protocol iterator 必须提供 `has_next(self: &mut Iterator) -> bool` 和 `next(self: &mut Iterator) -> Item`。
+  - `iter()` receiver 可以是 by-value、`&self` 或 `&mut self`，按现有 receiver 规则匹配。
+  - protocol `Item` 不要求 `Copy`。
+  - inherent method 和静态 trait dispatch 均可作为协议方法来源；dyn trait vtable-slot dispatch 暂不作为 for-in protocol 来源。
+- `src/frontend/sema/internal/place/sources/move_analysis.cpp`
+  - array/slice for-in 对 iterable 只要求 initialized place。
+  - str for-in 对 iterable 只要求 initialized place，不消费 `str` borrowed view。
+  - 直接 protocol iterator 和 consuming `iter(self)` 会 consume iterable。
+  - `iter(&self)` / `iter(&mut self)` 分别记录 shared borrow / mutable borrow。
 - `src/midend/ir/lowering/sources/lower_ast_stmt.cpp`
-  - `lower_for_range()` 把缺省 start 降成 `0`。
-  - 缺省 step 降成 `1`。
-  - 显式 step 会存入临时 slot。
-  - condition 对正步长用 `cursor < end`，对负步长用 `cursor > end`，step 为 0 时循环零次。
+  - lowering 优先消费 checked `ForInIterationPlan`。
+  - range value 分支把 `start`、`end`、`step` 字段读出到隐藏 slot 后，复用 counted-loop 条件和更新语义。
+  - array/slice/str 分支用 `usize` cursor/end；array 长度来自类型，slice 长度来自 `slice_len`，str 长度来自 `str_byte_len`，元素地址用 `index_addr`，每轮 load 成不可变 local。
+  - str 分支的数据地址来自 `str_data`，元素类型固定为 `u8`。
+  - protocol 分支把 iterator 存入隐藏 slot；condition 调用 `has_next(&mut iterator)`，body 调用 `next(&mut iterator)` 并把返回值存成 loop local。
+  - protocol iterator、`iter()` 临时 source 和每轮 item 都走现有 cleanup/drop 机制。
 
-也就是说，语义层已经是一个专门的整数 counted loop。问题集中在用户表面。
+也就是说，当前语义层有一个专门的整数 counted loop、一个一等 `range<T>` value iteration 子集、一个 array/slice value iteration 子集、一个 str byte iteration 子集，以及一个用户协议迭代器子集。
 
-## 问题
+## Protocol Iterator
 
-### 1. `in` 给了错误承诺
-
-这段代码看起来像通用 for-in：
-
-```aurex
-for x in values {
-    ...
-}
-```
-
-但语言实际不支持。当前只接受：
+protocol iterator 是结构协议，不要求声明某个固定内建 trait。满足以下形状即可被 `for item in expr` 使用：
 
 ```aurex
-for i in range(...) {
-    ...
+impl Counter {
+    fn has_next(self: &mut Counter) -> bool {
+        return self.current < self.end;
+    }
+
+    fn next(self: &mut Counter) -> i32 {
+        let value: i32 = self.current;
+        self.current = self.current + 1;
+        return value;
+    }
 }
 ```
 
-这种设计会直接误导用户：既然能 `for i in range(...)`，自然会尝试 `for x in slice`、`for item in vec`、`for ch in text`。parser 最后再告诉用户“只能 range”，这是语法表面先骗人、诊断再补救。
-
-### 2. `range(...)` 像库函数，实际是 parser magic
-
-`range` 在这里不是普通函数：
+也可以通过 trait bound 提供：
 
 ```aurex
-for i in range(0, n) {
-    ...
+trait IterI32 {
+    fn has_next(self: &mut Self) -> bool;
+    fn next(self: &mut Self) -> i32;
+}
+
+fn sum<T>(iter: T) -> i32 where T: IterI32 {
+    var total: i32 = 0;
+    for value in iter {
+        total += value;
+    }
+    return total;
 }
 ```
 
-parser 会直接检查 callee 文本是否等于 `range`。这意味着：
-
-- 用户不能通过导入、重载、namespace 或 trait 改变它。
-- `range` 看起来在表达式层，实际是 statement parser 的特殊分支。
-- 这和后续“减少 parser 特例、把普通能力交给 sema/name resolution”的方向冲突。
-
-如果 `range(...)` 是真正的 range value，配合真正的 `for-in`，这个表面可以成立。当前不是。
-
-### 3. 位置参数不自解释
-
-下面三种写法都要靠记忆参数位置：
+或者由 `iter()` 产生 iterator：
 
 ```aurex
-range(end)
-range(start, end)
-range(start, end, step)
-```
+impl Range {
+    fn iter(self: &Range) -> RangeIter {
+        return RangeIter { current: self.start, end: self.end };
+    }
+}
 
-尤其是倒序和动态 step：
-
-```aurex
-for i in range(5, 0, -2) {
-    ...
+impl MutableRange {
+    fn iter(self: &mut MutableRange) -> RangeIter {
+        self.start = self.start + 1;
+        return RangeIter { current: self.start, end: self.end };
+    }
 }
 ```
 
-它能用，但读的时候要在脑子里解包第三个参数。counted loop 的三个概念本来就是 start、exclusive end、step，语法应该直接把这些词写出来。
+## 当前语义冻结
 
-### 4. 现在的语法占用了未来的 `for-in`
-
-未来如果 Aurex 要做真正 iterator protocol，最自然的表面就是：
-
-```aurex
-for item in values {
-    ...
-}
-```
-
-现在提前把 `for Identifier in ...` 用在一个 parser magic 上，会让迁移很脏：
-
-- 老用户已经把 `in` 和 `range(...)` 绑定。
-- 新用户会以为 `range(...)` 是 iterator 的普通一员。
-- parser 需要同时解释“真 iterator”和“老 magic range”。
-
-所以现在应该把 counted range loop 从 `in` 里移走。`in` 留给真正的 iterator/range protocol。
-
-## 决策
-
-当前 counted integer range loop 迁移到：
-
-```aurex
-for i from start until end {
-    ...
-}
-
-for i from start until end by step {
-    ...
-}
-```
-
-对应当前写法：
-
-```aurex
-for i in range(end) {
-    ...
-}
-
-for i in range(start, end) {
-    ...
-}
-
-for i in range(start, end, step) {
-    ...
-}
-```
-
-迁移目标：
-
-```aurex
-for i from 0 until end {
-    ...
-}
-
-for i from start until end {
-    ...
-}
-
-for i from start until end by step {
-    ...
-}
-```
-
-具体例子：
-
-```aurex
-for i from 0 until 4 {
-    sum += i;
-}
-
-for i from 2 until 5 {
-    sum += i;
-}
-
-for i from 1 until 6 by 2 {
-    sum += i;
-}
-
-for i from 5 until 0 by -2 {
-    sum += i;
-}
-
-for i from 0 until 5 by 0 {
-    // 保持当前语义：step 为 0 时零次迭代。
-}
-```
-
-### 为什么用 `until`
-
-Aurex 当前 range-for 是半开区间 `[start, end)`。如果写：
-
-```aurex
-for i from 0 to n {
-    ...
-}
-```
-
-`to n` 很容易被读成包含 `n`。`until n` 更诚实：一直走到 n 之前，不包含 n。
-
-这是一个打字成本和语义清晰度的交换：
-
-- `to` 更短，但终点包含性不清楚。
-- `until` 多 3 个字母，但直接表达 exclusive end。
-
-第一阶段建议选择 `until`，因为这轮修正的目标就是消灭不诚实表面。为了少打 3 个字母重新制造终点歧义，不值。
-
-### 为什么用 `by`
-
-显式步长写成：
-
-```aurex
-for i from 0 until n by 2 {
-    ...
-}
-```
-
-而不是：
-
-```aurex
-for i from 0 until n step 2 {
-    ...
-}
-```
-
-`step` 更机械，`by` 更短，读起来也更自然：from 0 until n by 2。
-
-如果后续觉得 `by` 过于英语化，也可以换成 `step`。这不会影响 AST、sema、IR，只影响 parser marker 和文档。
-
-## Parser 规则
-
-目标 grammar：
-
-```text
-ForRangeStmt =
-    "for" Identifier "from" Expr "until" Expr ("by" Expr)? Block
-```
-
-不提供省略 start 的短写。也就是说，不引入：
-
-```aurex
-for i until end {
-    ...
-}
-```
-
-原因：
-
-- `range(end)` 的 start=0 已经是一个隐式规则，迁移时没有必要继续扩大隐式表面。
-- `for i from 0 until end` 多打一个 `0`，但语义完整。
-- 少一种 grammar shape，parser、formatter、诊断和教学成本都更低。
-
-### 不做空格敏感
-
-Aurex 不做空格敏感语法。空格、换行、comment 只分隔 token 和保留源码格式，不参与语法含义判断。
-
-下面写法在 parser 层必须等价：
-
-```aurex
-for i from 0 until n by 2 {
-    ...
-}
-
-for i   from   0   until   n   by   2 {
-    ...
-}
-
-for i
-from 0
-until n
-by 2 {
-    ...
-}
-```
-
-formatter 可以统一排成第一种风格，但那是格式化策略，不是语言规则。
-
-### `from` / `until` / `by` 不应成为 hard keyword
-
-刚把 builtin keyword 污染列为语法问题，就不应该立刻新增一批全局 hard keyword。
-
-建议第一阶段把 `from`、`until`、`by` 做成 range-for grammar 内的 contextual marker：
-
-```text
-"for" Identifier identifier("from") Expr identifier("until") Expr (identifier("by") Expr)? Block
-```
-
-也就是说：
-
-- lexer 仍把 `from`、`until`、`by` 当普通 identifier。
-- parser 只在 `for Identifier ...` 这个位置把它们当语法标记。
-- 其他位置用户仍可以使用 `from`、`until`、`by` 作为普通名字。
-
-极端情况下这类代码仍可解析：
-
-```aurex
-let from: i32 = 0;
-let until: i32 = 10;
-
-for i from from until until by 1 {
-    ...
-}
-```
-
-这不好看，但它是上下文关键字的正常代价。formatter 和 style guide 可以建议避免这种命名；parser 不应该因此把三个常用英文词冻结成全局 keyword。
-
-## 语义模型
-
-新表面只改变语法，不改变当前 counted range loop 语义。
-
-```aurex
-for i from start until end by step {
-    body
-}
-```
-
-语义：
+当前 `for i in range(...)` 表示整数 counted range loop：
 
 - 区间是半开区间 `[start, end)`。
-- `start`、`end`、`step` 都必须是整数。
-- `start` 和 `end` 必须同类型。
-- 显式 `step` 必须和 bounds 同类型。
-- 省略 `by step` 时，step 默认为 `1`。
+- `range(end)` 的 start 默认为 `0`。
+- `range(start, end)` 的 step 默认为 `1`。
+- start、end、step 都必须是整数。
+- start/end 必须同类型。
+- 显式 step 必须和 bounds 同类型。
 - `step > 0` 时，当 `cursor < end` 执行循环。
 - `step < 0` 时，当 `cursor > end` 执行循环。
 - `step == 0` 时循环零次，保持当前行为。
 - loop variable 是不可变局部，只在 loop body 里可见。
-- `start`、`end`、`step` 按源码顺序各求值一次。
+- start、end、step 按源码顺序各求值一次。
 - `continue` 跳到隐藏的 cursor 更新点。
 - `break` 跳出整个 range loop。
 
-和当前实现的映射：
-
-```text
-range_start = start
-range_end   = end
-range_step  = step 或 INVALID_EXPR_ID
-```
-
-所以 AST 可以继续复用 `StmtKind::for_range`，不需要为了这次语法修正新增 AST kind。
-
-## 候选方案比较
-
-### 方案 A：`for i from start until end by step`
-
-```aurex
-for i from 0 until n by 2 {
-    ...
-}
-```
-
-优点：
-
-- 不再伪装成通用 `for-in`。
-- `until` 清楚表达不包含 end。
-- `by` 短，整体读法自然。
-- 不需要新增 range expression。
-- 不需要改 AST/sema/IR 的核心 shape。
-- `from` / `until` / `by` 可以做 contextual marker，不污染全局 keyword。
-
-缺点：
-
-- 比 `0..n` 长。
-- 比 `to` 多打 3 个字母。
-- 表达式 parser 需要在 `for-range` 头部给出更好的 marker 诊断。
-
-结论：推荐采用。
-
-### 方案 B：`for i from start to end step step`
-
-```aurex
-for i from 0 to n step 2 {
-    ...
-}
-```
-
-优点：
-
-- `to` 很短。
-- `from ... to ...` 很常见。
-- `step` 的含义直白。
-
-问题：
-
-- `to n` 的终点包含性不够诚实。
-- `step` 比 `by` 长，整体更像内部 IR 描述。
-- 如果后续要支持 inclusive range，又会重新遇到 `to` 到底含不含终点的问题。
-
-结论：不作为第一选择。除非项目更看重极短输入，否则不建议。
-
-### 方案 C：`for i = start..end by step`
-
-```aurex
-for i = 0..n by 2 {
-    ...
-}
-```
-
-优点：
-
-- 短。
-- counted loop 味道强。
-- 未来如果有 range expression，可以复用 `start..end`。
-
-问题：
-
-- 当前 lexer 没有独立 `..` token；slice rest `..` 是 parser 在 pattern 里匹配两个 `dot` token，`...` 才是 `ellipsis` token。
-- `..` 在不同语言里既可能是 inclusive，也可能是 exclusive，不天然解决终点语义。
-- range expression 会影响 slice、pattern、index、future iterator、operator precedence，不应该只为修 range loop 临时塞进去。
-- `for i = ...` 容易和现有 C-style `for` 头部产生视觉混杂。
-
-结论：这应该留给“range expression / slicing / iterator protocol”专题，不作为当前 range loop 表面修正的第一步。
-
-### 方案 D：继续保留 `for i in range(...)`
-
-只有一种情况下这个方案可以成立：Aurex 先实现真正的 `for-in`，并且 `range(...)` 是一个真实可迭代 range value。
-
-在当前项目状态下它不成立，因为 parser 明确 hard-code `range`，没有 iterator protocol。
-
-结论：开发期应迁移掉，不能把它当最终语法。
-
-## 迁移路径
-
-### 阶段 1：新增新语法，旧语法继续过
-
-同时支持：
-
-```aurex
-for i from 0 until end {
-    ...
-}
-
-for i in range(end) {
-    ...
-}
-```
-
-旧语法给出迁移 warning 或 deprecation diagnostic：
-
-```text
-`for i in range(end)` is deprecated; use `for i from 0 until end`
-```
-
-fix-it 映射：
-
-```text
-for i in range(end)              -> for i from 0 until end
-for i in range(start, end)       -> for i from start until end
-for i in range(start, end, step) -> for i from start until end by step
-```
-
-### 阶段 2：项目样例和文档迁移
-
-需要改：
-
-- `docs/zh/language-manual.md`
-- `docs/zh/language-feature-inventory.md`
-- `tests/gtest/frontend/parse/parser_tests.cpp`
-- `tests/samples/positive/control_flow/for_range.ax`
-- `tests/samples/positive/control_flow/for_loop.ax`
-- `tests/samples/negative/control_flow/for_range_*.ax`
-
-### 阶段 3：旧语法变成错误
-
-当样例、测试和文档都迁移后，`for i in range(...)` 应该报错并给出替换建议。
-
-保留：
-
-```aurex
-for x in values {
-    ...
-}
-```
-
-作为未来真正 iterator protocol 的语法空间。当前如果用户写它，诊断应该明确：
-
-```text
-generic `for-in` is not supported yet; use `for i from start until end` for counted integer loops
-```
-
-## 实现计划
-
-### Parser
-
-修改 `src/frontend/parse/grammar/parser_control_stmt.cpp`：
-
-- `next_for_is_range_loop()` 从 `Identifier kw_in` 改为识别 `Identifier identifier("from")`。
-- 新增 contextual marker helper，例如：
-
-```text
-check_identifier_text("from")
-expect_identifier_text("until", ...)
-match_identifier_text("by")
-```
-
-- `parse_for_range_stmt()` 解析：
-
-```text
-name
-from
-start expr
-until
-end expr
-optional by
-step expr
-body block
-```
-
-表达式边界不靠空格。`until` 和 `by` 是 token/text marker，不是 trivia marker。
-
-### AST
-
-无需新增节点：
-
-```text
-StmtKind::for_range
-range_start
-range_end
-range_step
-```
-
-区别只是新语法永远显式提供 `range_start`。旧 `range(end)` 在迁移期仍可继续存成 `range_start = INVALID_EXPR_ID`，lowering 继续补 `0`。
-
-如果阶段 3 删除旧语法，可以考虑让 `range_start` 对新语法必定有效，并在 parser/sema 里收紧 invariant。但这不是第一步必须做的。
-
-### Sema
-
-核心类型规则不变：
-
-- bounds 必须是整数。
-- start/end 同类型。
-- step 同类型。
-- loop local 不可变。
-
-需要更新 diagnostic 文案，把 `range(...)` 改成新语法。
-
-### IR lowering
-
-无需核心变化。
-
-当前 lowering 已经是 counted loop：
-
-- start/end/step 求值。
-- cursor/end/step 存 slot。
-- condition block 判断方向。
-- body block 绑定不可变 loop local。
-- update block 做 cursor += step。
-
-### Tests
-
-新增 parser positive：
-
-```aurex
-for i from 0 until limit {
-    total += i;
-}
-
-for j from 1 until limit {
-    total += j;
-}
-
-for k from 1 until limit by 2 {
-    total += k;
-}
-```
-
-新增 parser negative：
-
-```aurex
-for i from 0 limit {}
-for i from until limit {}
-for i from 0 until {}
-for i from 0 until limit by {}
-```
-
-保留迁移期旧语法测试，但标记为 legacy/deprecated。
-
-执行样例需要覆盖：
-
-- 正步长。
-- 负步长。
-- step 为 0。
-- start/end 类型不一致。
-- step 类型不一致。
-- loop variable 作用域。
-- `continue` 走更新点。
-
-## 第一阶段结论
-
-建议把 Aurex counted range loop 第一手改成：
-
-```aurex
-for i from start until end {
-    ...
-}
-
-for i from start until end by step {
-    ...
-}
-```
-
-并明确规定：
-
-- 不做空格敏感。
-- 不提供省略 start 的短写。
-- `from` / `until` / `by` 作为 contextual marker，不作为 hard keyword。
-- `for x in expr` 留给未来真正 iterator protocol。
-- 当前 `for i in range(...)` 进入迁移期，最终删除。
+当前 array/slice for-in：
+
+- `expr` 是 array 或 slice。
+- loop item 是不可变局部，类型是元素类型。
+- 每轮按值 load 一个元素，元素类型必须是 `Copy`。
+- 不 move array/slice 本身。
+- 不调用用户函数或 trait method。
+
+当前 str for-in：
+
+- `expr` 是 `str`。
+- loop item 是不可变局部，类型是 `u8`。
+- 每轮按 UTF-8 存储字节 load 一个 byte。
+- 不做 Unicode scalar / `char` 解码。
+- 不 move `str` 本身；`str` 作为 borrowed view 只被读取。
+- 不调用用户函数或 trait method。
+
+当前 range value for-in：
+
+- `range(...)` 在普通表达式位置产生 `range<T>`，`T` 必须是整数类型。
+- 内部表示是编译器生成的三字段 record：`start: T`、`end: T`、`step: T`。
+- `range(end)` 的 start 默认为 `0`，`range(start, end)` 的 step 默认为 `1`。
+- range value 可绑定到局部、按值保存和复用。
+- `for item in range_value` 的 loop item 是不可变局部，类型是 `T`。
+- 循环条件、负 step 和零 step 行为与 counted range loop 一致。
+- 当前源码类型语法还不能直接书写 `range<T>`，只能通过 `let values = range(...)` 推断。
+
+当前 protocol for-in：
+
+- 表达式本身可以是 iterator；这种情况下 iterable 会被消费进隐藏 iterator slot。
+- 表达式可以提供 `iter()`；`iter(self)` 会消费 source，`iter(&self)` 和 `iter(&mut self)` 分别借用 source。
+- iterator 必须提供 `has_next(self: &mut Iterator) -> bool`。
+- iterator 必须提供 `next(self: &mut Iterator) -> Item`，且 `Item` 不能是 `void`。
+- loop item 是不可变局部，类型是 `next()` 返回类型。
+- protocol item 不要求 `Copy`。
+- 每轮 item 在本轮 body 结束、`continue` 或 `break` 路径上按 cleanup 规则销毁。
+
+## 本轮不做
+
+- 不新增 counted loop 专用 marker 语法。
+- 不新增 `from` / `until` / `by` contextual marker。
+- 不把 `for i in range(...)` 标为 deprecated。
+- 不迁移 tests、samples、examples 里的 range loop 写法。
+- 不引入 `..` / `..<` / `..=` range expression。
+- 不定义标准库 iterator trait 或标准库 adapter。
+- 不引入 Unicode scalar / `char` 级别 str iteration。
+- 不引入 reference item / mutable item iteration 表面。
+- 不把 dyn trait vtable-slot dispatch 纳入 for-in protocol。
+
+## 后续处理点
+
+后续 iterator/range 专题只剩这些表面需要统一：
+
+1. 决定 array/slice/str 是否新增 `&item`、`&mut item` 或 consuming item iteration。
+2. 决定是否需要 range literal。
+3. 决定标准库 iterable trait/adapter 是否要和当前结构协议并存，还是迁移到名义 trait。
+4. 决定 Unicode scalar / `char` 级别 str adapter 的标准库或语言边界。
+5. 决定 dyn trait iterator dispatch 是否进入语言表面。
+
+当前阶段的工程动作就是：保留原有 `for i in range(...)`，同时让普通表达式位置的 `range(...)` 成为可迭代的一等值；array/slice value for-in、str byte for-in 和用户 protocol iterator for-in 也保持可运行子集。不继续推进更长的 counted loop 语法。

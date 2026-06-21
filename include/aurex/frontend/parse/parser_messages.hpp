@@ -248,7 +248,8 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_LIST_END = "expect
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_PARAM_SEPARATOR = "expected ',' or '>' after generic parameter";
 
-inline constexpr std::string_view PARSER_EXPECT_LEGACY_GENERIC_BEGIN = "expected '['";
+inline constexpr std::string_view PARSER_LEGACY_BRACKET_GENERIC =
+    "generic parameter and argument lists use '<...>'; square brackets are reserved for arrays, slices, indexes, and patterns";
 
 inline constexpr std::string_view PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED = "generic bounds are not part of M2 syntax";
 
@@ -261,12 +262,6 @@ inline constexpr std::string_view PARSER_EXPECT_WHERE_CAPABILITY = "expected cap
 
 inline constexpr std::string_view PARSER_EXPECT_WHERE_SEPARATOR =
     "expected ',' or declaration body after where constraint";
-
-inline constexpr std::string_view PARSER_LEGACY_BRACKET_GENERIC_UNSUPPORTED =
-    "generic parameters and type arguments use '<...>'; '[' and ']' are reserved for arrays, slices, indexes, attributes, and origins";
-
-inline constexpr std::string_view PARSER_M2_RANGE_FOR_ONLY_RANGE =
-    "M2 range-for only supports range(...); generic iteration is not part of M2 syntax";
 
 inline constexpr std::string_view PARSER_M2_EXPLICIT_GENERIC_CALL_SYNTAX =
     "explicit generic calls use '<...>', for example id<i32>(...)";
@@ -416,6 +411,9 @@ inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_NAME = "expected
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_CAPTURE_SEPARATOR =
     "expected ',' or ']' after closure capture";
 
+inline constexpr std::string_view PARSER_CLOSURE_MOVE_CAPTURE_INITIALIZER_PREFIX =
+    "move capture initializer must be written as 'name = move expr' or 'move name'";
+
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST = "expected '(' after closure capture list";
 
 inline constexpr std::string_view PARSER_EXPECT_CLOSURE_PARAM_LIST_END = "expected ')' after closure parameters";
@@ -454,6 +452,12 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_SCOPE = "expected 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_START = "expected '<' before generic type arguments";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGS_END = "expected '>' after generic type arguments";
+
+inline constexpr std::string_view PARSER_LAYOUT_QUERY_ARGUMENT_COUNT =
+    "layout query expects exactly one type argument";
+
+inline constexpr std::string_view PARSER_LAYOUT_QUERY_VALUE_ARGUMENTS =
+    "layout query expects empty parentheses";
 
 inline constexpr std::string_view PARSER_EXPECT_FIELD_AFTER_DOT = "expected field name after '.'";
 

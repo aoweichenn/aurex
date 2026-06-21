@@ -436,6 +436,10 @@ private:
     void intern_lambda_capture_decls(std::vector<LambdaCaptureDecl, Allocator>& captures)
     {
         for (LambdaCaptureDecl& capture : captures) {
+            if (capture.name.empty()) {
+                capture.name_id = INVALID_IDENT_ID;
+                continue;
+            }
             this->intern_identifier_text(capture.name, capture.name_id);
         }
     }

@@ -1,0 +1,21 @@
+module for_in_non_copy_element;
+
+struct File {
+    fd: i32;
+}
+
+impl Drop for File {
+    fn drop(self: deinit File) -> void {}
+}
+
+fn make_file(value: i32) -> File {
+    return File { fd: value };
+}
+
+fn main() -> i32 {
+    let files: [1]File = [make_file(1)];
+    for file in files {
+        return file.fd;
+    }
+    return 0;
+}

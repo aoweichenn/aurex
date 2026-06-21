@@ -10325,13 +10325,13 @@ const SCX_ALIASES: [342]PropertyAlias = [
 
 
 pub fn decode_at(text_value: str, offset: usize) -> Decode {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return Decode { value: 0usize, next: offset, valid: false };
     }
     let b0: u8 = ascii.byte_at(text_value, offset);
     if b0 < 0x80u8 {
-        return Decode { value: cast<usize>(b0), next: offset + 1usize, valid: true };
+        return Decode { value: ((b0) as usize), next: offset + 1usize, valid: true };
     }
     if UTF8_TWO_MIN <= b0 && b0 <= UTF8_TWO_MAX {
         if offset + 1usize >= len {
@@ -10341,7 +10341,7 @@ pub fn decode_at(text_value: str, offset: usize) -> Decode {
         if !is_continuation(b1) {
             return invalid_decode(b0, offset);
         }
-        let value: usize = (cast<usize>(b0) - 0xc0usize) * UTF8_PAYLOAD_6 + (cast<usize>(b1) - 0x80usize);
+        let value: usize = (((b0) as usize) - 0xc0usize) * UTF8_PAYLOAD_6 + (((b1) as usize) - 0x80usize);
         return Decode { value: value, next: offset + 2usize, valid: true };
     }
     if UTF8_THREE_MIN <= b0 && b0 <= UTF8_THREE_MAX {
@@ -10353,9 +10353,9 @@ pub fn decode_at(text_value: str, offset: usize) -> Decode {
         if !valid_second_for_three(b0, b1) || !is_continuation(b2) {
             return invalid_decode(b0, offset);
         }
-        let value: usize = (cast<usize>(b0) - 0xe0usize) * UTF8_PAYLOAD_12 +
-            (cast<usize>(b1) - 0x80usize) * UTF8_PAYLOAD_6 +
-            (cast<usize>(b2) - 0x80usize);
+        let value: usize = (((b0) as usize) - 0xe0usize) * UTF8_PAYLOAD_12 +
+            (((b1) as usize) - 0x80usize) * UTF8_PAYLOAD_6 +
+            (((b2) as usize) - 0x80usize);
         return Decode { value: value, next: offset + 3usize, valid: true };
     }
     if UTF8_FOUR_MIN <= b0 && b0 <= UTF8_FOUR_MAX {
@@ -10368,17 +10368,17 @@ pub fn decode_at(text_value: str, offset: usize) -> Decode {
         if !valid_second_for_four(b0, b1) || !is_continuation(b2) || !is_continuation(b3) {
             return invalid_decode(b0, offset);
         }
-        let value: usize = (cast<usize>(b0) - 0xf0usize) * UTF8_PAYLOAD_18 +
-            (cast<usize>(b1) - 0x80usize) * UTF8_PAYLOAD_12 +
-            (cast<usize>(b2) - 0x80usize) * UTF8_PAYLOAD_6 +
-            (cast<usize>(b3) - 0x80usize);
+        let value: usize = (((b0) as usize) - 0xf0usize) * UTF8_PAYLOAD_18 +
+            (((b1) as usize) - 0x80usize) * UTF8_PAYLOAD_12 +
+            (((b2) as usize) - 0x80usize) * UTF8_PAYLOAD_6 +
+            (((b3) as usize) - 0x80usize);
         return Decode { value: value, next: offset + 4usize, valid: true };
     }
     return invalid_decode(b0, offset);
 }
 
 pub fn next_boundary(text_value: str, offset: usize) -> usize {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return len;
     }
@@ -10390,7 +10390,7 @@ pub fn next_boundary(text_value: str, offset: usize) -> usize {
 }
 
 pub fn align_forward_boundary(text_value: str, offset: usize) -> usize {
-    let len: usize = strblen(text_value);
+    let len: usize = text_value.len;
     if offset >= len {
         return len;
     }
@@ -10424,7 +10424,7 @@ pub fn previous_decode(text_value: str, offset: usize) -> Decode {
         return Decode { value: 0usize, next: 0usize, valid: false };
     }
     let fallback: u8 = ascii.byte_at(text_value, offset - 1usize);
-    return Decode { value: cast<usize>(fallback), next: offset, valid: false };
+    return Decode { value: ((fallback) as usize), next: offset, valid: false };
 }
 
 pub fn is_word(value: usize) -> bool {
@@ -10910,7 +10910,7 @@ pub fn grapheme_cluster_break(value: usize) -> u8 {
         } else if value > last {
             low = mid + 1usize;
         } else {
-            return cast<u8>(GRAPHEME_CLUSTER_BREAK_TABLE[offset + 2usize]);
+            return ((GRAPHEME_CLUSTER_BREAK_TABLE[offset + 2usize]) as u8);
         }
     }
     return GCB_OTHER;
@@ -10995,7 +10995,7 @@ fn valid_second_for_four(first: u8, second: u8) -> bool {
 }
 
 fn invalid_decode(first: u8, offset: usize) -> Decode {
-    return Decode { value: cast<usize>(first), next: offset + 1usize, valid: false };
+    return Decode { value: ((first) as usize), next: offset + 1usize, valid: false };
 }
 
 fn is_letter_category(value: usize) -> bool {
@@ -11080,7 +11080,7 @@ fn alias_lookup(aliases: []PropertyAlias, count: usize, pattern: str, name_start
 
 fn normalized_name_matches(pattern: str, name_start: usize, name_len: usize, expected: str) -> bool {
     let end: usize = name_start + name_len;
-    let expected_len: usize = strblen(expected);
+    let expected_len: usize = expected.len;
     var at: usize = name_start;
     var expected_at: usize = 0usize;
     while at < end {

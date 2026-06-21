@@ -262,6 +262,9 @@ std::span<const base::u32> SemanticAnalyzerCore::DropCheckAnalyzer::concrete_ori
             case TypeKind::array:
                 pending.push_back(TypeFrame{info.array_element});
                 break;
+            case TypeKind::range:
+                pending.push_back(TypeFrame{info.range_element});
+                break;
             case TypeKind::slice:
                 pending.push_back(TypeFrame{info.slice_element});
                 break;

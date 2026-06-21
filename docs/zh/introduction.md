@@ -1,19 +1,12 @@
-# 介绍文档
+# 项目介绍
 
-Aurex 是一个系统语言编译器项目。当前实现基线是 **M20d Runtime Lowering ABI Design Closure**。M2 已冻结标准库并把工程重心拉回语言核心；M3 已收口模块、泛型、query-backed sema、tooling、incremental syntax 和 backend reuse；M4 新增 nominal static trait、显式 trait impl、generic trait predicate、静态 trait method dispatch、associated type，以及 tooling/diagnostics 投影；M5 已在这条 static trait 模型上把 default method bodies 收口为 release baseline；M6 已完成资源、值生命周期、cleanup 和 drop-glue 基线；M7 加入 CFG-sensitive borrow facts、borrow summary、lifetime/dropck、place-state 和 RAII/drop lowering；M8 已完成 `&dyn Trait` / `&mut dyn Trait` borrowed erased view、checked vtable facts、IR/backend vtable dispatch 和 hardening 收口；M9 已完成 dyn ABI/tooling facts；M10 已完成 direct supertrait declaration、checked supertrait graph、borrowed dyn-to-dyn upcast facts、`trait_object_upcast` IR、`supertrait_vptr_metadata_v1` vtable metadata、LLVM parent vtable projection 和 inherited supertrait dispatch runtime；M11 已完成 principal-set borrowed dyn composition 的 design/query/frontend/sema、显式 composition-to-principal runtime projection 以及 facts/query/tooling/verifier release closure；M12 已完成唯一 principal method 的 direct composition dispatch 及 release hardening；M13a/M13b 已选择并落成 `dynproject<SourcePrincipal, TargetSupertrait>(view)` frontend/query/sema；M13c 已把该显式 borrowed composition-to-supertrait projection lowering 为 `trait_object_composition_project` + `trait_object_upcast` runtime，复用 `principal_set_metadata_v1` 和 `supertrait_vptr_metadata_v1`；M13d 已新增 `FunctionDynAbiFacts::composition_supertrait_chains`、query/cache/tooling hover 和 verifier negative matrix，完成 M13 release closure；M14 已支持唯一 source-principal path 下的 `let parent: &dyn Parent = view;` 和 `view.parent()`，并记录 `BorrowedDynViewPathFact`；M15 已固定 advanced dyn ownership/runtime boundary 和 const generic boundary 的 query design gates；M16 已打开用户可写 typed scalar const generic check-only 子集，支持 `const N: usize`、mixed generic args、`GenericInstanceKey::const_args` 和 `[N]T`；M17 已固定 `DynOwnershipRuntimeFacts`，把 future owning dyn、erased drop glue、allocator 和 cleanup/dropck runtime boundary 变成 compiler/query/tooling facts；M18 已新增 `DynOwnershipRuntimeBoundaryGate` 和 `dyn_ownership_runtime_boundary_gate` project-level query，把 M17 facts 接入 query/cache/tooling/reuse/workspace index，并固定 future IR/verifier/runtime lowering prerequisites；M19 已新增 `DynOwnershipRuntimeIrVerifierFact`、function-level IR collector、borrowed vtable destructor-free verifier guard 和 dynamic erased drop blocked sentinel；M20a 已新增 `OwnedDynRuntimeAdmissionGate`，把 M17/M18/M19 facts 汇总为 owned dyn runtime admission gate；M20b 已新增 `OwnedDynObjectLayoutPrototype`、IR verifier/dump/fingerprint 和 `OwnedDynIrShapePrototypeGate`，把 compiler-owned owned dyn handle shape 固定为 two-field data/vtable prototype；M20c 已新增 `OwnedDynDropAllocatorIdentityGate`、IR drop/allocator identity keys、verifier/dump/fingerprint 和 identity gate adapter；M20d 已新增 `OwnedDynRuntimeLoweringAbiGate`、runtime ABI descriptor key、backend helper prerequisite key、IR adapter、summary/dump/fingerprint 和 validation，同时继续阻塞所有标准库与可执行 runtime surface。
+Aurex 是一个 C++20 实现的系统语言编译器项目。当前工作重心是把语言核心做稳：泛型、闭包、控制流、资源语义、borrow 检查、IR lowering、LLVM backend 和样例测试必须形成一致闭环。
 
-M1 阶段已经舍弃。它把标准库、host support、构建工具样例、自举实验和语言核心同时推进，导致基础语法与类型规则没有形成稳定基线。M2 不再沿着 M1 修补，而是先把语言地基重新做稳。
+当前仓库不维护标准库源树，也不依赖标准库包装来验证语言能力。语言样例应自包含；需要 libc 或平台能力时，通过窄 `extern c` 声明表达。
 
-本阶段已经删除 `std/` 源树、std driver 查找/链接代码、std CLI 选项、std/M1/system 样例和 std 专项测试。需要运行时能力的语言测试应通过局部 `extern c` 声明表达，不再依赖 Aurex 标准库包装。
+当前优先级：
 
-短期目标：
-
-- 通过常规仓库测试、90% coverage gate、query/cache/profile gates、stress gates 和文档检查保持 M10d supertrait
-  release baseline、M11/M12 advanced dyn release baseline、M13d composition-to-supertrait release baseline 和
-  M14 borrowed view path release baseline 稳定。
-- 保持 M7 borrow/lifetime/resource baseline 稳定；完整 Rust-style lifetime surface、raw pointer alias safe proof、
-  indexed move-out 和 replace/take/swap 继续后移到独立阶段。
-- 下一步进入标准库 / owning dyn runtime surface 的入口评估；M20a-M20d 已把 compiler-owned owned dyn handle 的
-  admission、shape、drop / allocator identity prerequisites、runtime ABI design facts、query facts、dump/fingerprint 和 verifier negative matrix 固定下来。owning dyn 用户值、
-  `Box<dyn Trait>`、dynamic Drop dispatch、标准库 allocator、specialization、associated constants、default
-  associated types 和 generic associated type 仍后续单独设计；M20d 仍未实现任何标准库 API。
+- 语法表面统一：尖括号泛型、`as` cast、`[]T` / `[]mut T` slice、C++ 风格 lambda capture-list。
+- 泛型闭环：parser、AST、sema、generic side table、IR lowering、LLVM lowering 和测试保持同一套类型身份。
+- 闭包和控制流：lambda capture-list、counted `range(...)`、一等 `range(...)` value、array/slice value for-in、str byte for-in 和用户 protocol iterator for-in 形成当前可用子集。
+- 文档收敛：只保留中文当前项目文档，不保留旧路线和阶段流水账。

@@ -16,7 +16,6 @@ using syntax::TokenKind;
 
 enum class BuiltinExprShape {
     CAST,
-    TYPE,
     PTRADDR,
     PTRAT,
     STR_SLICE_UNARY,
@@ -31,13 +30,12 @@ struct BuiltinExprSyntax {
 
 constexpr base::usize PARSER_MAX_EXPRESSION_NESTING_DEPTH = 512;
 constexpr base::usize PARSER_GROUPED_RECOVERY_STACK_INITIAL_CAPACITY = 16;
+constexpr int PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH = 2;
+constexpr int PARSER_LAMBDA_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH = 1;
 
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
-    {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
     {TokenKind::kw_ptrcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
     {TokenKind::kw_bitcast, BuiltinExprShape::CAST, syntax::ExprKind::bcast},
-    {TokenKind::kw_sizeof, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
-    {TokenKind::kw_alignof, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
     {TokenKind::kw_ptraddr, BuiltinExprShape::PTRADDR, syntax::ExprKind::ptr_addr},
     {
         TokenKind::kw_ptrat,
@@ -84,6 +82,18 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
 [[nodiscard]] bool token_is_closing_delimiter(const TokenKind kind) noexcept
 {
     return kind == TokenKind::r_paren || kind == TokenKind::r_bracket || kind == TokenKind::r_brace;
+}
+
+[[nodiscard]] bool lambda_capture_initializer_is_finished(
+    const TokenKind kind, const base::usize delimiter_depth, const int angle_depth) noexcept
+{
+    return delimiter_depth == 0 && angle_depth == 0
+        && (kind == TokenKind::comma || kind == TokenKind::r_bracket || kind == TokenKind::eof);
+}
+
+[[nodiscard]] bool token_continues_lambda_initializer_generic_suffix(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::l_paren || kind == TokenKind::dot || kind == TokenKind::l_brace;
 }
 
 class ExpressionNestingGuard final {
@@ -180,8 +190,6 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context)
     switch (builtin->shape) {
         case BuiltinExprShape::CAST:
             return parser.parse_cast(builtin->expr_kind, context);
-        case BuiltinExprShape::TYPE:
-            return parser.parse_type_builtin(builtin->expr_kind);
         case BuiltinExprShape::PTRADDR:
             return parser.parse_ptraddr(context);
         case BuiltinExprShape::PTRAT:
@@ -201,26 +209,180 @@ bool PrimaryExprParser::lambda_head_follows() const noexcept
         return false;
     }
     ++offset;
-    if (this->peek_at(offset).kind != TokenKind::r_bracket) {
-        while (true) {
-            if (this->peek_at(offset).kind == TokenKind::amp) {
-                ++offset;
+    while (this->peek_at(offset).kind != TokenKind::r_bracket) {
+        if (this->peek_at(offset).kind == TokenKind::equal) {
+            ++offset;
+        } else if (this->peek_at(offset).kind == TokenKind::amp) {
+            ++offset;
+            if (this->peek_at(offset).kind != TokenKind::comma
+                && this->peek_at(offset).kind != TokenKind::r_bracket) {
                 if (this->peek_at(offset).kind == TokenKind::kw_mut) {
                     ++offset;
                 }
+                if (this->peek_at(offset).kind != TokenKind::identifier) {
+                    return false;
+                }
+                ++offset;
             }
+        } else if (this->peek_at(offset).kind == TokenKind::kw_move) {
+            ++offset;
             if (this->peek_at(offset).kind != TokenKind::identifier) {
-                break;
+                return false;
             }
             ++offset;
-            if (this->peek_at(offset).kind != TokenKind::comma) {
-                break;
-            }
+        } else if (this->peek_at(offset).kind == TokenKind::identifier) {
             ++offset;
+        } else {
+            return false;
         }
+        if (this->peek_at(offset).kind == TokenKind::equal) {
+            ++offset;
+            base::usize delimiter_depth = 0;
+            int angle_depth = 0;
+            while (!lambda_capture_initializer_is_finished(this->peek_at(offset).kind, delimiter_depth, angle_depth)) {
+                switch (this->peek_at(offset).kind) {
+                    case TokenKind::l_paren:
+                    case TokenKind::l_brace:
+                    case TokenKind::l_bracket:
+                        ++delimiter_depth;
+                        break;
+                    case TokenKind::r_paren:
+                    case TokenKind::r_brace:
+                        if (delimiter_depth > 0) {
+                            --delimiter_depth;
+                        }
+                        break;
+                    case TokenKind::r_bracket:
+                        if (delimiter_depth > 0) {
+                            --delimiter_depth;
+                            break;
+                        }
+                        return false;
+                    case TokenKind::less:
+                        if (angle_depth == 0 && !this->lambda_initializer_generic_suffix_follows_at(offset)) {
+                            break;
+                        }
+                        ++angle_depth;
+                        break;
+                    case TokenKind::greater:
+                        if (angle_depth > 0) {
+                            --angle_depth;
+                        }
+                        break;
+                    case TokenKind::greater_greater:
+                        if (angle_depth >= PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH) {
+                            angle_depth -= PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH;
+                        } else if (angle_depth == PARSER_LAMBDA_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                            --angle_depth;
+                        }
+                        break;
+                    case TokenKind::greater_equal:
+                        if (angle_depth == PARSER_LAMBDA_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                            --angle_depth;
+                        }
+                        break;
+                    case TokenKind::greater_greater_equal:
+                        if (angle_depth >= PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH) {
+                            angle_depth -= PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH;
+                        }
+                        break;
+                    case TokenKind::eof:
+                        return false;
+                    default:
+                        break;
+                }
+                ++offset;
+            }
+        }
+        if (this->peek_at(offset).kind != TokenKind::comma) {
+            break;
+        }
+        ++offset;
     }
     return this->peek_at(offset).kind == TokenKind::r_bracket
         && this->peek_at(offset + 1).kind == TokenKind::l_paren;
+}
+
+bool PrimaryExprParser::lambda_initializer_generic_suffix_follows_at(const base::usize offset) const noexcept
+{
+    int angle_depth = 0;
+    base::usize delimiter_depth = 0;
+    base::usize current = offset;
+    while (!this->is_eof()) {
+        switch (this->peek_at(current).kind) {
+            case TokenKind::less:
+                ++angle_depth;
+                break;
+            case TokenKind::l_paren:
+            case TokenKind::l_brace:
+            case TokenKind::l_bracket:
+                ++delimiter_depth;
+                break;
+            case TokenKind::r_paren:
+            case TokenKind::r_brace:
+            case TokenKind::r_bracket:
+                if (delimiter_depth > 0) {
+                    --delimiter_depth;
+                    break;
+                }
+                return false;
+            case TokenKind::greater:
+                if (delimiter_depth > 0) {
+                    break;
+                }
+                --angle_depth;
+                if (angle_depth == 0) {
+                    return token_continues_lambda_initializer_generic_suffix(this->peek_at(current + 1).kind);
+                }
+                break;
+            case TokenKind::greater_greater:
+                if (delimiter_depth > 0) {
+                    break;
+                }
+                if (angle_depth == PARSER_LAMBDA_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                    return false;
+                }
+                angle_depth -= PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH;
+                if (angle_depth == 0) {
+                    return token_continues_lambda_initializer_generic_suffix(this->peek_at(current + 1).kind);
+                }
+                if (angle_depth < 0) {
+                    return false;
+                }
+                break;
+            case TokenKind::greater_equal:
+                if (delimiter_depth > 0) {
+                    break;
+                }
+                if (angle_depth == PARSER_LAMBDA_GENERIC_ANGLE_SINGLE_CLOSE_DEPTH) {
+                    return token_continues_lambda_initializer_generic_suffix(TokenKind::equal);
+                }
+                --angle_depth;
+                break;
+            case TokenKind::greater_greater_equal:
+                if (delimiter_depth > 0) {
+                    break;
+                }
+                if (angle_depth == PARSER_LAMBDA_GENERIC_ANGLE_DOUBLE_CLOSE_DEPTH) {
+                    return token_continues_lambda_initializer_generic_suffix(TokenKind::equal);
+                }
+                return false;
+            case TokenKind::eof:
+            case TokenKind::semicolon:
+            case TokenKind::comma:
+                if (delimiter_depth == 0 && angle_depth <= 0) {
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+        if (angle_depth <= 0) {
+            return false;
+        }
+        ++current;
+    }
+    return false;
 }
 
 syntax::ExprId PrimaryExprParser::parse_lambda_expr(const ExprContext context)
@@ -289,19 +451,62 @@ std::optional<syntax::LambdaCaptureDecl> PrimaryExprParser::parse_lambda_capture
 {
     syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
     base::SourceRange range = this->peek().range;
+    bool has_move_prefix = false;
+    if (this->match(TokenKind::equal)) {
+        const syntax::Token& token = this->previous();
+        return syntax::LambdaCaptureDecl{
+            {},
+            token.range,
+            syntax::INVALID_IDENT_ID,
+            syntax::LambdaCaptureKind::default_value,
+            syntax::INVALID_EXPR_ID,
+        };
+    }
     if (this->match(TokenKind::amp)) {
         kind = syntax::LambdaCaptureKind::shared_reference;
         range = this->previous().range;
+        if (this->check(TokenKind::comma) || this->check(TokenKind::r_bracket)) {
+            return syntax::LambdaCaptureDecl{
+                {},
+                range,
+                syntax::INVALID_IDENT_ID,
+                syntax::LambdaCaptureKind::default_reference,
+                syntax::INVALID_EXPR_ID,
+            };
+        }
         if (this->match(TokenKind::kw_mut)) {
             kind = syntax::LambdaCaptureKind::mutable_reference;
             range = this->merge(range, this->previous().range);
         }
+    } else if (this->match(TokenKind::kw_move)) {
+        has_move_prefix = true;
+        kind = syntax::LambdaCaptureKind::move;
+        range = this->previous().range;
     }
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_CLOSURE_CAPTURE_NAME));
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
-    return syntax::LambdaCaptureDecl{name.text(), this->merge(range, name.range), syntax::INVALID_IDENT_ID, kind};
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
+    if (this->match(TokenKind::equal)) {
+        if (has_move_prefix) {
+            this->report_at(name, std::string(PARSER_CLOSURE_MOVE_CAPTURE_INITIALIZER_PREFIX));
+        }
+        if (this->match(TokenKind::kw_move)) {
+            kind = syntax::LambdaCaptureKind::move;
+        }
+        initializer = this->parse_expr(ExprContext::normal);
+        range = this->merge(range, this->expr_range_or(initializer, name.range));
+    } else if (has_move_prefix) {
+        initializer = this->session_.module.push_name_expr(name.range, name.text());
+    }
+    return syntax::LambdaCaptureDecl{
+        name.text(),
+        this->merge(range, name.range),
+        syntax::INVALID_IDENT_ID,
+        kind,
+        initializer,
+    };
 }
 
 bool PrimaryExprParser::recover_lambda_capture_separator()

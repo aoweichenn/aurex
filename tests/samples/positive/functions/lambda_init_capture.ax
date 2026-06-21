@@ -1,0 +1,66 @@
+module lambda_init_capture;
+
+struct File {
+    fd: i32;
+}
+
+impl Drop for File {
+    fn drop(self: deinit File) -> void {}
+}
+
+fn init_value_capture(seed: i32) -> i32 {
+    let add = [base = seed + 2](value: i32) -> i32 => value + base;
+    return add(40);
+}
+
+fn init_capture_shadows_outer(value: i32) -> i32 {
+    let base: i32 = 100;
+    let add = [base = value](next: i32) -> i32 => next + base;
+    return add(1);
+}
+
+fn init_reference_capture() -> i32 {
+    var source: i32 = 10;
+    let read = [&view = source](step: i32) -> i32 => view + step;
+    let before: i32 = read(1);
+    source = 20;
+    let after: i32 = read(1);
+    return before * 10 + after;
+}
+
+fn init_mutable_reference_capture() -> i32 {
+    var source: i32 = 4;
+    let bump = [&mut view = source](delta: i32) -> i32 {
+        view = view + delta;
+        return view;
+    };
+    let before: i32 = bump(3);
+    let after: i32 = bump(5);
+    return before * 10 + after + source;
+}
+
+fn init_capture_with_nested_commas() -> i32 {
+    let seed: i32 = 5;
+    let add = [base = pair_sum(seed, 2)](value: i32) -> i32 => value + base;
+    return add(1);
+}
+
+fn init_reference_capture_non_copy() -> i32 {
+    let file: File = File { fd: 13 };
+    let read = [&view = file]() -> i32 => view.fd;
+    return read();
+}
+
+fn pair_sum(left: i32, right: i32) -> i32 {
+    return left + right;
+}
+
+fn main() -> i32 {
+    return init_value_capture(0)
+        + init_capture_shadows_outer(8)
+        + init_reference_capture()
+        + init_mutable_reference_capture()
+        + init_capture_with_nested_commas()
+        + init_reference_capture_non_copy()
+        - 297;
+}

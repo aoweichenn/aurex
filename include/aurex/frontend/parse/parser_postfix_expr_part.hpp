@@ -44,6 +44,8 @@ private:
     [[nodiscard]] const syntax::Token& expect_index_suffix_end(const syntax::Token& opening);
     [[nodiscard]] const syntax::Token& expect_slice_suffix_end(const syntax::Token& opening);
     [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId base, ExprContext context);
+    [[nodiscard]] std::optional<syntax::ExprId> parse_layout_query_call_suffix(
+        syntax::ExprId base, const syntax::CallExprPayload& payload, const base::SourceRange& call_range);
     void parse_call_args(syntax::CallExprPayload& payload, ExprContext context);
     void parse_call_arg(syntax::CallExprPayload& payload, ExprContext context);
     [[nodiscard]] bool recover_call_arg_separator();

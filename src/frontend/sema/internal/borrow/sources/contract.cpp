@@ -235,6 +235,9 @@ bool SemanticAnalyzerCore::BorrowContractAnalyzer::type_can_contain_borrow(const
             case TypeKind::array:
                 pending.push_back(info.array_element);
                 break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
+                break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                 break;

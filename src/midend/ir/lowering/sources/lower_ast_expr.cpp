@@ -18,6 +18,14 @@ constexpr std::string_view IR_AGGREGATE_ROLLBACK_FLAG_NAME = "aggregate.rollback
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_LOAD_NAME = "aggregate.rollback.result";
 constexpr std::string_view IR_AGGREGATE_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
 constexpr std::string_view IR_DYNPROJECT_INTRINSIC_NAME = "dynproject";
+constexpr std::string_view IR_RANGE_VALUE_ZERO_LITERAL = "0";
+constexpr std::string_view IR_RANGE_VALUE_ONE_LITERAL = "1";
+
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
 
 struct RollbackCleanupScope {
     std::vector<std::vector<CleanupAction>>* scopes = nullptr;
@@ -478,12 +486,25 @@ ValueId Lowerer::lower_lambda_expr(const syntax::ExprId expr_id)
             value.type = this->expr_type(expr_id);
             value.fields.reserve(lambda.captures.size());
             for (const sema::CheckedLambdaInfo::Capture& capture : lambda.captures) {
+                if (syntax::is_valid(capture.initializer)) {
+                    const ValueId captured_value = lambda_capture_kind_is_reference(capture.kind)
+                        ? this->lower_place_addr(capture.initializer)
+                        : this->coerce_value(this->lower_expr(capture.initializer, capture.type), capture.type);
+                    value.fields.push_back(FieldValue{
+                        this->module_.intern(capture.field_name.view()),
+                        captured_value,
+                    });
+                    continue;
+                }
                 const auto local = this->locals_.find(capture.name_id);
                 if (local == this->locals_.end()) {
                     return INVALID_VALUE_ID;
                 }
-                const ValueId captured_value =
-                    this->append_load(local->second.slot, capture.type, this->module_.intern(capture.name.view()));
+                ValueId captured_value = local->second.slot;
+                if (!lambda_capture_kind_is_reference(capture.kind)) {
+                    captured_value = this->append_load(
+                        local->second.slot, capture.type, this->module_.intern(capture.name.view()));
+                }
                 value.fields.push_back(FieldValue{
                     this->module_.intern(capture.field_name.view()),
                     captured_value,
@@ -648,6 +669,9 @@ ValueId Lowerer::lower_binary_expr(const syntax::ExprId expr_id, const ExprView&
 
 ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& expr)
 {
+    if (const sema::RangeValuePlan* const plan = this->range_value_plan(expr_id); plan != nullptr) {
+        return this->lower_range_value_expr(expr_id, expr);
+    }
     if (const ValueId dynproject = this->lower_dynproject_intrinsic_expr(expr_id, expr); is_valid(dynproject)) {
         return dynproject;
     }
@@ -904,6 +928,38 @@ ValueId Lowerer::lower_indirect_call_expr(
         }
         value.args.push_back(this->coerce_value(arg, param_type));
     }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_range_value_expr(const syntax::ExprId expr_id, const ExprView&)
+{
+    const sema::RangeValuePlan* const plan = this->range_value_plan(expr_id);
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::aggregate;
+    value.type = this->expr_type(expr_id);
+    if (plan == nullptr || !sema::is_valid(plan->range_type) || !sema::is_valid(plan->element_type)) {
+        return this->append_value(value);
+    }
+
+    const auto lower_component = [&](const syntax::ExprId component, const std::string_view default_literal) {
+        if (syntax::is_valid(component)) {
+            return this->coerce_value(this->lower_expr(component, plan->element_type), plan->element_type);
+        }
+        return this->append_integer_literal(default_literal, plan->element_type);
+    };
+    value.fields.reserve(sema::SEMA_RANGE_VALUE_FIELD_COUNT);
+    value.fields.push_back(FieldValue{
+        this->module_.intern(sema::SEMA_RANGE_VALUE_START_FIELD),
+        lower_component(plan->start_expr, IR_RANGE_VALUE_ZERO_LITERAL),
+    });
+    value.fields.push_back(FieldValue{
+        this->module_.intern(sema::SEMA_RANGE_VALUE_END_FIELD),
+        lower_component(plan->end_expr, IR_RANGE_VALUE_ZERO_LITERAL),
+    });
+    value.fields.push_back(FieldValue{
+        this->module_.intern(sema::SEMA_RANGE_VALUE_STEP_FIELD),
+        lower_component(plan->step_expr, IR_RANGE_VALUE_ONE_LITERAL),
+    });
     return this->append_value(value);
 }
 
@@ -1631,7 +1687,10 @@ sema::OwnedUseMode Lowerer::expr_owned_use_mode(const syntax::ExprId expr) const
         if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
             && this->active_side_tables_.expr_owned_use_modes != nullptr
             && local < this->active_side_tables_.expr_owned_use_modes->size()) {
-            return (*this->active_side_tables_.expr_owned_use_modes)[local];
+            const sema::OwnedUseMode local_mode = (*this->active_side_tables_.expr_owned_use_modes)[local];
+            if (local_mode != sema::OwnedUseMode::none) {
+                return local_mode;
+            }
         }
         const auto found = this->active_side_tables_.generic->sparse_expr_owned_use_modes.find(expr.value);
         if (found != this->active_side_tables_.generic->sparse_expr_owned_use_modes.end()) {
@@ -1693,6 +1752,24 @@ sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexc
         return sema::INVALID_TYPE_HANDLE;
     }
     return (*this->active_side_tables_.stmt_local_types)[stmt.value];
+}
+
+const sema::ForInIterationPlan* Lowerer::for_in_iteration_plan(const syntax::StmtId stmt) const noexcept
+{
+    if (!syntax::is_valid(stmt) || this->active_side_tables_.for_in_iteration_plans == nullptr) {
+        return nullptr;
+    }
+    const auto found = this->active_side_tables_.for_in_iteration_plans->find(stmt.value);
+    return found == this->active_side_tables_.for_in_iteration_plans->end() ? nullptr : &found->second;
+}
+
+const sema::RangeValuePlan* Lowerer::range_value_plan(const syntax::ExprId expr) const noexcept
+{
+    if (!syntax::is_valid(expr) || this->active_side_tables_.range_value_plans == nullptr) {
+        return nullptr;
+    }
+    const auto found = this->active_side_tables_.range_value_plans->find(expr.value);
+    return found == this->active_side_tables_.range_value_plans->end() ? nullptr : &found->second;
 }
 
 sema::TypeHandle Lowerer::aggregate_field_type(

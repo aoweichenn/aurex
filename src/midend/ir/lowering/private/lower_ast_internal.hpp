@@ -31,6 +31,8 @@ struct ActiveSideTables {
     const sema::SemaIdentTable* pattern_c_name_ids = nullptr;
     const sema::SemaTypeTable* syntax_type_handles = nullptr;
     const sema::SemaTypeTable* stmt_local_types = nullptr;
+    const sema::RangeValuePlanMap* range_value_plans = nullptr;
+    const sema::ForInIterationPlanMap* for_in_iteration_plans = nullptr;
 };
 
 struct CallTarget {
@@ -97,6 +99,13 @@ struct LocalBinding {
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     bool is_mutable = false;
     std::vector<CleanupBinding> field_cleanups;
+};
+
+struct ForIterableSource {
+    ValueId base_address = INVALID_VALUE_ID;
+    ValueId length = INVALID_VALUE_ID;
+    sema::TypeHandle element_type = sema::INVALID_TYPE_HANDLE;
+    sema::PointerMutability mutability = sema::PointerMutability::const_;
 };
 
 struct LocalScopeFrame {
@@ -271,6 +280,8 @@ public:
     void lower_if(const syntax::StmtNode& stmt);
     void lower_for(const syntax::StmtNode& stmt);
     void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
+    void lower_for_range_value(syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan);
+    void lower_for_iterable(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void lower_while(const syntax::StmtNode& stmt);
 
     [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const ExprView& expr);
@@ -294,6 +305,16 @@ public:
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
         ValueId cursor_slot, ValueId end_slot, ValueId step_slot, sema::TypeHandle range_type);
+    [[nodiscard]] std::optional<ForIterableSource> lower_for_iterable_source(const sema::ForInIterationPlan& plan);
+    [[nodiscard]] ValueId append_for_iterable_element_address(
+        const ForIterableSource& source, ValueId index, IrTextId name);
+    void lower_for_protocol_iterator(
+        syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const sema::ForInIterationPlan& plan);
+    [[nodiscard]] ValueId append_for_protocol_call(
+        const sema::ForInProtocolCallPlan& call, ValueId receiver_slot, sema::TypeHandle receiver_storage_type);
+    [[nodiscard]] ValueId append_for_protocol_receiver(
+        const sema::ForInProtocolCallPlan& call, ValueId receiver_slot, sema::TypeHandle receiver_storage_type);
+    [[nodiscard]] CallTarget call_target(const sema::FunctionLookupKey& function);
     [[nodiscard]] sema::ResourceSemanticsSummary resource_summary(sema::TypeHandle type);
     [[nodiscard]] bool cleanup_required(sema::TypeHandle type);
     [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;
@@ -368,6 +389,7 @@ public:
         syntax::ExprId expr_id, const ExprView& expr, const sema::TraitMethodCallBinding& binding);
     [[nodiscard]] ValueId lower_indirect_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
+    [[nodiscard]] ValueId lower_range_value_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_record_aggregate_with_rollback(
@@ -412,6 +434,8 @@ public:
     [[nodiscard]] sema::TypeHandle syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] const sema::ForInIterationPlan* for_in_iteration_plan(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] const sema::RangeValuePlan* range_value_plan(syntax::ExprId expr) const noexcept;
     [[nodiscard]] sema::TypeHandle aggregate_field_type(
         sema::TypeHandle aggregate_type, std::string_view name) const noexcept;
     [[nodiscard]] sema::TypeHandle local_load_type(ValueId slot) const noexcept;

@@ -1,0 +1,9 @@
+module range_value_named_argument;
+
+fn main() -> i32 {
+    let values = range(end: 3);
+    for value in values {
+        return value;
+    }
+    return 0;
+}

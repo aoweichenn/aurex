@@ -341,9 +341,9 @@ pub fn captures_bytes_raw_compiled_from(compiled: &t.Regex, data: *const u8, len
 
 pub fn set_workspace_bytes(compiled: &t.RegexSet) -> usize {
     if set_has_literal_automaton(compiled) {
-        return compiled.pattern_count * sizeof<bool>;
+        return compiled.pattern_count * sizeof<bool>();
     }
-    return workspace_bytes_for(compiled.state_len, 2usize) + compiled.pattern_count * sizeof<bool>;
+    return workspace_bytes_for(compiled.state_len, 2usize) + compiled.pattern_count * sizeof<bool>();
 }
 
 pub fn create_match_workspace(compiled: &t.Regex) -> Workspace {
@@ -739,7 +739,7 @@ fn matches_set_input(
     if compiled.pattern_count == 0usize {
         return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
     }
-    let matched: *mut bool = alloc.alloc_zeroed<bool>(compiled.pattern_count, sizeof<bool>);
+    let matched: *mut bool = alloc.alloc_zeroed<bool>(compiled.pattern_count, sizeof<bool>());
     if matched == null {
         return t.set_matches_result(t.RegexStatus.out_of_memory, false, 0usize, 0usize);
     }
@@ -833,7 +833,7 @@ fn scan_set_all_spans_input(compiled: &t.RegexSet, input: InputView, callback: t
     if set_has_literal_automaton(compiled) {
         return scan_literal_set_all_spans(compiled, input, callback);
     }
-    let emitted: *mut bool = alloc.alloc_zeroed<bool>(compiled.pattern_count, sizeof<bool>);
+    let emitted: *mut bool = alloc.alloc_zeroed<bool>(compiled.pattern_count, sizeof<bool>());
     if emitted == null {
         return t.set_matches_result(t.RegexStatus.out_of_memory, false, 0usize, 0usize);
     }
@@ -2417,7 +2417,7 @@ fn advance_to_next_start_byte_candidate(
     }
     var at: usize = position;
     while at < input.len {
-        let byte: usize = cast<usize>(unsafe { input.data[at] });
+        let byte: usize = ((unsafe { input.data[at] }) as usize);
         if unsafe { workspace.start_bytes[byte] } {
             if input.mode == t.MODE_TEXT {
                 return align_forward_boundary(input, at);
@@ -3364,7 +3364,7 @@ fn folded_equals(expected: usize, value: usize, ascii_mode: bool) -> bool {
         if expected > ASCII_BYTE_MAX || value > ASCII_BYTE_MAX {
             return expected == value;
         }
-        return ascii.to_lower(cast<u8>(expected)) == ascii.to_lower(cast<u8>(value));
+        return ascii.to_lower(((expected) as u8)) == ascii.to_lower(((value) as u8));
     }
     return unicode.simple_fold(expected) == unicode.simple_fold(value);
 }
@@ -3376,11 +3376,11 @@ fn ascii_fold_equivalent_in_range(value: usize, first: usize, last: usize) -> bo
     if value > ASCII_BYTE_MAX {
         return false;
     }
-    let lower: usize = cast<usize>(ascii.to_lower(cast<u8>(value)));
+    let lower: usize = ((ascii.to_lower(((value) as u8))) as usize);
     if first <= lower && lower <= last {
         return true;
     }
-    let upper: usize = cast<usize>(ascii.to_upper(cast<u8>(value)));
+    let upper: usize = ((ascii.to_upper(((value) as u8))) as usize);
     return first <= upper && upper <= last;
 }
 
@@ -3394,7 +3394,7 @@ fn ascii_property_matches(kind: usize, value: usize) -> bool {
     if value > ASCII_BYTE_MAX {
         return false;
     }
-    let byte: u8 = cast<u8>(value);
+    let byte: u8 = ((value) as u8);
     if kind == unicode.PROPERTY_GC_ND {
         return ascii.is_digit(byte);
     }
@@ -3504,29 +3504,29 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
     if capacity > max_workspace_states {
         return empty_workspace(t.RegexStatus.workspace_too_large);
     }
-    let current: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>);
+    let current: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
     if current == null {
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let next: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>);
+    let next: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
     if next == null {
         alloc.free_typed<usize>(current);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let marks: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>);
+    let marks: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
     if marks == null {
         alloc.free_typed<usize>(current);
         alloc.free_typed<usize>(next);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let stack: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>);
+    let stack: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
     if stack == null {
         alloc.free_typed<usize>(current);
         alloc.free_typed<usize>(next);
         alloc.free_typed<usize>(marks);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let start_states: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>);
+    let start_states: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
     if start_states == null {
         alloc.free_typed<usize>(current);
         alloc.free_typed<usize>(next);
@@ -3534,7 +3534,7 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
         alloc.free_typed<usize>(stack);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let start_bytes: *mut bool = alloc.alloc_zeroed<bool>(limits.START_BYTE_COUNT, sizeof<bool>);
+    let start_bytes: *mut bool = alloc.alloc_zeroed<bool>(limits.START_BYTE_COUNT, sizeof<bool>());
     if start_bytes == null {
         alloc.free_typed<usize>(current);
         alloc.free_typed<usize>(next);
@@ -3544,29 +3544,29 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
     let row_count: usize = capacity * slots;
-    let current_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>);
+    let current_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
     if current_caps == null {
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let next_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>);
+    let next_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
     if next_caps == null {
         alloc.free_typed<usize>(current_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let stack_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>);
+    let stack_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
     if stack_caps == null {
         alloc.free_typed<usize>(current_caps);
         alloc.free_typed<usize>(next_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let best_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>);
+    let best_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>());
     if best_caps == null {
         alloc.free_typed<usize>(current_caps);
         alloc.free_typed<usize>(next_caps);
         alloc.free_typed<usize>(stack_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let seed_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>);
+    let seed_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>());
     if seed_caps == null {
         alloc.free_typed<usize>(current_caps);
         alloc.free_typed<usize>(next_caps);
@@ -3574,7 +3574,7 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
         alloc.free_typed<usize>(best_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let class_stack: *mut bool = alloc.alloc_zeroed<bool>(limits.MAX_RANGE_CAPACITY, sizeof<bool>);
+    let class_stack: *mut bool = alloc.alloc_zeroed<bool>(limits.MAX_RANGE_CAPACITY, sizeof<bool>());
     if class_stack == null {
         alloc.free_typed<usize>(current_caps);
         alloc.free_typed<usize>(next_caps);
@@ -3766,7 +3766,7 @@ fn copy_capture_row(dst: *mut usize, src: *mut usize, slot_count: usize) -> void
 
 fn capture_row_ptr(base: *mut usize, row: usize, slot_count: usize) -> *mut usize {
     return unsafe {
-        ptrat<*mut usize>(ptraddr(base) + row * slot_count * sizeof<usize>)
+        ptrat<*mut usize>(ptraddr(base) + row * slot_count * sizeof<usize>())
     };
 }
 
@@ -3775,18 +3775,18 @@ fn capture_slot_count(compiled: &t.Regex) -> usize {
 }
 
 fn workspace_bytes_for(state_count: usize, slots: usize) -> usize {
-    return state_count * limits.WORKSPACE_LIST_COUNT * sizeof<usize>
-        + state_count * slots * limits.WORKSPACE_STATE_CAPTURE_ROW_COUNT * sizeof<usize>
-        + slots * limits.WORKSPACE_FIXED_CAPTURE_ROW_COUNT * sizeof<usize>
-        + limits.START_BYTE_COUNT * sizeof<bool>
-        + limits.MAX_RANGE_CAPACITY * sizeof<bool>;
+    return state_count * limits.WORKSPACE_LIST_COUNT * sizeof<usize>()
+        + state_count * slots * limits.WORKSPACE_STATE_CAPTURE_ROW_COUNT * sizeof<usize>()
+        + slots * limits.WORKSPACE_FIXED_CAPTURE_ROW_COUNT * sizeof<usize>()
+        + limits.START_BYTE_COUNT * sizeof<bool>()
+        + limits.MAX_RANGE_CAPACITY * sizeof<bool>();
 }
 
 fn text_input_with_options(input: str, options: t.RegexOptions) -> InputView {
     return InputView {
         text: input,
-        data: strptr(input),
-        len: strblen(input),
+        data: input.ptr,
+        len: input.len,
         mode: t.MODE_TEXT,
         newline_mode: options.newline_mode,
         match_flags: t.MATCH_DEFAULT,
@@ -3822,8 +3822,8 @@ fn apply_not_null(found: t.MatchResult, match_options: t.RegexMatchOptions) -> t
 fn bytes_input_with_options(input: []u8, options: t.RegexOptions) -> InputView {
     return InputView {
         text: "",
-        data: sliceptr(input),
-        len: slicelen(input),
+        data: input.ptr,
+        len: input.len,
         mode: t.MODE_BYTES,
         newline_mode: options.newline_mode,
         match_flags: t.MATCH_DEFAULT,
@@ -3831,11 +3831,11 @@ fn bytes_input_with_options(input: []u8, options: t.RegexOptions) -> InputView {
 }
 
 fn flatten_text_chunks(chunks: []t.TextChunk) -> FlatInput {
-    let chunk_count: usize = slicelen(chunks);
+    let chunk_count: usize = chunks.len;
     var total: usize = 0usize;
     var index: usize = 0usize;
     while index < chunk_count {
-        total += strblen(chunks[index].text);
+        total += chunks[index].text.len;
         index += 1usize;
     }
     return flatten_text_chunks_with_len(chunks, total);
@@ -3843,30 +3843,30 @@ fn flatten_text_chunks(chunks: []t.TextChunk) -> FlatInput {
 
 fn flatten_text_chunks_with_len(chunks: []t.TextChunk, total: usize) -> FlatInput {
     let allocation_len: usize = if total == 0usize { 1usize } else { total };
-    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>);
+    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>());
     if data == null {
         return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
     }
     var dst: usize = 0usize;
     var index: usize = 0usize;
-    while index < slicelen(chunks) {
+    while index < chunks.len {
         let text: str = chunks[index].text;
-        let src: *const u8 = strptr(text);
+        let src: *const u8 = text.ptr;
         var offset: usize = 0usize;
-        while offset < strblen(text) {
+        while offset < text.len {
             unsafe {
                 data[dst + offset] = src[offset];
             }
             offset += 1usize;
         }
-        dst += strblen(text);
+        dst += text.len;
         index += 1usize;
     }
     return FlatInput { data: data, len: total, status: t.RegexStatus.ok };
 }
 
 fn flatten_byte_chunks(chunks: []t.RegexChunk) -> FlatInput {
-    let chunk_count: usize = slicelen(chunks);
+    let chunk_count: usize = chunks.len;
     var total: usize = 0usize;
     var index: usize = 0usize;
     while index < chunk_count {
@@ -3874,7 +3874,7 @@ fn flatten_byte_chunks(chunks: []t.RegexChunk) -> FlatInput {
         index += 1usize;
     }
     let allocation_len: usize = if total == 0usize { 1usize } else { total };
-    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>);
+    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>());
     if data == null {
         return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
     }
@@ -3941,7 +3941,7 @@ fn decode_at(input: InputView, position: usize) -> InputDecode {
         return InputDecode { value: 0usize, next: position, valid: false };
     }
     return InputDecode {
-        value: cast<usize>(unsafe { input.data[position] }),
+        value: ((unsafe { input.data[position] }) as usize),
         next: position + 1usize,
         valid: true,
     };
@@ -3957,7 +3957,7 @@ fn previous_decode(input: InputView, position: usize) -> InputDecode {
     }
     let previous: usize = position - 1usize;
     return InputDecode {
-        value: cast<usize>(unsafe { input.data[previous] }),
+        value: ((unsafe { input.data[previous] }) as usize),
         next: previous,
         valid: true,
     };
@@ -3989,10 +3989,10 @@ fn next_match_cursor(input: InputView, start: usize, end: usize) -> usize {
 
 fn is_word_flags(input: InputView, value: usize, flags: u8) -> bool {
     if has_flag(flags, t.FLAG_ASCII) {
-        return value <= ASCII_BYTE_MAX && ascii.is_word(cast<u8>(value));
+        return value <= ASCII_BYTE_MAX && ascii.is_word(((value) as u8));
     }
     if input.mode == t.MODE_TEXT {
         return unicode.is_word(value);
     }
-    return value <= 0xffusize && ascii.is_word(cast<u8>(value));
+    return value <= 0xffusize && ascii.is_word(((value) as u8));
 }

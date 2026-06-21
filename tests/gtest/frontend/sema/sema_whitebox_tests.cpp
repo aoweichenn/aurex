@@ -190,8 +190,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
 
     sema::GenericSideTables dense_side_tables;
     analyzer.state_.flow.current_side_tables.side_tables = &dense_side_tables;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
-    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    static_cast<void>(analyzer.record_expr_types(expr_id, i32, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::owned_copy);
     analyzer.record_expr_c_name(expr_id, "dense_expr");
@@ -201,6 +200,14 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     analyzer.merge_pattern_case_names(pattern_id, alternative_pattern_id);
     analyzer.record_syntax_type_handle(type_id, i32);
     analyzer.record_stmt_local_type(stmt_id, i64);
+    sema::ForInIterationPlan dense_for_in_plan;
+    dense_for_in_plan.stmt = stmt_id;
+    dense_for_in_plan.kind = sema::ForInIterationKind::counted_range;
+    dense_for_in_plan.end_expr = expr_id;
+    dense_for_in_plan.item_type = i64;
+    dense_for_in_plan.range_type = i64;
+    dense_for_in_plan.requires_copy_item = false;
+    analyzer.record_for_in_iteration_plan(stmt_id, dense_for_in_plan);
 
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i32));
@@ -214,11 +221,15 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         analyzer.state_.checked.intern_c_name("DenseAlternative")));
     EXPECT_TRUE(types.same(dense_side_tables.stmt_local_types[stmt_id.value], i64));
     EXPECT_TRUE(types.same(analyzer.cached_stmt_local_type(stmt_id), i64));
+    ASSERT_NE(analyzer.cached_for_in_iteration_plan(stmt_id), nullptr);
+    EXPECT_EQ(analyzer.cached_for_in_iteration_plan(stmt_id)->kind, sema::ForInIterationKind::counted_range);
+    EXPECT_TRUE(types.same(dense_side_tables.for_in_iteration_plans.at(stmt_id.value).range_type, i64));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
     EXPECT_EQ(analyzer.cached_expr_owned_use_mode(missing_expr_id), sema::OwnedUseMode::none);
     EXPECT_FALSE(is_valid(analyzer.cached_stmt_local_type(syntax::INVALID_STMT_ID)));
+    EXPECT_EQ(analyzer.cached_for_in_iteration_plan(syntax::INVALID_STMT_ID), nullptr);
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
     EXPECT_TRUE(analyzer.cached_expr_c_name(missing_expr_id).empty());
     EXPECT_TRUE(analyzer.cached_pattern_c_name(missing_pattern_id).empty());
@@ -253,6 +264,14 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     analyzer.record_syntax_type_handle(type_id, i64);
     analyzer.record_syntax_type_handle(syntax::INVALID_TYPE_ID, i32);
     analyzer.record_stmt_local_type(stmt_id, i32);
+    sema::ForInIterationPlan sparse_for_in_plan;
+    sparse_for_in_plan.stmt = stmt_id;
+    sparse_for_in_plan.kind = sema::ForInIterationKind::array_value;
+    sparse_for_in_plan.iterable_expr = expr_id;
+    sparse_for_in_plan.iterable_type = types.array(1U, i32);
+    sparse_for_in_plan.item_type = i32;
+    sparse_for_in_plan.index_type = types.builtin(BuiltinType::usize);
+    analyzer.record_for_in_iteration_plan(stmt_id, sparse_for_in_plan);
 
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i64));
@@ -266,6 +285,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         analyzer.state_.checked.intern_c_name("SparseAlternative")));
     EXPECT_TRUE(types.same(sparse_side_tables.sparse_stmt_local_types[stmt_id.value], i32));
     EXPECT_TRUE(types.same(analyzer.cached_stmt_local_type(stmt_id), i32));
+    ASSERT_NE(analyzer.cached_for_in_iteration_plan(stmt_id), nullptr);
+    EXPECT_EQ(analyzer.cached_for_in_iteration_plan(stmt_id)->kind, sema::ForInIterationKind::array_value);
+    EXPECT_TRUE(types.same(sparse_side_tables.for_in_iteration_plans.at(stmt_id.value).item_type, i32));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(syntax::INVALID_EXPR_ID)));
@@ -290,14 +312,21 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         sema::GenericNodeSpan{stmt_id.value, 1U});
     analyzer.state_.flow.current_side_tables.side_tables = &local_side_tables;
     analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
-    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    static_cast<void>(analyzer.record_expr_types(expr_id, i32, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::shared_borrow);
     analyzer.record_expr_c_name(expr_id, "local_expr");
     analyzer.record_pattern_c_name(pattern_id, "local_pattern");
     analyzer.record_syntax_type_handle(type_id, i32);
     analyzer.record_stmt_local_type(stmt_id, i64);
+    sema::ForInIterationPlan local_for_in_plan;
+    local_for_in_plan.stmt = stmt_id;
+    local_for_in_plan.kind = sema::ForInIterationKind::slice_value;
+    local_for_in_plan.iterable_expr = expr_id;
+    local_for_in_plan.iterable_type = types.slice(sema::PointerMutability::const_, i64);
+    local_for_in_plan.item_type = i64;
+    local_for_in_plan.index_type = types.builtin(BuiltinType::usize);
+    analyzer.record_for_in_iteration_plan(stmt_id, local_for_in_plan);
 
     const base::usize local_expr = local_side_tables.local_expr_index(expr_id);
     const base::usize local_pattern = local_side_tables.local_pattern_index(pattern_id);
@@ -310,14 +339,18 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(local_side_tables.expr_intrinsic_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
-    EXPECT_TRUE(local_side_tables.expr_owned_use_modes.empty());
-    EXPECT_EQ(local_side_tables.sparse_expr_owned_use_modes.at(expr_id.value), sema::OwnedUseMode::shared_borrow);
+    ASSERT_GT(local_side_tables.expr_owned_use_modes.size(), local_expr);
+    EXPECT_EQ(local_side_tables.expr_owned_use_modes[local_expr], sema::OwnedUseMode::shared_borrow);
+    EXPECT_TRUE(local_side_tables.sparse_expr_owned_use_modes.empty());
     EXPECT_EQ(analyzer.cached_expr_owned_use_mode(expr_id), sema::OwnedUseMode::shared_borrow);
     EXPECT_EQ(analyzer.state_.checked.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
     EXPECT_EQ(
         analyzer.state_.checked.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
     EXPECT_TRUE(types.same(local_side_tables.syntax_type_handles[local_type], i32));
     EXPECT_TRUE(types.same(local_side_tables.stmt_local_types[local_stmt], i64));
+    ASSERT_NE(analyzer.cached_for_in_iteration_plan(stmt_id), nullptr);
+    EXPECT_EQ(analyzer.cached_for_in_iteration_plan(stmt_id)->kind, sema::ForInIterationKind::slice_value);
+    EXPECT_TRUE(types.same(local_side_tables.for_in_iteration_plans.at(stmt_id.value).item_type, i64));
     EXPECT_TRUE(local_side_tables.sparse_expr_intrinsic_types.empty());
     EXPECT_TRUE(local_side_tables.sparse_expr_types.empty());
     EXPECT_TRUE(local_side_tables.sparse_expr_expected_types.empty());
@@ -359,8 +392,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     analyzer.state_.flow.current_side_tables.side_tables = &sparse_local_side_tables;
     analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
-    static_cast<void>(analyzer.record_expr_intrinsic_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
-    static_cast<void>(analyzer.record_expr_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
+    static_cast<void>(analyzer.record_expr_types(ExprId{sparse_expr_ids.front() + 1U}, i32, i32));
     analyzer.record_expr_expected_type(ExprId{sparse_expr_ids.front() + 1U}, i64);
     analyzer.record_expr_owned_use_mode(ExprId{sparse_expr_ids.front() + 1U}, sema::OwnedUseMode::mutable_borrow);
     analyzer.record_expr_c_name(ExprId{sparse_expr_ids.front() + 1U}, "sparse_local_expr");
@@ -373,6 +405,13 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
         syntax::PatternId{sparse_pattern_ids.front()}, syntax::PatternId{sparse_pattern_ids.front() + 1U});
     analyzer.record_syntax_type_handle(TypeId{sparse_type_ids.front() + 1U}, i32);
     analyzer.record_stmt_local_type(syntax::StmtId{sparse_stmt_ids.front() + 1U}, i64);
+    sema::ForInIterationPlan sparse_local_for_in_plan;
+    sparse_local_for_in_plan.stmt = syntax::StmtId{sparse_stmt_ids.front() + 1U};
+    sparse_local_for_in_plan.kind = sema::ForInIterationKind::counted_range;
+    sparse_local_for_in_plan.item_type = i64;
+    sparse_local_for_in_plan.range_type = i64;
+    sparse_local_for_in_plan.requires_copy_item = false;
+    analyzer.record_for_in_iteration_plan(sparse_local_for_in_plan.stmt, sparse_local_for_in_plan);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_expected_types, 1U);
@@ -383,6 +422,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.syntax_type_handles, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.stmt_local_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 11U);
+    ASSERT_NE(analyzer.cached_for_in_iteration_plan(sparse_local_for_in_plan.stmt), nullptr);
+    EXPECT_EQ(analyzer.cached_for_in_iteration_plan(sparse_local_for_in_plan.stmt)->kind,
+        sema::ForInIterationKind::counted_range);
     EXPECT_EQ(
         analyzer.cached_expr_owned_use_mode(ExprId{sparse_expr_ids.front() + 1U}), sema::OwnedUseMode::mutable_borrow);
     EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::none), "none");
@@ -392,6 +434,24 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::mutable_borrow), "mutable_borrow");
     EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::place_only), "place_only");
     EXPECT_EQ(sema::owned_use_mode_name(static_cast<sema::OwnedUseMode>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::none), "none");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::counted_range), "counted_range");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::array_value), "array_value");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::slice_value), "slice_value");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::str_bytes), "str_bytes");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(sema::ForInIterationKind::protocol_iterator), "protocol_iterator");
+    EXPECT_EQ(sema::for_in_iteration_kind_name(static_cast<sema::ForInIterationKind>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_item_mode_name(sema::ForInItemMode::immutable_value_copy), "immutable_value_copy");
+    EXPECT_EQ(sema::for_in_item_mode_name(static_cast<sema::ForInItemMode>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(sema::ForInProtocolSourceKind::direct_iterator),
+        "direct_iterator");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(sema::ForInProtocolSourceKind::iter_method), "iter_method");
+    EXPECT_EQ(sema::for_in_protocol_source_kind_name(static_cast<sema::ForInProtocolSourceKind>(99)), "<invalid>");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::none), "none");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::inherent_method), "inherent_method");
+    EXPECT_EQ(
+        sema::for_in_protocol_call_kind_name(sema::ForInProtocolCallKind::trait_static_method), "trait_static_method");
+    EXPECT_EQ(sema::for_in_protocol_call_kind_name(static_cast<sema::ForInProtocolCallKind>(99)), "<invalid>");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::none), "none");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::shared), "shared");
     EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::mutable_), "mutable");
@@ -463,6 +523,13 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     side_tables.sparse_pattern_c_name_ids.emplace(7U, beta_id);
     side_tables.sparse_syntax_type_handles.emplace(8U, i32);
     side_tables.sparse_stmt_local_types.emplace(9U, i64);
+    sema::ForInIterationPlan side_for_in_plan;
+    side_for_in_plan.stmt = syntax::StmtId{9U};
+    side_for_in_plan.kind = sema::ForInIterationKind::slice_value;
+    side_for_in_plan.iterable_expr = ExprId{4U};
+    side_for_in_plan.iterable_type = i64;
+    side_for_in_plan.item_type = i32;
+    side_tables.for_in_iteration_plans.emplace(9U, side_for_in_plan);
     side_tables.pattern_case_name_ids.insert(10, alpha_id);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_intrinsic_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_type);
@@ -495,13 +562,16 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_types, 1U);
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_owned_use_modes, 1U);
+    EXPECT_EQ(side_assigned.for_in_iteration_plans.at(9U).kind, sema::ForInIterationKind::slice_value);
     sema::GenericSideTables side_moved(std::move(side_copy));
     EXPECT_TRUE(side_moved.pattern_case_name_ids[10].contains(alpha_id));
     EXPECT_EQ(side_moved.sparse_fallbacks.stmt_local_types, 1U);
+    EXPECT_EQ(side_moved.for_in_iteration_plans.at(9U).iterable_expr.value, 4U);
     sema::GenericSideTables side_move_assigned;
     side_move_assigned = std::move(side_assigned);
     EXPECT_EQ(side_move_assigned.syntax_type_handles.front().value, i32.value);
     EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 4U);
+    EXPECT_EQ(side_move_assigned.for_in_iteration_plans.at(9U).item_type.value, i32.value);
 
     sema::CheckedModule checked;
     constexpr base::u32 SEMA_TEST_CHECKED_COPY_PART_INDEX = 4;
@@ -535,6 +605,13 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
         i64,
         sema::CoercionKind::contextual_integer_literal,
     });
+    sema::ForInIterationPlan checked_for_in_plan;
+    checked_for_in_plan.stmt = syntax::StmtId{2U};
+    checked_for_in_plan.kind = sema::ForInIterationKind::counted_range;
+    checked_for_in_plan.item_type = i64;
+    checked_for_in_plan.range_type = i64;
+    checked_for_in_plan.requires_copy_item = false;
+    checked.for_in_iteration_plans.emplace(2U, checked_for_in_plan);
 
     FunctionSignature signature = checked.make_function_signature();
     signature.name = checked.intern_text("f");
@@ -651,6 +728,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     ASSERT_EQ(checked_copy.functions.size(), 1U);
     EXPECT_EQ(checked_copy.expr_intrinsic_types.front().value, i32.value);
     EXPECT_EQ(checked_copy.c_name_text(checked_copy.expr_c_name_ids.front()), "m0_test");
+    EXPECT_EQ(checked_copy.for_in_iteration_plans.at(2U).kind, sema::ForInIterationKind::counted_range);
     EXPECT_EQ(checked_copy.functions.at(signature.semantic_key).generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
     EXPECT_EQ(checked_copy.generic_function_instances.front().body.value, 2U);

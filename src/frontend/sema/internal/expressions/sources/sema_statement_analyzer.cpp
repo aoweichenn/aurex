@@ -29,6 +29,10 @@ constexpr base::usize SEMA_FOR_RANGE_MAX_OPERAND_COUNT = 3;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_UNKNOWN = 0;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_FALSE = 1;
 constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_TRUE = 2;
+constexpr base::u32 SEMA_FOR_IN_RECEIVER_PARAM_COUNT = 1;
+constexpr std::string_view SEMA_FOR_IN_ITER_METHOD_NAME = "iter";
+constexpr std::string_view SEMA_FOR_IN_HAS_NEXT_METHOD_NAME = "has_next";
+constexpr std::string_view SEMA_FOR_IN_NEXT_METHOD_NAME = "next";
 constexpr std::string_view SEMA_LAMBDA_SYMBOL_PREFIX = "__aurex_lambda";
 constexpr std::string_view SEMA_LAMBDA_ENV_SYMBOL_SUFFIX = "_env";
 constexpr std::string_view SEMA_LAMBDA_CAPTURE_FIELD_PREFIX = "__capture_";
@@ -106,8 +110,17 @@ struct LambdaCaptureCandidate {
     IdentId name_id = INVALID_IDENT_ID;
     std::string_view name{};
     TypeHandle type = INVALID_TYPE_HANDLE;
+    syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
+    bool source_is_mutable = false;
     base::SourceRange use_range{};
     base::SourceRange declaration_range{};
+};
+
+struct LambdaCaptureListEntry {
+    syntax::LambdaCaptureKind kind = syntax::LambdaCaptureKind::value;
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
 };
 
 [[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
@@ -172,11 +185,17 @@ void push_lambda_capture_scoped_block(
 
 class LambdaCaptureScanner final {
 public:
-    LambdaCaptureScanner(SemanticAnalyzerCore& core, const std::span<const syntax::ParamDecl> params)
+    LambdaCaptureScanner(SemanticAnalyzerCore& core, const std::span<const syntax::ParamDecl> params,
+        const std::span<const syntax::LambdaCaptureDecl> captures)
         : core_(core)
     {
         this->local_scopes_.push_back({});
-        this->local_scopes_.back().reserve(params.size());
+        this->local_scopes_.back().reserve(params.size() + captures.size());
+        for (const syntax::LambdaCaptureDecl& capture : captures) {
+            if (syntax::is_valid(capture.initializer)) {
+                this->bind_local(capture.name_id, capture.range, capture.name);
+            }
+        }
         for (const syntax::ParamDecl& param : params) {
             this->bind_local(param.name_id, param.range, param.name);
         }
@@ -353,6 +372,7 @@ private:
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_step);
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_end);
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_start);
+                push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->range_iterable);
                 break;
             case syntax::StmtKind::return_:
                 push_lambda_capture_expr(pending, this->core_.ctx_.module, stmt->return_value);
@@ -581,6 +601,10 @@ private:
                         .kind = LambdaCaptureScanActionKind::lambda_body,
                         .lambda = lambda,
                     });
+                    for (base::usize index = lambda->captures.size(); index > 0; --index) {
+                        push_lambda_capture_expr(
+                            pending, this->core_.ctx_.module, lambda->captures[index - 1].initializer);
+                    }
                 }
                 break;
             case syntax::ExprKind::name:
@@ -603,6 +627,11 @@ private:
     {
         if (lambda == nullptr) {
             return;
+        }
+        for (const syntax::LambdaCaptureDecl& capture : lambda->captures) {
+            if (syntax::is_valid(capture.initializer)) {
+                this->bind_local(capture.name_id, capture.range, capture.name);
+            }
         }
         for (const syntax::ParamDecl& param : lambda->params) {
             this->bind_local(param.name_id, param.range, param.name);
@@ -686,6 +715,9 @@ private:
             symbol.name_id,
             name.empty() ? symbol.name.view() : name,
             symbol.type,
+            syntax::LambdaCaptureKind::value,
+            syntax::INVALID_EXPR_ID,
+            symbol.is_mutable,
             expr_range_or(this->core_.ctx_.module, expr, symbol.range),
             symbol.range,
         });
@@ -806,6 +838,71 @@ private:
     return name;
 }
 
+[[nodiscard]] bool lambda_capture_kind_is_reference(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::shared_reference
+        || kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_default(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::default_value || kind == syntax::LambdaCaptureKind::default_reference;
+}
+
+[[nodiscard]] bool lambda_capture_kind_is_mutable(const syntax::LambdaCaptureKind kind) noexcept
+{
+    return kind == syntax::LambdaCaptureKind::mutable_reference;
+}
+
+[[nodiscard]] bool lambda_capture_has_initializer(const LambdaCaptureCandidate& capture) noexcept
+{
+    return syntax::is_valid(capture.initializer);
+}
+
+[[nodiscard]] bool lambda_capture_requires_copy(const LambdaCaptureCandidate& capture) noexcept
+{
+    return capture.kind == syntax::LambdaCaptureKind::value && !lambda_capture_has_initializer(capture);
+}
+
+[[nodiscard]] syntax::LambdaCaptureKind lambda_capture_default_explicit_kind(
+    const syntax::LambdaCaptureKind kind) noexcept
+{
+    if (kind == syntax::LambdaCaptureKind::default_reference) {
+        return syntax::LambdaCaptureKind::shared_reference;
+    }
+    return syntax::LambdaCaptureKind::value;
+}
+
+[[nodiscard]] bool lambda_capture_redundant_with_default(
+    const syntax::LambdaCaptureKind default_kind, const syntax::LambdaCaptureKind explicit_kind) noexcept
+{
+    if (lambda_capture_default_explicit_kind(default_kind) == syntax::LambdaCaptureKind::value) {
+        return explicit_kind == syntax::LambdaCaptureKind::value;
+    }
+    return explicit_kind == syntax::LambdaCaptureKind::shared_reference;
+}
+
+[[nodiscard]] TypeHandle lambda_capture_environment_field_type(
+    TypeTable& types, const LambdaCaptureCandidate& capture)
+{
+    if (lambda_capture_kind_is_reference(capture.kind)) {
+        return types.pointer(PointerMutability::mut, capture.type);
+    }
+    return capture.type;
+}
+
+[[nodiscard]] TypeHandle lambda_checked_capture_environment_field_type(
+    TypeTable& types, const CheckedLambdaInfo::Capture& capture)
+{
+    if (is_valid(capture.field_type)) {
+        return capture.field_type;
+    }
+    if (lambda_capture_kind_is_reference(capture.kind)) {
+        return types.pointer(PointerMutability::mut, capture.type);
+    }
+    return capture.type;
+}
+
 [[nodiscard]] bool lambda_captures_contain_array(
     const TypeTable& types, const std::span<const LambdaCaptureCandidate> captures) noexcept
 {
@@ -845,6 +942,9 @@ private:
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
@@ -903,6 +1003,9 @@ private:
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
+                break;
+            case TypeKind::range:
+                pending.push_back(info.range_element);
                 break;
             case TypeKind::tuple:
                 pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
@@ -965,27 +1068,56 @@ void report_generic_dependent_lambda_capture(
         "captured value `" + std::string(capture.name) + "` is declared here");
 }
 
-void check_lambda_capture_mode(
-    SemanticAnalyzerCore& core, const syntax::LambdaCaptureDecl& capture, bool& has_unsupported_capture)
+void check_lambda_capture_mode(SemanticAnalyzerCore& core, const LambdaCaptureCandidate& capture,
+    const LambdaCaptureListEntry& entry, bool& has_unsupported_capture)
 {
-    if (capture.kind == syntax::LambdaCaptureKind::value) {
+    if (entry.kind != syntax::LambdaCaptureKind::mutable_reference || capture.source_is_mutable) {
         return;
     }
-    core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REFERENCE_UNSUPPORTED));
+    core.report_general(entry.range, std::string(SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE));
+    core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
+        "captured value `" + std::string(capture.name) + "` is declared here");
     has_unsupported_capture = true;
 }
 
 void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyzerCore::ExprView& expr,
-    const std::span<const LambdaCaptureCandidate> captures, bool& has_unsupported_capture)
+    const std::span<LambdaCaptureCandidate> captures, bool& has_unsupported_capture)
 {
-    std::unordered_set<IdentId, IdentIdHash> listed;
+    std::unordered_map<IdentId, LambdaCaptureListEntry, IdentIdHash> listed;
     listed.reserve(expr.lambda_captures.size());
+    std::optional<LambdaCaptureListEntry> default_capture;
+    bool seen_named_capture = false;
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
-        check_lambda_capture_mode(core, capture, has_unsupported_capture);
+        if (lambda_capture_kind_is_default(capture.kind)) {
+            if (default_capture.has_value()) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DEFAULT_DUPLICATE));
+                has_unsupported_capture = true;
+            }
+            if (seen_named_capture) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DEFAULT_FIRST));
+                has_unsupported_capture = true;
+            }
+            if (!default_capture.has_value()) {
+                default_capture = LambdaCaptureListEntry{
+                    capture.kind,
+                    syntax::INVALID_EXPR_ID,
+                    capture.range,
+                };
+            }
+            continue;
+        }
         if (!is_valid(capture.name_id)) {
             continue;
         }
-        if (!listed.insert(capture.name_id).second) {
+        seen_named_capture = true;
+        if (!syntax::is_valid(capture.initializer) && default_capture.has_value()
+            && lambda_capture_redundant_with_default(default_capture->kind, capture.kind)) {
+            core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_REDUNDANT_WITH_DEFAULT));
+            has_unsupported_capture = true;
+        }
+        const auto inserted = listed.emplace(
+            capture.name_id, LambdaCaptureListEntry{capture.kind, capture.initializer, capture.range});
+        if (!inserted.second) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_DUPLICATE));
             has_unsupported_capture = true;
         }
@@ -993,24 +1125,120 @@ void check_lambda_capture_list(SemanticAnalyzerCore& core, const SemanticAnalyze
 
     std::unordered_set<IdentId, IdentIdHash> used;
     used.reserve(captures.size());
-    for (const LambdaCaptureCandidate& capture : captures) {
+    for (LambdaCaptureCandidate& capture : captures) {
         if (!is_valid(capture.name_id)) {
             continue;
         }
         used.insert(capture.name_id);
-        if (!listed.contains(capture.name_id)) {
+        const auto listed_capture = listed.find(capture.name_id);
+        if (listed_capture == listed.end()) {
+            if (default_capture.has_value()) {
+                capture.kind = lambda_capture_default_explicit_kind(default_capture->kind);
+                continue;
+            }
             core.report_general(capture.use_range, std::string(SEMA_LAMBDA_CAPTURE_NOT_LISTED));
             core.report_note(capture.declaration_range, SemanticDiagnosticKind::general,
                 "captured value `" + std::string(capture.name) + "` is declared here");
             has_unsupported_capture = true;
+            continue;
         }
+        capture.kind = listed_capture->second.kind;
+        capture.initializer = listed_capture->second.initializer;
+        check_lambda_capture_mode(core, capture, listed_capture->second, has_unsupported_capture);
     }
 
     for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
-        if (is_valid(capture.name_id) && !used.contains(capture.name_id)) {
+        if (is_valid(capture.name_id) && !syntax::is_valid(capture.initializer) && !used.contains(capture.name_id)) {
             core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_UNUSED));
             has_unsupported_capture = true;
         }
+    }
+}
+
+void order_lambda_captures_by_capture_list(
+    const SemanticAnalyzerCore::ExprView& expr, std::vector<LambdaCaptureCandidate>& captures)
+{
+    if (captures.empty()) {
+        return;
+    }
+    std::unordered_map<IdentId, base::usize, IdentIdHash> capture_indexes;
+    capture_indexes.reserve(captures.size());
+    for (base::usize index = 0; index < captures.size(); ++index) {
+        if (is_valid(captures[index].name_id)) {
+            capture_indexes.emplace(captures[index].name_id, index);
+        }
+    }
+
+    std::unordered_set<IdentId, IdentIdHash> ordered_names;
+    ordered_names.reserve(captures.size());
+    std::vector<LambdaCaptureCandidate> ordered;
+    ordered.reserve(captures.size());
+    for (const syntax::LambdaCaptureDecl& declaration : expr.lambda_captures) {
+        if (lambda_capture_kind_is_default(declaration.kind) || !is_valid(declaration.name_id)
+            || ordered_names.contains(declaration.name_id)) {
+            continue;
+        }
+        const auto found = capture_indexes.find(declaration.name_id);
+        if (found == capture_indexes.end()) {
+            continue;
+        }
+        ordered_names.insert(declaration.name_id);
+        ordered.push_back(std::move(captures[found->second]));
+    }
+    for (LambdaCaptureCandidate& capture : captures) {
+        if (is_valid(capture.name_id) && ordered_names.contains(capture.name_id)) {
+            continue;
+        }
+        if (is_valid(capture.name_id)) {
+            ordered_names.insert(capture.name_id);
+        }
+        ordered.push_back(std::move(capture));
+    }
+    captures = std::move(ordered);
+}
+
+void append_lambda_init_captures(SemanticAnalyzerCore& core, const SemanticAnalyzerCore::ExprView& expr,
+    std::vector<LambdaCaptureCandidate>& captures, bool& has_unsupported_capture)
+{
+    std::unordered_set<IdentId, IdentIdHash> existing;
+    existing.reserve(captures.size());
+    for (const LambdaCaptureCandidate& capture : captures) {
+        if (is_valid(capture.name_id)) {
+            existing.insert(capture.name_id);
+        }
+    }
+    for (const syntax::LambdaCaptureDecl& capture : expr.lambda_captures) {
+        if (!is_valid(capture.name_id) || !syntax::is_valid(capture.initializer)) {
+            continue;
+        }
+        if (existing.contains(capture.name_id)) {
+            continue;
+        }
+        TypeHandle capture_type = INVALID_TYPE_HANDLE;
+        bool source_is_mutable = false;
+        if (lambda_capture_kind_is_reference(capture.kind)) {
+            const SemanticAnalyzerCore::PlaceInfo place = core.analyze_place_info(capture.initializer, true);
+            core.require_place_projection_safety(place, capture.range);
+            capture_type = place.type;
+            source_is_mutable = place.is_writable;
+            if (capture.kind == syntax::LambdaCaptureKind::mutable_reference && !place.is_writable) {
+                core.report_general(capture.range, std::string(SEMA_LAMBDA_CAPTURE_MUTABLE_REQUIRES_MUTABLE_SOURCE));
+                has_unsupported_capture = true;
+            }
+        } else {
+            capture_type = core.analyze_expr(capture.initializer);
+        }
+        captures.push_back(LambdaCaptureCandidate{
+            capture.name_id,
+            capture.name,
+            capture_type,
+            capture.kind,
+            capture.initializer,
+            source_is_mutable,
+            expr_range_or(core.ctx_.module, capture.initializer, capture.range),
+            capture.range,
+        });
+        existing.insert(capture.name_id);
     }
 }
 
@@ -2551,6 +2779,9 @@ private:
                 case TypeKind::array:
                     pending.push_back(info.array_element);
                     break;
+                case TypeKind::range:
+                    pending.push_back(info.range_element);
+                    break;
                 case TypeKind::tuple:
                     pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
                     break;
@@ -2819,16 +3050,19 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
     const std::string symbol = lambda_symbol_name(module, owner_item, expr_id);
     const IdentId symbol_id = this->core_.intern_generated_key(symbol);
     std::vector<LambdaCaptureCandidate> captures =
-        LambdaCaptureScanner(this->core_, expr.lambda_params).scan(expr.lambda_body);
+        LambdaCaptureScanner(this->core_, expr.lambda_params, expr.lambda_captures).scan(expr.lambda_body);
     bool has_unsupported_capture = false;
+    append_lambda_init_captures(this->core_, expr, captures, has_unsupported_capture);
     check_lambda_capture_list(this->core_, expr, captures, has_unsupported_capture);
+    order_lambda_captures_by_capture_list(expr, captures);
     for (const LambdaCaptureCandidate& capture : captures) {
         if (lambda_capture_type_is_generic_dependent(this->core_, capture.type)) {
             report_generic_dependent_lambda_capture(this->core_, capture);
             has_unsupported_capture = true;
             continue;
         }
-        if (!this->core_.type_satisfies_capability(capture.type, CapabilityKind::copy)) {
+        if (lambda_capture_requires_copy(capture)
+            && !this->core_.type_satisfies_capability(capture.type, CapabilityKind::copy)) {
             report_noncopy_lambda_capture(this->core_, capture);
             has_unsupported_capture = true;
         }
@@ -2882,6 +3116,9 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
             this->core_.state_.checked.intern_text(field_name),
             field_name_id,
             capture.type,
+            lambda_capture_environment_field_type(this->core_.state_.checked.types, capture),
+            capture.kind,
+            capture.initializer,
             capture.use_range,
             capture.declaration_range,
         });
@@ -2906,7 +3143,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
                 capture.field_name_id,
                 capture.field_name,
                 module,
-                capture.type,
+                lambda_checked_capture_environment_field_type(this->core_.state_.checked.types, capture),
                 capture.use_range,
                 syntax::Visibility::private_,
                 this->core_.stable_member_key(environment.stable_id, StableSymbolKind::struct_field,
@@ -2946,7 +3183,7 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_lambda_expr(
                 syntax::INVALID_MODULE_ID,
                 capture.type,
                 capture.declaration_range,
-                false,
+                lambda_capture_kind_is_mutable(capture.kind),
                 syntax::Visibility::private_,
                 {},
             },
@@ -3177,6 +3414,66 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_for_condition(const syntax
 TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
     const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.start_expr = stmt.range_start;
+    plan.end_expr = stmt.range_end;
+    plan.step_expr = stmt.range_step;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+
+    if (syntax::is_valid(stmt.range_iterable)) {
+        const TypeHandle iterable_type = this->core_.analyze_expr(stmt.range_iterable);
+        TypeHandle element_type = INVALID_TYPE_HANDLE;
+        if (is_valid(iterable_type) && this->core_.state_.checked.types.is_array(iterable_type)) {
+            const TypeInfo& array = this->core_.state_.checked.types.get(iterable_type);
+            element_type = array.array_element;
+            plan.kind = ForInIterationKind::array_value;
+            plan.element_access = PointerMutability::const_;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_slice(iterable_type)) {
+            const TypeInfo& slice = this->core_.state_.checked.types.get(iterable_type);
+            element_type = slice.slice_element;
+            plan.kind = ForInIterationKind::slice_value;
+            plan.element_access = slice.slice_mutability;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_range(iterable_type)) {
+            const TypeInfo& range = this->core_.state_.checked.types.get(iterable_type);
+            element_type = range.range_element;
+            plan.kind = ForInIterationKind::range_value;
+            plan.element_access = PointerMutability::const_;
+            plan.range_type = element_type;
+            plan.requires_copy_item = false;
+        } else if (is_valid(iterable_type) && this->core_.state_.checked.types.is_str(iterable_type)) {
+            element_type = this->core_.state_.checked.types.builtin(BuiltinType::u8);
+            plan.kind = ForInIterationKind::str_bytes;
+            plan.element_access = PointerMutability::const_;
+            plan.requires_copy_item = false;
+        } else {
+            bool protocol_error_reported = false;
+            const std::optional<ForInIterationPlan> protocol_plan =
+                this->analyze_for_in_protocol_plan(stmt_id, stmt, iterable_type, protocol_error_reported);
+            if (protocol_plan.has_value()) {
+                this->core_.record_stmt_local_type(stmt_id, protocol_plan->item_type);
+                this->core_.record_for_in_iteration_plan(stmt_id, *protocol_plan);
+                return protocol_plan->item_type;
+            }
+            if (!protocol_error_reported) {
+                this->core_.report_general(expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+                    std::string(SEMA_FOR_IN_ITERABLE_PROTOCOL));
+            }
+        }
+        plan.iterable_type = iterable_type;
+        plan.item_type = element_type;
+        if (plan.requires_copy_item && is_valid(element_type)
+            && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
+            this->core_.report_general(
+                expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+                std::string(SEMA_FOR_IN_ELEMENT_COPY));
+        }
+        this->core_.record_stmt_local_type(stmt_id, element_type);
+        this->core_.record_for_in_iteration_plan(stmt_id, plan);
+        return element_type;
+    }
+
     if (!syntax::is_valid(stmt.range_end)) {
         this->core_.record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
         this->core_.report_general(stmt.range, std::string(SEMA_FOR_RANGE_ARITY));
@@ -3253,7 +3550,342 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_for_range_bounds(
         ? start
         : (this->core_.state_.checked.types.is_integer(end) ? end : step);
     this->core_.record_stmt_local_type(stmt_id, local_type);
+    plan.kind = ForInIterationKind::counted_range;
+    plan.item_type = local_type;
+    plan.range_type = local_type;
+    plan.element_access = PointerMutability::const_;
+    plan.requires_copy_item = false;
+    this->core_.record_for_in_iteration_plan(stmt_id, plan);
     return local_type;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_for_in_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    bool& reported_failure)
+{
+    reported_failure = false;
+    if (!is_valid(iterable_type)) {
+        return std::nullopt;
+    }
+    if (std::optional<ForInIterationPlan> direct =
+            this->analyze_direct_iterator_protocol_plan(stmt_id, stmt, iterable_type, false);
+        direct.has_value()) {
+        return direct;
+    }
+    if (std::optional<ForInIterationPlan> iter =
+            this->analyze_iter_method_protocol_plan(stmt_id, stmt, iterable_type, reported_failure);
+        iter.has_value() || reported_failure) {
+        return iter;
+    }
+
+    const base::SourceRange range = expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range);
+    if (this->type_has_for_in_protocol_signal(iterable_type, range)) {
+        reported_failure = true;
+        return this->analyze_direct_iterator_protocol_plan(stmt_id, stmt, iterable_type, true);
+    }
+    return std::nullopt;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_direct_iterator_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    const bool report_failure)
+{
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = ForInIterationKind::protocol_iterator;
+    plan.protocol_source = ForInProtocolSourceKind::direct_iterator;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.iterator_type = iterable_type;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+    plan.element_access = PointerMutability::mut;
+    plan.requires_copy_item = false;
+    plan.consumes_iterable = true;
+    plan.evaluates_source_once = true;
+    if (!this->complete_iterator_protocol_plan(
+            plan, iterable_type, expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range),
+            report_failure)) {
+        return std::nullopt;
+    }
+    return plan;
+}
+
+std::optional<ForInIterationPlan> SemanticAnalyzerCore::StatementAnalyzer::analyze_iter_method_protocol_plan(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt,
+    const TypeHandle iterable_type,
+    bool& reported_failure)
+{
+    reported_failure = false;
+    const base::SourceRange range = expr_range_or(this->core_.ctx_.module, stmt.range_iterable, stmt.range);
+    ForInProtocolMethodResolution iter =
+        this->resolve_for_in_protocol_method(iterable_type, SEMA_FOR_IN_ITER_METHOD_NAME, range, false);
+    if (!iter.found) {
+        return std::nullopt;
+    }
+    if (!this->for_in_receiver_matches(iter.call, iterable_type, stmt.range_iterable, range, false, true)) {
+        reported_failure = true;
+        return std::nullopt;
+    }
+
+    ForInIterationPlan plan;
+    plan.stmt = stmt_id;
+    plan.kind = ForInIterationKind::protocol_iterator;
+    plan.protocol_source = ForInProtocolSourceKind::iter_method;
+    plan.iterable_expr = stmt.range_iterable;
+    plan.iterable_type = iterable_type;
+    plan.iterator_type = iter.return_type;
+    plan.index_type = this->core_.state_.checked.types.builtin(BuiltinType::usize);
+    plan.element_access = PointerMutability::mut;
+    plan.iter_call = iter.call;
+    plan.requires_copy_item = false;
+    plan.consumes_iterable = iter.call.receiver_access == ReceiverAccessKind::consuming;
+    plan.evaluates_source_once = true;
+    if (!this->complete_iterator_protocol_plan(plan, iter.return_type, range, false)) {
+        reported_failure = true;
+        if (this->type_has_for_in_protocol_signal(iter.return_type, range)) {
+            static_cast<void>(this->complete_iterator_protocol_plan(plan, iter.return_type, range, true));
+        } else {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITER_METHOD));
+        }
+        return std::nullopt;
+    }
+    return plan;
+}
+
+ForInProtocolMethodResolution SemanticAnalyzerCore::StatementAnalyzer::resolve_for_in_protocol_method(
+    const TypeHandle receiver_type,
+    const std::string_view method_name,
+    const base::SourceRange& range,
+    const bool report_failure)
+{
+    ForInProtocolMethodResolution result;
+    if (!is_valid(receiver_type)) {
+        return result;
+    }
+    const IdentId method_name_id = this->core_.ctx_.module.find_identifier(method_name);
+    if (!is_valid(method_name_id)) {
+        return result;
+    }
+
+    TypeHandle owner_type = receiver_type;
+    if (this->core_.state_.checked.types.is_pointer(owner_type)
+        || this->core_.state_.checked.types.is_reference(owner_type)) {
+        owner_type = this->core_.state_.checked.types.get(owner_type).pointee;
+    }
+
+    const FunctionSignature* signature =
+        this->core_.find_method_in_visible_modules(owner_type, method_name_id, method_name, range, true, false);
+    if (signature != nullptr) {
+        this->core_.ensure_function_return_known(*signature, range);
+        this->core_.validate_unsafe_call(*signature, range);
+        result.call.kind = ForInProtocolCallKind::inherent_method;
+        result.call.function_key = signature->semantic_key;
+        result.call.receiver_type = receiver_type;
+        result.call.self_type = owner_type;
+        result.call.return_type = signature->return_type;
+        result.call.param_type = signature->param_types.empty() ? INVALID_TYPE_HANDLE : signature->param_types.front();
+        result.call.method_name = this->core_.state_.checked.intern_text(method_name);
+        result.call.method_name_id = method_name_id;
+        result.call.receiver_access = ReceiverAccessKind::none;
+        if (signature->param_types.size() == SEMA_FOR_IN_RECEIVER_PARAM_COUNT) {
+            const TypeHandle self_type = signature->param_types.front();
+            if (this->core_.state_.checked.types.is_pointer(self_type)
+                || this->core_.state_.checked.types.is_reference(self_type)) {
+                const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+                result.call.receiver_access =
+                    self.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_
+                                                                      : ReceiverAccessKind::shared;
+                const bool receiver_is_indirect = this->core_.state_.checked.types.is_pointer(receiver_type)
+                    || this->core_.state_.checked.types.is_reference(receiver_type);
+                result.call.receiver_auto_borrow =
+                    !receiver_is_indirect && this->core_.state_.checked.types.same(self.pointee, receiver_type);
+                result.call.receiver_two_phase_eligible =
+                    result.call.receiver_auto_borrow
+                    && this->core_.state_.checked.types.is_reference(self_type)
+                    && self.pointer_mutability == PointerMutability::mut;
+            } else if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+                result.call.receiver_access = ReceiverAccessKind::consuming;
+            }
+        }
+        result.return_type = signature->return_type;
+        result.receiver_type = receiver_type;
+        result.found = true;
+        return result;
+    }
+
+    TraitMethodCallResolution trait_resolution =
+        this->core_.resolve_trait_method_call(owner_type, method_name_id, method_name, range, true, false);
+    if (!trait_resolution.found) {
+        if (report_failure) {
+            trait_resolution =
+                this->core_.resolve_trait_method_call(owner_type, method_name_id, method_name, range, true, true);
+        }
+        if (!trait_resolution.found) {
+            return result;
+        }
+    }
+    if (trait_resolution.dispatch == TraitMethodDispatchKind::vtable_slot) {
+        return result;
+    }
+    result.call.kind = ForInProtocolCallKind::trait_static_method;
+    result.call.trait_dispatch = trait_resolution.dispatch;
+    if (trait_resolution.signature != nullptr) {
+        result.call.function_key = trait_resolution.signature->semantic_key;
+    }
+    if (trait_resolution.predicate != nullptr) {
+        result.call.predicate_index = trait_resolution.predicate->index;
+        result.call.predicate_fingerprint = trait_resolution.predicate->canonical_fingerprint;
+    }
+    if (trait_resolution.impl != nullptr) {
+        result.call.impl_key = trait_resolution.impl->key;
+    }
+    if (trait_resolution.trait != nullptr) {
+        result.call.trait_module = trait_resolution.trait->module;
+        result.call.trait_name_id = trait_resolution.trait->name_id;
+    }
+    if (trait_resolution.requirement != nullptr) {
+        result.call.requirement_ordinal = trait_resolution.requirement->ordinal;
+    }
+    result.call.receiver_type = receiver_type;
+    result.call.self_type = owner_type;
+    result.call.return_type = trait_resolution.return_type;
+    result.call.param_type =
+        trait_resolution.param_types.empty() ? INVALID_TYPE_HANDLE : trait_resolution.param_types.front();
+    result.call.method_name = this->core_.state_.checked.intern_text(method_name);
+    result.call.method_name_id = method_name_id;
+    if (trait_resolution.param_types.size() == SEMA_FOR_IN_RECEIVER_PARAM_COUNT) {
+        const TypeHandle self_type = trait_resolution.param_types.front();
+        if (this->core_.state_.checked.types.is_pointer(self_type)
+            || this->core_.state_.checked.types.is_reference(self_type)) {
+            const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+            result.call.receiver_access =
+                self.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_
+                                                                  : ReceiverAccessKind::shared;
+            const bool receiver_is_indirect = this->core_.state_.checked.types.is_pointer(receiver_type)
+                || this->core_.state_.checked.types.is_reference(receiver_type);
+            result.call.receiver_auto_borrow =
+                !receiver_is_indirect && this->core_.state_.checked.types.same(self.pointee, receiver_type);
+            result.call.receiver_two_phase_eligible =
+                result.call.receiver_auto_borrow && this->core_.state_.checked.types.is_reference(self_type)
+                && self.pointer_mutability == PointerMutability::mut;
+        } else if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+            result.call.receiver_access = ReceiverAccessKind::consuming;
+        }
+    }
+    result.return_type = trait_resolution.return_type;
+    result.receiver_type = receiver_type;
+    result.found = true;
+    return result;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::type_has_for_in_protocol_signal(
+    const TypeHandle receiver_type, const base::SourceRange& range)
+{
+    return this->resolve_for_in_protocol_method(receiver_type, SEMA_FOR_IN_HAS_NEXT_METHOD_NAME, range, false).found
+        || this->resolve_for_in_protocol_method(receiver_type, SEMA_FOR_IN_NEXT_METHOD_NAME, range, false).found;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::for_in_receiver_matches(const ForInProtocolCallPlan& call,
+    const TypeHandle receiver_type,
+    const syntax::ExprId receiver_expr,
+    const base::SourceRange& range,
+    const bool synthetic_mutable_place,
+    const bool report_failure)
+{
+    const auto report_receiver_type_mismatch = [&] {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_METHOD_RECEIVER_TYPE_MISMATCH));
+        }
+    };
+    const TypeHandle self_type = call.param_type;
+    if (!is_valid(self_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    if (this->core_.state_.checked.types.same(self_type, receiver_type)) {
+        return true;
+    }
+    if (!this->core_.state_.checked.types.is_pointer(self_type)
+        && !this->core_.state_.checked.types.is_reference(self_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    const TypeInfo& self = this->core_.state_.checked.types.get(self_type);
+    if (this->core_.state_.checked.types.is_pointer(receiver_type)
+        || this->core_.state_.checked.types.is_reference(receiver_type)) {
+        const TypeInfo& receiver = this->core_.state_.checked.types.get(receiver_type);
+        if (self.kind != receiver.kind
+            || !this->core_.state_.checked.types.same(self.pointee, receiver.pointee)) {
+            report_receiver_type_mismatch();
+            return false;
+        }
+        if (self.pointer_mutability == PointerMutability::mut
+            && receiver.pointer_mutability != PointerMutability::mut) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
+            }
+            return false;
+        }
+        return true;
+    }
+    if (!this->core_.state_.checked.types.same(self.pointee, receiver_type)) {
+        report_receiver_type_mismatch();
+        return false;
+    }
+    if (self.pointer_mutability == PointerMutability::mut && !synthetic_mutable_place) {
+        if (!this->core_.is_place_expr(receiver_expr)) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_METHOD_RECEIVER_PLACE));
+            }
+            return false;
+        }
+        if (!this->core_.is_writable_place(receiver_expr)) {
+            if (report_failure) {
+                this->core_.report_general(range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::complete_iterator_protocol_plan(
+    ForInIterationPlan& plan, const TypeHandle iterator_type, const base::SourceRange& range, const bool report_failure)
+{
+    ForInProtocolMethodResolution has_next =
+        this->resolve_for_in_protocol_method(iterator_type, SEMA_FOR_IN_HAS_NEXT_METHOD_NAME, range, report_failure);
+    if (!has_next.found
+        || !this->for_in_receiver_matches(has_next.call, iterator_type, syntax::INVALID_EXPR_ID, range, true, false)
+        || has_next.call.receiver_access != ReceiverAccessKind::mutable_
+        || !this->core_.state_.checked.types.is_bool(has_next.return_type)) {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITERATOR_HAS_NEXT));
+        }
+        return false;
+    }
+
+    ForInProtocolMethodResolution next =
+        this->resolve_for_in_protocol_method(iterator_type, SEMA_FOR_IN_NEXT_METHOD_NAME, range, report_failure);
+    if (!next.found
+        || !this->for_in_receiver_matches(next.call, iterator_type, syntax::INVALID_EXPR_ID, range, true, false)
+        || next.call.receiver_access != ReceiverAccessKind::mutable_
+        || !is_valid(next.return_type) || this->core_.state_.checked.types.is_void(next.return_type)) {
+        if (report_failure) {
+            this->core_.report_general(range, std::string(SEMA_FOR_IN_ITERATOR_NEXT));
+        }
+        return false;
+    }
+
+    plan.iterator_type = iterator_type;
+    plan.item_type = next.return_type;
+    plan.has_next_call = has_next.call;
+    plan.next_call = next.call;
+    return true;
 }
 
 void SemanticAnalyzerCore::StatementAnalyzer::define_for_range_local(

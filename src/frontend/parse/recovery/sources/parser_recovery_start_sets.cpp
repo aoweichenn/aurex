@@ -48,11 +48,8 @@ bool token_starts_expression(const TokenKind kind) noexcept
         case TokenKind::kw_true:
         case TokenKind::kw_false:
         case TokenKind::kw_null:
-        case TokenKind::kw_cast:
         case TokenKind::kw_ptrcast:
         case TokenKind::kw_bitcast:
-        case TokenKind::kw_sizeof:
-        case TokenKind::kw_alignof:
         case TokenKind::kw_ptraddr:
         case TokenKind::kw_ptrat:
         case TokenKind::kw_strvalid:

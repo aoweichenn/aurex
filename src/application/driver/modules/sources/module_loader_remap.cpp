@@ -264,6 +264,9 @@ template <typename T, typename Allocator>
                 return_type = source_payload->return_type;
                 body = source_payload->body;
             }
+            for (syntax::LambdaCaptureDecl& capture : captures) {
+                capture.initializer = remap_expr(capture.initializer, map);
+            }
             remap_param_decls(params, map);
             return_type = remap_type(return_type, map);
             body = remap_stmt(body, map);
@@ -471,6 +474,7 @@ void remap_stmt_node(syntax::StmtNode& node, const IdMap& map)
     node.range_start = remap_expr(node.range_start, map);
     node.range_end = remap_expr(node.range_end, map);
     node.range_step = remap_expr(node.range_step, map);
+    node.range_iterable = remap_expr(node.range_iterable, map);
     node.then_block = remap_stmt(node.then_block, map);
     node.else_block = remap_stmt(node.else_block, map);
     node.else_if = remap_stmt(node.else_if, map);

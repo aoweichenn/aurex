@@ -29,74 +29,35 @@ struct StartFilter {
 }
 
 fn build_start_filter(compiled: &t.Regex, workspace: &mut Workspace) -> StartFilter {
-    clear_marks(workspace);
-    var stack_len: usize = 0usize;
-    var state_len: usize = 0usize;
-    var accepts_empty: bool = false;
-    let stack_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut stack_len)) };
-    push_filter_state(workspace, stack_len_ptr, compiled.start);
-    while stack_len > 0usize {
-        stack_len -= 1usize;
-        let state_id: usize = unsafe { workspace.stack[stack_len] };
-        if state_id == t.NO_STATE || state_id >= compiled.state_len {
-            continue;
-        }
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-        if opcode == t.OP_SPLIT {
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out2 });
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out1 });
-        } else if opcode == t.OP_MATCH {
-            accepts_empty = true;
-        } else if opcode_is_epsilon_like(opcode) {
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out1 });
-        } else {
-            if state_len >= workspace.capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return empty_start_filter();
-            }
-            unsafe {
-                workspace.start_states[state_len] = state_id;
-            }
-            state_len += 1usize;
-        }
-        if workspace.status != t.RegexStatus.ok {
-            return empty_start_filter();
-        }
-    }
-    let prefix_start: usize = regex_literal_prefix_start(compiled, workspace, state_len);
-    let prefix_len: usize = regex_literal_prefix_len(compiled, prefix_start);
-    let byte_filter_enabled: bool = build_regex_start_byte_filter(compiled, workspace, state_len, accepts_empty);
-    return StartFilter {
-        enabled: state_len > 0usize && !accepts_empty,
-        state_len: state_len,
-        byte_filter_enabled: byte_filter_enabled,
-        literal_prefix_enabled: prefix_len > 0usize && !accepts_empty,
-        literal_prefix_start: prefix_start,
-        literal_prefix_len: prefix_len,
-    };
+    return build_start_filter_for<t.Regex>(compiled, workspace);
 }
 
 fn build_set_start_filter(compiled: &t.RegexSet, workspace: &mut Workspace) -> StartFilter {
+    return build_start_filter_for<t.RegexSet>(compiled, workspace);
+}
+
+fn build_start_filter_for<P>(program: &P, workspace: &mut Workspace) -> StartFilter where P: RegexVmProgram {
     clear_marks(workspace);
     var stack_len: usize = 0usize;
     var state_len: usize = 0usize;
     var accepts_empty: bool = false;
     let stack_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut stack_len)) };
-    push_filter_state(workspace, stack_len_ptr, compiled.start);
+    let states: *mut t.State = program.state_storage();
+    push_filter_state(workspace, stack_len_ptr, program.start_state());
     while stack_len > 0usize {
         stack_len -= 1usize;
         let state_id: usize = unsafe { workspace.stack[stack_len] };
-        if state_id == t.NO_STATE || state_id >= compiled.state_len {
+        if state_id == t.NO_STATE || state_id >= program.state_count() {
             continue;
         }
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
+        let opcode: u8 = unsafe { states[state_id].opcode };
         if opcode == t.OP_SPLIT {
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out2 });
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out1 });
+            push_filter_state(workspace, stack_len_ptr, unsafe { states[state_id].out2 });
+            push_filter_state(workspace, stack_len_ptr, unsafe { states[state_id].out1 });
         } else if opcode == t.OP_MATCH {
             accepts_empty = true;
         } else if opcode_is_epsilon_like(opcode) {
-            push_filter_state(workspace, stack_len_ptr, unsafe { compiled.states[state_id].out1 });
+            push_filter_state(workspace, stack_len_ptr, unsafe { states[state_id].out1 });
         } else {
             if state_len >= workspace.capacity {
                 workspace.status = t.RegexStatus.workspace_too_large;
@@ -111,9 +72,9 @@ fn build_set_start_filter(compiled: &t.RegexSet, workspace: &mut Workspace) -> S
             return empty_start_filter();
         }
     }
-    let prefix_start: usize = set_literal_prefix_start(compiled, workspace, state_len);
-    let prefix_len: usize = set_literal_prefix_len(compiled, prefix_start);
-    let byte_filter_enabled: bool = build_set_start_byte_filter(compiled, workspace, state_len, accepts_empty);
+    let prefix_start: usize = literal_prefix_start_for<P>(program, workspace, state_len);
+    let prefix_len: usize = literal_prefix_len_for<P>(program, prefix_start);
+    let byte_filter_enabled: bool = build_start_byte_filter_for<P>(program, workspace, state_len, accepts_empty);
     return StartFilter {
         enabled: state_len > 0usize && !accepts_empty,
         state_len: state_len,
@@ -160,20 +121,7 @@ fn start_filter_allows(
     position: usize,
     workspace: &mut Workspace
 ) -> bool {
-    if !filter.enabled {
-        return true;
-    }
-    if position >= input.len {
-        return false;
-    }
-    let value: usize = decode_at(input, position).value;
-    for index in range(filter.state_len) {
-        let state_id: usize = unsafe { workspace.start_states[index] };
-        if regex_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
-            return true;
-        }
-    }
-    return false;
+    return start_filter_allows_for<t.Regex>(compiled, filter, input, position, workspace);
 }
 
 fn set_start_filter_allows(
@@ -183,6 +131,16 @@ fn set_start_filter_allows(
     position: usize,
     workspace: &mut Workspace
 ) -> bool {
+    return start_filter_allows_for<t.RegexSet>(compiled, filter, input, position, workspace);
+}
+
+fn start_filter_allows_for<P>(
+    program: &P,
+    filter: StartFilter,
+    input: InputView,
+    position: usize,
+    workspace: &mut Workspace
+) -> bool where P: RegexVmProgram {
     if !filter.enabled {
         return true;
     }
@@ -192,7 +150,7 @@ fn set_start_filter_allows(
     let value: usize = decode_at(input, position).value;
     for index in range(filter.state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
-        if set_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
+        if transition_out<P>(program, state_id, value, workspace) != t.NO_STATE {
             return true;
         }
     }
@@ -200,90 +158,62 @@ fn set_start_filter_allows(
 }
 
 fn build_regex_start_byte_filter(compiled: &t.Regex, workspace: &mut Workspace, state_len: usize, accepts_empty: bool) -> bool {
-    clear_start_bytes(workspace);
-    if accepts_empty || state_len == 0usize {
-        return false;
-    }
-    for index in range(state_len) {
-        let state_id: usize = unsafe { workspace.start_states[index] };
-        mark_regex_state_start_bytes(compiled, state_id, workspace);
-        if workspace.status != t.RegexStatus.ok {
-            return false;
-        }
-    }
-    return start_byte_filter_useful(compiled.mode, workspace);
+    return build_start_byte_filter_for<t.Regex>(compiled, workspace, state_len, accepts_empty);
 }
 
 fn build_set_start_byte_filter(compiled: &t.RegexSet, workspace: &mut Workspace, state_len: usize, accepts_empty: bool) -> bool {
+    return build_start_byte_filter_for<t.RegexSet>(compiled, workspace, state_len, accepts_empty);
+}
+
+fn build_start_byte_filter_for<P>(program: &P, workspace: &mut Workspace, state_len: usize, accepts_empty: bool) -> bool
+    where P: RegexVmProgram {
     clear_start_bytes(workspace);
     if accepts_empty || state_len == 0usize {
         return false;
     }
     for index in range(state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
-        mark_set_state_start_bytes(compiled, state_id, workspace);
+        mark_state_start_bytes_for<P>(program, state_id, workspace);
         if workspace.status != t.RegexStatus.ok {
             return false;
         }
     }
-    return start_byte_filter_useful(compiled.mode, workspace);
+    return start_byte_filter_useful(program.input_mode(), workspace);
 }
 
 fn mark_regex_state_start_bytes(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
-    if state_id == t.NO_STATE || state_id >= compiled.state_len {
-        mark_valid_input_start_bytes(compiled.mode, workspace);
-        return;
-    }
-    let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    if compiled.mode == t.MODE_BYTES {
-        if opcode == t.OP_LITERAL && !has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-            mark_start_byte(workspace, unsafe { compiled.states[state_id].value });
-        } else if opcode == t.OP_ANY {
-            mark_bytes_any_start_bytes(flags, workspace);
-        } else {
-            mark_regex_bytes_by_scan(compiled, state_id, workspace);
-        }
-        return;
-    }
-    if opcode == t.OP_LITERAL {
-        mark_text_literal_start_bytes(compiled, state_id, flags, workspace);
-    } else if opcode == t.OP_ANY {
-        mark_text_any_start_bytes(flags, workspace);
-    } else if opcode == t.OP_CLASS {
-        mark_regex_ascii_by_scan(compiled, state_id, workspace);
-        if regex_class_may_match_non_ascii(compiled, state_id, workspace) {
-            mark_text_non_ascii_start_bytes(workspace);
-        }
-    } else {
-        mark_text_non_ascii_start_bytes(workspace);
-    }
+    mark_state_start_bytes_for<t.Regex>(compiled, state_id, workspace);
 }
 
 fn mark_set_state_start_bytes(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
-    if state_id == t.NO_STATE || state_id >= compiled.state_len {
-        mark_valid_input_start_bytes(compiled.mode, workspace);
+    mark_state_start_bytes_for<t.RegexSet>(compiled, state_id, workspace);
+}
+
+fn mark_state_start_bytes_for<P>(program: &P, state_id: usize, workspace: &mut Workspace) -> void where P: RegexVmProgram {
+    let states: *mut t.State = program.state_storage();
+    if state_id == t.NO_STATE || state_id >= program.state_count() {
+        mark_valid_input_start_bytes(program.input_mode(), workspace);
         return;
     }
-    let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    if compiled.mode == t.MODE_BYTES {
+    let opcode: u8 = unsafe { states[state_id].opcode };
+    let flags: u8 = unsafe { states[state_id].flags };
+    if program.input_mode() == t.MODE_BYTES {
         if opcode == t.OP_LITERAL && !has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-            mark_start_byte(workspace, unsafe { compiled.states[state_id].value });
+            mark_start_byte(workspace, unsafe { states[state_id].value });
         } else if opcode == t.OP_ANY {
             mark_bytes_any_start_bytes(flags, workspace);
         } else {
-            mark_set_bytes_by_scan(compiled, state_id, workspace);
+            mark_bytes_by_scan<P>(program, state_id, workspace);
         }
         return;
     }
     if opcode == t.OP_LITERAL {
-        mark_set_text_literal_start_bytes(compiled, state_id, flags, workspace);
+        mark_text_literal_start_bytes_for<P>(program, state_id, flags, workspace);
     } else if opcode == t.OP_ANY {
         mark_text_any_start_bytes(flags, workspace);
     } else if opcode == t.OP_CLASS {
-        mark_set_ascii_by_scan(compiled, state_id, workspace);
-        if set_class_may_match_non_ascii(compiled, state_id, workspace) {
+        mark_ascii_by_scan<P>(program, state_id, workspace);
+        if class_state_may_match_non_ascii<P>(program, state_id, workspace) {
             mark_text_non_ascii_start_bytes(workspace);
         }
     } else {
@@ -292,19 +222,16 @@ fn mark_set_state_start_bytes(compiled: &t.RegexSet, state_id: usize, workspace:
 }
 
 fn mark_regex_bytes_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
-    for value in range(limits.START_BYTE_COUNT) {
-        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
-            mark_start_byte(workspace, value);
-        }
-        if workspace.status != t.RegexStatus.ok {
-            return;
-        }
-    }
+    mark_bytes_by_scan<t.Regex>(compiled, state_id, workspace);
 }
 
 fn mark_set_bytes_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
+    mark_bytes_by_scan<t.RegexSet>(compiled, state_id, workspace);
+}
+
+fn mark_bytes_by_scan<P>(program: &P, state_id: usize, workspace: &mut Workspace) -> void where P: RegexVmProgram {
     for value in range(limits.START_BYTE_COUNT) {
-        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
+        if state_matches<P>(program, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -314,19 +241,16 @@ fn mark_set_bytes_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mu
 }
 
 fn mark_regex_ascii_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
-    for value in range(ASCII_BYTE_COUNT) {
-        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
-            mark_start_byte(workspace, value);
-        }
-        if workspace.status != t.RegexStatus.ok {
-            return;
-        }
-    }
+    mark_ascii_by_scan<t.Regex>(compiled, state_id, workspace);
 }
 
 fn mark_set_ascii_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
+    mark_ascii_by_scan<t.RegexSet>(compiled, state_id, workspace);
+}
+
+fn mark_ascii_by_scan<P>(program: &P, state_id: usize, workspace: &mut Workspace) -> void where P: RegexVmProgram {
     for value in range(ASCII_BYTE_COUNT) {
-        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
+        if state_matches<P>(program, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -336,22 +260,22 @@ fn mark_set_ascii_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mu
 }
 
 fn mark_text_literal_start_bytes(compiled: &t.Regex, state_id: usize, flags: u8, workspace: &mut Workspace) -> void {
-    if has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-        mark_regex_ascii_by_scan(compiled, state_id, workspace);
-        mark_text_non_ascii_start_bytes(workspace);
-        return;
-    }
-    let value: usize = unsafe { compiled.states[state_id].value };
-    mark_utf8_first_byte(workspace, value);
+    mark_text_literal_start_bytes_for<t.Regex>(compiled, state_id, flags, workspace);
 }
 
 fn mark_set_text_literal_start_bytes(compiled: &t.RegexSet, state_id: usize, flags: u8, workspace: &mut Workspace) -> void {
+    mark_text_literal_start_bytes_for<t.RegexSet>(compiled, state_id, flags, workspace);
+}
+
+fn mark_text_literal_start_bytes_for<P>(program: &P, state_id: usize, flags: u8, workspace: &mut Workspace) -> void
+    where P: RegexVmProgram {
     if has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-        mark_set_ascii_by_scan(compiled, state_id, workspace);
+        mark_ascii_by_scan<P>(program, state_id, workspace);
         mark_text_non_ascii_start_bytes(workspace);
         return;
     }
-    let value: usize = unsafe { compiled.states[state_id].value };
+    let states: *mut t.State = program.state_storage();
+    let value: usize = unsafe { states[state_id].value };
     mark_utf8_first_byte(workspace, value);
 }
 
@@ -373,25 +297,25 @@ fn mark_bytes_any_start_bytes(flags: u8, workspace: &mut Workspace) -> void {
 }
 
 fn regex_class_may_match_non_ascii(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> bool {
-    return class_state_may_match_non_ascii(compiled.states, compiled.ranges, state_id, workspace);
+    return class_state_may_match_non_ascii<t.Regex>(compiled, state_id, workspace);
 }
 
 fn set_class_may_match_non_ascii(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> bool {
-    return class_state_may_match_non_ascii(compiled.states, compiled.ranges, state_id, workspace);
+    return class_state_may_match_non_ascii<t.RegexSet>(compiled, state_id, workspace);
 }
 
-fn class_state_may_match_non_ascii(
-    states: *mut t.State,
-    ranges: *mut t.ClassRange,
+fn class_state_may_match_non_ascii<P>(
+    program: &P,
     state_id: usize,
     workspace: &mut Workspace
-) -> bool {
+) -> bool where P: RegexVmProgram {
+    let states: *mut t.State = program.state_storage();
     let flags: u8 = unsafe { states[state_id].flags };
     if has_flag(flags, t.FLAG_CLASS_NEGATED) {
         return true;
     }
     return class_expr_may_match_non_ascii(
-        ranges,
+        program.range_storage(),
         unsafe { states[state_id].class_start },
         unsafe { states[state_id].class_len },
         workspace,
@@ -583,100 +507,77 @@ fn start_byte_range_has_rejected(workspace: &Workspace, first: usize, end: usize
 }
 
 fn regex_literal_prefix_start(compiled: &t.Regex, workspace: &mut Workspace, state_len: usize) -> usize {
-    if state_len != 1usize {
-        return t.NO_STATE;
-    }
-    let state_id: usize = unsafe { workspace.start_states[0usize] };
-    if state_id >= compiled.state_len || unsafe { compiled.states[state_id].opcode } != t.OP_LITERAL {
-        return t.NO_STATE;
-    }
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    if compiled.mode == t.MODE_TEXT && has_flag(flags, t.FLAG_CASE_INSENSITIVE) && !has_flag(flags, t.FLAG_ASCII) {
-        return t.NO_STATE;
-    }
-    return state_id;
+    return literal_prefix_start_for<t.Regex>(compiled, workspace, state_len);
 }
 
 fn set_literal_prefix_start(compiled: &t.RegexSet, workspace: &mut Workspace, state_len: usize) -> usize {
+    return literal_prefix_start_for<t.RegexSet>(compiled, workspace, state_len);
+}
+
+fn literal_prefix_start_for<P>(program: &P, workspace: &mut Workspace, state_len: usize) -> usize where P: RegexVmProgram {
     if state_len != 1usize {
         return t.NO_STATE;
     }
     let state_id: usize = unsafe { workspace.start_states[0usize] };
-    if state_id >= compiled.state_len || unsafe { compiled.states[state_id].opcode } != t.OP_LITERAL {
+    let states: *mut t.State = program.state_storage();
+    if state_id >= program.state_count() || unsafe { states[state_id].opcode } != t.OP_LITERAL {
         return t.NO_STATE;
     }
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    if compiled.mode == t.MODE_TEXT && has_flag(flags, t.FLAG_CASE_INSENSITIVE) && !has_flag(flags, t.FLAG_ASCII) {
+    let flags: u8 = unsafe { states[state_id].flags };
+    if program.input_mode() == t.MODE_TEXT && has_flag(flags, t.FLAG_CASE_INSENSITIVE) && !has_flag(flags, t.FLAG_ASCII) {
         return t.NO_STATE;
     }
     return state_id;
 }
 
 fn regex_literal_prefix_len(compiled: &t.Regex, first_state: usize) -> usize {
-    if first_state == t.NO_STATE {
-        return 0usize;
-    }
-    var len: usize = 0usize;
-    var state_id: usize = first_state;
-    var steps: usize = 0usize;
-    while state_id != t.NO_STATE && state_id < compiled.state_len && steps <= compiled.state_len {
-        if unsafe { compiled.states[state_id].opcode } != t.OP_LITERAL {
-            return len;
-        }
-        len += 1usize;
-        state_id = next_regex_prefix_literal(compiled, unsafe { compiled.states[state_id].out1 });
-        steps += 1usize;
-    }
-    return len;
+    return literal_prefix_len_for<t.Regex>(compiled, first_state);
 }
 
 fn set_literal_prefix_len(compiled: &t.RegexSet, first_state: usize) -> usize {
+    return literal_prefix_len_for<t.RegexSet>(compiled, first_state);
+}
+
+fn literal_prefix_len_for<P>(program: &P, first_state: usize) -> usize where P: RegexVmProgram {
     if first_state == t.NO_STATE {
         return 0usize;
     }
     var len: usize = 0usize;
     var state_id: usize = first_state;
     var steps: usize = 0usize;
-    while state_id != t.NO_STATE && state_id < compiled.state_len && steps <= compiled.state_len {
-        if unsafe { compiled.states[state_id].opcode } != t.OP_LITERAL {
+    let states: *mut t.State = program.state_storage();
+    while state_id != t.NO_STATE && state_id < program.state_count() && steps <= program.state_count() {
+        if unsafe { states[state_id].opcode } != t.OP_LITERAL {
             return len;
         }
         len += 1usize;
-        state_id = next_set_prefix_literal(compiled, unsafe { compiled.states[state_id].out1 });
+        state_id = next_prefix_literal_for<P>(program, unsafe { states[state_id].out1 });
         steps += 1usize;
     }
     return len;
 }
 
 fn next_regex_prefix_literal(compiled: &t.Regex, first_state: usize) -> usize {
-    var state_id: usize = first_state;
-    var steps: usize = 0usize;
-    while state_id != t.NO_STATE && state_id < compiled.state_len && steps <= compiled.state_len {
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-        if opcode == t.OP_LITERAL {
-            return state_id;
-        }
-        if opcode != t.OP_EPSILON && opcode != t.OP_SAVE {
-            return t.NO_STATE;
-        }
-        state_id = unsafe { compiled.states[state_id].out1 };
-        steps += 1usize;
-    }
-    return t.NO_STATE;
+    return next_prefix_literal_for<t.Regex>(compiled, first_state);
 }
 
 fn next_set_prefix_literal(compiled: &t.RegexSet, first_state: usize) -> usize {
+    return next_prefix_literal_for<t.RegexSet>(compiled, first_state);
+}
+
+fn next_prefix_literal_for<P>(program: &P, first_state: usize) -> usize where P: RegexVmProgram {
     var state_id: usize = first_state;
     var steps: usize = 0usize;
-    while state_id != t.NO_STATE && state_id < compiled.state_len && steps <= compiled.state_len {
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
+    let states: *mut t.State = program.state_storage();
+    while state_id != t.NO_STATE && state_id < program.state_count() && steps <= program.state_count() {
+        let opcode: u8 = unsafe { states[state_id].opcode };
         if opcode == t.OP_LITERAL {
             return state_id;
         }
         if opcode != t.OP_EPSILON && opcode != t.OP_SAVE {
             return t.NO_STATE;
         }
-        state_id = unsafe { compiled.states[state_id].out1 };
+        state_id = unsafe { states[state_id].out1 };
         steps += 1usize;
     }
     return t.NO_STATE;
@@ -689,6 +590,26 @@ fn advance_to_next_prefix_candidate(
     position: usize,
     workspace: &mut Workspace
 ) -> usize {
+    return advance_to_next_prefix_candidate_for<t.Regex>(compiled, filter, input, position, workspace);
+}
+
+fn advance_to_next_set_prefix_candidate(
+    compiled: &t.RegexSet,
+    filter: StartFilter,
+    input: InputView,
+    position: usize,
+    workspace: &mut Workspace
+) -> usize {
+    return advance_to_next_prefix_candidate_for<t.RegexSet>(compiled, filter, input, position, workspace);
+}
+
+fn advance_to_next_prefix_candidate_for<P>(
+    program: &P,
+    filter: StartFilter,
+    input: InputView,
+    position: usize,
+    workspace: &mut Workspace
+) -> usize where P: RegexVmProgram {
     if !filter.literal_prefix_enabled {
         return position;
     }
@@ -698,7 +619,7 @@ fn advance_to_next_prefix_candidate(
         if !decoded.valid {
             return input.len;
         }
-        if state_matches(compiled.states, compiled.ranges, filter.literal_prefix_start, decoded.value, workspace) {
+        if state_matches<P>(program, filter.literal_prefix_start, decoded.value, workspace) {
             return at;
         }
         at = decoded.next;
@@ -706,12 +627,7 @@ fn advance_to_next_prefix_candidate(
     return input.len;
 }
 
-fn advance_to_next_start_byte_candidate(
-    filter: StartFilter,
-    input: InputView,
-    position: usize,
-    workspace: &Workspace
-) -> usize {
+fn advance_to_next_start_byte_candidate(filter: StartFilter, input: InputView, position: usize, workspace: &Workspace) -> usize {
     if !filter.byte_filter_enabled {
         return position;
     }
@@ -729,30 +645,6 @@ fn advance_to_next_start_byte_candidate(
     return input.len;
 }
 
-fn advance_to_next_set_prefix_candidate(
-    compiled: &t.RegexSet,
-    filter: StartFilter,
-    input: InputView,
-    position: usize,
-    workspace: &mut Workspace
-) -> usize {
-    if !filter.literal_prefix_enabled {
-        return position;
-    }
-    var at: usize = position;
-    while at < input.len {
-        let decoded: InputDecode = decode_at(input, at);
-        if !decoded.valid {
-            return input.len;
-        }
-        if state_matches(compiled.states, compiled.ranges, filter.literal_prefix_start, decoded.value, workspace) {
-            return at;
-        }
-        at = decoded.next;
-    }
-    return input.len;
-}
-
 fn literal_prefix_matches(
     compiled: &t.Regex,
     filter: StartFilter,
@@ -760,25 +652,7 @@ fn literal_prefix_matches(
     position: usize,
     workspace: &mut Workspace
 ) -> bool {
-    if !filter.literal_prefix_enabled {
-        return true;
-    }
-    var state_id: usize = filter.literal_prefix_start;
-    var at: usize = position;
-    var matched: usize = 0usize;
-    while matched < filter.literal_prefix_len {
-        if at >= input.len || state_id == t.NO_STATE || state_id >= compiled.state_len {
-            return false;
-        }
-        let decoded: InputDecode = decode_at(input, at);
-        if !decoded.valid || !state_matches(compiled.states, compiled.ranges, state_id, decoded.value, workspace) {
-            return false;
-        }
-        at = decoded.next;
-        state_id = next_regex_prefix_literal(compiled, unsafe { compiled.states[state_id].out1 });
-        matched += 1usize;
-    }
-    return true;
+    return literal_prefix_matches_for<t.Regex>(compiled, filter, input, position, workspace);
 }
 
 fn set_literal_prefix_matches(
@@ -788,6 +662,16 @@ fn set_literal_prefix_matches(
     position: usize,
     workspace: &mut Workspace
 ) -> bool {
+    return literal_prefix_matches_for<t.RegexSet>(compiled, filter, input, position, workspace);
+}
+
+fn literal_prefix_matches_for<P>(
+    program: &P,
+    filter: StartFilter,
+    input: InputView,
+    position: usize,
+    workspace: &mut Workspace
+) -> bool where P: RegexVmProgram {
     if !filter.literal_prefix_enabled {
         return true;
     }
@@ -795,15 +679,16 @@ fn set_literal_prefix_matches(
     var at: usize = position;
     var matched: usize = 0usize;
     while matched < filter.literal_prefix_len {
-        if at >= input.len || state_id == t.NO_STATE || state_id >= compiled.state_len {
+        if at >= input.len || state_id == t.NO_STATE || state_id >= program.state_count() {
             return false;
         }
         let decoded: InputDecode = decode_at(input, at);
-        if !decoded.valid || !state_matches(compiled.states, compiled.ranges, state_id, decoded.value, workspace) {
+        if !decoded.valid || !state_matches<P>(program, state_id, decoded.value, workspace) {
             return false;
         }
         at = decoded.next;
-        state_id = next_set_prefix_literal(compiled, unsafe { compiled.states[state_id].out1 });
+        let states: *mut t.State = program.state_storage();
+        state_id = next_prefix_literal_for<P>(program, unsafe { states[state_id].out1 });
         matched += 1usize;
     }
     return true;

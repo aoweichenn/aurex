@@ -107,7 +107,6 @@ fn replace_input_n_from(
         return t.replace_result(compiled.status, initial_written, initial_required, 0usize);
     }
     var workspace: engine.Workspace = engine.create_match_workspace(compiled);
-    defer engine.destroy_match_workspace(&mut workspace);
     if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
         return t.replace_result(engine.match_workspace_status(&workspace), initial_written, initial_required, 0usize);
     }
@@ -183,7 +182,6 @@ pub fn replace_n_with(
         return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
     }
     var workspace: engine.Workspace = engine.create_match_workspace(compiled);
-    defer engine.destroy_match_workspace(&mut workspace);
     if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
         return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
     }
@@ -350,7 +348,6 @@ pub fn bytes_replace_n_with(
         return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
     }
     var workspace: engine.Workspace = engine.create_match_workspace(compiled);
-    defer engine.destroy_match_workspace(&mut workspace);
     if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
         return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
     }

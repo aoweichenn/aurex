@@ -129,18 +129,20 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
 }
 
 fn destroy_workspace(workspace: &mut Workspace) -> void {
-    alloc.free_typed<usize>(workspace.current);
-    alloc.free_typed<usize>(workspace.next);
-    alloc.free_typed<usize>(workspace.marks);
-    alloc.free_typed<usize>(workspace.stack);
-    alloc.free_typed<usize>(workspace.start_states);
-    alloc.free_typed<bool>(workspace.start_bytes);
-    alloc.free_typed<usize>(workspace.current_caps);
-    alloc.free_typed<usize>(workspace.next_caps);
-    alloc.free_typed<usize>(workspace.stack_caps);
-    alloc.free_typed<usize>(workspace.best_caps);
-    alloc.free_typed<usize>(workspace.seed_caps);
-    alloc.free_typed<bool>(workspace.class_stack);
+    free_workspace_storage(
+        workspace.current,
+        workspace.next,
+        workspace.marks,
+        workspace.stack,
+        workspace.start_states,
+        workspace.start_bytes,
+        workspace.current_caps,
+        workspace.next_caps,
+        workspace.stack_caps,
+        workspace.best_caps,
+        workspace.seed_caps,
+        workspace.class_stack
+    );
     workspace.current = null;
     workspace.next = null;
     workspace.marks = null;
@@ -158,6 +160,53 @@ fn destroy_workspace(workspace: &mut Workspace) -> void {
     workspace.capture_slot_count = 0usize;
     workspace.newline_mode = t.NEWLINE_UNICODE;
     workspace.status = t.RegexStatus.unsupported;
+}
+
+impl Drop for Workspace {
+    fn drop(self: deinit Workspace) -> void {
+        free_workspace_storage(
+            self.current,
+            self.next,
+            self.marks,
+            self.stack,
+            self.start_states,
+            self.start_bytes,
+            self.current_caps,
+            self.next_caps,
+            self.stack_caps,
+            self.best_caps,
+            self.seed_caps,
+            self.class_stack
+        );
+    }
+}
+
+fn free_workspace_storage(
+    current: *mut usize,
+    next: *mut usize,
+    marks: *mut usize,
+    stack: *mut usize,
+    start_states: *mut usize,
+    start_bytes: *mut bool,
+    current_caps: *mut usize,
+    next_caps: *mut usize,
+    stack_caps: *mut usize,
+    best_caps: *mut usize,
+    seed_caps: *mut usize,
+    class_stack: *mut bool
+) -> void {
+    alloc.free_typed<usize>(current);
+    alloc.free_typed<usize>(next);
+    alloc.free_typed<usize>(marks);
+    alloc.free_typed<usize>(stack);
+    alloc.free_typed<usize>(start_states);
+    alloc.free_typed<bool>(start_bytes);
+    alloc.free_typed<usize>(current_caps);
+    alloc.free_typed<usize>(next_caps);
+    alloc.free_typed<usize>(stack_caps);
+    alloc.free_typed<usize>(best_caps);
+    alloc.free_typed<usize>(seed_caps);
+    alloc.free_typed<bool>(class_stack);
 }
 
 fn free_base_workspace(

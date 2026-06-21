@@ -16,6 +16,58 @@ const ACCEPT_DEFERRED: u8 = 1u8;
 const ACCEPT_READY: u8 = 2u8;
 const ASCII_BYTE_MAX: usize = 0x7fusize;
 
+trait RegexVmProgram {
+    fn state_storage(self: &Self) -> *mut t.State;
+    fn range_storage(self: &Self) -> *mut t.ClassRange;
+    fn state_count(self: &Self) -> usize;
+    fn input_mode(self: &Self) -> u8;
+    fn start_state(self: &Self) -> usize;
+}
+
+impl RegexVmProgram for t.Regex {
+    fn state_storage(self: &t.Regex) -> *mut t.State {
+        return self.states;
+    }
+
+    fn range_storage(self: &t.Regex) -> *mut t.ClassRange {
+        return self.ranges;
+    }
+
+    fn state_count(self: &t.Regex) -> usize {
+        return self.state_len;
+    }
+
+    fn input_mode(self: &t.Regex) -> u8 {
+        return self.mode;
+    }
+
+    fn start_state(self: &t.Regex) -> usize {
+        return self.start;
+    }
+}
+
+impl RegexVmProgram for t.RegexSet {
+    fn state_storage(self: &t.RegexSet) -> *mut t.State {
+        return self.states;
+    }
+
+    fn range_storage(self: &t.RegexSet) -> *mut t.ClassRange {
+        return self.ranges;
+    }
+
+    fn state_count(self: &t.RegexSet) -> usize {
+        return self.state_len;
+    }
+
+    fn input_mode(self: &t.RegexSet) -> u8 {
+        return self.mode;
+    }
+
+    fn start_state(self: &t.RegexSet) -> usize {
+        return self.start;
+    }
+}
+
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     return search_compiled_from(compiled, input, 0usize);
 }
@@ -37,7 +89,6 @@ pub fn search_compiled_with_match_options(
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -60,7 +111,6 @@ pub fn fullmatch_compiled_with_match_options(
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -89,7 +139,6 @@ pub fn captures_compiled_with_match_options(
         return t.empty_captures(t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
@@ -113,7 +162,6 @@ pub fn captures_fullmatch_compiled_with_match_options(
         return t.empty_captures(t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
@@ -153,7 +201,6 @@ pub fn search_bytes_compiled_with_match_options(
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -176,7 +223,6 @@ pub fn fullmatch_bytes_compiled_with_match_options(
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -205,7 +251,6 @@ pub fn captures_bytes_compiled_with_match_options(
         return t.empty_captures(t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
@@ -229,7 +274,6 @@ pub fn captures_bytes_fullmatch_compiled_with_match_options(
         return t.empty_captures(t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
@@ -248,7 +292,6 @@ pub fn search_bytes_raw_compiled_from(compiled: &t.Regex, data: *const u8, len: 
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -263,7 +306,6 @@ pub fn captures_bytes_raw_compiled_from(compiled: &t.Regex, data: *const u8, len
         return t.empty_captures(t.RegexStatus.unsupported);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
@@ -478,12 +520,10 @@ pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []t.TextChunk) -> t.
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var flat: FlatInput = flatten_text_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, flat.status);
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, capture_slot_count(compiled), compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
@@ -498,7 +538,6 @@ pub fn search_bytes_vectored_compiled(compiled: &t.Regex, chunks: []t.RegexChunk
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var flat: FlatInput = flatten_byte_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, flat.status);
     }
@@ -518,7 +557,6 @@ pub fn matches_set_vectored_compiled(
         return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
     }
     var flat: FlatInput = flatten_text_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_matches_result(flat.status, false, 0usize, 0usize);
     }
@@ -538,7 +576,6 @@ pub fn matches_bytes_set_vectored_compiled(
         return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
     }
     var flat: FlatInput = flatten_byte_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_matches_result(flat.status, false, 0usize, 0usize);
     }
@@ -553,7 +590,6 @@ pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []t.TextChunk) 
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var flat: FlatInput = flatten_text_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, flat.status);
     }
@@ -568,7 +604,6 @@ pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []t.TextC
         return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
     }
     var flat: FlatInput = flatten_text_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_matches_result(flat.status, false, 0usize, 0usize);
     }
@@ -587,7 +622,6 @@ pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []t.Regex
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, t.RegexStatus.unsupported);
     }
     var flat: FlatInput = flatten_byte_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, flat.status);
     }
@@ -602,7 +636,6 @@ pub fn scan_bytes_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []t
         return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
     }
     var flat: FlatInput = flatten_byte_chunks(chunks);
-    defer destroy_flat_input(&mut flat);
     if flat.status != t.RegexStatus.ok {
         return t.set_matches_result(flat.status, false, 0usize, 0usize);
     }
@@ -693,7 +726,6 @@ fn matches_set_input(
     }
 
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.set_matches_result(workspace.status, false, 0usize, 0usize);
     }
@@ -722,7 +754,6 @@ fn find_set_input(compiled: &t.RegexSet, input: InputView, start_offset: usize) 
         return run_literal_set_find(compiled, input, align_forward_boundary(input, start_offset));
     }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, workspace.status);
     }
@@ -773,7 +804,6 @@ fn scan_set_all_spans_input(compiled: &t.RegexSet, input: InputView, callback: t
     defer alloc.free_typed<bool>(emitted);
 
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
-    defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.set_matches_result(workspace.status, false, 0usize, 0usize);
     }
@@ -857,7 +887,7 @@ fn run_set_collect_at(
         let next_position: usize = decoded.next;
         for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = set_transition_out(compiled, state_id, value, workspace);
+            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
                 add_set_closure(
                     compiled,
@@ -985,7 +1015,7 @@ fn run_set_search(
         let next_position: usize = decoded.next;
         for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = set_transition_out(compiled, state_id, value, workspace);
+            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
                 add_set_closure(
                     compiled,
@@ -1091,7 +1121,7 @@ fn run_set_find(
         let next_position: usize = decoded.next;
         for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = set_transition_out(compiled, state_id, value, workspace);
+            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
                 add_set_closure(
                     compiled,
@@ -1197,7 +1227,7 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
         let next_position: usize = decoded.next;
         for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = regex_transition_out(compiled, state_id, value, workspace);
+            let out1: usize = transition_out<t.Regex>(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
                 add_closure(
                     compiled,
@@ -1482,7 +1512,7 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
         let next_position: usize = decoded.next;
         for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = regex_transition_out(compiled, state_id, value, workspace);
+            let out1: usize = transition_out<t.Regex>(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
                 add_closure(
                     compiled,
@@ -1733,46 +1763,36 @@ fn has_higher_priority_consumer(
     let value: usize = decode_at(input, position).value;
     for index in range(accept_index) {
         let state_id: usize = unsafe { list[index] };
-        if regex_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
+        if transition_out<t.Regex>(compiled, state_id, value, workspace) != t.NO_STATE {
             return true;
         }
     }
     return false;
 }
 
-fn regex_transition_out(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> usize {
-    return transition_out(compiled.states, compiled.ranges, compiled.state_len, compiled.mode, state_id, value, workspace);
-}
-
-fn set_transition_out(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> usize {
-    return transition_out(compiled.states, compiled.ranges, compiled.state_len, compiled.mode, state_id, value, workspace);
-}
-
-fn transition_out(
-    states: *mut t.State,
-    ranges: *mut t.ClassRange,
-    state_len: usize,
-    mode: u8,
+fn transition_out<P>(
+    program: &P,
     state_id: usize,
     value: usize,
     workspace: &mut Workspace
-) -> usize {
-    if state_matches(states, ranges, state_id, value, workspace) {
+) -> usize where P: RegexVmProgram {
+    let states: *mut t.State = program.state_storage();
+    if state_matches<P>(program, state_id, value, workspace) {
         return unsafe { states[state_id].out1 };
     }
-    if mode != t.MODE_TEXT {
+    if program.input_mode() != t.MODE_TEXT {
         return t.NO_STATE;
     }
-    return full_fold_sequence_out(unsafe { ptrcast<*const t.State>(states) }, state_len, state_id, value);
+    return full_fold_sequence_out(unsafe { ptrcast<*const t.State>(states) }, program.state_count(), state_id, value);
 }
 
-fn state_matches(
-    states: *mut t.State,
-    ranges: *mut t.ClassRange,
+fn state_matches<P>(
+    program: &P,
     state_id: usize,
     value: usize,
     workspace: &mut Workspace
-) -> bool {
+) -> bool where P: RegexVmProgram {
+    let states: *mut t.State = program.state_storage();
     let opcode: u8 = unsafe { states[state_id].opcode };
     if opcode == t.OP_LITERAL {
         let expected: usize = unsafe { states[state_id].value };
@@ -1785,7 +1805,7 @@ fn state_matches(
         return has_flag(unsafe { states[state_id].flags }, t.FLAG_DOTALL) || !is_line_break_mode(workspace.newline_mode, value);
     }
     if opcode == t.OP_CLASS {
-        return class_state_matches(states, ranges, state_id, value, workspace);
+        return class_state_matches<P>(program, state_id, value, workspace);
     }
     return false;
 }
@@ -1834,19 +1854,19 @@ fn next_full_fold_literal(states: *const t.State, state_len: usize, first_state:
     return t.NO_STATE;
 }
 
-fn class_state_matches(
-    states: *mut t.State,
-    ranges: *mut t.ClassRange,
+fn class_state_matches<P>(
+    program: &P,
     state_id: usize,
     value: usize,
     workspace: &mut Workspace
-) -> bool {
+) -> bool where P: RegexVmProgram {
+    let states: *mut t.State = program.state_storage();
     let class_start: usize = unsafe { states[state_id].class_start };
     let class_len: usize = unsafe { states[state_id].class_len };
     let flags: u8 = unsafe { states[state_id].flags };
     let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
     let matched: bool = class_expr_matches(
-        ranges,
+        program.range_storage(),
         class_start,
         class_len,
         value,

@@ -169,8 +169,7 @@ fn start_filter_allows(
     let value: usize = decode_at(input, position).value;
     for index in range(filter.state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
-        if state_matches(compiled, state_id, value, workspace) ||
-            regex_full_fold_sequence_out(compiled, state_id, value) != t.NO_STATE {
+        if regex_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
             return true;
         }
     }
@@ -193,8 +192,7 @@ fn set_start_filter_allows(
     let value: usize = decode_at(input, position).value;
     for index in range(filter.state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
-        if set_state_matches(compiled, state_id, value, workspace) ||
-            set_full_fold_sequence_out(compiled, state_id, value) != t.NO_STATE {
+        if set_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
             return true;
         }
     }
@@ -295,7 +293,7 @@ fn mark_set_state_start_bytes(compiled: &t.RegexSet, state_id: usize, workspace:
 
 fn mark_regex_bytes_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
     for value in range(limits.START_BYTE_COUNT) {
-        if state_matches(compiled, state_id, value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -306,7 +304,7 @@ fn mark_regex_bytes_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut
 
 fn mark_set_bytes_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
     for value in range(limits.START_BYTE_COUNT) {
-        if set_state_matches(compiled, state_id, value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -317,7 +315,7 @@ fn mark_set_bytes_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mu
 
 fn mark_regex_ascii_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
     for value in range(ASCII_BYTE_COUNT) {
-        if state_matches(compiled, state_id, value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -328,7 +326,7 @@ fn mark_regex_ascii_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut
 
 fn mark_set_ascii_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
     for value in range(ASCII_BYTE_COUNT) {
-        if set_state_matches(compiled, state_id, value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
@@ -375,37 +373,35 @@ fn mark_bytes_any_start_bytes(flags: u8, workspace: &mut Workspace) -> void {
 }
 
 fn regex_class_may_match_non_ascii(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> bool {
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    if has_flag(flags, t.FLAG_CLASS_NEGATED) {
-        return true;
-    }
-    return regex_class_expr_may_match_non_ascii(
-        compiled,
-        unsafe { compiled.states[state_id].class_start },
-        unsafe { compiled.states[state_id].class_len },
-        workspace,
-        has_flag(flags, t.FLAG_CASE_INSENSITIVE),
-        has_flag(flags, t.FLAG_ASCII)
-    );
+    return class_state_may_match_non_ascii(compiled.states, compiled.ranges, state_id, workspace);
 }
 
 fn set_class_may_match_non_ascii(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> bool {
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
+    return class_state_may_match_non_ascii(compiled.states, compiled.ranges, state_id, workspace);
+}
+
+fn class_state_may_match_non_ascii(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    state_id: usize,
+    workspace: &mut Workspace
+) -> bool {
+    let flags: u8 = unsafe { states[state_id].flags };
     if has_flag(flags, t.FLAG_CLASS_NEGATED) {
         return true;
     }
-    return set_class_expr_may_match_non_ascii(
-        compiled,
-        unsafe { compiled.states[state_id].class_start },
-        unsafe { compiled.states[state_id].class_len },
+    return class_expr_may_match_non_ascii(
+        ranges,
+        unsafe { states[state_id].class_start },
+        unsafe { states[state_id].class_len },
         workspace,
         has_flag(flags, t.FLAG_CASE_INSENSITIVE),
         has_flag(flags, t.FLAG_ASCII)
     );
 }
 
-fn regex_class_expr_may_match_non_ascii(
-    compiled: &t.Regex,
+fn class_expr_may_match_non_ascii(
+    ranges: *mut t.ClassRange,
     class_start: usize,
     class_len: usize,
     workspace: &mut Workspace,
@@ -415,7 +411,7 @@ fn regex_class_expr_may_match_non_ascii(
     var depth: usize = 0usize;
     for offset in range(class_len) {
         let range_index: usize = class_start + offset;
-        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
+        let kind: u8 = unsafe { ranges[range_index].kind };
         if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
             if depth >= workspace.class_capacity {
                 workspace.status = t.RegexStatus.workspace_too_large;
@@ -424,60 +420,8 @@ fn regex_class_expr_may_match_non_ascii(
             unsafe {
                 workspace.class_stack[depth] = class_primitive_may_match_non_ascii(
                     kind,
-                    compiled.ranges[range_index].first,
-                    compiled.ranges[range_index].last,
-                    folded,
-                    ascii_mode
-                );
-            }
-            depth += 1usize;
-        } else if kind == t.CLASS_EXPR_COMPLEMENT {
-            if depth == 0usize {
-                return true;
-            }
-            unsafe {
-                workspace.class_stack[depth - 1usize] = true;
-            }
-        } else {
-            if depth < 2usize {
-                return true;
-            }
-            let right: bool = unsafe { workspace.class_stack[depth - 1usize] };
-            let left: bool = unsafe { workspace.class_stack[depth - 2usize] };
-            depth -= 1usize;
-            unsafe {
-                workspace.class_stack[depth - 1usize] = class_expr_op_may_match_non_ascii(kind, left, right);
-            }
-        }
-    }
-    if depth != 1usize {
-        return true;
-    }
-    return unsafe { workspace.class_stack[0usize] };
-}
-
-fn set_class_expr_may_match_non_ascii(
-    compiled: &t.RegexSet,
-    class_start: usize,
-    class_len: usize,
-    workspace: &mut Workspace,
-    folded: bool,
-    ascii_mode: bool
-) -> bool {
-    var depth: usize = 0usize;
-    for offset in range(class_len) {
-        let range_index: usize = class_start + offset;
-        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
-        if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
-            if depth >= workspace.class_capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return true;
-            }
-            unsafe {
-                workspace.class_stack[depth] = class_primitive_may_match_non_ascii(
-                    kind,
-                    compiled.ranges[range_index].first,
-                    compiled.ranges[range_index].last,
+                    ranges[range_index].first,
+                    ranges[range_index].last,
                     folded,
                     ascii_mode
                 );
@@ -754,7 +698,7 @@ fn advance_to_next_prefix_candidate(
         if !decoded.valid {
             return input.len;
         }
-        if state_matches(compiled, filter.literal_prefix_start, decoded.value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, filter.literal_prefix_start, decoded.value, workspace) {
             return at;
         }
         at = decoded.next;
@@ -801,7 +745,7 @@ fn advance_to_next_set_prefix_candidate(
         if !decoded.valid {
             return input.len;
         }
-        if set_state_matches(compiled, filter.literal_prefix_start, decoded.value, workspace) {
+        if state_matches(compiled.states, compiled.ranges, filter.literal_prefix_start, decoded.value, workspace) {
             return at;
         }
         at = decoded.next;
@@ -827,7 +771,7 @@ fn literal_prefix_matches(
             return false;
         }
         let decoded: InputDecode = decode_at(input, at);
-        if !decoded.valid || !state_matches(compiled, state_id, decoded.value, workspace) {
+        if !decoded.valid || !state_matches(compiled.states, compiled.ranges, state_id, decoded.value, workspace) {
             return false;
         }
         at = decoded.next;
@@ -855,7 +799,7 @@ fn set_literal_prefix_matches(
             return false;
         }
         let decoded: InputDecode = decode_at(input, at);
-        if !decoded.valid || !set_state_matches(compiled, state_id, decoded.value, workspace) {
+        if !decoded.valid || !state_matches(compiled.states, compiled.ranges, state_id, decoded.value, workspace) {
             return false;
         }
         at = decoded.next;

@@ -1741,59 +1741,53 @@ fn has_higher_priority_consumer(
 }
 
 fn regex_transition_out(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> usize {
-    if state_matches(compiled, state_id, value, workspace) {
-        return unsafe { compiled.states[state_id].out1 };
-    }
-    return regex_full_fold_sequence_out(compiled, state_id, value);
+    return transition_out(compiled.states, compiled.ranges, compiled.state_len, compiled.mode, state_id, value, workspace);
 }
 
 fn set_transition_out(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> usize {
-    if set_state_matches(compiled, state_id, value, workspace) {
-        return unsafe { compiled.states[state_id].out1 };
-    }
-    return set_full_fold_sequence_out(compiled, state_id, value);
+    return transition_out(compiled.states, compiled.ranges, compiled.state_len, compiled.mode, state_id, value, workspace);
 }
 
-fn state_matches(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
-    let opcode: u8 = unsafe { compiled.states[state_id].opcode };
+fn transition_out(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    state_len: usize,
+    mode: u8,
+    state_id: usize,
+    value: usize,
+    workspace: &mut Workspace
+) -> usize {
+    if state_matches(states, ranges, state_id, value, workspace) {
+        return unsafe { states[state_id].out1 };
+    }
+    if mode != t.MODE_TEXT {
+        return t.NO_STATE;
+    }
+    return full_fold_sequence_out(unsafe { ptrcast<*const t.State>(states) }, state_len, state_id, value);
+}
+
+fn state_matches(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    state_id: usize,
+    value: usize,
+    workspace: &mut Workspace
+) -> bool {
+    let opcode: u8 = unsafe { states[state_id].opcode };
     if opcode == t.OP_LITERAL {
-        let expected: usize = unsafe { compiled.states[state_id].value };
-        if has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
-            return folded_equals(expected, value, has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_ASCII));
+        let expected: usize = unsafe { states[state_id].value };
+        if has_flag(unsafe { states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
+            return folded_equals(expected, value, has_flag(unsafe { states[state_id].flags }, t.FLAG_ASCII));
         }
         return expected == value;
     }
     if opcode == t.OP_ANY {
-        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || !is_line_break_mode(workspace.newline_mode, value);
+        return has_flag(unsafe { states[state_id].flags }, t.FLAG_DOTALL) || !is_line_break_mode(workspace.newline_mode, value);
     }
     if opcode == t.OP_CLASS {
-        return class_matches(compiled, state_id, value, workspace);
+        return class_state_matches(states, ranges, state_id, value, workspace);
     }
     return false;
-}
-
-fn regex_full_fold_sequence_out(compiled: &t.Regex, state_id: usize, value: usize) -> usize {
-    if compiled.mode != t.MODE_TEXT {
-        return t.NO_STATE;
-    }
-    return full_fold_sequence_out(
-        unsafe { ptrcast<*const t.State>(compiled.states) },
-        compiled.state_len,
-        state_id,
-        value
-    );
-}
-
-fn set_full_fold_sequence_out(compiled: &t.RegexSet, state_id: usize, value: usize) -> usize {
-    if compiled.mode != t.MODE_TEXT {
-        return t.NO_STATE;
-    }
-    return full_fold_sequence_out(
-        unsafe { ptrcast<*const t.State>(compiled.states) },
-        compiled.state_len,
-        state_id,
-        value
-    );
 }
 
 fn full_fold_sequence_out(states: *const t.State, state_len: usize, state_id: usize, value: usize) -> usize {
@@ -1840,51 +1834,19 @@ fn next_full_fold_literal(states: *const t.State, state_len: usize, first_state:
     return t.NO_STATE;
 }
 
-fn set_state_matches(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
-    let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-    if opcode == t.OP_LITERAL {
-        let expected: usize = unsafe { compiled.states[state_id].value };
-        if has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
-            return folded_equals(expected, value, has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_ASCII));
-        }
-        return expected == value;
-    }
-    if opcode == t.OP_ANY {
-        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || !is_line_break_mode(workspace.newline_mode, value);
-    }
-    if opcode == t.OP_CLASS {
-        return set_class_matches(compiled, state_id, value, workspace);
-    }
-    return false;
-}
-
-fn class_matches(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
-    let class_start: usize = unsafe { compiled.states[state_id].class_start };
-    let class_len: usize = unsafe { compiled.states[state_id].class_len };
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
+fn class_state_matches(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    state_id: usize,
+    value: usize,
+    workspace: &mut Workspace
+) -> bool {
+    let class_start: usize = unsafe { states[state_id].class_start };
+    let class_len: usize = unsafe { states[state_id].class_len };
+    let flags: u8 = unsafe { states[state_id].flags };
     let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
     let matched: bool = class_expr_matches(
-        compiled,
-        class_start,
-        class_len,
-        value,
-        workspace,
-        has_flag(flags, t.FLAG_CASE_INSENSITIVE),
-        has_flag(flags, t.FLAG_ASCII)
-    );
-    if negated {
-        return !matched;
-    }
-    return matched;
-}
-
-fn set_class_matches(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
-    let class_start: usize = unsafe { compiled.states[state_id].class_start };
-    let class_len: usize = unsafe { compiled.states[state_id].class_len };
-    let flags: u8 = unsafe { compiled.states[state_id].flags };
-    let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
-    let matched: bool = set_class_expr_matches(
-        compiled,
+        ranges,
         class_start,
         class_len,
         value,
@@ -1899,7 +1861,7 @@ fn set_class_matches(compiled: &t.RegexSet, state_id: usize, value: usize, works
 }
 
 fn class_expr_matches(
-    compiled: &t.Regex,
+    ranges: *mut t.ClassRange,
     class_start: usize,
     class_len: usize,
     value: usize,
@@ -1910,58 +1872,9 @@ fn class_expr_matches(
     var depth: usize = 0usize;
     for offset in range(class_len) {
         let range_index: usize = class_start + offset;
-        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
-        let first: usize = unsafe { compiled.ranges[range_index].first };
-        let last: usize = unsafe { compiled.ranges[range_index].last };
-        if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
-            if depth >= workspace.class_capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return false;
-            }
-            unsafe {
-                workspace.class_stack[depth] = class_primitive_matches(kind, first, last, value, folded, ascii_mode);
-            }
-            depth += 1usize;
-        } else if kind == t.CLASS_EXPR_COMPLEMENT {
-            if depth == 0usize {
-                return false;
-            }
-            unsafe {
-                workspace.class_stack[depth - 1usize] = !workspace.class_stack[depth - 1usize];
-            }
-        } else {
-            if depth < 2usize {
-                return false;
-            }
-            let right: bool = unsafe { workspace.class_stack[depth - 1usize] };
-            let left: bool = unsafe { workspace.class_stack[depth - 2usize] };
-            depth -= 1usize;
-            unsafe {
-                workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
-            }
-        }
-    }
-    if depth != 1usize {
-        return false;
-    }
-    return unsafe { workspace.class_stack[0usize] };
-}
-
-fn set_class_expr_matches(
-    compiled: &t.RegexSet,
-    class_start: usize,
-    class_len: usize,
-    value: usize,
-    workspace: &mut Workspace,
-    folded: bool,
-    ascii_mode: bool
-) -> bool {
-    var depth: usize = 0usize;
-    for offset in range(class_len) {
-        let range_index: usize = class_start + offset;
-        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
-        let first: usize = unsafe { compiled.ranges[range_index].first };
-        let last: usize = unsafe { compiled.ranges[range_index].last };
+        let kind: u8 = unsafe { ranges[range_index].kind };
+        let first: usize = unsafe { ranges[range_index].first };
+        let last: usize = unsafe { ranges[range_index].last };
         if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
             if depth >= workspace.class_capacity {
                 workspace.status = t.RegexStatus.workspace_too_large;

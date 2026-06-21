@@ -1,0 +1,287 @@
+module regex.vm.engine part workspace;
+
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+
+pub struct Workspace {
+    current: *mut usize;
+    next: *mut usize;
+    marks: *mut usize;
+    stack: *mut usize;
+    start_states: *mut usize;
+    start_bytes: *mut bool;
+    current_caps: *mut usize;
+    next_caps: *mut usize;
+    stack_caps: *mut usize;
+    best_caps: *mut usize;
+    seed_caps: *mut usize;
+    class_stack: *mut bool;
+    capacity: usize;
+    class_capacity: usize;
+    capture_slot_count: usize;
+    newline_mode: u8;
+    status: t.RegexStatus;
+}
+
+fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_states: usize) -> Workspace {
+    if capacity > max_workspace_states {
+        return empty_workspace(t.RegexStatus.workspace_too_large);
+    }
+    let current: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
+    if current == null {
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let next: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
+    if next == null {
+        alloc.free_typed<usize>(current);
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let marks: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
+    if marks == null {
+        alloc.free_typed<usize>(current);
+        alloc.free_typed<usize>(next);
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let stack: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
+    if stack == null {
+        alloc.free_typed<usize>(current);
+        alloc.free_typed<usize>(next);
+        alloc.free_typed<usize>(marks);
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let start_states: *mut usize = alloc.alloc_zeroed<usize>(capacity, sizeof<usize>());
+    if start_states == null {
+        alloc.free_typed<usize>(current);
+        alloc.free_typed<usize>(next);
+        alloc.free_typed<usize>(marks);
+        alloc.free_typed<usize>(stack);
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let start_bytes: *mut bool = alloc.alloc_zeroed<bool>(limits.START_BYTE_COUNT, sizeof<bool>());
+    if start_bytes == null {
+        alloc.free_typed<usize>(current);
+        alloc.free_typed<usize>(next);
+        alloc.free_typed<usize>(marks);
+        alloc.free_typed<usize>(stack);
+        alloc.free_typed<usize>(start_states);
+        return empty_workspace(t.RegexStatus.out_of_memory);
+    }
+    let row_count: usize = capacity * slots;
+    let current_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
+    if current_caps == null {
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    let next_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
+    if next_caps == null {
+        alloc.free_typed<usize>(current_caps);
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    let stack_caps: *mut usize = alloc.alloc_zeroed<usize>(row_count, sizeof<usize>());
+    if stack_caps == null {
+        alloc.free_typed<usize>(current_caps);
+        alloc.free_typed<usize>(next_caps);
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    let best_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>());
+    if best_caps == null {
+        alloc.free_typed<usize>(current_caps);
+        alloc.free_typed<usize>(next_caps);
+        alloc.free_typed<usize>(stack_caps);
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    let seed_caps: *mut usize = alloc.alloc_zeroed<usize>(slots, sizeof<usize>());
+    if seed_caps == null {
+        alloc.free_typed<usize>(current_caps);
+        alloc.free_typed<usize>(next_caps);
+        alloc.free_typed<usize>(stack_caps);
+        alloc.free_typed<usize>(best_caps);
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    let class_stack: *mut bool = alloc.alloc_zeroed<bool>(limits.MAX_RANGE_CAPACITY, sizeof<bool>());
+    if class_stack == null {
+        alloc.free_typed<usize>(current_caps);
+        alloc.free_typed<usize>(next_caps);
+        alloc.free_typed<usize>(stack_caps);
+        alloc.free_typed<usize>(best_caps);
+        alloc.free_typed<usize>(seed_caps);
+        return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
+    }
+    return Workspace {
+        current: current,
+        next: next,
+        marks: marks,
+        stack: stack,
+        start_states: start_states,
+        start_bytes: start_bytes,
+        current_caps: current_caps,
+        next_caps: next_caps,
+        stack_caps: stack_caps,
+        best_caps: best_caps,
+        seed_caps: seed_caps,
+        class_stack: class_stack,
+        capacity: capacity,
+        class_capacity: limits.MAX_RANGE_CAPACITY,
+        capture_slot_count: slots,
+        newline_mode: t.NEWLINE_UNICODE,
+        status: t.RegexStatus.ok,
+    };
+}
+
+fn destroy_workspace(workspace: &mut Workspace) -> void {
+    alloc.free_typed<usize>(workspace.current);
+    alloc.free_typed<usize>(workspace.next);
+    alloc.free_typed<usize>(workspace.marks);
+    alloc.free_typed<usize>(workspace.stack);
+    alloc.free_typed<usize>(workspace.start_states);
+    alloc.free_typed<bool>(workspace.start_bytes);
+    alloc.free_typed<usize>(workspace.current_caps);
+    alloc.free_typed<usize>(workspace.next_caps);
+    alloc.free_typed<usize>(workspace.stack_caps);
+    alloc.free_typed<usize>(workspace.best_caps);
+    alloc.free_typed<usize>(workspace.seed_caps);
+    alloc.free_typed<bool>(workspace.class_stack);
+    workspace.current = null;
+    workspace.next = null;
+    workspace.marks = null;
+    workspace.stack = null;
+    workspace.start_states = null;
+    workspace.start_bytes = null;
+    workspace.current_caps = null;
+    workspace.next_caps = null;
+    workspace.stack_caps = null;
+    workspace.best_caps = null;
+    workspace.seed_caps = null;
+    workspace.class_stack = null;
+    workspace.capacity = 0usize;
+    workspace.class_capacity = 0usize;
+    workspace.capture_slot_count = 0usize;
+    workspace.newline_mode = t.NEWLINE_UNICODE;
+    workspace.status = t.RegexStatus.unsupported;
+}
+
+fn free_base_workspace(
+    current: *mut usize,
+    next: *mut usize,
+    marks: *mut usize,
+    stack: *mut usize,
+    start_states: *mut usize,
+    start_bytes: *mut bool,
+    status: t.RegexStatus
+) -> Workspace {
+    alloc.free_typed<usize>(current);
+    alloc.free_typed<usize>(next);
+    alloc.free_typed<usize>(marks);
+    alloc.free_typed<usize>(stack);
+    alloc.free_typed<usize>(start_states);
+    alloc.free_typed<bool>(start_bytes);
+    return empty_workspace(status);
+}
+
+fn empty_workspace(status: t.RegexStatus) -> Workspace {
+    return Workspace {
+        current: null,
+        next: null,
+        marks: null,
+        stack: null,
+        start_states: null,
+        start_bytes: null,
+        current_caps: null,
+        next_caps: null,
+        stack_caps: null,
+        best_caps: null,
+        seed_caps: null,
+        class_stack: null,
+        capacity: 0usize,
+        class_capacity: 0usize,
+        capture_slot_count: 0usize,
+        newline_mode: t.NEWLINE_UNICODE,
+        status: status,
+    };
+}
+
+fn clear_marks(workspace: &mut Workspace) -> void {
+    var index: usize = 0usize;
+    while index < workspace.capacity {
+        unsafe {
+            workspace.marks[index] = 0usize;
+        }
+        index += 1usize;
+    }
+}
+
+fn clear_start_bytes(workspace: &mut Workspace) -> void {
+    var index: usize = 0usize;
+    while index < limits.START_BYTE_COUNT {
+        unsafe {
+            workspace.start_bytes[index] = false;
+        }
+        index += 1usize;
+    }
+}
+
+fn swap_lists(workspace: &mut Workspace) -> void {
+    let old_current: *mut usize = workspace.current;
+    let old_current_caps: *mut usize = workspace.current_caps;
+    workspace.current = workspace.next;
+    workspace.next = old_current;
+    workspace.current_caps = workspace.next_caps;
+    workspace.next_caps = old_current_caps;
+}
+
+fn list_has_start_at_or_before(list_caps: *mut usize, list_len: usize, slot_count: usize, start: usize) -> bool {
+    var index: usize = 0usize;
+    while index < list_len {
+        if unsafe { capture_row_ptr(list_caps, index, slot_count)[0usize] } <= start {
+            return true;
+        }
+        index += 1usize;
+    }
+    return false;
+}
+
+fn init_capture_seed(row: *mut usize, slot_count: usize, start: usize) -> void {
+    init_capture_seed_with_search_start(row, slot_count, start, start);
+}
+
+fn init_capture_seed_with_search_start(row: *mut usize, slot_count: usize, start: usize, search_start: usize) -> void {
+    var slot: usize = 0usize;
+    while slot < slot_count {
+        unsafe {
+            row[slot] = t.CAPTURE_MISSING;
+        }
+        slot += 1usize;
+    }
+    if slot_count > 0usize {
+        unsafe {
+            row[0usize] = start;
+        }
+    }
+    if slot_count > 1usize {
+        unsafe {
+            row[1usize] = search_start;
+        }
+    }
+}
+
+fn copy_capture_row(dst: *mut usize, src: *mut usize, slot_count: usize) -> void {
+    alloc.copy_items<usize>(dst, src, slot_count);
+}
+
+fn capture_row_ptr(base: *mut usize, row: usize, slot_count: usize) -> *mut usize {
+    return unsafe {
+        ptrat<*mut usize>(ptraddr(base) + row * slot_count * sizeof<usize>())
+    };
+}
+
+fn capture_slot_count(compiled: &t.Regex) -> usize {
+    return compiled.capture_len * 2usize;
+}
+
+fn workspace_bytes_for(state_count: usize, slots: usize) -> usize {
+    return state_count * limits.WORKSPACE_LIST_COUNT * sizeof<usize>()
+        + state_count * slots * limits.WORKSPACE_STATE_CAPTURE_ROW_COUNT * sizeof<usize>()
+        + slots * limits.WORKSPACE_FIXED_CAPTURE_ROW_COUNT * sizeof<usize>()
+        + limits.START_BYTE_COUNT * sizeof<bool>()
+        + limits.MAX_RANGE_CAPACITY * sizeof<bool>();
+}

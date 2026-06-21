@@ -67,13 +67,13 @@ TEST_F(AurexIntegrationTest, ExamplesRegexSuiteSurfaceCompiles)
                                     .output;
     expect_contains_all(checked,
         {
-            "struct Regex fields=18",
-            "struct MatchResult fields=4",
-            "struct Captures fields=7",
-            "struct CaptureSpan fields=3",
-            "struct FindIter fields=5",
-            "struct SplitIter fields=8",
-            "struct ReplaceResult fields=4",
+            "struct Regex @part=0 fields=18",
+            "struct MatchResult @part=0 fields=4",
+            "struct Captures @part=0 fields=7",
+            "struct CaptureSpan @part=0 fields=3",
+            "struct FindIter @part=0 fields=5",
+            "struct SplitIter @part=0 fields=8",
+            "struct ReplaceResult @part=0 fields=4",
             "case RegexStatus_pattern_too_large",
             "case RegexStatus_program_too_large",
             "case RegexStatus_repeat_too_large",
@@ -94,7 +94,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexSuiteSurfaceCompiles)
             "fn method regex.core.types.MatchResult.ok -> bool",
             "type priv Matcher = fn(str, str) -> bool",
             "fn run_regex_demo -> i32",
-            "struct CaptureIter fields=5",
+            "struct CaptureIter @part=0 fields=5",
             "case RegexStatus_invalid_group_name",
             "fn capture_index -> usize",
             "fn capture_text -> str",
@@ -118,11 +118,11 @@ TEST_F(AurexIntegrationTest, ExamplesRegexSuiteSurfaceCompiles)
             "fn replace -> regex.core.types.ReplaceResult",
             "case RegexStatus_unsupported",
             "fn run_regex_industrial -> i32",
-            "struct RegexSet fields=17",
-            "struct SetMatchesResult fields=4",
-            "struct RegexStream fields=10",
-            "struct SetMatchSpan fields=5",
-            "struct DatabaseResult fields=3",
+            "struct RegexSet @part=0 fields=17",
+            "struct SetMatchesResult @part=0 fields=4",
+            "struct RegexStream @part=0 fields=10",
+            "struct SetMatchSpan @part=0 fields=5",
+            "struct DatabaseResult @part=0 fields=3",
             "type ReplaceCallback = fn(str, &regex.core.types.Captures, *mut u8, usize) -> "
             "regex.core.types.ReplaceResult",
             "type BytesReplaceCallback = fn(*const u8, usize, &regex.core.types.Captures, *mut u8, usize) -> "
@@ -157,7 +157,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexSuiteSurfaceCompiles)
             "fn match_workspace_status -> regex.core.types.RegexStatus",
             "fn run_regex_advanced -> i32",
             "type priv CompiledCheck = fn(&regex.core.types.Regex, str) -> regex.core.types.MatchResult",
-            "struct priv StressCase fields=4",
+            "struct priv StressCase @part=0 fields=4",
             "fn priv run_repeated_searches -> i32",
             "fn priv run_repeated_fullmatches -> i32",
             "fn priv require_budget -> i32",
@@ -247,6 +247,10 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent)
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "runtime" / "alloc.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "syntax" / "ascii.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "input.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "literal_set.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "start_filter.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "workspace.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "regex" / "alloc.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "regex" / "ascii.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "regex" / "engine.ax"));

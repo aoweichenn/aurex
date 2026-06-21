@@ -1,0 +1,242 @@
+module regex.vm.engine part input;
+
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+struct InputView {
+    text: str;
+    data: *const u8;
+    len: usize;
+    mode: u8;
+    newline_mode: u8;
+    match_flags: usize;
+}
+
+struct InputDecode {
+    value: usize;
+    next: usize;
+    valid: bool;
+}
+
+struct FlatInput {
+    data: *mut u8;
+    len: usize;
+    status: t.RegexStatus;
+}
+
+fn text_input_with_options(input: str, options: t.RegexOptions) -> InputView {
+    return InputView {
+        text: input,
+        data: input.ptr,
+        len: input.len,
+        mode: t.MODE_TEXT,
+        newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
+    };
+}
+
+fn input_with_match_options(input: InputView, match_options: t.RegexMatchOptions) -> InputView {
+    return InputView {
+        text: input.text,
+        data: input.data,
+        len: input.len,
+        mode: input.mode,
+        newline_mode: input.newline_mode,
+        match_flags: match_options.flags,
+    };
+}
+
+fn match_option_enabled(match_options: t.RegexMatchOptions, flag: usize) -> bool {
+    return (match_options.flags & flag) != 0usize;
+}
+
+fn input_match_flag_enabled(input: InputView, flag: usize) -> bool {
+    return (input.match_flags & flag) != 0usize;
+}
+
+fn apply_not_null(found: t.MatchResult, match_options: t.RegexMatchOptions) -> t.MatchResult {
+    if match_option_enabled(match_options, t.MATCH_NOT_NULL) && found.status == t.RegexStatus.ok && found.matched && found.start == found.end {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    return found;
+}
+
+fn bytes_input_with_options(input: []u8, options: t.RegexOptions) -> InputView {
+    return InputView {
+        text: "",
+        data: input.ptr,
+        len: input.len,
+        mode: t.MODE_BYTES,
+        newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
+    };
+}
+
+fn flatten_text_chunks(chunks: []t.TextChunk) -> FlatInput {
+    let chunk_count: usize = chunks.len;
+    var total: usize = 0usize;
+    var index: usize = 0usize;
+    while index < chunk_count {
+        total += chunks[index].text.len;
+        index += 1usize;
+    }
+    return flatten_text_chunks_with_len(chunks, total);
+}
+
+fn flatten_text_chunks_with_len(chunks: []t.TextChunk, total: usize) -> FlatInput {
+    let allocation_len: usize = if total == 0usize { 1usize } else { total };
+    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>());
+    if data == null {
+        return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
+    }
+    var dst: usize = 0usize;
+    var index: usize = 0usize;
+    while index < chunks.len {
+        let text: str = chunks[index].text;
+        let src: *const u8 = text.ptr;
+        var offset: usize = 0usize;
+        while offset < text.len {
+            unsafe {
+                data[dst + offset] = src[offset];
+            }
+            offset += 1usize;
+        }
+        dst += text.len;
+        index += 1usize;
+    }
+    return FlatInput { data: data, len: total, status: t.RegexStatus.ok };
+}
+
+fn flatten_byte_chunks(chunks: []t.RegexChunk) -> FlatInput {
+    let chunk_count: usize = chunks.len;
+    var total: usize = 0usize;
+    var index: usize = 0usize;
+    while index < chunk_count {
+        total += chunks[index].len;
+        index += 1usize;
+    }
+    let allocation_len: usize = if total == 0usize { 1usize } else { total };
+    let data: *mut u8 = alloc.alloc_zeroed<u8>(allocation_len, sizeof<u8>());
+    if data == null {
+        return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
+    }
+    var dst: usize = 0usize;
+    index = 0usize;
+    while index < chunk_count {
+        let src: *const u8 = chunks[index].data;
+        var offset: usize = 0usize;
+        while offset < chunks[index].len {
+            unsafe {
+                data[dst + offset] = src[offset];
+            }
+            offset += 1usize;
+        }
+        dst += chunks[index].len;
+        index += 1usize;
+    }
+    return FlatInput { data: data, len: total, status: t.RegexStatus.ok };
+}
+
+fn destroy_flat_input(flat: &mut FlatInput) -> void {
+    alloc.free_bytes(flat.data);
+    flat.data = null;
+    flat.len = 0usize;
+    flat.status = t.RegexStatus.unsupported;
+}
+
+fn raw_bytes_input(data: *const u8, len: usize, options: t.RegexOptions) -> InputView {
+    return InputView {
+        text: "",
+        data: data,
+        len: len,
+        mode: t.MODE_BYTES,
+        newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
+    };
+}
+
+fn raw_text_input(data: *const u8, len: usize, options: t.RegexOptions) -> InputView {
+    return InputView {
+        text: unsafe { strraw(data, len) },
+        data: data,
+        len: len,
+        mode: t.MODE_TEXT,
+        newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
+    };
+}
+
+fn set_text_input(compiled: &t.RegexSet, input: str) -> InputView {
+    return text_input_with_options(input, compiled.options);
+}
+
+fn set_bytes_input(compiled: &t.RegexSet, input: []u8) -> InputView {
+    return bytes_input_with_options(input, compiled.options);
+}
+
+fn decode_at(input: InputView, position: usize) -> InputDecode {
+    if input.mode == t.MODE_TEXT {
+        let decoded: unicode.Decode = unicode.decode_at(input.text, position);
+        return InputDecode { value: decoded.value, next: decoded.next, valid: decoded.valid };
+    }
+    if position >= input.len {
+        return InputDecode { value: 0usize, next: position, valid: false };
+    }
+    return InputDecode {
+        value: ((unsafe { input.data[position] }) as usize),
+        next: position + 1usize,
+        valid: true,
+    };
+}
+
+fn previous_decode(input: InputView, position: usize) -> InputDecode {
+    if input.mode == t.MODE_TEXT {
+        let decoded: unicode.Decode = unicode.previous_decode(input.text, position);
+        return InputDecode { value: decoded.value, next: decoded.next, valid: decoded.valid };
+    }
+    if position == 0usize || position > input.len {
+        return InputDecode { value: 0usize, next: position, valid: false };
+    }
+    let previous: usize = position - 1usize;
+    return InputDecode {
+        value: ((unsafe { input.data[previous] }) as usize),
+        next: previous,
+        valid: true,
+    };
+}
+
+fn align_forward_boundary(input: InputView, position: usize) -> usize {
+    if input.mode == t.MODE_TEXT {
+        return unicode.align_forward_boundary(input.text, position);
+    }
+    return position;
+}
+
+fn next_boundary(input: InputView, position: usize) -> usize {
+    if input.mode == t.MODE_TEXT {
+        return unicode.next_boundary(input.text, position);
+    }
+    return position + 1usize;
+}
+
+fn next_match_cursor(input: InputView, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    if end >= input.len {
+        return input.len + 1usize;
+    }
+    return next_boundary(input, end);
+}
+
+fn is_word_flags(input: InputView, value: usize, flags: u8) -> bool {
+    if has_flag(flags, t.FLAG_ASCII) {
+        return value <= ASCII_BYTE_MAX && ascii.is_word(((value) as u8));
+    }
+    if input.mode == t.MODE_TEXT {
+        return unicode.is_word(value);
+    }
+    return value <= 0xffusize && ascii.is_word(((value) as u8));
+}

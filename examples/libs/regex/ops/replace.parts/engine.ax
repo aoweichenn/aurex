@@ -1,0 +1,226 @@
+module regex.ops.replace part engine;
+
+import regex.core.results as results;
+import regex.core.types as t;
+import regex.ops.input as input_ops;
+import regex.vm.engine as engine;
+
+fn replace_n_from(
+    compiled: &t.Regex,
+    input: str,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_written: usize,
+    initial_required: usize
+) -> t.ReplaceResult {
+    return replace_input_n_from(
+        compiled,
+        input_ops.text(input),
+        replacement,
+        limit,
+        out,
+        out_capacity,
+        initial_written,
+        initial_required
+    );
+}
+
+fn replace_input_n_from(
+    compiled: &t.Regex,
+    input: input_ops.RegexInput,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_written: usize,
+    initial_required: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, initial_written, initial_required, 0usize);
+    }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), initial_written, initial_required, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
+    var search_start: usize = 0usize;
+    var copy_cursor: usize = 0usize;
+    var written: usize = bounded_initial_written(initial_written, out_capacity);
+    var required: usize = initial_required;
+    var replacements: usize = 0usize;
+    let input_len: usize = input.len;
+    while search_start <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_input_range(input, copy_cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        input.captures_compiled_into(compiled, search_start, &mut workspace, &mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_input_range(input, copy_cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_input_range(input, copy_cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+        let replacement_copy: CopyState = expand_replacement(compiled, input, &captures, replacement, out, out_capacity, written, required);
+        if replacement_copy.status != t.RegexStatus.ok {
+            return t.replace_result(replacement_copy.status, written, required, replacements);
+        }
+        written = replacement_copy.written;
+        required = replacement_copy.required;
+        replacements += 1usize;
+        copy_cursor = captures.end;
+        search_start = input.next_match_start(captures.start, captures.end);
+    }
+    let trailing: CopyState = copy_input_range(input, copy_cursor, input_len, out, out_capacity, written, required);
+    return finish_result(trailing.written, trailing.required, replacements, out_capacity);
+}
+
+fn replace_text_with_callback(
+    compiled: &t.Regex,
+    input: str,
+    callback: t.ReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
+    }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
+    var search_start: usize = 0usize;
+    var copy_cursor: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    var replacements: usize = 0usize;
+    let source: input_ops.RegexInput = input_ops.text(input);
+    let input_len: usize = source.len;
+    while search_start <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        source.captures_compiled_into(compiled, search_start, &mut workspace, &mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_input_range(source, copy_cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+
+        let replacement_out: *mut u8 = output_tail(out, out_capacity, written);
+        let replacement_capacity: usize = remaining_capacity(out_capacity, written);
+        let callback_result: t.ReplaceResult = callback(input, &captures, replacement_out, replacement_capacity);
+        if callback_result.status != t.RegexStatus.ok && callback_result.status != t.RegexStatus.buffer_too_small {
+            return t.replace_result(callback_result.status, written, required, replacements);
+        }
+        written = append_callback_written(written, callback_result.written, out_capacity);
+        required += callback_result.required;
+        replacements += 1usize;
+        copy_cursor = captures.end;
+        search_start = source.next_match_start(captures.start, captures.end);
+    }
+    let trailing: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+    return finish_result(trailing.written, trailing.required, replacements, out_capacity);
+}
+
+fn bytes_replace_n_from(
+    compiled: &t.Regex,
+    input: []u8,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_written: usize,
+    initial_required: usize
+) -> t.ReplaceResult {
+    return replace_input_n_from(
+        compiled,
+        input_ops.bytes(input),
+        replacement,
+        limit,
+        out,
+        out_capacity,
+        initial_written,
+        initial_required
+    );
+}
+
+fn replace_bytes_with_callback(
+    compiled: &t.Regex,
+    input: []u8,
+    callback: t.BytesReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
+    }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
+    let source: input_ops.RegexInput = input_ops.bytes(input);
+    let data: *const u8 = source.data;
+    let input_len: usize = source.len;
+    var search_start: usize = 0usize;
+    var copy_cursor: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    var replacements: usize = 0usize;
+    while search_start <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        source.captures_compiled_into(compiled, search_start, &mut workspace, &mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_input_range(source, copy_cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+
+        let replacement_out: *mut u8 = output_tail(out, out_capacity, written);
+        let replacement_capacity: usize = remaining_capacity(out_capacity, written);
+        let callback_result: t.ReplaceResult = callback(data, input_len, &captures, replacement_out, replacement_capacity);
+        if callback_result.status != t.RegexStatus.ok && callback_result.status != t.RegexStatus.buffer_too_small {
+            return t.replace_result(callback_result.status, written, required, replacements);
+        }
+        written = append_callback_written(written, callback_result.written, out_capacity);
+        required += callback_result.required;
+        replacements += 1usize;
+        copy_cursor = captures.end;
+        search_start = source.next_match_start(captures.start, captures.end);
+    }
+    let trailing: CopyState = copy_input_range(source, copy_cursor, input_len, out, out_capacity, written, required);
+    return finish_result(trailing.written, trailing.required, replacements, out_capacity);
+}

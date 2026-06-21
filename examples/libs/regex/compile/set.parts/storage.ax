@@ -1,0 +1,281 @@
+module regex.compile.set part storage;
+
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+
+fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
+    if pattern_count == 0usize {
+        return t.RegexSet {
+            mode: mode,
+            options: options,
+            states: null,
+            state_len: 0usize,
+            state_capacity: 0usize,
+            ranges: null,
+            range_len: 0usize,
+            range_capacity: 0usize,
+            pattern_count: 0usize,
+            literal_nodes: null,
+            literal_node_len: 0usize,
+            literal_terminals: null,
+            literal_terminal_len: 0usize,
+            literal_max_byte_len: 0usize,
+            start: t.NO_STATE,
+            status: t.RegexStatus.ok,
+            error_index: t.CAPTURE_MISSING,
+        };
+    }
+    var state_capacity: usize = limits.MIN_STATE_CAPACITY
+        + total_pattern_bytes * limits.STATES_PER_PATTERN_BYTE
+        + pattern_count;
+    if state_capacity > options.max_state_capacity {
+        state_capacity = options.max_state_capacity;
+    }
+    var range_capacity: usize = limits.MIN_RANGE_CAPACITY
+        + total_pattern_bytes * limits.RANGES_PER_PATTERN_BYTE;
+    if range_capacity > options.max_range_capacity {
+        range_capacity = options.max_range_capacity;
+    }
+    let states: *mut t.State = alloc.alloc_zeroed<t.State>(state_capacity, sizeof<t.State>());
+    if states == null {
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+    }
+    let ranges: *mut t.ClassRange = alloc.alloc_zeroed<t.ClassRange>(range_capacity, sizeof<t.ClassRange>());
+    if ranges == null {
+        alloc.free_typed<t.State>(states);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+    }
+    return t.RegexSet {
+        mode: mode,
+        options: options,
+        states: states,
+        state_len: limits.RESERVED_STATE_COUNT,
+        state_capacity: state_capacity,
+        ranges: ranges,
+        range_len: 0usize,
+        range_capacity: range_capacity,
+        pattern_count: pattern_count,
+        literal_nodes: null,
+        literal_node_len: 0usize,
+        literal_terminals: null,
+        literal_terminal_len: 0usize,
+        literal_max_byte_len: 0usize,
+        start: t.NO_STATE,
+        status: t.RegexStatus.ok,
+        error_index: t.CAPTURE_MISSING,
+    };
+}
+
+fn empty_set(pattern_count: usize, mode: u8, options: t.RegexOptions, status: t.RegexStatus, error_index: usize) -> t.RegexSet {
+    return t.RegexSet {
+        mode: mode,
+        options: options,
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        pattern_count: pattern_count,
+        literal_nodes: null,
+        literal_node_len: 0usize,
+        literal_terminals: null,
+        literal_terminal_len: 0usize,
+        literal_max_byte_len: 0usize,
+        start: t.NO_STATE,
+        status: status,
+        error_index: error_index,
+    };
+}
+
+fn destroy_regex(compiled: &mut t.Regex) -> void {
+    alloc.free_typed<t.State>(compiled.states);
+    alloc.free_typed<t.ClassRange>(compiled.ranges);
+    alloc.free_typed<t.CaptureInfo>(compiled.captures);
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.captures = null;
+}
+
+fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
+    release_set_storage(compiled.states, compiled.ranges, compiled.literal_nodes, compiled.literal_terminals);
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.literal_nodes = null;
+    compiled.literal_terminals = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+    compiled.literal_node_len = 0usize;
+    compiled.literal_terminal_len = 0usize;
+    compiled.literal_max_byte_len = 0usize;
+}
+
+fn release_set_storage(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    literal_nodes: *mut t.SetLiteralNode,
+    literal_terminals: *mut t.SetLiteralTerminal
+) -> void {
+    alloc.free_typed<t.State>(states);
+    alloc.free_typed<t.ClassRange>(ranges);
+    alloc.free_typed<t.SetLiteralNode>(literal_nodes);
+    alloc.free_typed<t.SetLiteralTerminal>(literal_terminals);
+}
+
+fn append_regex_program(compiled: &mut t.RegexSet, source: &t.Regex, pattern_index: usize) -> usize {
+    if source.state_len <= limits.RESERVED_STATE_COUNT {
+        return t.NO_STATE;
+    }
+    let additional_states: usize = source.state_len - limits.RESERVED_STATE_COUNT;
+    if !ensure_state_capacity(compiled, additional_states) {
+        return t.NO_STATE;
+    }
+    if !ensure_range_capacity(compiled, source.range_len) {
+        return t.NO_STATE;
+    }
+    let state_offset: usize = compiled.state_len;
+    let range_offset: usize = compiled.range_len;
+    copy_source_ranges(compiled, source, range_offset);
+    compiled.range_len += source.range_len;
+
+    for source_id in range(limits.RESERVED_STATE_COUNT, source.state_len) {
+        let dst_id: usize = map_state_id(source_id, state_offset);
+        unsafe {
+            compiled.states[dst_id].opcode = source.states[source_id].opcode;
+            compiled.states[dst_id].flags = source.states[source_id].flags;
+            compiled.states[dst_id].value = source.states[source_id].value;
+            compiled.states[dst_id].value_to = source.states[source_id].value_to;
+            compiled.states[dst_id].out1 = map_optional_state_id(source.states[source_id].out1, state_offset);
+            compiled.states[dst_id].out2 = map_optional_state_id(source.states[source_id].out2, state_offset);
+            compiled.states[dst_id].class_start = source.states[source_id].class_start + range_offset;
+            compiled.states[dst_id].class_len = source.states[source_id].class_len;
+            if source.states[source_id].opcode == t.OP_MATCH {
+                compiled.states[dst_id].value = pattern_index;
+                compiled.states[dst_id].value_to = pattern_index;
+            }
+        }
+    }
+    compiled.state_len += additional_states;
+    return map_optional_state_id(source.start, state_offset);
+}
+
+fn copy_source_ranges(compiled: &mut t.RegexSet, source: &t.Regex, range_offset: usize) -> void {
+    for index in range(source.range_len) {
+        unsafe {
+            compiled.ranges[range_offset + index].kind = source.ranges[index].kind;
+            compiled.ranges[range_offset + index].first = source.ranges[index].first;
+            compiled.ranges[range_offset + index].last = source.ranges[index].last;
+        }
+    }
+}
+
+fn append_pattern_start(compiled: &mut t.RegexSet, start: usize) -> void {
+    if start == t.NO_STATE {
+        return;
+    }
+    if compiled.start == t.NO_STATE {
+        compiled.start = start;
+        return;
+    }
+    compiled.start = add_set_split(compiled, compiled.start, start);
+}
+
+fn add_set_split(compiled: &mut t.RegexSet, out1: usize, out2: usize) -> usize {
+    if !ensure_state_capacity(compiled, 1usize) {
+        return t.NO_STATE;
+    }
+    let index: usize = compiled.state_len;
+    unsafe {
+        compiled.states[index].opcode = t.OP_SPLIT;
+        compiled.states[index].flags = t.FLAGS_NONE;
+        compiled.states[index].value = 0usize;
+        compiled.states[index].value_to = 0usize;
+        compiled.states[index].out1 = out1;
+        compiled.states[index].out2 = out2;
+        compiled.states[index].class_start = 0usize;
+        compiled.states[index].class_len = 0usize;
+    }
+    compiled.state_len += 1usize;
+    return index;
+}
+
+fn map_state_id(source_id: usize, state_offset: usize) -> usize {
+    return state_offset + source_id - limits.RESERVED_STATE_COUNT;
+}
+
+fn map_optional_state_id(source_id: usize, state_offset: usize) -> usize {
+    if source_id == t.NO_STATE {
+        return t.NO_STATE;
+    }
+    return map_state_id(source_id, state_offset);
+}
+
+fn ensure_state_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
+    let needed: usize = compiled.state_len + additional;
+    if needed <= compiled.state_capacity {
+        return true;
+    }
+    if needed > compiled.options.max_state_capacity {
+        set_status(compiled, t.RegexStatus.program_too_large);
+        return false;
+    }
+    let next_capacity: usize = next_capacity_with_limit(compiled.state_capacity, needed, compiled.options.max_state_capacity);
+    let next: *mut t.State = replace_storage<t.State>(compiled.states, compiled.state_len, next_capacity);
+    if next == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    compiled.states = next;
+    compiled.state_capacity = next_capacity;
+    return true;
+}
+
+fn ensure_range_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
+    let needed: usize = compiled.range_len + additional;
+    if needed <= compiled.range_capacity {
+        return true;
+    }
+    if needed > compiled.options.max_range_capacity {
+        set_status(compiled, t.RegexStatus.program_too_large);
+        return false;
+    }
+    let next_capacity: usize = next_capacity_with_limit(compiled.range_capacity, needed, compiled.options.max_range_capacity);
+    let next: *mut t.ClassRange = replace_storage<t.ClassRange>(compiled.ranges, compiled.range_len, next_capacity);
+    if next == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    compiled.ranges = next;
+    compiled.range_capacity = next_capacity;
+    return true;
+}
+
+fn next_capacity_with_limit(current: usize, needed: usize, max_capacity: usize) -> usize {
+    var next_capacity: usize = current * limits.CAPACITY_GROWTH_FACTOR;
+    while next_capacity < needed {
+        next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    if next_capacity > max_capacity {
+        next_capacity = max_capacity;
+    }
+    return next_capacity;
+}
+
+fn replace_storage<T>(current: *mut T, current_len: usize, next_capacity: usize) -> *mut T where T: Sized + Copy {
+    let next: *mut T = alloc.alloc_zeroed<T>(next_capacity, sizeof<T>());
+    if next == null {
+        return null;
+    }
+    alloc.copy_items<T>(next, current, current_len);
+    alloc.free_typed<T>(current);
+    return next;
+}
+
+fn set_status(compiled: &mut t.RegexSet, status: t.RegexStatus) -> void {
+    if compiled.status == t.RegexStatus.ok {
+        compiled.status = status;
+    }
+}

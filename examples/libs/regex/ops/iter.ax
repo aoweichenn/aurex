@@ -140,7 +140,9 @@ fn captures_step(compiled: *const t.Regex, input: input_ops.RegexInput, next_sta
     if captures.status != t.RegexStatus.ok || !captures.matched {
         return captures_step_result(captures, next_start, true);
     }
-    return captures_step_result(captures, input.next_match_start(captures.start, captures.end), false);
+    let start: usize = captures.start;
+    let end: usize = captures.end;
+    return captures_step_result(captures, input.next_match_start(start, end), false);
 }
 
 fn match_step_result(result: t.MatchResult, next_start: usize, finished: bool) -> MatchStep {
@@ -153,10 +155,11 @@ fn match_step_result(result: t.MatchResult, next_start: usize, finished: bool) -
 }
 
 fn captures_step_result(captures: t.Captures, next_start: usize, finished: bool) -> CapturesStep {
+    let status: t.RegexStatus = captures.status;
     return CapturesStep {
         captures: captures,
         next_start: next_start,
         finished: finished,
-        status: captures.status,
+        status: status,
     };
 }

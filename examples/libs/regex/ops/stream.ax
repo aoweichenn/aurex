@@ -40,7 +40,7 @@ fn open_stream_with_mode(compiled: &t.Regex, mode: u8) -> t.RegexStream {
 }
 
 pub fn destroy_stream(stream: &mut t.RegexStream) -> void {
-    alloc.free_bytes(stream.buffer);
+    free_stream_storage(stream.buffer);
     stream.compiled = null;
     stream.mode = t.MODE_TEXT;
     stream.buffer = null;
@@ -51,6 +51,16 @@ pub fn destroy_stream(stream: &mut t.RegexStream) -> void {
     stream.finished = true;
     stream.history_limit = 0usize;
     stream.status = t.RegexStatus.unsupported;
+}
+
+impl Drop for t.RegexStream {
+    fn drop(self: deinit t.RegexStream) -> void {
+        free_stream_storage(self.buffer);
+    }
+}
+
+fn free_stream_storage(buffer: *mut u8) -> void {
+    alloc.free_bytes(buffer);
 }
 
 pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {

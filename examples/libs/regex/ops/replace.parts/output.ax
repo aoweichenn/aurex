@@ -1,0 +1,119 @@
+module regex.ops.replace part output;
+
+import regex.core.types as t;
+import regex.ops.input as input_ops;
+
+struct CopyState {
+    written: usize;
+    required: usize;
+    status: t.RegexStatus;
+}
+
+fn output_tail(out: *mut u8, out_capacity: usize, written: usize) -> *mut u8 {
+    if out == null || written >= out_capacity {
+        return null;
+    }
+    return unsafe {
+        ptrat<*mut u8>(ptraddr(out) + written)
+    };
+}
+
+fn remaining_capacity(out_capacity: usize, written: usize) -> usize {
+    if written >= out_capacity {
+        return 0usize;
+    }
+    return out_capacity - written;
+}
+
+fn append_callback_written(written: usize, callback_written: usize, out_capacity: usize) -> usize {
+    let available: usize = remaining_capacity(out_capacity, written);
+    if callback_written > available {
+        return out_capacity;
+    }
+    return written + callback_written;
+}
+
+fn finish_result(written: usize, required: usize, replacements: usize, out_capacity: usize) -> t.ReplaceResult {
+    if required > out_capacity {
+        return t.replace_result(t.RegexStatus.buffer_too_small, written, required, replacements);
+    }
+    return t.replace_result(t.RegexStatus.ok, written, required, replacements);
+}
+
+fn copy_input_range(
+    input: input_ops.RegexInput,
+    start: usize,
+    end: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> CopyState {
+    var next_written: usize = written;
+    var next_required: usize = required;
+    for offset in range(start, end) {
+        let value: u8 = input.byte_at(offset);
+        let state: CopyState = copy_byte(value, out, out_capacity, next_written, next_required);
+        next_written = state.written;
+        next_required = state.required;
+    }
+    return CopyState { written: next_written, required: next_required, status: t.RegexStatus.ok };
+}
+
+fn copy_scalar_utf8(value: usize, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if !scalar_value_is_valid(value) {
+        return CopyState { written: written, required: required, status: t.RegexStatus.replacement_error };
+    }
+    if value <= 0x7fusize {
+        return copy_byte(((value) as u8), out, out_capacity, written, required);
+    }
+    if value <= 0x7ffusize {
+        let first: u8 = ((0xc0usize | (value >> 6usize)) as u8);
+        let second: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
+        let copied_first: CopyState = copy_byte(first, out, out_capacity, written, required);
+        return copy_byte(second, out, out_capacity, copied_first.written, copied_first.required);
+    }
+    if value <= 0xffffusize {
+        let first3: u8 = ((0xe0usize | (value >> 12usize)) as u8);
+        let second3: u8 = ((0x80usize | ((value >> 6usize) & 0x3fusize)) as u8);
+        let third3: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
+        let copied_first3: CopyState = copy_byte(first3, out, out_capacity, written, required);
+        let copied_second3: CopyState = copy_byte(second3, out, out_capacity, copied_first3.written, copied_first3.required);
+        return copy_byte(third3, out, out_capacity, copied_second3.written, copied_second3.required);
+    }
+    let first4: u8 = ((0xf0usize | (value >> 18usize)) as u8);
+    let second4: u8 = ((0x80usize | ((value >> 12usize) & 0x3fusize)) as u8);
+    let third4: u8 = ((0x80usize | ((value >> 6usize) & 0x3fusize)) as u8);
+    let fourth4: u8 = ((0x80usize | (value & 0x3fusize)) as u8);
+    let copied_first4: CopyState = copy_byte(first4, out, out_capacity, written, required);
+    let copied_second4: CopyState = copy_byte(second4, out, out_capacity, copied_first4.written, copied_first4.required);
+    let copied_third4: CopyState = copy_byte(third4, out, out_capacity, copied_second4.written, copied_second4.required);
+    return copy_byte(fourth4, out, out_capacity, copied_third4.written, copied_third4.required);
+}
+
+fn copy_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if required < out_capacity && out != null {
+        unsafe {
+            out[required] = value;
+        }
+    }
+    return CopyState {
+        written: bytes_written_after_append(written, required, out_capacity),
+        required: required + 1usize,
+        status: t.RegexStatus.ok,
+    };
+}
+
+fn bytes_written_after_append(written: usize, required: usize, out_capacity: usize) -> usize {
+    if required < out_capacity {
+        return written + 1usize;
+    }
+    return written;
+}
+
+fn bounded_initial_written(initial_written: usize, out_capacity: usize) -> usize {
+    if initial_written > out_capacity {
+        return out_capacity;
+    }
+    return initial_written;
+}

@@ -1,0 +1,481 @@
+module regex.compile.set part literal_trie;
+
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
+
+const LITERAL_TRIE_NONE: usize = 18446744073709551615usize;
+
+struct LiteralStep {
+    value: usize;
+    next: usize;
+    valid: bool;
+}
+
+struct LiteralBuildStats {
+    max_byte_len: usize;
+}
+
+fn can_compile_literal_trie_set(patterns: []str, mode: u8, options: t.RegexOptions) -> bool {
+    if !literal_trie_options_supported(options) {
+        return false;
+    }
+    let pattern_count: usize = patterns.len;
+    if pattern_count == 0usize {
+        return false;
+    }
+    for pattern in patterns {
+        if !is_plain_literal_pattern(pattern, mode) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn literal_trie_options_supported(options: t.RegexOptions) -> bool {
+    return !has_flag(options.flags, t.FLAG_CASE_INSENSITIVE) &&
+        !has_flag(options.flags, t.FLAG_EXTENDED);
+}
+
+fn has_flag(flags: u8, flag: u8) -> bool {
+    return (flags & flag) != t.FLAGS_NONE;
+}
+
+fn is_plain_literal_pattern(pattern: str, mode: u8) -> bool {
+    let len: usize = pattern.len;
+    if len == 0usize {
+        return false;
+    }
+    if mode == t.MODE_BYTES {
+        for value in pattern {
+            if is_regex_meta_byte(value) {
+                return false;
+            }
+        }
+        return true;
+    }
+    var at: usize = 0usize;
+    while at < len {
+        let value: u8 = ascii.byte_at(pattern, at);
+        if is_regex_meta_byte(value) {
+            return false;
+        }
+        let decoded: unicode.Decode = unicode.decode_at(pattern, at);
+        if !decoded.valid || decoded.next <= at {
+            return false;
+        }
+        at = decoded.next;
+    }
+    return true;
+}
+
+fn is_regex_meta_byte(value: u8) -> bool {
+    return value == ascii.CARET ||
+        value == ascii.DOLLAR ||
+        value == ascii.DOT ||
+        value == ascii.STAR ||
+        value == ascii.PLUS ||
+        value == ascii.QUESTION ||
+        value == ascii.LBRACE ||
+        value == ascii.RBRACE ||
+        value == ascii.LPAREN ||
+        value == ascii.RPAREN ||
+        value == ascii.LBRACKET ||
+        value == ascii.RBRACKET ||
+        value == ascii.PIPE ||
+        value == ascii.BACKSLASH;
+}
+
+fn compile_literal_trie_set(patterns: []str, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
+    let pattern_count: usize = patterns.len;
+    var compiled: t.RegexSet = create_set(pattern_count, mode, total_pattern_bytes, options);
+    if compiled.status != t.RegexStatus.ok {
+        return compiled;
+    }
+    let node_capacity: usize = total_pattern_bytes + 1usize;
+    let nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed<t.SetLiteralNode>(node_capacity, sizeof<t.SetLiteralNode>());
+    if nodes == null {
+        destroy_set_storage(&mut compiled);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+    }
+    defer alloc.free_typed<t.SetLiteralNode>(nodes);
+    let terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed<t.SetLiteralTerminal>(pattern_count, sizeof<t.SetLiteralTerminal>());
+    if terminals == null {
+        destroy_set_storage(&mut compiled);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+    }
+    defer alloc.free_typed<t.SetLiteralTerminal>(terminals);
+    init_literal_trie_root(nodes);
+    var node_count: usize = 1usize;
+    var terminal_count: usize = 0usize;
+    let node_count_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut node_count)) };
+    let terminal_count_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut terminal_count)) };
+    var stats: LiteralBuildStats = LiteralBuildStats { max_byte_len: 0usize };
+    let stats_ptr: *mut LiteralBuildStats = unsafe { ptrat<*mut LiteralBuildStats>(ptraddr(&mut stats)) };
+    for pattern_id in range(pattern_count) {
+        if !insert_literal_pattern(
+            nodes,
+            node_capacity,
+            node_count_ptr,
+            terminals,
+            pattern_count,
+            terminal_count_ptr,
+            patterns[pattern_id],
+            mode,
+            pattern_id,
+            stats_ptr
+        ) {
+            destroy_set_storage(&mut compiled);
+            return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, pattern_id);
+        }
+    }
+    if !build_literal_automaton(nodes, node_count) {
+        destroy_set_storage(&mut compiled);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+    }
+    emit_literal_trie_program(&mut compiled, nodes, node_count, terminals);
+    if compiled.status != t.RegexStatus.ok {
+        let status: t.RegexStatus = compiled.status;
+        destroy_set_storage(&mut compiled);
+        return empty_set(pattern_count, mode, options, status, t.CAPTURE_MISSING);
+    }
+    if !install_literal_automaton(&mut compiled, nodes, node_count, terminals, terminal_count, stats.max_byte_len) {
+        destroy_set_storage(&mut compiled);
+        return empty_set(pattern_count, mode, options, compiled.status, t.CAPTURE_MISSING);
+    }
+    return compiled;
+}
+
+fn init_literal_trie_root(nodes: *mut t.SetLiteralNode) -> void {
+    unsafe {
+        nodes[0usize].value = 0usize;
+        nodes[0usize].first_child = LITERAL_TRIE_NONE;
+        nodes[0usize].next_sibling = LITERAL_TRIE_NONE;
+        nodes[0usize].first_terminal = LITERAL_TRIE_NONE;
+        nodes[0usize].last_terminal = LITERAL_TRIE_NONE;
+        nodes[0usize].fail = 0usize;
+        nodes[0usize].output = LITERAL_TRIE_NONE;
+    }
+}
+
+fn insert_literal_pattern(
+    nodes: *mut t.SetLiteralNode,
+    node_capacity: usize,
+    node_count: *mut usize,
+    terminals: *mut t.SetLiteralTerminal,
+    terminal_capacity: usize,
+    terminal_count: *mut usize,
+    pattern: str,
+    mode: u8,
+    pattern_id: usize,
+    stats: *mut LiteralBuildStats
+) -> bool {
+    var node_id: usize = 0usize;
+    var at: usize = 0usize;
+    let len: usize = pattern.len;
+    while at < len {
+        let step: LiteralStep = literal_step_at(pattern, mode, at);
+        if !step.valid {
+            return false;
+        }
+        let child: usize = find_or_add_literal_child(nodes, node_capacity, node_count, node_id, step.value);
+        if child == LITERAL_TRIE_NONE {
+            return false;
+        }
+        node_id = child;
+        at = step.next;
+    }
+    if len > unsafe { stats.max_byte_len } {
+        unsafe {
+            stats.max_byte_len = len;
+        }
+    }
+    return add_literal_terminal(nodes, terminals, terminal_capacity, terminal_count, node_id, pattern_id, len);
+}
+
+fn literal_step_at(pattern: str, mode: u8, offset: usize) -> LiteralStep {
+    if mode == t.MODE_BYTES {
+        return LiteralStep {
+            value: ((ascii.byte_at(pattern, offset)) as usize),
+            next: offset + 1usize,
+            valid: true,
+        };
+    }
+    let decoded: unicode.Decode = unicode.decode_at(pattern, offset);
+    return LiteralStep {
+        value: decoded.value,
+        next: decoded.next,
+        valid: decoded.valid && decoded.next > offset,
+    };
+}
+
+fn find_or_add_literal_child(
+    nodes: *mut t.SetLiteralNode,
+    node_capacity: usize,
+    node_count: *mut usize,
+    parent: usize,
+    value: usize
+) -> usize {
+    var child: usize = unsafe { nodes[parent].first_child };
+    var previous: usize = LITERAL_TRIE_NONE;
+    while child != LITERAL_TRIE_NONE && unsafe { nodes[child].value } < value {
+        previous = child;
+        child = unsafe { nodes[child].next_sibling };
+    }
+    if child != LITERAL_TRIE_NONE {
+        let child_value: usize = unsafe { nodes[child].value };
+        if child_value == value {
+            return child;
+        }
+    }
+    if unsafe { *node_count } >= node_capacity {
+        return LITERAL_TRIE_NONE;
+    }
+    let added: usize = unsafe { *node_count };
+    unsafe {
+        nodes[added].value = value;
+        nodes[added].first_child = LITERAL_TRIE_NONE;
+        nodes[added].next_sibling = LITERAL_TRIE_NONE;
+        nodes[added].first_terminal = LITERAL_TRIE_NONE;
+        nodes[added].last_terminal = LITERAL_TRIE_NONE;
+        nodes[added].fail = 0usize;
+        nodes[added].output = LITERAL_TRIE_NONE;
+        nodes[added].next_sibling = child;
+        if previous == LITERAL_TRIE_NONE {
+            nodes[parent].first_child = added;
+        } else {
+            nodes[previous].next_sibling = added;
+        }
+        *node_count = *node_count + 1usize;
+    }
+    return added;
+}
+
+fn add_literal_terminal(
+    nodes: *mut t.SetLiteralNode,
+    terminals: *mut t.SetLiteralTerminal,
+    terminal_capacity: usize,
+    terminal_count: *mut usize,
+    node_id: usize,
+    pattern_id: usize,
+    byte_len: usize
+) -> bool {
+    if unsafe { *terminal_count } >= terminal_capacity {
+        return false;
+    }
+    let terminal_id: usize = unsafe { *terminal_count };
+    unsafe {
+        terminals[terminal_id].pattern_id = pattern_id;
+        terminals[terminal_id].byte_len = byte_len;
+        terminals[terminal_id].next = LITERAL_TRIE_NONE;
+        if nodes[node_id].first_terminal == LITERAL_TRIE_NONE {
+            nodes[node_id].first_terminal = terminal_id;
+        } else {
+            terminals[nodes[node_id].last_terminal].next = terminal_id;
+        }
+        nodes[node_id].last_terminal = terminal_id;
+        *terminal_count = *terminal_count + 1usize;
+    }
+    return true;
+}
+
+fn build_literal_automaton(nodes: *mut t.SetLiteralNode, node_count: usize) -> bool {
+    let queue: *mut usize = alloc.alloc_zeroed<usize>(node_count, sizeof<usize>());
+    if queue == null {
+        return false;
+    }
+    defer alloc.free_typed<usize>(queue);
+
+    var head: usize = 0usize;
+    var tail: usize = 0usize;
+    var child: usize = unsafe { nodes[0usize].first_child };
+    while child != LITERAL_TRIE_NONE {
+        unsafe {
+            nodes[child].fail = 0usize;
+            nodes[child].output = LITERAL_TRIE_NONE;
+            queue[tail] = child;
+        }
+        tail += 1usize;
+        child = unsafe { nodes[child].next_sibling };
+    }
+
+    while head < tail {
+        let current: usize = unsafe { queue[head] };
+        head += 1usize;
+        child = unsafe { nodes[current].first_child };
+        while child != LITERAL_TRIE_NONE {
+            let value: usize = unsafe { nodes[child].value };
+            var fail: usize = unsafe { nodes[current].fail };
+            var target: usize = find_literal_child(nodes, node_count, fail, value);
+            while fail != 0usize && target == LITERAL_TRIE_NONE {
+                fail = unsafe { nodes[fail].fail };
+                target = find_literal_child(nodes, node_count, fail, value);
+            }
+            if target == LITERAL_TRIE_NONE {
+                target = find_literal_child(nodes, node_count, 0usize, value);
+            }
+            if target == LITERAL_TRIE_NONE || target == child {
+                target = 0usize;
+            }
+            unsafe {
+                nodes[child].fail = target;
+                nodes[child].output = if nodes[target].first_terminal != LITERAL_TRIE_NONE {
+                    target
+                } else {
+                    nodes[target].output
+                };
+                queue[tail] = child;
+            }
+            tail += 1usize;
+            child = unsafe { nodes[child].next_sibling };
+        }
+    }
+    return true;
+}
+
+fn find_literal_child(nodes: *mut t.SetLiteralNode, node_count: usize, parent: usize, value: usize) -> usize {
+    if parent >= node_count {
+        return LITERAL_TRIE_NONE;
+    }
+    var child: usize = unsafe { nodes[parent].first_child };
+    var steps: usize = 0usize;
+    while child != LITERAL_TRIE_NONE && child < node_count && steps <= node_count {
+        let child_value: usize = unsafe { nodes[child].value };
+        if child_value == value {
+            return child;
+        }
+        if child_value > value {
+            return LITERAL_TRIE_NONE;
+        }
+        child = unsafe { nodes[child].next_sibling };
+        steps += 1usize;
+    }
+    return LITERAL_TRIE_NONE;
+}
+
+fn install_literal_automaton(
+    compiled: &mut t.RegexSet,
+    nodes: *mut t.SetLiteralNode,
+    node_count: usize,
+    terminals: *mut t.SetLiteralTerminal,
+    terminal_count: usize,
+    max_byte_len: usize
+) -> bool {
+    let owned_nodes: *mut t.SetLiteralNode = alloc.alloc_zeroed<t.SetLiteralNode>(node_count, sizeof<t.SetLiteralNode>());
+    if owned_nodes == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    let owned_terminals: *mut t.SetLiteralTerminal = alloc.alloc_zeroed<t.SetLiteralTerminal>(terminal_count, sizeof<t.SetLiteralTerminal>());
+    if owned_terminals == null {
+        alloc.free_typed<t.SetLiteralNode>(owned_nodes);
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    alloc.copy_items<t.SetLiteralNode>(owned_nodes, nodes, node_count);
+    alloc.copy_items<t.SetLiteralTerminal>(owned_terminals, terminals, terminal_count);
+    compiled.literal_nodes = owned_nodes;
+    compiled.literal_node_len = node_count;
+    compiled.literal_terminals = owned_terminals;
+    compiled.literal_terminal_len = terminal_count;
+    compiled.literal_max_byte_len = max_byte_len;
+    return true;
+}
+
+fn emit_literal_trie_program(
+    compiled: &mut t.RegexSet,
+    nodes: *mut t.SetLiteralNode,
+    node_count: usize,
+    terminals: *mut t.SetLiteralTerminal
+) -> void {
+    var remaining: usize = node_count;
+    let entry_states: *mut usize = alloc.alloc_zeroed<usize>(node_count, sizeof<usize>());
+    if entry_states == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return;
+    }
+    defer alloc.free_typed<usize>(entry_states);
+    while remaining > 0usize {
+        remaining -= 1usize;
+        let entry: usize = emit_literal_trie_node(compiled, nodes, entry_states, remaining, terminals);
+        unsafe {
+            entry_states[remaining] = entry;
+        }
+        if compiled.status != t.RegexStatus.ok {
+            return;
+        }
+    }
+    compiled.start = unsafe { entry_states[0usize] };
+}
+
+fn emit_literal_trie_node(
+    compiled: &mut t.RegexSet,
+    nodes: *mut t.SetLiteralNode,
+    entry_states: *mut usize,
+    node_id: usize,
+    terminals: *mut t.SetLiteralTerminal
+) -> usize {
+    var entry: usize = t.NO_STATE;
+    var terminal: usize = unsafe { nodes[node_id].first_terminal };
+    while terminal != LITERAL_TRIE_NONE {
+        let match_state: usize = add_set_match(compiled, unsafe { terminals[terminal].pattern_id });
+        entry = append_choice(compiled, entry, match_state);
+        terminal = unsafe { terminals[terminal].next };
+    }
+    var child: usize = unsafe { nodes[node_id].first_child };
+    while child != LITERAL_TRIE_NONE {
+        let literal_state: usize = add_set_literal(compiled, unsafe { nodes[child].value }, unsafe { entry_states[child] });
+        entry = append_choice(compiled, entry, literal_state);
+        child = unsafe { nodes[child].next_sibling };
+    }
+    return entry;
+}
+
+fn add_set_literal(compiled: &mut t.RegexSet, value: usize, out1: usize) -> usize {
+    if !ensure_state_capacity(compiled, 1usize) {
+        return t.NO_STATE;
+    }
+    let index: usize = compiled.state_len;
+    unsafe {
+        compiled.states[index].opcode = t.OP_LITERAL;
+        compiled.states[index].flags = t.FLAGS_NONE;
+        compiled.states[index].value = value;
+        compiled.states[index].value_to = value;
+        compiled.states[index].out1 = out1;
+        compiled.states[index].out2 = t.NO_STATE;
+        compiled.states[index].class_start = 0usize;
+        compiled.states[index].class_len = 0usize;
+    }
+    compiled.state_len += 1usize;
+    return index;
+}
+
+fn add_set_match(compiled: &mut t.RegexSet, pattern_id: usize) -> usize {
+    if !ensure_state_capacity(compiled, 1usize) {
+        return t.NO_STATE;
+    }
+    let index: usize = compiled.state_len;
+    unsafe {
+        compiled.states[index].opcode = t.OP_MATCH;
+        compiled.states[index].flags = t.FLAGS_NONE;
+        compiled.states[index].value = pattern_id;
+        compiled.states[index].value_to = pattern_id;
+        compiled.states[index].out1 = t.NO_STATE;
+        compiled.states[index].out2 = t.NO_STATE;
+        compiled.states[index].class_start = 0usize;
+        compiled.states[index].class_len = 0usize;
+    }
+    compiled.state_len += 1usize;
+    return index;
+}
+
+fn append_choice(compiled: &mut t.RegexSet, current: usize, next: usize) -> usize {
+    if next == t.NO_STATE {
+        return current;
+    }
+    if current == t.NO_STATE {
+        return next;
+    }
+    return add_set_split(compiled, current, next);
+}

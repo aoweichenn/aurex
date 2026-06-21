@@ -63,10 +63,7 @@ pub fn create_with_options(pattern: str, mode: u8, options: t.RegexOptions) -> t
 }
 
 pub fn destroy(compiled: &mut t.Regex) -> void {
-    alloc.free_typed<t.State>(compiled.states);
-    alloc.free_typed<t.ClassRange>(compiled.ranges);
-    alloc.free_typed<t.CaptureInfo>(compiled.captures);
-    alloc.free_bytes(compiled.owned_pattern);
+    free_regex_storage(compiled.states, compiled.ranges, compiled.captures, compiled.owned_pattern);
     compiled.pattern = "";
     compiled.owned_pattern = null;
     compiled.states = null;
@@ -85,6 +82,24 @@ pub fn destroy(compiled: &mut t.Regex) -> void {
     compiled.status = t.RegexStatus.unsupported;
     compiled.error_offset = t.ERROR_OFFSET_NONE;
     compiled.error_kind = t.ERROR_KIND_NONE;
+}
+
+impl Drop for t.Regex {
+    fn drop(self: deinit t.Regex) -> void {
+        free_regex_storage(self.states, self.ranges, self.captures, self.owned_pattern);
+    }
+}
+
+fn free_regex_storage(
+    states: *mut t.State,
+    ranges: *mut t.ClassRange,
+    captures: *mut t.CaptureInfo,
+    owned_pattern: *mut u8
+) -> void {
+    alloc.free_typed<t.State>(states);
+    alloc.free_typed<t.ClassRange>(ranges);
+    alloc.free_typed<t.CaptureInfo>(captures);
+    alloc.free_bytes(owned_pattern);
 }
 
 pub fn set_status(compiled: &mut t.Regex, status: t.RegexStatus) -> void {

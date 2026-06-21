@@ -237,11 +237,16 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent)
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "parser.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "program.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "set.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "set.parts" / "literal_trie.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "set.parts" / "storage.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "config" / "limits.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "core" / "results.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "core" / "types.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "iter.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "replace.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "replace.parts" / "engine.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "replace.parts" / "output.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "replace.parts" / "template.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "split.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "stream.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "runtime" / "alloc.ax"));
@@ -249,6 +254,7 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent)
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "input.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "literal_set.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "program.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "start_filter.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.parts" / "workspace.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "regex" / "alloc.ax"));

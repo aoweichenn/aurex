@@ -65,7 +65,7 @@ pub fn reset_captures(captures: &mut t.Captures, status: t.RegexStatus) -> void 
 }
 
 pub fn destroy_captures(captures: &mut t.Captures) -> void {
-    alloc.free_typed<t.CaptureSpan>(captures.spans);
+    free_capture_storage(captures.spans);
     captures.matched = false;
     captures.start = 0usize;
     captures.end = 0usize;
@@ -73,6 +73,16 @@ pub fn destroy_captures(captures: &mut t.Captures) -> void {
     captures.spans = null;
     captures.span_len = 0usize;
     captures.span_capacity = 0usize;
+}
+
+impl Drop for t.Captures {
+    fn drop(self: deinit t.Captures) -> void {
+        free_capture_storage(self.spans);
+    }
+}
+
+fn free_capture_storage(spans: *mut t.CaptureSpan) -> void {
+    alloc.free_typed<t.CaptureSpan>(spans);
 }
 
 fn ensure_capture_capacity(captures: &mut t.Captures, needed: usize) -> bool {

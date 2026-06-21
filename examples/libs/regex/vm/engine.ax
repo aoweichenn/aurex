@@ -2,14 +2,13 @@ module regex.vm.engine;
 
 part workspace;
 part input;
+part program;
 part literal_set;
 part start_filter;
 
 import regex.core.results as results;
 import regex.core.types as t;
 import regex.runtime.alloc as alloc;
-import regex.syntax.ascii as ascii;
-import unicode.ucd as unicode;
 
 const ACCEPT_NONE: u8 = 0u8;
 const ACCEPT_DEFERRED: u8 = 1u8;
@@ -22,50 +21,7 @@ trait RegexVmProgram {
     fn state_count(self: &Self) -> usize;
     fn input_mode(self: &Self) -> u8;
     fn start_state(self: &Self) -> usize;
-}
-
-impl RegexVmProgram for t.Regex {
-    fn state_storage(self: &t.Regex) -> *mut t.State {
-        return self.states;
-    }
-
-    fn range_storage(self: &t.Regex) -> *mut t.ClassRange {
-        return self.ranges;
-    }
-
-    fn state_count(self: &t.Regex) -> usize {
-        return self.state_len;
-    }
-
-    fn input_mode(self: &t.Regex) -> u8 {
-        return self.mode;
-    }
-
-    fn start_state(self: &t.Regex) -> usize {
-        return self.start;
-    }
-}
-
-impl RegexVmProgram for t.RegexSet {
-    fn state_storage(self: &t.RegexSet) -> *mut t.State {
-        return self.states;
-    }
-
-    fn range_storage(self: &t.RegexSet) -> *mut t.ClassRange {
-        return self.ranges;
-    }
-
-    fn state_count(self: &t.RegexSet) -> usize {
-        return self.state_len;
-    }
-
-    fn input_mode(self: &t.RegexSet) -> u8 {
-        return self.mode;
-    }
-
-    fn start_state(self: &t.RegexSet) -> usize {
-        return self.start;
-    }
+    fn save_capture_slots(self: &Self) -> bool;
 }
 
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
@@ -848,12 +804,13 @@ fn run_set_collect_at(
     var stamp: usize = 1usize;
     var current_len: usize = 0usize;
     var next_len: usize = 0usize;
+    let input_len: usize = input.len;
     let current_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut current_len)) };
     let next_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut next_len)) };
     if set_start_filter_allows(compiled, start_filter, input, start, workspace) &&
         set_literal_prefix_matches(compiled, start_filter, input, start, workspace) {
         init_capture_seed_with_search_start(workspace.seed_caps, workspace.capture_slot_count, start, start);
-        add_set_closure(
+        add_closure_for<t.RegexSet>(
             compiled,
             workspace.current,
             workspace.current_caps,
@@ -863,7 +820,7 @@ fn run_set_collect_at(
             compiled.start,
             start,
             input,
-            input.len,
+            input_len,
             workspace.seed_caps
         );
     }
@@ -877,37 +834,14 @@ fn run_set_collect_at(
         if status != t.RegexStatus.ok {
             return status;
         }
-        if position >= input.len || current_len == 0usize {
+        if position >= input_len || current_len == 0usize {
             break;
         }
         stamp += 1usize;
-        next_len = 0usize;
-        let decoded: InputDecode = decode_at(input, position);
-        let value: usize = decoded.value;
-        let next_position: usize = decoded.next;
-        for index in range(current_len) {
-            let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
-            if out1 != t.NO_STATE {
-                add_set_closure(
-                    compiled,
-                    workspace.next,
-                    workspace.next_caps,
-                    next_len_ptr,
-                    workspace,
-                    stamp,
-                    out1,
-                    next_position,
-                    input,
-                    input.len,
-                    capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
-                );
-                if workspace.status != t.RegexStatus.ok {
-                    return workspace.status;
-                }
-            }
+        let next_position: usize = advance_active_states<t.RegexSet>(compiled, input, input_len, position, current_len, next_len_ptr, workspace, stamp);
+        if workspace.status != t.RegexStatus.ok {
+            return workspace.status;
         }
-        swap_lists(workspace);
         current_len = next_len;
         position = next_position;
     }
@@ -984,7 +918,7 @@ fn run_set_search(
         if set_start_filter_allows(compiled, start_filter, input, position, workspace) &&
             set_literal_prefix_matches(compiled, start_filter, input, position, workspace) {
             init_capture_seed_with_search_start(workspace.seed_caps, workspace.capture_slot_count, position, 0usize);
-            add_set_closure(
+            add_closure_for<t.RegexSet>(
                 compiled,
                 workspace.current,
                 workspace.current_caps,
@@ -1009,33 +943,10 @@ fn run_set_search(
             return;
         }
         stamp += 1usize;
-        next_len = 0usize;
-        let decoded: InputDecode = decode_at(input, position);
-        let value: usize = decoded.value;
-        let next_position: usize = decoded.next;
-        for index in range(current_len) {
-            let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
-            if out1 != t.NO_STATE {
-                add_set_closure(
-                    compiled,
-                    workspace.next,
-                    workspace.next_caps,
-                    next_len_ptr,
-                    workspace,
-                    stamp,
-                    out1,
-                    next_position,
-                    input,
-                    input_len,
-                    capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
-                );
-                if workspace.status != t.RegexStatus.ok {
-                    return;
-                }
-            }
+        let next_position: usize = advance_active_states<t.RegexSet>(compiled, input, input_len, position, current_len, next_len_ptr, workspace, stamp);
+        if workspace.status != t.RegexStatus.ok {
+            return;
         }
-        swap_lists(workspace);
         current_len = next_len;
         position = next_position;
     }
@@ -1082,7 +993,7 @@ fn run_set_find(
         if !best_matched && set_start_filter_allows(compiled, start_filter, input, position, workspace) &&
             set_literal_prefix_matches(compiled, start_filter, input, position, workspace) {
             init_capture_seed_with_search_start(workspace.seed_caps, workspace.capture_slot_count, position, search_start);
-            add_set_closure(
+            add_closure_for<t.RegexSet>(
                 compiled,
                 workspace.current,
                 workspace.current_caps,
@@ -1115,33 +1026,10 @@ fn run_set_find(
             break;
         }
         stamp += 1usize;
-        next_len = 0usize;
-        let decoded: InputDecode = decode_at(input, position);
-        let value: usize = decoded.value;
-        let next_position: usize = decoded.next;
-        for index in range(current_len) {
-            let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = transition_out<t.RegexSet>(compiled, state_id, value, workspace);
-            if out1 != t.NO_STATE {
-                add_set_closure(
-                    compiled,
-                    workspace.next,
-                    workspace.next_caps,
-                    next_len_ptr,
-                    workspace,
-                    stamp,
-                    out1,
-                    next_position,
-                    input,
-                    input_len,
-                    capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
-                );
-                if workspace.status != t.RegexStatus.ok {
-                    return t.set_match_span(false, t.NO_CAPTURE, position, position, workspace.status);
-                }
-            }
+        let next_position: usize = advance_active_states<t.RegexSet>(compiled, input, input_len, position, current_len, next_len_ptr, workspace, stamp);
+        if workspace.status != t.RegexStatus.ok {
+            return t.set_match_span(false, t.NO_CAPTURE, position, position, workspace.status);
         }
-        swap_lists(workspace);
         current_len = next_len;
         position = next_position;
     }
@@ -1184,7 +1072,7 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
         if !best_matched && start_filter_allows(compiled, start_filter, input, position, workspace) &&
             literal_prefix_matches(compiled, start_filter, input, position, workspace) {
             init_capture_seed_with_search_start(workspace.seed_caps, workspace.capture_slot_count, position, start);
-            add_closure(
+            add_closure_for<t.Regex>(
                 compiled,
                 workspace.current,
                 workspace.current_caps,
@@ -1221,33 +1109,10 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
             break;
         }
         stamp += 1usize;
-        next_len = 0usize;
-        let decoded: InputDecode = decode_at(input, position);
-        let value: usize = decoded.value;
-        let next_position: usize = decoded.next;
-        for index in range(current_len) {
-            let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = transition_out<t.Regex>(compiled, state_id, value, workspace);
-            if out1 != t.NO_STATE {
-                add_closure(
-                    compiled,
-                    workspace.next,
-                    workspace.next_caps,
-                    next_len_ptr,
-                    workspace,
-                    stamp,
-                    out1,
-                    next_position,
-                    input,
-                    input_len,
-                    capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
-                );
-                if workspace.status != t.RegexStatus.ok {
-                    return t.match_result(false, position, position, workspace.status);
-                }
-            }
+        let next_position: usize = advance_active_states<t.Regex>(compiled, input, input_len, position, current_len, next_len_ptr, workspace, stamp);
+        if workspace.status != t.RegexStatus.ok {
+            return t.match_result(false, position, position, workspace.status);
         }
-        swap_lists(workspace);
         current_len = next_len;
         position = next_position;
     }
@@ -1255,111 +1120,6 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
         return t.match_result(true, best_start, best_end, t.RegexStatus.ok);
     }
     return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
-}
-
-fn add_set_closure(
-    compiled: &t.RegexSet,
-    list: *mut usize,
-    list_caps: *mut usize,
-    list_len: *mut usize,
-    workspace: &mut Workspace,
-    stamp: usize,
-    first_state: usize,
-    position: usize,
-    input: InputView,
-    input_len: usize,
-    source_caps: *mut usize
-) -> void {
-    var stack_len: usize = 0usize;
-    let stack_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut stack_len)) };
-    push_set_state(workspace, stack_len_ptr, stamp, first_state, source_caps);
-    while stack_len > 0usize {
-        stack_len -= 1usize;
-        let state_id: usize = unsafe { workspace.stack[stack_len] };
-        if state_id == t.NO_STATE || state_id >= compiled.state_len {
-            continue;
-        }
-        let row: *mut usize = capture_row_ptr(workspace.stack_caps, stack_len, workspace.capture_slot_count);
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-        if opcode == t.OP_EPSILON || opcode == t.OP_SAVE {
-            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-        } else if opcode == t.OP_SPLIT {
-            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out2 }, row);
-            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-        } else if opcode == t.OP_ASSERT_START {
-            if assert_start_matches(input, position, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_END {
-            if assert_end_matches(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
-            if position == 0usize {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_ABSOLUTE_END {
-            if position == input_len {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_BOUNDARY {
-            if is_word_boundary_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_NOT_WORD_BOUNDARY {
-            if !is_word_boundary_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_START {
-            if is_word_start_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_END {
-            if is_word_end_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_SEARCH_START {
-            if workspace.capture_slot_count > 1usize && position == unsafe { row[1usize] } {
-                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else {
-            if unsafe { *list_len } >= workspace.capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return;
-            }
-            unsafe {
-                list[*list_len] = state_id;
-            }
-            copy_capture_row(capture_row_ptr(list_caps, unsafe { *list_len }, workspace.capture_slot_count), row, workspace.capture_slot_count);
-            unsafe {
-                *list_len = *list_len + 1usize;
-            }
-        }
-        if workspace.status != t.RegexStatus.ok {
-            return;
-        }
-    }
-}
-
-fn push_set_state(workspace: &mut Workspace, stack_len: *mut usize, stamp: usize, state_id: usize, source_caps: *mut usize) -> void {
-    if state_id == t.NO_STATE || state_id >= workspace.capacity {
-        return;
-    }
-    if unsafe { workspace.marks[state_id] } == stamp {
-        return;
-    }
-    if unsafe { *stack_len } >= workspace.capacity {
-        workspace.status = t.RegexStatus.workspace_too_large;
-        return;
-    }
-    unsafe {
-        workspace.marks[state_id] = stamp;
-        workspace.stack[*stack_len] = state_id;
-    }
-    copy_capture_row(capture_row_ptr(workspace.stack_caps, unsafe { *stack_len }, workspace.capture_slot_count), source_caps, workspace.capture_slot_count);
-    unsafe {
-        *stack_len = *stack_len + 1usize;
-    }
 }
 
 fn update_set_accepts(
@@ -1464,7 +1224,7 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
     let input_len: usize = input.len;
     let current_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut current_len)) };
     let next_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut next_len)) };
-    add_closure(
+    add_closure_for<t.Regex>(
         compiled,
         workspace.current,
         workspace.current_caps,
@@ -1506,33 +1266,10 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
             break;
         }
         stamp += 1usize;
-        next_len = 0usize;
-        let decoded: InputDecode = decode_at(input, position);
-        let value: usize = decoded.value;
-        let next_position: usize = decoded.next;
-        for index in range(current_len) {
-            let state_id: usize = unsafe { workspace.current[index] };
-            let out1: usize = transition_out<t.Regex>(compiled, state_id, value, workspace);
-            if out1 != t.NO_STATE {
-                add_closure(
-                    compiled,
-                    workspace.next,
-                    workspace.next_caps,
-                    next_len_ptr,
-                    workspace,
-                    stamp,
-                    out1,
-                    next_position,
-                    input,
-                    input_len,
-                    capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
-                );
-                if workspace.status != t.RegexStatus.ok {
-                    return t.match_result(false, start, start, workspace.status);
-                }
-            }
+        let next_position: usize = advance_active_states<t.Regex>(compiled, input, input_len, position, current_len, next_len_ptr, workspace, stamp);
+        if workspace.status != t.RegexStatus.ok {
+            return t.match_result(false, start, start, workspace.status);
         }
-        swap_lists(workspace);
         current_len = next_len;
         position = next_position;
     }
@@ -1542,121 +1279,6 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
         }
     }
     return t.match_result(false, start, start, t.RegexStatus.no_match);
-}
-
-fn add_closure(
-    compiled: &t.Regex,
-    list: *mut usize,
-    list_caps: *mut usize,
-    list_len: *mut usize,
-    workspace: &mut Workspace,
-    stamp: usize,
-    first_state: usize,
-    position: usize,
-    input: InputView,
-    input_len: usize,
-    source_caps: *mut usize
-) -> void {
-    var stack_len: usize = 0usize;
-    let stack_len_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut stack_len)) };
-    push_state(workspace, stack_len_ptr, stamp, first_state, source_caps);
-    while stack_len > 0usize {
-        stack_len -= 1usize;
-        let state_id: usize = unsafe { workspace.stack[stack_len] };
-        if state_id == t.NO_STATE || state_id >= compiled.state_len {
-            continue;
-        }
-        let row: *mut usize = capture_row_ptr(workspace.stack_caps, stack_len, workspace.capture_slot_count);
-        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
-        if opcode == t.OP_EPSILON {
-            push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-        } else if opcode == t.OP_SPLIT {
-            push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out2 }, row);
-            push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-        } else if opcode == t.OP_SAVE {
-            let slot: usize = unsafe { compiled.states[state_id].class_start };
-            if slot >= workspace.capture_slot_count {
-                workspace.status = t.RegexStatus.program_too_large;
-                return;
-            }
-            unsafe {
-                row[slot] = position;
-            }
-            push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-        } else if opcode == t.OP_ASSERT_START {
-            if assert_start_matches(input, position, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_END {
-            if assert_end_matches(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
-            if position == 0usize {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_ABSOLUTE_END {
-            if position == input_len {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_BOUNDARY {
-            if is_word_boundary_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_NOT_WORD_BOUNDARY {
-            if !is_word_boundary_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_START {
-            if is_word_start_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_WORD_END {
-            if is_word_end_flags(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else if opcode == t.OP_ASSERT_SEARCH_START {
-            if workspace.capture_slot_count > 1usize && position == unsafe { row[1usize] } {
-                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
-            }
-        } else {
-            if unsafe { *list_len } >= workspace.capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return;
-            }
-            unsafe {
-                list[*list_len] = state_id;
-            }
-            copy_capture_row(capture_row_ptr(list_caps, unsafe { *list_len }, workspace.capture_slot_count), row, workspace.capture_slot_count);
-            unsafe {
-                *list_len = *list_len + 1usize;
-            }
-        }
-        if workspace.status != t.RegexStatus.ok {
-            return;
-        }
-    }
-}
-
-fn push_state(workspace: &mut Workspace, stack_len: *mut usize, stamp: usize, state_id: usize, source_caps: *mut usize) -> void {
-    if state_id == t.NO_STATE || state_id >= workspace.capacity {
-        return;
-    }
-    if unsafe { workspace.marks[state_id] } == stamp {
-        return;
-    }
-    if unsafe { *stack_len } >= workspace.capacity {
-        workspace.status = t.RegexStatus.workspace_too_large;
-        return;
-    }
-    unsafe {
-        workspace.marks[state_id] = stamp;
-        workspace.stack[*stack_len] = state_id;
-    }
-    copy_capture_row(capture_row_ptr(workspace.stack_caps, unsafe { *stack_len }, workspace.capture_slot_count), source_caps, workspace.capture_slot_count);
-    unsafe {
-        *stack_len = *stack_len + 1usize;
-    }
 }
 
 fn starts_with_input_start_assertion(compiled: &t.Regex) -> bool {
@@ -1768,355 +1390,6 @@ fn has_higher_priority_consumer(
         }
     }
     return false;
-}
-
-fn transition_out<P>(
-    program: &P,
-    state_id: usize,
-    value: usize,
-    workspace: &mut Workspace
-) -> usize where P: RegexVmProgram {
-    let states: *mut t.State = program.state_storage();
-    if state_matches<P>(program, state_id, value, workspace) {
-        return unsafe { states[state_id].out1 };
-    }
-    if program.input_mode() != t.MODE_TEXT {
-        return t.NO_STATE;
-    }
-    return full_fold_sequence_out(unsafe { ptrcast<*const t.State>(states) }, program.state_count(), state_id, value);
-}
-
-fn state_matches<P>(
-    program: &P,
-    state_id: usize,
-    value: usize,
-    workspace: &mut Workspace
-) -> bool where P: RegexVmProgram {
-    let states: *mut t.State = program.state_storage();
-    let opcode: u8 = unsafe { states[state_id].opcode };
-    if opcode == t.OP_LITERAL {
-        let expected: usize = unsafe { states[state_id].value };
-        if has_flag(unsafe { states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
-            return folded_equals(expected, value, has_flag(unsafe { states[state_id].flags }, t.FLAG_ASCII));
-        }
-        return expected == value;
-    }
-    if opcode == t.OP_ANY {
-        return has_flag(unsafe { states[state_id].flags }, t.FLAG_DOTALL) || !is_line_break_mode(workspace.newline_mode, value);
-    }
-    if opcode == t.OP_CLASS {
-        return class_state_matches<P>(program, state_id, value, workspace);
-    }
-    return false;
-}
-
-fn full_fold_sequence_out(states: *const t.State, state_len: usize, state_id: usize, value: usize) -> usize {
-    let fold_len: usize = unicode.full_fold_len(value);
-    if fold_len <= 1usize {
-        return t.NO_STATE;
-    }
-    var current: usize = state_id;
-    for index in range(fold_len) {
-        if current == t.NO_STATE || current >= state_len {
-            return t.NO_STATE;
-        }
-        let state: t.State = unsafe { states[current] };
-        if state.opcode != t.OP_LITERAL ||
-            !has_flag(state.flags, t.FLAG_CASE_INSENSITIVE) ||
-            has_flag(state.flags, t.FLAG_ASCII) {
-            return t.NO_STATE;
-        }
-        if !folded_equals(state.value, unicode.full_fold_at(value, index), false) {
-            return t.NO_STATE;
-        }
-        if index + 1usize == fold_len {
-            return state.out1;
-        }
-        current = next_full_fold_literal(states, state_len, state.out1);
-    }
-    return t.NO_STATE;
-}
-
-fn next_full_fold_literal(states: *const t.State, state_len: usize, first_state: usize) -> usize {
-    var state_id: usize = first_state;
-    var steps: usize = 0usize;
-    while state_id != t.NO_STATE && state_id < state_len && steps <= state_len {
-        let opcode: u8 = unsafe { states[state_id].opcode };
-        if opcode == t.OP_LITERAL {
-            return state_id;
-        }
-        if opcode != t.OP_EPSILON {
-            return t.NO_STATE;
-        }
-        state_id = unsafe { states[state_id].out1 };
-        steps += 1usize;
-    }
-    return t.NO_STATE;
-}
-
-fn class_state_matches<P>(
-    program: &P,
-    state_id: usize,
-    value: usize,
-    workspace: &mut Workspace
-) -> bool where P: RegexVmProgram {
-    let states: *mut t.State = program.state_storage();
-    let class_start: usize = unsafe { states[state_id].class_start };
-    let class_len: usize = unsafe { states[state_id].class_len };
-    let flags: u8 = unsafe { states[state_id].flags };
-    let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
-    let matched: bool = class_expr_matches(
-        program.range_storage(),
-        class_start,
-        class_len,
-        value,
-        workspace,
-        has_flag(flags, t.FLAG_CASE_INSENSITIVE),
-        has_flag(flags, t.FLAG_ASCII)
-    );
-    if negated {
-        return !matched;
-    }
-    return matched;
-}
-
-fn class_expr_matches(
-    ranges: *mut t.ClassRange,
-    class_start: usize,
-    class_len: usize,
-    value: usize,
-    workspace: &mut Workspace,
-    folded: bool,
-    ascii_mode: bool
-) -> bool {
-    var depth: usize = 0usize;
-    for offset in range(class_len) {
-        let range_index: usize = class_start + offset;
-        let kind: u8 = unsafe { ranges[range_index].kind };
-        let first: usize = unsafe { ranges[range_index].first };
-        let last: usize = unsafe { ranges[range_index].last };
-        if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
-            if depth >= workspace.class_capacity {
-                workspace.status = t.RegexStatus.workspace_too_large;
-                return false;
-            }
-            unsafe {
-                workspace.class_stack[depth] = class_primitive_matches(kind, first, last, value, folded, ascii_mode);
-            }
-            depth += 1usize;
-        } else if kind == t.CLASS_EXPR_COMPLEMENT {
-            if depth == 0usize {
-                return false;
-            }
-            unsafe {
-                workspace.class_stack[depth - 1usize] = !workspace.class_stack[depth - 1usize];
-            }
-        } else {
-            if depth < 2usize {
-                return false;
-            }
-            let right: bool = unsafe { workspace.class_stack[depth - 1usize] };
-            let left: bool = unsafe { workspace.class_stack[depth - 2usize] };
-            depth -= 1usize;
-            unsafe {
-                workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
-            }
-        }
-    }
-    if depth != 1usize {
-        return false;
-    }
-    return unsafe { workspace.class_stack[0usize] };
-}
-
-fn class_primitive_matches(kind: u8, first: usize, last: usize, value: usize, folded: bool, ascii_mode: bool) -> bool {
-    if kind == t.CLASS_RANGE_SCALAR {
-        if folded {
-            if ascii_mode {
-                return ascii_fold_equivalent_in_range(value, first, last);
-            }
-            return unicode.fold_equivalent_in_range(value, first, last);
-        }
-        return first <= value && value <= last;
-    }
-    if ascii_mode && is_ascii_shorthand_property(first) {
-        let matched_ascii: bool = ascii_property_matches(first, value);
-        if kind == t.CLASS_RANGE_PROPERTY {
-            return matched_ascii;
-        }
-        return !matched_ascii;
-    }
-    if kind == t.CLASS_RANGE_PROPERTY {
-        if folded {
-            return unicode.property_case_fold_matches(first, value);
-        }
-        return unicode.property_matches(first, value);
-    }
-    if folded {
-        return !unicode.property_case_fold_matches(first, value);
-    }
-    return !unicode.property_matches(first, value);
-}
-
-fn apply_class_expr_op(kind: u8, left: bool, right: bool) -> bool {
-    if kind == t.CLASS_EXPR_UNION {
-        return left || right;
-    }
-    if kind == t.CLASS_EXPR_INTERSECTION {
-        return left && right;
-    }
-    if kind == t.CLASS_EXPR_DIFFERENCE {
-        return left && !right;
-    }
-    if kind == t.CLASS_EXPR_SYMMETRIC_DIFFERENCE {
-        return left != right;
-    }
-    return false;
-}
-
-fn has_flag(flags: u8, flag: u8) -> bool {
-    return (flags & flag) != t.FLAGS_NONE;
-}
-
-fn folded_equals(expected: usize, value: usize, ascii_mode: bool) -> bool {
-    if ascii_mode {
-        if expected > ASCII_BYTE_MAX || value > ASCII_BYTE_MAX {
-            return expected == value;
-        }
-        return ascii.to_lower(((expected) as u8)) == ascii.to_lower(((value) as u8));
-    }
-    return unicode.simple_fold(expected) == unicode.simple_fold(value);
-}
-
-fn ascii_fold_equivalent_in_range(value: usize, first: usize, last: usize) -> bool {
-    if first <= value && value <= last {
-        return true;
-    }
-    if value > ASCII_BYTE_MAX {
-        return false;
-    }
-    let lower: usize = ((ascii.to_lower(((value) as u8))) as usize);
-    if first <= lower && lower <= last {
-        return true;
-    }
-    let upper: usize = ((ascii.to_upper(((value) as u8))) as usize);
-    return first <= upper && upper <= last;
-}
-
-fn is_ascii_shorthand_property(kind: usize) -> bool {
-    return kind == unicode.PROPERTY_GC_ND ||
-        kind == unicode.PROPERTY_WORD ||
-        kind == unicode.PROPERTY_WHITE_SPACE;
-}
-
-fn ascii_property_matches(kind: usize, value: usize) -> bool {
-    if value > ASCII_BYTE_MAX {
-        return false;
-    }
-    let byte: u8 = ((value) as u8);
-    if kind == unicode.PROPERTY_GC_ND {
-        return ascii.is_digit(byte);
-    }
-    if kind == unicode.PROPERTY_WORD {
-        return ascii.is_word(byte);
-    }
-    if kind == unicode.PROPERTY_WHITE_SPACE {
-        return ascii.is_ascii_whitespace(byte);
-    }
-    return unicode.property_matches(kind, value);
-}
-
-fn is_line_break(input: InputView, value: usize) -> bool {
-    return is_line_break_mode(input.newline_mode, value);
-}
-
-fn is_line_break_mode(newline_mode: u8, value: usize) -> bool {
-    if newline_mode == t.NEWLINE_LF {
-        return value == unicode.LINE_FEED;
-    }
-    if newline_mode == t.NEWLINE_CRLF {
-        return value == unicode.LINE_FEED || value == unicode.CARRIAGE_RETURN;
-    }
-    return unicode.is_line_break_scalar(value);
-}
-
-fn assert_start_matches(input: InputView, position: usize, flags: u8) -> bool {
-    if is_line_start(input, position) {
-        if position == 0usize {
-            return true;
-        }
-        return has_flag(flags, t.FLAG_MULTILINE);
-    }
-    return false;
-}
-
-fn assert_end_matches(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
-    if is_line_end(input, position, input_len) {
-        if position == input_len {
-            return true;
-        }
-        return has_flag(flags, t.FLAG_MULTILINE);
-    }
-    return false;
-}
-
-fn is_line_start(input: InputView, position: usize) -> bool {
-    if position == 0usize {
-        return !input_match_flag_enabled(input, t.MATCH_NOT_BOL);
-    }
-    let previous: InputDecode = previous_decode(input, position);
-    return previous.valid && is_line_break(input, previous.value);
-}
-
-fn is_line_end(input: InputView, position: usize, input_len: usize) -> bool {
-    if position == input_len {
-        return !input_match_flag_enabled(input, t.MATCH_NOT_EOL);
-    }
-    let current: InputDecode = decode_at(input, position);
-    return current.valid && is_line_break(input, current.value);
-}
-
-fn is_word_boundary_flags(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
-    let left: InputDecode = previous_decode(input, position);
-    let right: InputDecode = decode_at(input, position);
-    let left_is_word: bool = position > 0usize && left.valid && is_word_flags(input, left.value, flags);
-    let right_is_word: bool = position < input_len && right.valid && is_word_flags(input, right.value, flags);
-    let boundary: bool = left_is_word != right_is_word;
-    if boundary && position == 0usize && right_is_word && input_match_flag_enabled(input, t.MATCH_NOT_BOW) {
-        return false;
-    }
-    if boundary && position == input_len && left_is_word && input_match_flag_enabled(input, t.MATCH_NOT_EOW) {
-        return false;
-    }
-    return boundary;
-}
-
-fn is_word_start_flags(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
-    if position >= input_len {
-        return false;
-    }
-    if position == 0usize && input_match_flag_enabled(input, t.MATCH_NOT_BOW) {
-        return false;
-    }
-    let left: InputDecode = previous_decode(input, position);
-    let right: InputDecode = decode_at(input, position);
-    let left_is_word: bool = position > 0usize && left.valid && is_word_flags(input, left.value, flags);
-    let right_is_word: bool = right.valid && is_word_flags(input, right.value, flags);
-    return !left_is_word && right_is_word;
-}
-
-fn is_word_end_flags(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
-    if position == 0usize {
-        return false;
-    }
-    if position == input_len && input_match_flag_enabled(input, t.MATCH_NOT_EOW) {
-        return false;
-    }
-    let left: InputDecode = previous_decode(input, position);
-    let right: InputDecode = decode_at(input, position);
-    let left_is_word: bool = left.valid && is_word_flags(input, left.value, flags);
-    let right_is_word: bool = position < input_len && right.valid && is_word_flags(input, right.value, flags);
-    return left_is_word && !right_is_word;
 }
 
 fn write_set_matches(matched: *mut bool, pattern_count: usize, out_pattern_ids: *mut usize, out_capacity: usize) -> usize {

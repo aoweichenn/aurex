@@ -29,8 +29,7 @@ pub fn fill_captures(
         captures.spans[t.CAPTURE_WHOLE_MATCH].start = match_start;
         captures.spans[t.CAPTURE_WHOLE_MATCH].end = match_end;
     }
-    var index: usize = 1usize;
-    while index < span_count {
+    for index in range(1usize, span_count) {
         let start_slot: usize = index * 2usize;
         let end_slot: usize = start_slot + 1usize;
         let start: usize = unsafe { capture_slots[start_slot] };
@@ -48,7 +47,6 @@ pub fn fill_captures(
                 captures.spans[index].end = 0usize;
             }
         }
-        index += 1usize;
     }
     captures.matched = true;
     captures.start = match_start;
@@ -122,12 +120,10 @@ pub fn capture_name(compiled: &t.Regex, index: usize) -> str {
 }
 
 pub fn capture_index(compiled: &t.Regex, name: str) -> usize {
-    var index: usize = 1usize;
-    while index < compiled.capture_len {
+    for index in range(1usize, compiled.capture_len) {
         if capture_name_matches(compiled, index, name) {
             return index;
         }
-        index += 1usize;
     }
     return t.NO_CAPTURE;
 }
@@ -144,14 +140,12 @@ fn capture_name_matches(compiled: &t.Regex, index: usize, name: str) -> bool {
     let pattern_name_start: usize = unsafe { compiled.captures[index].name_start };
     let pattern_ptr: *const u8 = compiled.pattern.ptr;
     let name_ptr: *const u8 = name.ptr;
-    var offset: usize = 0usize;
-    while offset < name_len {
+    for offset in range(name_len) {
         let left: u8 = unsafe { pattern_ptr[pattern_name_start + offset] };
         let right: u8 = unsafe { name_ptr[offset] };
         if left != right {
             return false;
         }
-        offset += 1usize;
     }
     return true;
 }

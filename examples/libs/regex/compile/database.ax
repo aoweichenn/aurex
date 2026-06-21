@@ -73,20 +73,14 @@ pub fn serialize_regex(compiled: &t.Regex, out: *mut u8, out_capacity: usize) ->
     write_usize(out, out_capacity, cursor_ptr, compiled.range_len);
     write_usize(out, out_capacity, cursor_ptr, compiled.capture_len);
     write_pattern_bytes(out, out_capacity, cursor_ptr, compiled.pattern);
-    var state: usize = 0usize;
-    while state < compiled.state_len {
+    for state in range(compiled.state_len) {
         write_state(out, out_capacity, cursor_ptr, unsafe { compiled.states[state] });
-        state += 1usize;
     }
-    var range: usize = 0usize;
-    while range < compiled.range_len {
-        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range] });
-        range += 1usize;
+    for range_index in range(compiled.range_len) {
+        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range_index] });
     }
-    var capture: usize = 0usize;
-    while capture < compiled.capture_len {
+    for capture in range(compiled.capture_len) {
         write_capture(out, out_capacity, cursor_ptr, unsafe { compiled.captures[capture] });
-        capture += 1usize;
     }
     if required > out_capacity {
         return t.database_result(t.RegexStatus.buffer_too_small, out_capacity, required);
@@ -112,25 +106,17 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     write_usize(out, out_capacity, cursor_ptr, compiled.literal_node_len);
     write_usize(out, out_capacity, cursor_ptr, compiled.literal_terminal_len);
     write_usize(out, out_capacity, cursor_ptr, compiled.literal_max_byte_len);
-    var state: usize = 0usize;
-    while state < compiled.state_len {
+    for state in range(compiled.state_len) {
         write_state(out, out_capacity, cursor_ptr, unsafe { compiled.states[state] });
-        state += 1usize;
     }
-    var range: usize = 0usize;
-    while range < compiled.range_len {
-        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range] });
-        range += 1usize;
+    for range_index in range(compiled.range_len) {
+        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range_index] });
     }
-    var node: usize = 0usize;
-    while node < compiled.literal_node_len {
+    for node in range(compiled.literal_node_len) {
         write_literal_node(out, out_capacity, cursor_ptr, unsafe { compiled.literal_nodes[node] });
-        node += 1usize;
     }
-    var terminal: usize = 0usize;
-    while terminal < compiled.literal_terminal_len {
+    for terminal in range(compiled.literal_terminal_len) {
         write_literal_terminal(out, out_capacity, cursor_ptr, unsafe { compiled.literal_terminals[terminal] });
-        terminal += 1usize;
     }
     if required > out_capacity {
         return t.database_result(t.RegexStatus.buffer_too_small, out_capacity, required);
@@ -208,29 +194,23 @@ pub fn deserialize_regex(bytes: []u8) -> t.Regex {
         cursor += pattern_len;
     }
     let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
-    var state: usize = 0usize;
-    while state < state_len {
+    for state in range(state_len) {
         if !read_state(data, len, cursor_ptr, unsafe { ptrat<*mut t.State>(ptraddr(compiled.states) + state * sizeof<t.State>()) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
-        state += 1usize;
     }
-    var range: usize = 0usize;
-    while range < range_len {
-        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range * sizeof<t.ClassRange>()) }) {
+    for range_index in range(range_len) {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range_index * sizeof<t.ClassRange>()) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
-        range += 1usize;
     }
-    var capture: usize = 0usize;
-    while capture < capture_len {
+    for capture in range(capture_len) {
         if !read_capture(data, len, cursor_ptr, unsafe { ptrat<*mut t.CaptureInfo>(ptraddr(compiled.captures) + capture * sizeof<t.CaptureInfo>()) }) {
             destroy_regex_storage(&mut compiled);
             return empty_regex(mode, t.RegexStatus.database_error);
         }
-        capture += 1usize;
     }
     if cursor != len || !validate_regex_program(&compiled) {
         destroy_regex_storage(&mut compiled);
@@ -320,37 +300,29 @@ pub fn deserialize_set(bytes: []u8) -> t.RegexSet {
     compiled.start = start;
     compiled.literal_max_byte_len = literal_max_byte_len;
     let cursor_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut cursor)) };
-    var state: usize = 0usize;
-    while state < state_len {
+    for state in range(state_len) {
         if !read_state(data, len, cursor_ptr, unsafe { ptrat<*mut t.State>(ptraddr(compiled.states) + state * sizeof<t.State>()) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
-        state += 1usize;
     }
-    var range: usize = 0usize;
-    while range < range_len {
-        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range * sizeof<t.ClassRange>()) }) {
+    for range_index in range(range_len) {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat<*mut t.ClassRange>(ptraddr(compiled.ranges) + range_index * sizeof<t.ClassRange>()) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
-        range += 1usize;
     }
-    var node: usize = 0usize;
-    while node < literal_node_len {
+    for node in range(literal_node_len) {
         if !read_literal_node(data, len, cursor_ptr, unsafe { ptrat<*mut t.SetLiteralNode>(ptraddr(compiled.literal_nodes) + node * sizeof<t.SetLiteralNode>()) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
-        node += 1usize;
     }
-    var terminal: usize = 0usize;
-    while terminal < literal_terminal_len {
+    for terminal in range(literal_terminal_len) {
         if !read_literal_terminal(data, len, cursor_ptr, unsafe { ptrat<*mut t.SetLiteralTerminal>(ptraddr(compiled.literal_terminals) + terminal * sizeof<t.SetLiteralTerminal>()) }) {
             destroy_set_storage(&mut compiled);
             return empty_set(mode, t.RegexStatus.database_error);
         }
-        terminal += 1usize;
     }
     if cursor != len || !validate_set_program(&compiled) {
         destroy_set_storage(&mut compiled);
@@ -382,11 +354,8 @@ fn write_regex_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> v
 }
 
 fn write_pattern_bytes(out: *mut u8, out_capacity: usize, cursor: *mut usize, pattern: str) -> void {
-    let data: *const u8 = pattern.ptr;
-    var offset: usize = 0usize;
-    while offset < pattern.len {
-        write_u8(out, out_capacity, cursor, unsafe { data[offset] });
-        offset += 1usize;
+    for value in pattern {
+        write_u8(out, out_capacity, cursor, value);
     }
 }
 
@@ -487,11 +456,9 @@ fn write_u8(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: u8) ->
 }
 
 fn write_usize(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: usize) -> void {
-    var offset: usize = 0usize;
-    while offset < USIZE_BYTES {
+    for offset in range(USIZE_BYTES) {
         let shift: usize = offset * BYTE_BITS;
         write_u8(out, out_capacity, cursor, (((value >> shift) & BYTE_MASK) as u8));
-        offset += 1usize;
     }
 }
 
@@ -511,11 +478,9 @@ fn read_usize(data: *const u8, len: usize, cursor: usize) -> ReadUsize {
         return ReadUsize { value: 0usize, next: cursor, valid: false };
     }
     var value: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < USIZE_BYTES {
+    for offset in range(USIZE_BYTES) {
         let shift: usize = offset * BYTE_BITS;
         value = value | (((unsafe { data[cursor + offset] }) as usize) << shift);
-        offset += 1usize;
     }
     return ReadUsize { value: value, next: cursor + USIZE_BYTES, valid: true };
 }
@@ -1070,19 +1035,15 @@ fn validate_regex_program(compiled: &t.Regex) -> bool {
         unsafe { compiled.states[compiled.accept].opcode } != t.OP_MATCH {
         return false;
     }
-    var state: usize = 0usize;
-    while state < compiled.state_len {
+    for state in range(compiled.state_len) {
         if !validate_regex_state(compiled, unsafe { compiled.states[state] }) {
             return false;
         }
-        state += 1usize;
     }
-    var capture: usize = 0usize;
-    while capture < compiled.capture_len {
+    for capture in range(compiled.capture_len) {
         if !validate_capture(compiled, unsafe { compiled.captures[capture] }) {
             return false;
         }
-        capture += 1usize;
     }
     return true;
 }
@@ -1123,23 +1084,19 @@ fn validate_set_program(compiled: &t.RegexSet) -> bool {
     if compiled.state_len == 0usize {
         return compiled.start == t.NO_STATE && validate_literal_automaton(compiled);
     }
-    var state: usize = 0usize;
-    while state < compiled.state_len {
+    for state in range(compiled.state_len) {
         if !validate_state(compiled, unsafe { compiled.states[state] }) {
             return false;
         }
-        state += 1usize;
     }
     return validate_literal_automaton(compiled);
 }
 
 fn copy_database_bytes(data: *const u8, start: usize, out: *mut u8, len: usize) -> void {
-    var offset: usize = 0usize;
-    while offset < len {
+    for offset in range(len) {
         unsafe {
             out[offset] = data[start + offset];
         }
-        offset += 1usize;
     }
 }
 
@@ -1181,19 +1138,15 @@ fn validate_literal_automaton(compiled: &t.RegexSet) -> bool {
     if unsafe { compiled.literal_nodes[0usize].fail } != 0usize {
         return false;
     }
-    var node: usize = 0usize;
-    while node < compiled.literal_node_len {
+    for node in range(compiled.literal_node_len) {
         if !validate_literal_node(compiled, unsafe { compiled.literal_nodes[node] }) {
             return false;
         }
-        node += 1usize;
     }
-    var terminal: usize = 0usize;
-    while terminal < compiled.literal_terminal_len {
+    for terminal in range(compiled.literal_terminal_len) {
         if !validate_literal_terminal(compiled, unsafe { compiled.literal_terminals[terminal] }) {
             return false;
         }
-        terminal += 1usize;
     }
     return true;
 }

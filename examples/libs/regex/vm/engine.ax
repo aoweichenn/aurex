@@ -855,8 +855,7 @@ fn run_set_collect_at(
         let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
-        var index: usize = 0usize;
-        while index < current_len {
+        for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
             let out1: usize = set_transition_out(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
@@ -877,7 +876,6 @@ fn run_set_collect_at(
                     return workspace.status;
                 }
             }
-            index += 1usize;
         }
         swap_lists(workspace);
         current_len = next_len;
@@ -897,8 +895,7 @@ fn emit_set_accepts(
     callback: t.SetScanCallback,
     count: *mut usize
 ) -> t.RegexStatus {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         let state_id: usize = unsafe { list[index] };
         if state_id < compiled.state_len && unsafe { compiled.states[state_id].opcode } == t.OP_MATCH {
             let pattern_id: usize = unsafe { compiled.states[state_id].value };
@@ -915,18 +912,15 @@ fn emit_set_accepts(
                 }
             }
         }
-        index += 1usize;
     }
     return t.RegexStatus.ok;
 }
 
 fn clear_emitted_patterns(emitted: *mut bool, pattern_count: usize) -> void {
-    var index: usize = 0usize;
-    while index < pattern_count {
+    for index in range(pattern_count) {
         unsafe {
             emitted[index] = false;
         }
-        index += 1usize;
     }
 }
 
@@ -989,8 +983,7 @@ fn run_set_search(
         let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
-        var index: usize = 0usize;
-        while index < current_len {
+        for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
             let out1: usize = set_transition_out(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
@@ -1011,7 +1004,6 @@ fn run_set_search(
                     return;
                 }
             }
-            index += 1usize;
         }
         swap_lists(workspace);
         current_len = next_len;
@@ -1097,8 +1089,7 @@ fn run_set_find(
         let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
-        var index: usize = 0usize;
-        while index < current_len {
+        for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
             let out1: usize = set_transition_out(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
@@ -1119,7 +1110,6 @@ fn run_set_find(
                     return t.set_match_span(false, t.NO_CAPTURE, position, position, workspace.status);
                 }
             }
-            index += 1usize;
         }
         swap_lists(workspace);
         current_len = next_len;
@@ -1205,8 +1195,7 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
         let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
-        var index: usize = 0usize;
-        while index < current_len {
+        for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
             let out1: usize = regex_transition_out(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
@@ -1227,7 +1216,6 @@ fn run_search(compiled: &t.Regex, input: InputView, start: usize, workspace: &mu
                     return t.match_result(false, position, position, workspace.status);
                 }
             }
-            index += 1usize;
         }
         swap_lists(workspace);
         current_len = next_len;
@@ -1351,8 +1339,7 @@ fn update_set_accepts(
     matched: *mut bool,
     matched_count: *mut usize
 ) -> void {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         let state_id: usize = unsafe { list[index] };
         if state_id < compiled.state_len && unsafe { compiled.states[state_id].opcode } == t.OP_MATCH {
             let pattern_id: usize = unsafe { compiled.states[state_id].value };
@@ -1363,7 +1350,6 @@ fn update_set_accepts(
                 }
             }
         }
-        index += 1usize;
     }
 }
 
@@ -1379,8 +1365,7 @@ fn update_set_best_accept(
     best_start: *mut usize,
     best_end: *mut usize
 ) -> void {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         let state_id: usize = unsafe { list[index] };
         if state_id < compiled.state_len && unsafe { compiled.states[state_id].opcode } == t.OP_MATCH {
             let pattern_id: usize = unsafe { compiled.states[state_id].value };
@@ -1399,7 +1384,6 @@ fn update_set_best_accept(
                 }
             }
         }
-        index += 1usize;
     }
 }
 
@@ -1496,8 +1480,7 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
         let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
-        var index: usize = 0usize;
-        while index < current_len {
+        for index in range(current_len) {
             let state_id: usize = unsafe { workspace.current[index] };
             let out1: usize = regex_transition_out(compiled, state_id, value, workspace);
             if out1 != t.NO_STATE {
@@ -1518,7 +1501,6 @@ fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool,
                     return t.match_result(false, start, start, workspace.status);
                 }
             }
-            index += 1usize;
         }
         swap_lists(workspace);
         current_len = next_len;
@@ -1677,8 +1659,7 @@ fn update_best_accept(
     input: InputView,
     input_len: usize
 ) -> u8 {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         let state_id: usize = unsafe { list[index] };
         if state_id == compiled.accept {
             copy_capture_row(workspace.best_caps, capture_row_ptr(list_caps, index, workspace.capture_slot_count), workspace.capture_slot_count);
@@ -1692,7 +1673,6 @@ fn update_best_accept(
             }
             return ACCEPT_READY;
         }
-        index += 1usize;
     }
     return ACCEPT_NONE;
 }
@@ -1710,8 +1690,7 @@ fn update_search_accept(
     best_start: *mut usize,
     best_end: *mut usize
 ) -> u8 {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         let state_id: usize = unsafe { list[index] };
         if state_id == compiled.accept {
             let candidate_caps: *mut usize = capture_row_ptr(list_caps, index, workspace.capture_slot_count);
@@ -1735,7 +1714,6 @@ fn update_search_accept(
             }
             return ACCEPT_READY;
         }
-        index += 1usize;
     }
     return ACCEPT_NONE;
 }
@@ -1753,13 +1731,11 @@ fn has_higher_priority_consumer(
         return false;
     }
     let value: usize = decode_at(input, position).value;
-    var index: usize = 0usize;
-    while index < accept_index {
+    for index in range(accept_index) {
         let state_id: usize = unsafe { list[index] };
         if regex_transition_out(compiled, state_id, value, workspace) != t.NO_STATE {
             return true;
         }
-        index += 1usize;
     }
     return false;
 }
@@ -1826,8 +1802,7 @@ fn full_fold_sequence_out(states: *const t.State, state_len: usize, state_id: us
         return t.NO_STATE;
     }
     var current: usize = state_id;
-    var index: usize = 0usize;
-    while index < fold_len {
+    for index in range(fold_len) {
         if current == t.NO_STATE || current >= state_len {
             return t.NO_STATE;
         }
@@ -1844,7 +1819,6 @@ fn full_fold_sequence_out(states: *const t.State, state_len: usize, state_id: us
             return state.out1;
         }
         current = next_full_fold_literal(states, state_len, state.out1);
-        index += 1usize;
     }
     return t.NO_STATE;
 }
@@ -1934,8 +1908,7 @@ fn class_expr_matches(
     ascii_mode: bool
 ) -> bool {
     var depth: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < class_len {
+    for offset in range(class_len) {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         let first: usize = unsafe { compiled.ranges[range_index].first };
@@ -1967,7 +1940,6 @@ fn class_expr_matches(
                 workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
             }
         }
-        offset += 1usize;
     }
     if depth != 1usize {
         return false;
@@ -1985,8 +1957,7 @@ fn set_class_expr_matches(
     ascii_mode: bool
 ) -> bool {
     var depth: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < class_len {
+    for offset in range(class_len) {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         let first: usize = unsafe { compiled.ranges[range_index].first };
@@ -2018,7 +1989,6 @@ fn set_class_expr_matches(
                 workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
             }
         }
-        offset += 1usize;
     }
     if depth != 1usize {
         return false;
@@ -2217,9 +2187,8 @@ fn is_word_end_flags(input: InputView, position: usize, input_len: usize, flags:
 }
 
 fn write_set_matches(matched: *mut bool, pattern_count: usize, out_pattern_ids: *mut usize, out_capacity: usize) -> usize {
-    var index: usize = 0usize;
     var written: usize = 0usize;
-    while index < pattern_count {
+    for index in range(pattern_count) {
         if unsafe { matched[index] } {
             if written < out_capacity && out_pattern_ids != null {
                 unsafe {
@@ -2228,7 +2197,6 @@ fn write_set_matches(matched: *mut bool, pattern_count: usize, out_pattern_ids: 
             }
             written += 1usize;
         }
-        index += 1usize;
     }
     if written > out_capacity {
         return out_capacity;

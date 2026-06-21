@@ -80,10 +80,8 @@ fn compile_set_with_mode(patterns: []str, mode: u8, options: t.RegexOptions) -> 
         return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, limits.MAX_SET_PATTERNS);
     }
     var total_pattern_bytes: usize = 0usize;
-    var scan: usize = 0usize;
-    while scan < pattern_count {
-        total_pattern_bytes += patterns[scan].len;
-        scan += 1usize;
+    for pattern in patterns {
+        total_pattern_bytes += pattern.len;
     }
     if can_compile_literal_trie_set(patterns, mode, options) {
         return compile_literal_trie_set(patterns, mode, total_pattern_bytes, options);
@@ -92,8 +90,7 @@ fn compile_set_with_mode(patterns: []str, mode: u8, options: t.RegexOptions) -> 
     if compiled.status != t.RegexStatus.ok {
         return compiled;
     }
-    var index: usize = 0usize;
-    while index < pattern_count {
+    for index in range(pattern_count) {
         var item: t.Regex = if mode == t.MODE_BYTES {
             parser.compile_bytes_with_options(patterns[index], options)
         } else {
@@ -116,7 +113,6 @@ fn compile_set_with_mode(patterns: []str, mode: u8, options: t.RegexOptions) -> 
             destroy_set_storage(&mut compiled);
             return empty_set(pattern_count, mode, options, compiled.status, index);
         }
-        index += 1usize;
     }
     return compiled;
 }
@@ -129,12 +125,10 @@ fn can_compile_literal_trie_set(patterns: []str, mode: u8, options: t.RegexOptio
     if pattern_count == 0usize {
         return false;
     }
-    var index: usize = 0usize;
-    while index < pattern_count {
-        if !is_plain_literal_pattern(patterns[index], mode) {
+    for pattern in patterns {
+        if !is_plain_literal_pattern(pattern, mode) {
             return false;
         }
-        index += 1usize;
     }
     return true;
 }
@@ -153,21 +147,25 @@ fn is_plain_literal_pattern(pattern: str, mode: u8) -> bool {
     if len == 0usize {
         return false;
     }
+    if mode == t.MODE_BYTES {
+        for value in pattern {
+            if is_regex_meta_byte(value) {
+                return false;
+            }
+        }
+        return true;
+    }
     var at: usize = 0usize;
     while at < len {
         let value: u8 = ascii.byte_at(pattern, at);
         if is_regex_meta_byte(value) {
             return false;
         }
-        if mode == t.MODE_BYTES {
-            at += 1usize;
-        } else {
-            let decoded: unicode.Decode = unicode.decode_at(pattern, at);
-            if !decoded.valid || decoded.next <= at {
-                return false;
-            }
-            at = decoded.next;
+        let decoded: unicode.Decode = unicode.decode_at(pattern, at);
+        if !decoded.valid || decoded.next <= at {
+            return false;
         }
+        at = decoded.next;
     }
     return true;
 }
@@ -215,8 +213,7 @@ fn compile_literal_trie_set(patterns: []str, mode: u8, total_pattern_bytes: usiz
     let terminal_count_ptr: *mut usize = unsafe { ptrat<*mut usize>(ptraddr(&mut terminal_count)) };
     var stats: LiteralBuildStats = LiteralBuildStats { max_byte_len: 0usize };
     let stats_ptr: *mut LiteralBuildStats = unsafe { ptrat<*mut LiteralBuildStats>(ptraddr(&mut stats)) };
-    var pattern_id: usize = 0usize;
-    while pattern_id < pattern_count {
+    for pattern_id in range(pattern_count) {
         if !insert_literal_pattern(
             nodes,
             node_capacity,
@@ -232,7 +229,6 @@ fn compile_literal_trie_set(patterns: []str, mode: u8, total_pattern_bytes: usiz
             destroy_set_storage(&mut compiled);
             return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, pattern_id);
         }
-        pattern_id += 1usize;
     }
     if !build_literal_automaton(nodes, node_count) {
         destroy_set_storage(&mut compiled);
@@ -712,8 +708,7 @@ fn append_regex_program(compiled: &mut t.RegexSet, source: &t.Regex, pattern_ind
     copy_source_ranges(compiled, source, range_offset);
     compiled.range_len += source.range_len;
 
-    var source_id: usize = limits.RESERVED_STATE_COUNT;
-    while source_id < source.state_len {
+    for source_id in range(limits.RESERVED_STATE_COUNT, source.state_len) {
         let dst_id: usize = map_state_id(source_id, state_offset);
         unsafe {
             compiled.states[dst_id].opcode = source.states[source_id].opcode;
@@ -729,21 +724,18 @@ fn append_regex_program(compiled: &mut t.RegexSet, source: &t.Regex, pattern_ind
                 compiled.states[dst_id].value_to = pattern_index;
             }
         }
-        source_id += 1usize;
     }
     compiled.state_len += additional_states;
     return map_optional_state_id(source.start, state_offset);
 }
 
 fn copy_source_ranges(compiled: &mut t.RegexSet, source: &t.Regex, range_offset: usize) -> void {
-    var index: usize = 0usize;
-    while index < source.range_len {
+    for index in range(source.range_len) {
         unsafe {
             compiled.ranges[range_offset + index].kind = source.ranges[index].kind;
             compiled.ranges[range_offset + index].first = source.ranges[index].first;
             compiled.ranges[range_offset + index].last = source.ranges[index].last;
         }
-        index += 1usize;
     }
 }
 

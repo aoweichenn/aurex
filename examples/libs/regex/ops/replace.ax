@@ -447,13 +447,11 @@ fn copy_input_range(
 ) -> CopyState {
     var next_written: usize = written;
     var next_required: usize = required;
-    var offset: usize = start;
-    while offset < end {
+    for offset in range(start, end) {
         let value: u8 = input.byte_at(offset);
         let state: CopyState = copy_byte(value, out, out_capacity, next_written, next_required);
         next_written = state.written;
         next_required = state.required;
-        offset += 1usize;
     }
     return CopyState { written: next_written, required: next_required, status: t.RegexStatus.ok };
 }
@@ -653,22 +651,19 @@ fn parse_replacement_hex_escape(replacement: str, start: usize, fixed_digits: us
     if start + fixed_digits > replacement_len {
         return ParsedScalar { value: 0usize, next_at: start, valid: false };
     }
-    var at: usize = start;
     var value: usize = 0usize;
-    var count: usize = 0usize;
-    while count < fixed_digits {
+    for offset in range(fixed_digits) {
+        let at: usize = start + offset;
         let byte: u8 = ascii.byte_at(replacement, at);
         if !ascii.is_hex_digit(byte) {
             return ParsedScalar { value: 0usize, next_at: start, valid: false };
         }
         value = value * 16usize + ascii.hex_value(byte);
-        at += 1usize;
-        count += 1usize;
     }
     if !scalar_value_is_valid(value) {
         return ParsedScalar { value: 0usize, next_at: start, valid: false };
     }
-    return ParsedScalar { value: value, next_at: at, valid: true };
+    return ParsedScalar { value: value, next_at: start + fixed_digits, valid: true };
 }
 
 fn parse_replacement_braced_hex(replacement: str, start: usize) -> ParsedScalar {
@@ -714,22 +709,18 @@ fn replacement_slice_is_digits(replacement: str, start: usize, end: usize) -> bo
     if start >= end {
         return false;
     }
-    var at: usize = start;
-    while at < end {
-        if !ascii.is_digit(ascii.byte_at(replacement, at)) {
+    for offset in range(start, end) {
+        if !ascii.is_digit(ascii.byte_at(replacement, offset)) {
             return false;
         }
-        at += 1usize;
     }
     return true;
 }
 
 fn parse_capture_index_range(replacement: str, start: usize, end: usize) -> usize {
-    var at: usize = start;
     var value: usize = 0usize;
-    while at < end {
-        value = value * 10usize + ascii.decimal_value(ascii.byte_at(replacement, at));
-        at += 1usize;
+    for offset in range(start, end) {
+        value = value * 10usize + ascii.decimal_value(ascii.byte_at(replacement, offset));
     }
     return value;
 }

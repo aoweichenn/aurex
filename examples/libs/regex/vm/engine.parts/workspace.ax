@@ -201,22 +201,18 @@ fn empty_workspace(status: t.RegexStatus) -> Workspace {
 }
 
 fn clear_marks(workspace: &mut Workspace) -> void {
-    var index: usize = 0usize;
-    while index < workspace.capacity {
+    for index in range(workspace.capacity) {
         unsafe {
             workspace.marks[index] = 0usize;
         }
-        index += 1usize;
     }
 }
 
 fn clear_start_bytes(workspace: &mut Workspace) -> void {
-    var index: usize = 0usize;
-    while index < limits.START_BYTE_COUNT {
+    for index in range(limits.START_BYTE_COUNT) {
         unsafe {
             workspace.start_bytes[index] = false;
         }
-        index += 1usize;
     }
 }
 
@@ -230,12 +226,10 @@ fn swap_lists(workspace: &mut Workspace) -> void {
 }
 
 fn list_has_start_at_or_before(list_caps: *mut usize, list_len: usize, slot_count: usize, start: usize) -> bool {
-    var index: usize = 0usize;
-    while index < list_len {
+    for index in range(list_len) {
         if unsafe { capture_row_ptr(list_caps, index, slot_count)[0usize] } <= start {
             return true;
         }
-        index += 1usize;
     }
     return false;
 }
@@ -245,12 +239,10 @@ fn init_capture_seed(row: *mut usize, slot_count: usize, start: usize) -> void {
 }
 
 fn init_capture_seed_with_search_start(row: *mut usize, slot_count: usize, start: usize, search_start: usize) -> void {
-    var slot: usize = 0usize;
-    while slot < slot_count {
+    for slot in range(slot_count) {
         unsafe {
             row[slot] = t.CAPTURE_MISSING;
         }
-        slot += 1usize;
     }
     if slot_count > 0usize {
         unsafe {

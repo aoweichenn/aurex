@@ -566,11 +566,9 @@ fn apply_unbounded_repeat(parser: &mut Parser, atom: t.Fragment, min_count: usiz
         return if lazy { prog.zero_or_more_lazy(&mut parser.compiled, atom) } else { prog.zero_or_more(&mut parser.compiled, atom) };
     }
     var result: t.Fragment = atom;
-    var count: usize = 1usize;
-    while count < min_count {
+    for _ in range(1usize, min_count) {
         let copy: t.Fragment = compile_atom_copy(parser, atom);
         result = prog.concat(&mut parser.compiled, result, copy);
-        count += 1usize;
     }
     let tail: t.Fragment = if lazy {
         prog.zero_or_more_lazy(&mut parser.compiled, compile_atom_copy(parser, atom))
@@ -589,20 +587,18 @@ fn apply_bounded_repeat(parser: &mut Parser, atom: t.Fragment, min_count: usize,
     if min_count == 0usize {
         result = if lazy { prog.zero_or_one_lazy(&mut parser.compiled, result) } else { prog.zero_or_one(&mut parser.compiled, result) };
     }
-    var count: usize = 1usize;
-    while count < min_count {
+    for _ in range(1usize, min_count) {
         let copy: t.Fragment = compile_atom_copy(parser, atom);
         result = prog.concat(&mut parser.compiled, result, copy);
-        count += 1usize;
     }
-    while count < max_count {
+    let optional_start: usize = if min_count == 0usize { 1usize } else { min_count };
+    for _ in range(optional_start, max_count) {
         let optional_copy: t.Fragment = if lazy {
             prog.zero_or_one_lazy(&mut parser.compiled, compile_atom_copy(parser, atom))
         } else {
             prog.zero_or_one(&mut parser.compiled, compile_atom_copy(parser, atom))
         };
         result = prog.concat(&mut parser.compiled, result, optional_copy);
-        count += 1usize;
     }
     return result;
 }
@@ -1440,15 +1436,13 @@ fn parse_control_escape_value(parser: &mut Parser, source_start: usize) -> Codep
 
 fn parse_fixed_hex(parser: &mut Parser, source_start: usize, count: usize) -> CodepointSpec {
     var value: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < count {
+    for _ in range(count) {
         if at_end(parser) || !ascii.is_hex_digit(peek(parser)) {
             prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
             return CodepointSpec { value: 0usize, valid: false };
         }
         value = value * 16usize + ascii.hex_value(peek(parser));
         advance(parser);
-        offset += 1usize;
     }
     return validate_codepoint(parser, source_start, value);
 }
@@ -1666,23 +1660,19 @@ fn capture_index_for_group(parser: &mut Parser, source_start: usize, name_start:
 }
 
 fn find_capture_by_source_start(compiled: &t.Regex, source_start: usize) -> usize {
-    var index: usize = 1usize;
-    while index < compiled.capture_len {
+    for index in range(1usize, compiled.capture_len) {
         if unsafe { compiled.captures[index].source_start } == source_start {
             return index;
         }
-        index += 1usize;
     }
     return t.NO_CAPTURE;
 }
 
 fn duplicate_capture_name(compiled: &t.Regex, pattern: str, name_start: usize, name_len: usize) -> bool {
-    var index: usize = 1usize;
-    while index < compiled.capture_len {
+    for index in range(1usize, compiled.capture_len) {
         if unsafe { compiled.captures[index].name_len } == name_len && name_matches_capture(compiled, pattern, index, name_start, name_len) {
             return true;
         }
-        index += 1usize;
     }
     return false;
 }
@@ -1690,12 +1680,10 @@ fn duplicate_capture_name(compiled: &t.Regex, pattern: str, name_start: usize, n
 fn name_matches_capture(compiled: &t.Regex, pattern: str, index: usize, name_start: usize, name_len: usize) -> bool {
     let existing_start: usize = unsafe { compiled.captures[index].name_start };
     let data: *const u8 = pattern.ptr;
-    var offset: usize = 0usize;
-    while offset < name_len {
+    for offset in range(name_len) {
         if unsafe { data[existing_start + offset] } != unsafe { data[name_start + offset] } {
             return false;
         }
-        offset += 1usize;
     }
     return true;
 }
@@ -1821,12 +1809,10 @@ fn pattern_slice_equals(pattern: str, start: usize, len: usize, expected: str) -
     }
     let pattern_data: *const u8 = pattern.ptr;
     let expected_data: *const u8 = expected.ptr;
-    var offset: usize = 0usize;
-    while offset < len {
+    for offset in range(len) {
         if unsafe { pattern_data[start + offset] } != unsafe { expected_data[offset] } {
             return false;
         }
-        offset += 1usize;
     }
     return true;
 }

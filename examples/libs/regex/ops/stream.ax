@@ -222,11 +222,13 @@ fn compact_capacity(remaining: usize) -> usize {
 }
 
 fn copy_chunk(dst: *mut u8, dst_start: usize, chunk: str, chunk_len: usize) -> void {
-    let src: *const u8 = chunk.ptr;
     var index: usize = 0usize;
-    while index < chunk_len {
+    for value in chunk {
+        if index >= chunk_len {
+            return;
+        }
         unsafe {
-            dst[dst_start + index] = src[index];
+            dst[dst_start + index] = value;
         }
         index += 1usize;
     }
@@ -236,12 +238,10 @@ fn copy_bytes(dst: *mut u8, dst_start: usize, src: *mut u8, src_start: usize, le
     if dst == null || src == null {
         return;
     }
-    var index: usize = 0usize;
-    while index < len {
+    for index in range(len) {
         unsafe {
             dst[dst_start + index] = src[src_start + index];
         }
-        index += 1usize;
     }
 }
 
@@ -249,11 +249,9 @@ fn copy_const_bytes(dst: *mut u8, dst_start: usize, src: *const u8, src_start: u
     if dst == null || src == null {
         return;
     }
-    var index: usize = 0usize;
-    while index < len {
+    for index in range(len) {
         unsafe {
             dst[dst_start + index] = src[src_start + index];
         }
-        index += 1usize;
     }
 }

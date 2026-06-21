@@ -167,14 +167,12 @@ fn start_filter_allows(
         return false;
     }
     let value: usize = decode_at(input, position).value;
-    var index: usize = 0usize;
-    while index < filter.state_len {
+    for index in range(filter.state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
         if state_matches(compiled, state_id, value, workspace) ||
             regex_full_fold_sequence_out(compiled, state_id, value) != t.NO_STATE {
             return true;
         }
-        index += 1usize;
     }
     return false;
 }
@@ -193,14 +191,12 @@ fn set_start_filter_allows(
         return false;
     }
     let value: usize = decode_at(input, position).value;
-    var index: usize = 0usize;
-    while index < filter.state_len {
+    for index in range(filter.state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
         if set_state_matches(compiled, state_id, value, workspace) ||
             set_full_fold_sequence_out(compiled, state_id, value) != t.NO_STATE {
             return true;
         }
-        index += 1usize;
     }
     return false;
 }
@@ -210,14 +206,12 @@ fn build_regex_start_byte_filter(compiled: &t.Regex, workspace: &mut Workspace, 
     if accepts_empty || state_len == 0usize {
         return false;
     }
-    var index: usize = 0usize;
-    while index < state_len {
+    for index in range(state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
         mark_regex_state_start_bytes(compiled, state_id, workspace);
         if workspace.status != t.RegexStatus.ok {
             return false;
         }
-        index += 1usize;
     }
     return start_byte_filter_useful(compiled.mode, workspace);
 }
@@ -227,14 +221,12 @@ fn build_set_start_byte_filter(compiled: &t.RegexSet, workspace: &mut Workspace,
     if accepts_empty || state_len == 0usize {
         return false;
     }
-    var index: usize = 0usize;
-    while index < state_len {
+    for index in range(state_len) {
         let state_id: usize = unsafe { workspace.start_states[index] };
         mark_set_state_start_bytes(compiled, state_id, workspace);
         if workspace.status != t.RegexStatus.ok {
             return false;
         }
-        index += 1usize;
     }
     return start_byte_filter_useful(compiled.mode, workspace);
 }
@@ -302,54 +294,46 @@ fn mark_set_state_start_bytes(compiled: &t.RegexSet, state_id: usize, workspace:
 }
 
 fn mark_regex_bytes_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < limits.START_BYTE_COUNT {
+    for value in range(limits.START_BYTE_COUNT) {
         if state_matches(compiled, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
             return;
         }
-        value += 1usize;
     }
 }
 
 fn mark_set_bytes_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < limits.START_BYTE_COUNT {
+    for value in range(limits.START_BYTE_COUNT) {
         if set_state_matches(compiled, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
             return;
         }
-        value += 1usize;
     }
 }
 
 fn mark_regex_ascii_by_scan(compiled: &t.Regex, state_id: usize, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < ASCII_BYTE_COUNT {
+    for value in range(ASCII_BYTE_COUNT) {
         if state_matches(compiled, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
             return;
         }
-        value += 1usize;
     }
 }
 
 fn mark_set_ascii_by_scan(compiled: &t.RegexSet, state_id: usize, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < ASCII_BYTE_COUNT {
+    for value in range(ASCII_BYTE_COUNT) {
         if set_state_matches(compiled, state_id, value, workspace) {
             mark_start_byte(workspace, value);
         }
         if workspace.status != t.RegexStatus.ok {
             return;
         }
-        value += 1usize;
     }
 }
 
@@ -374,23 +358,19 @@ fn mark_set_text_literal_start_bytes(compiled: &t.RegexSet, state_id: usize, fla
 }
 
 fn mark_text_any_start_bytes(flags: u8, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < ASCII_BYTE_COUNT {
+    for value in range(ASCII_BYTE_COUNT) {
         if has_flag(flags, t.FLAG_DOTALL) || !unicode.is_line_break_scalar(value) {
             mark_start_byte(workspace, value);
         }
-        value += 1usize;
     }
     mark_text_non_ascii_start_bytes(workspace);
 }
 
 fn mark_bytes_any_start_bytes(flags: u8, workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < limits.START_BYTE_COUNT {
+    for value in range(limits.START_BYTE_COUNT) {
         if has_flag(flags, t.FLAG_DOTALL) || !unicode.is_line_break_scalar(value) {
             mark_start_byte(workspace, value);
         }
-        value += 1usize;
     }
 }
 
@@ -433,8 +413,7 @@ fn regex_class_expr_may_match_non_ascii(
     ascii_mode: bool
 ) -> bool {
     var depth: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < class_len {
+    for offset in range(class_len) {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
@@ -470,7 +449,6 @@ fn regex_class_expr_may_match_non_ascii(
                 workspace.class_stack[depth - 1usize] = class_expr_op_may_match_non_ascii(kind, left, right);
             }
         }
-        offset += 1usize;
     }
     if depth != 1usize {
         return true;
@@ -487,8 +465,7 @@ fn set_class_expr_may_match_non_ascii(
     ascii_mode: bool
 ) -> bool {
     var depth: usize = 0usize;
-    var offset: usize = 0usize;
-    while offset < class_len {
+    for offset in range(class_len) {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
@@ -524,7 +501,6 @@ fn set_class_expr_may_match_non_ascii(
                 workspace.class_stack[depth - 1usize] = class_expr_op_may_match_non_ascii(kind, left, right);
             }
         }
-        offset += 1usize;
     }
     if depth != 1usize {
         return true;
@@ -570,26 +546,20 @@ fn mark_valid_input_start_bytes(mode: u8, workspace: &mut Workspace) -> void {
         mark_text_non_ascii_start_bytes(workspace);
         return;
     }
-    var value: usize = 0usize;
-    while value < limits.START_BYTE_COUNT {
+    for value in range(limits.START_BYTE_COUNT) {
         mark_start_byte(workspace, value);
-        value += 1usize;
     }
 }
 
 fn mark_text_ascii_start_bytes(workspace: &mut Workspace) -> void {
-    var value: usize = 0usize;
-    while value < ASCII_BYTE_COUNT {
+    for value in range(ASCII_BYTE_COUNT) {
         mark_start_byte(workspace, value);
-        value += 1usize;
     }
 }
 
 fn mark_text_non_ascii_start_bytes(workspace: &mut Workspace) -> void {
-    var value: usize = UTF8_NON_ASCII_FIRST_MIN;
-    while value <= UTF8_NON_ASCII_FIRST_MAX {
+    for value in range(UTF8_NON_ASCII_FIRST_MIN, UTF8_NON_ASCII_FIRST_MAX + 1usize) {
         mark_start_byte(workspace, value);
-        value += 1usize;
     }
 }
 
@@ -651,23 +621,19 @@ fn byte_start_filter_useful_range(workspace: &Workspace, first: usize, end: usiz
 }
 
 fn start_byte_range_has_allowed(workspace: &Workspace, first: usize, end: usize) -> bool {
-    var value: usize = first;
-    while value < end {
+    for value in range(first, end) {
         if unsafe { workspace.start_bytes[value] } {
             return true;
         }
-        value += 1usize;
     }
     return false;
 }
 
 fn start_byte_range_has_rejected(workspace: &Workspace, first: usize, end: usize) -> bool {
-    var value: usize = first;
-    while value < end {
+    for value in range(first, end) {
         if !unsafe { workspace.start_bytes[value] } {
             return true;
         }
-        value += 1usize;
     }
     return false;
 }

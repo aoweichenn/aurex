@@ -128,7 +128,6 @@ std::filesystem::path module_part_base_dir(const std::filesystem::path& primary_
 {
     std::filesystem::path base = primary_file;
     base.replace_extension();
-    base += ".parts";
     return base;
 }
 
@@ -140,12 +139,15 @@ std::filesystem::path module_part_file_path(const std::filesystem::path& primary
 std::optional<std::filesystem::path> owning_primary_for_part_file(const std::filesystem::path& part_file)
 {
     const std::filesystem::path part_dir = part_file.parent_path();
-    if (part_dir.extension() != ".parts") {
+    if (part_dir.empty() || part_dir.filename().empty()) {
         return std::nullopt;
     }
 
-    std::filesystem::path primary = part_dir.parent_path() / part_dir.stem();
+    std::filesystem::path primary = part_dir.parent_path() / part_dir.filename();
     primary += ".ax";
+    if (!module_loader_path_exists(primary)) {
+        return std::nullopt;
+    }
     return primary;
 }
 

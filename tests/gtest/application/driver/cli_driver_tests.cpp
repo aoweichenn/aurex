@@ -4420,7 +4420,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphUsesStableLogicalModuleS
     fs::create_directories(cache_dir);
     const fs::path source = cache_dir / "main.ax";
     const fs::path cache = cache_dir / "main.axic";
-    const fs::path parts_dir = cache_dir / "main.parts";
+    const fs::path parts_dir = cache_dir / "main";
     const auto write_source_file = [](const fs::path& path, const std::string_view text) {
         fs::create_directories(path.parent_path());
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -4542,7 +4542,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleExportsRecordsOnlyPrimaryReex
         static_cast<base::usize>(2));
 
     write_source_file(part_source, PART_REEXPORT_PRIMARY_SOURCE);
-    write_source_file(cache_dir / "part.parts" / "exports.ax", PART_REEXPORT_PART_SOURCE);
+    write_source_file(cache_dir / "part" / "exports.ax", PART_REEXPORT_PART_SOURCE);
     driver::clear_file_cache();
 
     driver::CompilerInvocation part_invocation;

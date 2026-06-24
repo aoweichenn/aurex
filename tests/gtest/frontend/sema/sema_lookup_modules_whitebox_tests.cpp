@@ -118,7 +118,7 @@ TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
     const query::ModuleKey module_key = query::module_key_from_stable_id(
         package, sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()}));
     const query::FileKey primary_file = query::file_key(package, "/workspace/root.ax");
-    const query::FileKey part_file = query::file_key(package, "/workspace/root.parts/types.ax");
+    const query::FileKey part_file = query::file_key(package, "/workspace/root/types.ax");
     const query::ModulePartKey primary_key = query::module_part_key(
         module_key, primary_file, query::ModulePartKind::primary, "<primary>", SEMA_TEST_PRIMARY_PART_INDEX);
     const query::ModulePartKey part_key = query::module_part_key(

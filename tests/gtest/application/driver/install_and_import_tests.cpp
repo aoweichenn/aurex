@@ -232,13 +232,13 @@ TEST_F(AurexIntegrationTest, ModuleLoaderLoadsPrimarySidecarParts)
         "fn main() -> i32 {\n"
         "  return parser_value() + emitter_value() - 47;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "vm.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "vm" / "parser.ax",
         "module m3.vm part parser;\n"
         "import lib.util;\n"
         "fn parser_value() -> i32 {\n"
         "  return util.value() + 40;\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(work / "vm.parts" / "emitter.ax",
+    static_cast<void>(write_import_test_source(work / "vm" / "emitter.ax",
         "module m3.vm part emitter;\n"
         "fn emitter_value() -> i32 {\n"
         "  return 2;\n"
@@ -272,7 +272,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRecordsModulePartKeys)
         "fn main() -> i32 {\n"
         "  return worker_value();\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "owner.parts" / "worker.ax",
+    static_cast<void>(write_import_test_source(work / "owner" / "worker.ax",
         "module m3.part_keys part worker;\n"
         "fn worker_value() -> i32 {\n"
         "  return 0;\n"
@@ -315,7 +315,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiscoversOwningPrimaryForPartCheck)
         "fn main() -> i32 {\n"
         "  return parser_value() - 7;\n"
         "}\n"));
-    const fs::path part = write_import_test_source(work / "owner.parts" / "parser.ax",
+    const fs::path part = write_import_test_source(work / "owner" / "parser.ax",
         "module m3.owner part parser;\n"
         "fn parser_value() -> i32 {\n"
         "  return 7;\n"
@@ -349,7 +349,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartGraph)
         "}\n");
     const std::string missing_output = require_failure(aurexc() + " --check " + q(missing)).output;
     expect_contains(missing_output, "module 'm3.missing' declares missing part 'parser'");
-    expect_contains(missing_output, (work / "missing.parts" / "parser.ax").string());
+    expect_contains(missing_output, (work / "missing" / "parser.ax").string());
 
     const fs::path duplicate = write_import_test_source(work / "duplicate.ax",
         "module m3.duplicate;\n"
@@ -376,7 +376,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartGraph)
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "mismatch.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "mismatch" / "parser.ax",
         "module m3.mismatch part other;\n"
         "fn parser_value() -> i32 {\n"
         "  return 0;\n"
@@ -416,7 +416,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartRootEdges)
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n"));
-    const fs::path unlisted = write_import_test_source(work / "owner.parts" / "ghost.ax",
+    const fs::path unlisted = write_import_test_source(work / "owner" / "ghost.ax",
         "module m3.owner part ghost;\n"
         "fn ghost_value() -> i32 {\n"
         "  return 1;\n"
@@ -434,7 +434,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverPartImportFailures)
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "missing_import.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "missing_import" / "parser.ax",
         "module m3.missing_import part parser;\n"
         "import absent.target;\n"
         "fn parser_value() -> i32 {\n"
@@ -450,12 +450,12 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverPartImportFailures)
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "reimport.parts" / "first.ax",
+    static_cast<void>(write_import_test_source(work / "reimport" / "first.ax",
         "module m3.reimport part first;\n"
         "fn first_value() -> i32 {\n"
         "  return 1;\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(work / "reimport.parts" / "second.ax",
+    static_cast<void>(write_import_test_source(work / "reimport" / "second.ax",
         "module m3.reimport part second;\n"
         "import first;\n"
         "fn second_value() -> i32 {\n"
@@ -512,13 +512,13 @@ TEST_F(AurexIntegrationTest, ModulePartsUsePartLocalImportsAndSharedItems)
         "fn main() -> i32 {\n"
         "  return cross_part_value() - 4;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "phase3.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "phase3" / "parser.ax",
         "module m3.phase3 part parser;\n"
         "import lib.tools;\n"
         "fn imported_value(input: tools.Num) -> i32 {\n"
         "  return input + tools.value();\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(work / "phase3.parts" / "emitter.ax",
+    static_cast<void>(write_import_test_source(work / "phase3" / "emitter.ax",
         "module m3.phase3 part emitter;\n"
         "fn cross_part_value() -> i32 {\n"
         "  return imported_value(1);\n"
@@ -545,7 +545,7 @@ TEST_F(AurexIntegrationTest, ModulePartsSharePrivateModuleSurface)
         "fn main() -> i32 {\n"
         "  return use_private() - 44;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "phase4_private.parts" / "model.ax",
+    static_cast<void>(write_import_test_source(work / "phase4_private" / "model.ax",
         "module m3.phase4_private part model;\n"
         "priv struct Box {\n"
         "  pub value: i32;\n"
@@ -559,7 +559,7 @@ TEST_F(AurexIntegrationTest, ModulePartsSharePrivateModuleSurface)
         "priv fn make_box(value: i32) -> Box {\n"
         "  return Box { value: value, secret: 2 };\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(work / "phase4_private.parts" / "use.ax",
+    static_cast<void>(write_import_test_source(work / "phase4_private" / "use.ax",
         "module m3.phase4_private part use;\n"
         "fn use_private() -> i32 {\n"
         "  let box: Box = make_box(40);\n"
@@ -585,7 +585,7 @@ TEST_F(AurexIntegrationTest, ModulePartPrivateItemsStayHiddenFromExternalModules
         "pub fn value() -> i32 {\n"
         "  return 1;\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(import_dir / "lib" / "owner.parts" / "model.ax",
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "owner" / "model.ax",
         "module lib.owner part model;\n"
         "priv struct Secret {\n"
         "  pub value: i32;\n"
@@ -629,7 +629,7 @@ TEST_F(AurexIntegrationTest, ModulePartPublicImportsDoNotBecomeModuleReexports)
         "pub fn local_value() -> i32 {\n"
         "  return part_value();\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(import_dir / "lib" / "facade.parts" / "exports.ax",
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "facade" / "exports.ax",
         "module lib.facade part exports;\n"
         "pub import lib.inner as inner;\n"
         "fn part_value() -> inner.Count {\n"
@@ -663,7 +663,7 @@ TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
         "fn main() -> i32 {\n"
         "  return tools.value();\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "part_to_primary.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "part_to_primary" / "parser.ax",
         "module m3.part_to_primary part parser;\n"
         "import lib.tools;\n"
         "fn parser_value() -> i32 {\n"
@@ -681,7 +681,7 @@ TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "primary_to_part.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "primary_to_part" / "parser.ax",
         "module m3.primary_to_part part parser;\n"
         "fn parser_value() -> i32 {\n"
         "  return tools.value();\n"
@@ -697,7 +697,7 @@ TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
         "pub fn holder_value() -> i32 {\n"
         "  return worker_value();\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(import_dir / "lib" / "holder.parts" / "worker.ax",
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "holder" / "worker.ax",
         "module lib.holder part worker;\n"
         "import lib.tools;\n"
         "fn worker_value() -> i32 {\n"
@@ -725,12 +725,12 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRejectsDuplicateItemsAcrossParts)
         "fn main() -> i32 {\n"
         "  return duplicate_value();\n"
         "}\n");
-    static_cast<void>(write_import_test_source(work / "duplicate.parts" / "parser.ax",
+    static_cast<void>(write_import_test_source(work / "duplicate" / "parser.ax",
         "module m3.duplicate_items part parser;\n"
         "fn duplicate_value() -> i32 {\n"
         "  return 1;\n"
         "}\n"));
-    static_cast<void>(write_import_test_source(work / "duplicate.parts" / "emitter.ax",
+    static_cast<void>(write_import_test_source(work / "duplicate" / "emitter.ax",
         "module m3.duplicate_items part emitter;\n"
         "fn duplicate_value() -> i32 {\n"
         "  return 2;\n"

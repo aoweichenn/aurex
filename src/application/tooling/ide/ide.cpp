@@ -631,11 +631,14 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     const std::filesystem::path& part_file)
 {
     const std::filesystem::path part_dir = part_file.parent_path();
-    if (part_dir.extension() != ".parts") {
+    if (part_dir.empty() || part_dir.filename().empty()) {
         return std::nullopt;
     }
-    std::filesystem::path primary = part_dir.parent_path() / part_dir.stem();
+    std::filesystem::path primary = part_dir.parent_path() / part_dir.filename();
     primary += ".ax";
+    if (!ide_path_exists(primary)) {
+        return std::nullopt;
+    }
     return primary;
 }
 
@@ -644,7 +647,6 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
 {
     std::filesystem::path base = primary_file;
     base.replace_extension();
-    base += ".parts";
     return base / (std::string(part_name) + ".ax");
 }
 

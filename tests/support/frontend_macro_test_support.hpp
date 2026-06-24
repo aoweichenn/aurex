@@ -90,7 +90,7 @@ inline void assign_single_module_ownership(syntax::AstModule& module)
     }
     const std::string part_name = "part" + std::to_string(part_index);
     const std::string source_path =
-        "/virtual/tests/macro/early_item_expansion.parts/" + part_name + ".ax";
+        "/virtual/tests/macro/early_item_expansion/" + part_name + ".ax";
     const query::FileKey file = query::file_key(package, source_path);
     return query::module_part_key(
         module, file, query::ModulePartKind::fragment, part_name, part_index);

@@ -1946,10 +1946,10 @@ TEST(CoreUnit, IdeToolingRecoversFragmentPartContextFromOwningPrimary)
         "part lexer;\n"
         "part parser;\n"
         "fn primary() -> i32 { return 0; }\n"));
-    static_cast<void>(write_ide_tooling_source(work / "vm.parts" / "lexer.ax",
+    static_cast<void>(write_ide_tooling_source(work / "vm" / "lexer.ax",
         "module ide.owned_part part lexer;\n"
         "fn scan() -> i32 { return 1; }\n"));
-    const fs::path parser_path = write_ide_tooling_source(work / "vm.parts" / "parser.ax",
+    const fs::path parser_path = write_ide_tooling_source(work / "vm" / "parser.ax",
         "module ide.owned_part part parser;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = true;\n"
@@ -1988,7 +1988,7 @@ TEST(CoreUnit, IdeToolingLeavesFragmentContextUnresolvedWhenPrimaryDoesNotOwnPar
     static_cast<void>(write_ide_tooling_source(mismatch_work / "vm.ax",
         "module ide.other_owner;\n"
         "part parser;\n"));
-    const fs::path mismatch_parser_path = write_ide_tooling_source(mismatch_work / "vm.parts" / "parser.ax",
+    const fs::path mismatch_parser_path = write_ide_tooling_source(mismatch_work / "vm" / "parser.ax",
         "module ide.requested_owner part parser;\n"
         "fn main() -> i32 { return 0; }\n");
     const tooling::IdeSnapshot mismatch_snapshot =
@@ -2003,7 +2003,7 @@ TEST(CoreUnit, IdeToolingLeavesFragmentContextUnresolvedWhenPrimaryDoesNotOwnPar
     static_cast<void>(write_ide_tooling_source(unlisted_work / "vm.ax",
         "module ide.unlisted_owner;\n"
         "part lexer;\n"));
-    const fs::path unlisted_parser_path = write_ide_tooling_source(unlisted_work / "vm.parts" / "parser.ax",
+    const fs::path unlisted_parser_path = write_ide_tooling_source(unlisted_work / "vm" / "parser.ax",
         "module ide.unlisted_owner part parser;\n"
         "fn main() -> i32 { return 0; }\n");
     const tooling::IdeSnapshot unlisted_snapshot =
